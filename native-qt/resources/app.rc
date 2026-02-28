@@ -1,0 +1,4 @@
+// Windows resource file for Versus Qt application
+// This embeds the application icon into the .exe
+
+IDI_ICON1 ICON "versus.ico"

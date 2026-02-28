@@ -1,0 +1,79 @@
+name: QA Nightly Soak
+
+on:
+  schedule:
+    - cron: "15 8 * * *"
+  workflow_dispatch:
+    inputs:
+      soak_duration_min:
+        description: "Soak duration in minutes"
+        required: false
+        default: "30"
+      soak_hold_ms:
+        description: "Per-iteration hold in milliseconds"
+        required: false
+        default: "15000"
+
+concurrency:
+  group: qa-nightly-soak
+  cancel-in-progress: false
+
+jobs:
+  nightly-soak:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: native-qt/package-lock.json
+
+      - name: Install npm dependencies
+        shell: pwsh
+        run: npm ci --prefix native-qt
+
+      - name: Configure CMake (Release)
+        shell: pwsh
+        run: >
+          cmake -S native-qt -B native-qt/build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DVERSUS_BUILD_TESTS=ON
+
+      - name: Build (Release)
+        shell: pwsh
+        run: cmake --build native-qt/build-ci --config Release
+
+      - name: Run Nightly Soak QA Gate
+        shell: pwsh
+        run: |
+          $duration = "${{ github.event.inputs.soak_duration_min }}"
+          if (-not $duration) { $duration = "30" }
+          $hold = "${{ github.event.inputs.soak_hold_ms }}"
+          if (-not $hold) { $hold = "15000" }
+          ./native-qt/qa/run-nightly-soak.ps1 `
+            -BuildDir build-ci `
+            -Configuration Release `
+            -SoakDurationMin ([int]$duration) `
+            -SoakHoldMs ([int]$hold)
+
+      - name: Upload QA Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-nightly-soak-reports
+          path: native-qt/qa/reports/*.md
+          if-no-files-found: warn
+
+      - name: Upload E2E Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-nightly-soak-screenshots
+          path: .playwright-mcp/**/*.png
+          if-no-files-found: warn

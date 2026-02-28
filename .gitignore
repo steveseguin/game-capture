@@ -1,0 +1,65 @@
+# Build outputs
+archive/native-imgui/build/
+native-qt/build/
+native-qt/build-static/
+native-qt/build-test/
+native-qt/build-review/
+native-qt/build-review2/
+
+# Distribution packages (built locally)
+archive/native-imgui/dist/
+archive/native-imgui/lib/ffmpeg/
+native-qt/dist/
+
+# Archived Electron dependencies
+archive/electron/node_modules/
+archive/electron/dist/
+native-qt/node_modules/
+native-qt/.cache/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+*.cmake
+!CMakeLists.txt
+
+# Visual Studio
+*.vcxproj*
+*.sln
+.vs/
+out/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude
+.claude/
+
+# vcpkg (if local)
+vcpkg_installed/
+
+# Temporary files
+*.tmp
+*.temp
+nul
+
+# Playwright
+.playwright-mcp/
+
+# Native Qt build logs
+native-qt/build-*.txt
+
+# QA artifacts
+native-qt/qa/reports/

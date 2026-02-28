@@ -1,0 +1,63 @@
+name: QA Fast Gate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/qa-fast-gate.yml"
+      - ".github/workflows/qa-nightly-soak.yml"
+      - "README.md"
+      - "native-qt/**"
+  workflow_dispatch:
+
+jobs:
+  fast-gate:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: native-qt/package-lock.json
+
+      - name: Install npm dependencies
+        shell: pwsh
+        run: npm ci --prefix native-qt
+
+      - name: Configure CMake (Release)
+        shell: pwsh
+        run: >
+          cmake -S native-qt -B native-qt/build-ci -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DVERSUS_BUILD_TESTS=ON
+
+      - name: Build (Release)
+        shell: pwsh
+        run: cmake --build native-qt/build-ci --config Release
+
+      - name: Run Fast QA Gate
+        shell: pwsh
+        run: ./native-qt/qa/run-fast-gate.ps1 -BuildDir build-ci -Configuration Release
+
+      - name: Upload QA Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-fast-gate-reports
+          path: native-qt/qa/reports/*.md
+          if-no-files-found: warn
+
+      - name: Upload E2E Screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-fast-gate-screenshots
+          path: .playwright-mcp/**/*.png
+          if-no-files-found: warn
