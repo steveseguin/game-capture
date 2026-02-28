@@ -36,6 +36,7 @@ $artifactPrefix = "game-capture"
 $distRoot = Join-Path $repoRoot "dist"
 $stageDir = Join-Path $distRoot "$artifactPrefix-$Version-win64"
 $zipPath = Join-Path $distRoot "$artifactPrefix-$Version-win64.zip"
+$zipStablePath = Join-Path $distRoot "$artifactPrefix-win64.zip"
 $installerVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-setup.exe"
 $installerStablePath = Join-Path $distRoot "$artifactPrefix-setup.exe"
 $portableVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-portable.exe"
@@ -134,6 +135,7 @@ if (Test-Path $zipPath) {
     Remove-Item -Force $zipPath
 }
 Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $zipPath -Force
+Copy-Item -Path $zipPath -Destination $zipStablePath -Force
 
 Write-Step "Portable EXE"
 $sevenZipExe = "C:\Program Files\7-Zip\7z.exe"
@@ -191,6 +193,9 @@ if ($makensis) {
 Write-Host ""
 Write-Host "Release staging dir: $stageDir"
 Write-Host "Release zip: $zipPath"
+if (Test-Path $zipStablePath) {
+    Write-Host "Release zip (stable): $zipStablePath"
+}
 if (Test-Path $installerVersionedPath) {
     Write-Host "Release installer: $installerVersionedPath"
 }

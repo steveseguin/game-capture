@@ -21,6 +21,7 @@ Expected assets:
 - `game-capture-<version>-portable.exe` (portable)
 - `game-capture-portable.exe` (stable portable alias)
 - `game-capture-<version>-win64.zip` (staged zip)
+- `game-capture-win64.zip` (stable zip alias)
 
 ## Build (Windows)
 

@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Game Capture for VDO.Ninja</title>
+    <meta
+      name="description"
+      content="Download Game Capture for Windows and publish low-latency gameplay to VDO.Ninja."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #050b18;
+        --bg-2: #0c1730;
+        --panel: rgba(15, 28, 52, 0.78);
+        --panel-border: rgba(123, 170, 255, 0.28);
+        --text: #e8efff;
+        --muted: #b6c5ea;
+        --accent: #32d4ff;
+        --accent-2: #79ff9c;
+        --danger: #ff9e73;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 15% 20%, rgba(58, 185, 255, 0.22), transparent 35%),
+          radial-gradient(circle at 80% 12%, rgba(121, 255, 156, 0.2), transparent 36%),
+          radial-gradient(circle at 55% 88%, rgba(255, 158, 115, 0.16), transparent 32%),
+          linear-gradient(160deg, var(--bg), var(--bg-2));
+        line-height: 1.45;
+      }
+
+      .wrap {
+        width: min(1080px, 92vw);
+        margin: 0 auto;
+        padding: 2rem 0 3rem;
+      }
+
+      .hero {
+        border: 1px solid var(--panel-border);
+        background: linear-gradient(145deg, rgba(25, 44, 77, 0.8), rgba(10, 22, 42, 0.8));
+        border-radius: 18px;
+        padding: 1.35rem 1.35rem 1.45rem;
+        box-shadow: 0 25px 50px rgba(0, 0, 0, 0.38);
+      }
+
+      .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        border: 1px solid rgba(121, 255, 156, 0.4);
+        border-radius: 999px;
+        padding: 0.18rem 0.7rem;
+        color: #d2ffdf;
+        font-size: 0.8rem;
+      }
+
+      h1,
+      h2 {
+        font-family: "Bebas Neue", "Arial Narrow", sans-serif;
+        letter-spacing: 0.03em;
+        margin: 0.45rem 0 0;
+      }
+
+      h1 {
+        font-size: clamp(2.3rem, 8vw, 4rem);
+        line-height: 0.96;
+      }
+
+      h2 {
+        font-size: clamp(1.5rem, 4vw, 2.2rem);
+      }
+
+      .sub {
+        margin-top: 0.8rem;
+        color: var(--muted);
+        max-width: 62ch;
+      }
+
+      .download-grid {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+        gap: 0.7rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        justify-content: center;
+        align-items: center;
+        text-decoration: none;
+        border-radius: 12px;
+        padding: 0.8rem 0.95rem;
+        font-weight: 700;
+        border: 1px solid transparent;
+        transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn-main {
+        color: #041325;
+        background: linear-gradient(95deg, var(--accent), #9ff0ff);
+        box-shadow: 0 12px 24px rgba(50, 212, 255, 0.28);
+      }
+
+      .btn-alt {
+        color: #05200f;
+        background: linear-gradient(95deg, var(--accent-2), #d8ffd8);
+        box-shadow: 0 12px 24px rgba(121, 255, 156, 0.2);
+      }
+
+      .btn-plain {
+        color: var(--text);
+        border-color: rgba(166, 192, 255, 0.35);
+        background: rgba(11, 23, 44, 0.7);
+      }
+
+      .meta {
+        margin-top: 0.72rem;
+        font-size: 0.93rem;
+        color: var(--muted);
+      }
+
+      .grid {
+        margin-top: 1rem;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+        gap: 0.8rem;
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        padding: 0.9rem 0.9rem 0.95rem;
+      }
+
+      .card p {
+        margin: 0.35rem 0 0;
+        color: var(--muted);
+      }
+
+      .list {
+        margin: 0.5rem 0 0;
+        padding-left: 1.1rem;
+        color: var(--muted);
+      }
+
+      .list li + li {
+        margin-top: 0.28rem;
+      }
+
+      .footer {
+        margin-top: 1rem;
+        color: #d7e5ff;
+        font-size: 0.94rem;
+      }
+
+      .footer a {
+        color: #9fd7ff;
+      }
+
+      .warn {
+        color: var(--danger);
+        font-weight: 700;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <span class="kicker">Windows Native App</span>
+        <h1>Game Capture for VDO.Ninja</h1>
+        <p class="sub">
+          Send a guest one link to install, launch, and publish gameplay. Keep control simple:
+          stream ID, room workflow, and OBS-ready view links.
+        </p>
+
+        <div class="download-grid">
+          <a
+            class="btn btn-main"
+            href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe"
+            >Download Installer (.exe)</a
+          >
+          <a
+            class="btn btn-alt"
+            href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-portable.exe"
+            >Download Portable (.exe)</a
+          >
+          <a
+            class="btn btn-plain"
+            href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-win64.zip"
+            >Download ZIP (.zip)</a
+          >
+        </div>
+
+        <p class="meta">
+          Latest release page:
+          <a href="https://github.com/steveseguin/game-capture/releases/latest"
+            >github.com/steveseguin/game-capture/releases/latest</a
+          >
+        </p>
+      </section>
+
+      <section class="grid" aria-label="Intro">
+        <article class="card">
+          <h2>How It Works</h2>
+          <ul class="list">
+            <li>Creator sets stream ID and shares a link with the guest.</li>
+            <li>Guest opens Game Capture and selects the game/window to publish.</li>
+            <li>OBS uses view/scene links to pull the feed.</li>
+            <li>Room workflows support role-based quality control.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>Why This App</h2>
+          <ul class="list">
+            <li>Native Windows capture with lower friction than browser setup.</li>
+            <li>Built for game feeds and production handoff.</li>
+            <li>Designed for reconnects, churn, and long-running sessions.</li>
+            <li>Works with existing VDO.Ninja links and API patterns.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>Current Scope</h2>
+          <ul class="list">
+            <li><span class="warn">Windows only</span> right now.</li>
+            <li>No auth guard for role claims (production tool model).</li>
+            <li>Limit max connections to protect publisher performance.</li>
+            <li>Public roadmap and test plans live in the GitHub repo.</li>
+          </ul>
+        </article>
+      </section>
+
+      <p class="footer">
+        Project repo: <a href="https://github.com/steveseguin/game-capture">steveseguin/game-capture</a>
+        <br />
+        License: AGPL-3.0
+      </p>
+    </main>
+  </body>
+</html>
