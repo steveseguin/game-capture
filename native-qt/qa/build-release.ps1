@@ -1,7 +1,7 @@
 param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.5",
+    [string]$Version = "0.2.6",
     [switch]$SkipVirusTotal = $false
 )
 
@@ -198,7 +198,7 @@ if ($SkipVirusTotal) {
     $vtScript = Join-Path $PSScriptRoot "submit-virustotal.ps1"
     if (Test-Path $vtScript) {
         try {
-            & $vtScript -DistDir $distRoot
+            & $vtScript -DistDir $distRoot -Version $Version
             if ($LASTEXITCODE -ne 0) {
                 Write-Warning "VirusTotal submission reported errors; release artifacts are still available."
             }

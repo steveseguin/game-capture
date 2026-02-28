@@ -1108,7 +1108,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     nlohmann::json info;
 
     info["label"] = startOptions_.label;
-    info["version"] = "versus-native-qt/0.2.5";
+    info["version"] = "versus-native-qt/0.2.6";
     info["maxviewers_url"] = maxViewers_.load(std::memory_order_relaxed);
     info["quality_url"] = effectiveBitrate;
     info["width_url"] = effectiveWidth;

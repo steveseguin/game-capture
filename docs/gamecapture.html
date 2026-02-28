@@ -142,6 +142,12 @@
         color: var(--muted);
       }
 
+      .meta a {
+        color: #9ef6ff;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
       .grid {
         margin-top: 1rem;
         display: grid;
@@ -178,7 +184,15 @@
       }
 
       .footer a {
-        color: #9fd7ff;
+        color: #9ef6ff;
+        text-decoration: underline;
+        text-underline-offset: 2px;
+      }
+
+      .list a {
+        color: #9ef6ff;
+        text-decoration: underline;
+        text-underline-offset: 2px;
       }
 
       .warn {
@@ -236,10 +250,13 @@
         <article class="card">
           <h2>Why This App</h2>
           <ul class="list">
-            <li>Native Windows capture with lower friction than browser setup.</li>
-            <li>Built for game feeds and production handoff.</li>
-            <li>Designed for reconnects, churn, and long-running sessions.</li>
-            <li>Works with existing VDO.Ninja links and API patterns.</li>
+            <li>Window audio capture without virtual audio cables.</li>
+            <li>Hardware-accelerated encoding for smoother performance.</li>
+            <li>Dual-stream quality model: HQ + LQ routing when needed.</li>
+            <li>Multiple viewers from one HD encode workflow.</li>
+            <li>No Electron runtime, low memory usage, native Qt app.</li>
+            <li>Simple alternative to OBS for guest-side game feed publishing.</li>
+            <li>Built for VDO.Ninja compatibility and link workflows.</li>
           </ul>
         </article>
         <article class="card">
@@ -248,7 +265,10 @@
             <li><span class="warn">Windows only</span> right now.</li>
             <li>No auth guard for role claims (production tool model).</li>
             <li>Limit max connections to protect publisher performance.</li>
-            <li>Public roadmap and test plans live in the GitHub repo.</li>
+            <li>
+              Public roadmap and test plans live in the
+              <a href="https://github.com/steveseguin/game-capture">GitHub repo</a>.
+            </li>
           </ul>
         </article>
       </section>
@@ -256,7 +276,7 @@
       <p class="footer">
         Project repo: <a href="https://github.com/steveseguin/game-capture">steveseguin/game-capture</a>
         <br />
-        License: AGPL-3.0
+        License: Free and Open Source
       </p>
     </main>
   </body>

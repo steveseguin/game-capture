@@ -1,5 +1,6 @@
 param(
     [string]$DistDir = "",
+    [string]$Version = "",
     [switch]$FailOnError = $false
 )
 
@@ -82,8 +83,17 @@ if (-not $curl) {
 }
 
 $allExes = Get-ChildItem -Path $DistDir -File -Filter "*.exe" -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like "game-capture*.exe" -and $_.Name -notlike "*uninstall*" } |
-    Sort-Object Name
+    Where-Object { $_.Name -like "game-capture*.exe" -and $_.Name -notlike "*uninstall*" }
+
+if ($Version) {
+    $stableNames = @("game-capture-setup.exe", "game-capture-portable.exe")
+    $versionPrefix = "game-capture-$Version-"
+    $allExes = $allExes | Where-Object {
+        ($stableNames -contains $_.Name) -or $_.Name.StartsWith($versionPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+}
+
+$allExes = $allExes | Sort-Object Name
 
 if (-not $allExes) {
     Write-Host "VirusTotal: no game-capture EXEs found in $DistDir; skipping."

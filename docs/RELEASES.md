@@ -15,7 +15,7 @@ Versioned files can change per release, but these three stable aliases must alwa
 From repo root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\build-release.ps1 -BuildDir build-review2 -Configuration Release -Version 0.2.5
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\build-release.ps1 -BuildDir build-review2 -Configuration Release -Version <version>
 ```
 
 VirusTotal behavior during this step:
@@ -26,9 +26,9 @@ VirusTotal behavior during this step:
 
 Expected outputs in `native-qt/dist`:
 
-- `game-capture-0.2.5-setup.exe`
-- `game-capture-0.2.5-portable.exe`
-- `game-capture-0.2.5-win64.zip`
+- `game-capture-<version>-setup.exe`
+- `game-capture-<version>-portable.exe`
+- `game-capture-<version>-win64.zip`
 - `game-capture-setup.exe`
 - `game-capture-portable.exe`
 - `game-capture-win64.zip`

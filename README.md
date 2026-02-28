@@ -1,45 +1,48 @@
-﻿# Game Capture (Windows)
+# Game Capture (Windows)
 
-Native Windows game capture and publishing app for VDO.Ninja workflows.
+Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with low friction and production-friendly defaults.
 
-## Status
+## Why Teams Use It
 
-- Platform: Windows only (currently)
-- Primary app source: `native-qt/`
-- License: AGPL-3.0
+- Window audio capture without virtual audio cables.
+- Hardware-accelerated encoding and bitrate presets for game feeds.
+- Dual-stream routing (HQ/LQ) for room roles and monitor paths.
+- Multiple viewers from a single HD encode workflow.
+- Native app (no Electron), lower memory footprint.
+- Simple OBS alternative for guest-side feed publishing.
+- VDO.Ninja-compatible links and room workflows.
 
-## Download
+## Quick Start
 
-Release binaries are published here:
+1. Download the installer from the latest release.
+2. Launch Game Capture and pick your game window.
+3. Enter a stream ID (or paste a full VDO.Ninja URL) and go live.
+4. Use the generated view links in OBS.
 
+Web landing/download page:
+- `docs/gamecapture.html`
+
+## Downloads
+
+Latest release:
 - https://github.com/steveseguin/game-capture/releases/latest
 
-Expected assets:
+Stable direct-download asset names (safe for website links):
+- `game-capture-setup.exe`
+- `game-capture-portable.exe`
+- `game-capture-win64.zip`
 
-- `game-capture-<version>-setup.exe` (installer)
-- `game-capture-setup.exe` (stable installer alias)
-- `game-capture-<version>-portable.exe` (portable)
-- `game-capture-portable.exe` (stable portable alias)
-- `game-capture-<version>-win64.zip` (staged zip)
-- `game-capture-win64.zip` (stable zip alias)
-
-## Release Process
-
-For maintainers, use `docs/RELEASES.md` to run the release flow and keep fixed download names working for website links.
-
-## Contributing
-
-Read `CONTRIBUTING.md` before submitting PRs; contributor terms include the CLA/license grant requirements for this repository.
+Versioned assets are also published each release:
+- `game-capture-<version>-setup.exe`
+- `game-capture-<version>-portable.exe`
+- `game-capture-<version>-win64.zip`
 
 ## Build (Windows)
 
 Prerequisites:
-
 - Visual Studio 2022 (C++)
 - CMake 3.24+
 - Qt6
-
-Build:
 
 ```powershell
 cd native-qt
@@ -49,24 +52,34 @@ cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scr
 ninja
 ```
 
-## Test
+## Testing
 
-Primary QA/test plans are in `native-qt/qa/`.
+Primary QA plans and gates live in `native-qt/qa/`.
 
-Examples:
+Fast gate:
 
 ```powershell
-cd native-qt
-npm install
-npm run e2e:stream
-.\qa\run-release-readiness.ps1 -BuildDir build-review2 -Configuration Release
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release
 ```
+
+Release readiness:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-release-readiness.ps1 -BuildDir build-review2 -Configuration Release
+```
+
+## Releases
+
+Use `docs/RELEASES.md` for the exact release checklist, including fixed asset names and optional VirusTotal submission.
+
+## Contributing
+
+Read `CONTRIBUTING.md` before opening PRs. Contributor terms include CLA/license grant requirements for this repository.
 
 ## Repository Scope
 
-This repo intentionally excludes legacy web wrapper content and archived historical app trees.
+This repo is focused on the native Windows app (`native-qt`) and supporting release/docs flow.
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
-See `LICENSE` for details.
+Free and open source (AGPL-3.0). See `LICENSE`.

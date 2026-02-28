@@ -63,3 +63,6 @@ native-qt/build-*.txt
 
 # QA artifacts
 native-qt/qa/reports/
+
+/.vt-apikey
+/native-qt/.vt-apikey
