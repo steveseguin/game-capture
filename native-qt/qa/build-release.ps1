@@ -1,7 +1,8 @@
 param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.5"
+    [string]$Version = "0.2.5",
+    [switch]$SkipVirusTotal = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -188,6 +189,26 @@ if ($makensis) {
     Copy-Item -Path $installerVersionedPath -Destination $installerStablePath -Force
 } else {
     Write-Host "makensis not found; skipped installer build."
+}
+
+Write-Step "VirusTotal Submission (Best Effort)"
+if ($SkipVirusTotal) {
+    Write-Host "Skipped VirusTotal submission by request."
+} else {
+    $vtScript = Join-Path $PSScriptRoot "submit-virustotal.ps1"
+    if (Test-Path $vtScript) {
+        try {
+            & $vtScript -DistDir $distRoot
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warning "VirusTotal submission reported errors; release artifacts are still available."
+            }
+        } catch {
+            Write-Warning "VirusTotal submission failed: $($_.Exception.Message)"
+            Write-Warning "Continuing without failing release packaging."
+        }
+    } else {
+        Write-Host "VirusTotal script not found ($vtScript); skipped submission."
+    }
 }
 
 Write-Host ""

@@ -35,6 +35,10 @@ static const QString COLOR_TEXT = "#eaf4ff";
 static const QString COLOR_TEXT_DIM = "#89a2ba";
 static const QString COLOR_RED = "#ff4d5a";
 static const QString COLOR_YELLOW = "#f0b84d";
+static const QString APP_WINDOW_TITLE = "Game Capture - Powered by VDO.Ninja";
+static const QString APP_BRAND = "Game Capture";
+static const QString APP_TRAY_IDLE = "Game Capture - Idle";
+static const QString APP_TRAY_LIVE = "Game Capture - LIVE";
 
 versus::video::VideoCodec codecFromUiValue(const QString &value) {
     if (value == "h265") {
@@ -125,7 +129,7 @@ MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString 
 MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
     : QMainWindow(parent)
     , core_(core) {
-    setWindowTitle("Versus Native (Qt)");
+    setWindowTitle(APP_WINDOW_TITLE);
 
     setupMenuBar();
     applyDarkTheme();
@@ -157,7 +161,7 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
 
                 updateStatus(status, "error");
                 if (trayIcon_ && trayIcon_->supportsMessages()) {
-                    trayIcon_->showMessage("Versus", status, QSystemTrayIcon::Warning, 5000);
+                    trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Warning, 5000);
                 }
 
                 if (!fatal) {
@@ -334,7 +338,7 @@ void MainWindow::setupUI() {
     sep1->setStyleSheet("background-color: #333;");
     layout->addWidget(sep1);
 
-    auto *heroTitle = new QLabel("Versus Live", this);
+    auto *heroTitle = new QLabel("Game Capture Live", this);
     heroTitle->setStyleSheet(QString("color: %1; font-size: 18px; font-weight: 700;").arg(COLOR_TEXT));
     layout->addWidget(heroTitle);
 
@@ -356,7 +360,7 @@ void MainWindow::setupUI() {
     basicForm->addRow("Password", passwordInput_);
     layout->addLayout(basicForm);
 
-    auto *urlHint = new QLabel("Tip: paste a full VDO URL and Versus auto-uses stream/room/password.", this);
+    auto *urlHint = new QLabel("Tip: paste a full VDO URL and Game Capture auto-uses stream/room/password.", this);
     urlHint->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
     urlHint->setWordWrap(true);
     layout->addWidget(urlHint);
@@ -578,7 +582,7 @@ void MainWindow::setupTrayIcon() {
     trayIcon_ = new QSystemTrayIcon(this);
     trayBaseIcon_ = QIcon(":/icons/versus.ico");
     trayIcon_->setIcon(trayBaseIcon_);
-    trayIcon_->setToolTip("Versus - Idle");
+    trayIcon_->setToolTip(APP_TRAY_IDLE);
 
     trayMenu_ = new QMenu(this);
 
@@ -1245,7 +1249,7 @@ void MainWindow::updateTrayLiveIndicator(bool live) {
         return;
     }
 
-    trayIcon_->setToolTip(live ? "Versus - LIVE" : "Versus - Idle");
+    trayIcon_->setToolTip(live ? APP_TRAY_LIVE : APP_TRAY_IDLE);
     trayIcon_->setIcon(makeTrayLiveIcon(trayBaseIcon_, live));
 }
 
@@ -1284,7 +1288,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         }
         if (trayIcon_->supportsMessages()) {
             trayIcon_->showMessage(
-                "Versus",
+                APP_BRAND,
                 "Still running in system tray",
                 QSystemTrayIcon::Information,
                 3000);

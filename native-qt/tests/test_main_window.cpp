@@ -68,7 +68,7 @@ void TestMainWindow::cleanup() {
 
 void TestMainWindow::testInitialState() {
     QVERIFY(window_ != nullptr);
-    QCOMPARE(window_->windowTitle(), QString("Versus Native (Qt)"));
+    QCOMPARE(window_->windowTitle(), QString("Game Capture - Powered by VDO.Ninja"));
     QVERIFY(window_->width() >= 900);
     QVERIFY(window_->height() <= 760);
 }
@@ -156,7 +156,7 @@ void TestMainWindow::testSystemTrayExists() {
     auto *trayIcon = window_->findChild<QSystemTrayIcon*>();
     QVERIFY(trayIcon != nullptr);
     QVERIFY(trayIcon->isVisible());
-    QCOMPARE(trayIcon->toolTip(), QString("Versus - Idle"));
+    QCOMPARE(trayIcon->toolTip(), QString("Game Capture - Idle"));
 }
 
 void TestMainWindow::testStatsPanelHiddenInitially() {

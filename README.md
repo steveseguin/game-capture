@@ -27,6 +27,10 @@ Expected assets:
 
 For maintainers, use `docs/RELEASES.md` to run the release flow and keep fixed download names working for website links.
 
+## Contributing
+
+Read `CONTRIBUTING.md` before submitting PRs; contributor terms include the CLA/license grant requirements for this repository.
+
 ## Build (Windows)
 
 Prerequisites:

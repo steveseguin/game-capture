@@ -18,6 +18,12 @@ From repo root:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\build-release.ps1 -BuildDir build-review2 -Configuration Release -Version 0.2.5
 ```
 
+VirusTotal behavior during this step:
+
+- If `VT_API_KEY` is set, release EXEs are submitted automatically (best effort).
+- If no key is set, VirusTotal submission is skipped.
+- To skip explicitly: add `-SkipVirusTotal`.
+
 Expected outputs in `native-qt/dist`:
 
 - `game-capture-0.2.5-setup.exe`
@@ -32,6 +38,14 @@ Expected outputs in `native-qt/dist`:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release
 ```
+
+## 2.5) Configure VirusTotal key (optional but recommended)
+
+Use one of:
+
+- Environment variable: `VT_API_KEY`
+- Key file: `native-qt/.vt-apikey`
+- Key file: repo root `.vt-apikey`
 
 ## 3) Upload assets to the release
 
