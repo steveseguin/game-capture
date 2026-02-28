@@ -131,6 +131,22 @@ $notes += "- versus.ico"
 
 Set-Content -Path (Join-Path $stageDir "RELEASE-NOTES.txt") -Value $notes -Encoding UTF8
 
+Write-Step "Code Signing (Best Effort - Staged Binary)"
+$signScript = Join-Path $PSScriptRoot "sign-artifacts.ps1"
+if (Test-Path $signScript) {
+    try {
+        & $signScript -FilePaths @(Join-Path $stageDir "versus-qt.exe")
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Code-signing staged binary reported errors; continuing."
+        }
+    } catch {
+        Write-Warning "Code-signing staged binary failed: $($_.Exception.Message)"
+        Write-Warning "Continuing without failing release packaging."
+    }
+} else {
+    Write-Host "Code-signing script not found ($signScript); skipped signing."
+}
+
 Write-Step "Zip Package"
 if (Test-Path $zipPath) {
     Remove-Item -Force $zipPath
@@ -189,6 +205,21 @@ if ($makensis) {
     Copy-Item -Path $installerVersionedPath -Destination $installerStablePath -Force
 } else {
     Write-Host "makensis not found; skipped installer build."
+}
+
+Write-Step "Code Signing (Best Effort - Release EXEs)"
+if (Test-Path $signScript) {
+    try {
+        & $signScript -DistDir $distRoot -Version $Version
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warning "Code-signing script reported errors; continuing."
+        }
+    } catch {
+        Write-Warning "Code-signing step failed: $($_.Exception.Message)"
+        Write-Warning "Continuing without failing release packaging."
+    }
+} else {
+    Write-Host "Code-signing script not found ($signScript); skipped signing."
 }
 
 Write-Step "VirusTotal Submission (Best Effort)"

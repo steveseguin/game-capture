@@ -20,6 +20,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\build-release
 
 VirusTotal behavior during this step:
 
+- If signing certs are available, EXE artifacts are code-signed before VirusTotal submission.
 - If `VT_API_KEY` is set, release EXEs are submitted automatically (best effort).
 - If no key is set, VirusTotal submission is skipped.
 - To skip explicitly: add `-SkipVirusTotal`.
@@ -46,6 +47,14 @@ Use one of:
 - Environment variable: `VT_API_KEY`
 - Key file: `native-qt/.vt-apikey`
 - Key file: repo root `.vt-apikey`
+
+## 2.6) Configure code-signing bundle (recommended)
+
+- Ensure your decrypted signing bundle exists at:
+  - `C:\Users\Steve\code\code-signing\secrets\decrypted\certs\socialstream.pfx`
+- Provide certificate password via:
+  - `WIN_CSC_KEY_PASSWORD` environment variable, or
+  - `C:\Users\Steve\code\code-signing\secrets\decrypted\build-config.env`
 
 ## 3) Upload assets to the release
 
