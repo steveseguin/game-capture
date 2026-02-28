@@ -23,6 +23,10 @@ Expected assets:
 - `game-capture-<version>-win64.zip` (staged zip)
 - `game-capture-win64.zip` (stable zip alias)
 
+## Release Process
+
+For maintainers, use `docs/RELEASES.md` to run the release flow and keep fixed download names working for website links.
+
 ## Build (Windows)
 
 Prerequisites:
