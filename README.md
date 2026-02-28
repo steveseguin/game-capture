@@ -16,8 +16,11 @@ Release binaries are published here:
 
 Expected assets:
 
-- `Versus-Setup-<version>.exe` (installer)
-- `Versus-Portable-<version>.exe` (portable)
+- `game-capture-<version>-setup.exe` (installer)
+- `game-capture-setup.exe` (stable installer alias)
+- `game-capture-<version>-portable.exe` (portable)
+- `game-capture-portable.exe` (stable portable alias)
+- `game-capture-<version>-win64.zip` (staged zip)
 
 ## Build (Windows)
 

@@ -1,5 +1,5 @@
 ;!@Install@!UTF-8!
-Title="Versus"
-BeginPrompt="Extract and run Versus?"
+Title="Game Capture"
+BeginPrompt="Extract and run Game Capture?"
 RunProgram="versus-qt.exe"
 ;!@InstallEnd@!

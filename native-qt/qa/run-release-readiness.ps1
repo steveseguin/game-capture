@@ -391,9 +391,25 @@ if ($makensis) {
     $installerRan = $true
     $installerPass = Run-Step "Installer Smoke" {
         $installerBinDir = ""
-        $stageCandidate = Get-ChildItem -Path (Join-Path $repoRoot "dist") -Directory -Filter "Versus-*-win64" -ErrorAction SilentlyContinue |
+        $distDir = Join-Path $repoRoot "dist"
+        $stageCandidates = @()
+        if (Test-Path $distDir) {
+            foreach ($pattern in @("game-capture-*-win64", "Versus-*-win64")) {
+                $stageCandidates += Get-ChildItem -Path $distDir -Directory -Filter $pattern -ErrorAction SilentlyContinue
+            }
+        }
+        $stageCandidate = $stageCandidates |
+            Where-Object {
+                (Test-Path (Join-Path $_.FullName "versus-qt.exe")) -and
+                (Test-Path (Join-Path $_.FullName "platforms\qwindows.dll"))
+            } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
+        if (-not $stageCandidate) {
+            $stageCandidate = $stageCandidates |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+        }
         if ($stageCandidate) {
             $installerBinDir = $stageCandidate.FullName
         } else {
@@ -402,7 +418,16 @@ if ($makensis) {
                 $installerBinDir = Join-Path $repoRoot "$BuildDir/bin"
             }
         }
+        foreach ($requiredRelPath in @("versus-qt.exe", "platforms\qwindows.dll")) {
+            $requiredPath = Join-Path $installerBinDir $requiredRelPath
+            if (-not (Test-Path $requiredPath)) {
+                throw "Installer smoke missing required staged artifact: $requiredPath"
+            }
+        }
         & $makensis.Path /V2 "/DBUILD_BIN_DIR=$installerBinDir" installer.nsi
+        if ($LASTEXITCODE -ne 0) {
+            throw "makensis failed with exit code $LASTEXITCODE"
+        }
     }
     $allPass = $allPass -and $installerPass
 } else {

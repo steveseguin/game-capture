@@ -1,7 +1,7 @@
 param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.5"
+    [string]$Version = "0.1.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -32,9 +32,14 @@ if (-not $exePath) {
     throw "Could not locate versus-qt.exe in build output. Build first: $BuildDir"
 }
 
+$artifactPrefix = "game-capture"
 $distRoot = Join-Path $repoRoot "dist"
-$stageDir = Join-Path $distRoot "Versus-$Version-win64"
-$zipPath = Join-Path $distRoot "Versus-$Version-win64.zip"
+$stageDir = Join-Path $distRoot "$artifactPrefix-$Version-win64"
+$zipPath = Join-Path $distRoot "$artifactPrefix-$Version-win64.zip"
+$installerVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-setup.exe"
+$installerStablePath = Join-Path $distRoot "$artifactPrefix-setup.exe"
+$portableVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-portable.exe"
+$portableStablePath = Join-Path $distRoot "$artifactPrefix-portable.exe"
 
 Write-Step "Stage Artifacts"
 if (Test-Path $stageDir) {
@@ -106,7 +111,7 @@ $latestReport = Get-ChildItem -Path $reportDir -Filter "release-readiness-*.md" 
     Select-Object -First 1
 
 $notes = @()
-$notes += "Versus Native Qt Release"
+$notes += "Game Capture Native Qt Release"
 $notes += "Version: $Version"
 $notes += "BuildDir: $BuildDir"
 $notes += "Configuration: $Configuration"
@@ -130,6 +135,32 @@ if (Test-Path $zipPath) {
 }
 Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $zipPath -Force
 
+Write-Step "Portable EXE"
+$sevenZipExe = "C:\Program Files\7-Zip\7z.exe"
+$sevenZipSfx = "C:\Program Files\7-Zip\7z.sfx"
+$portableConfig = Join-Path $repoRoot "portable-sfx-config.txt"
+$portableArchive = Join-Path $distRoot "$artifactPrefix-$Version-portable.7z"
+if ((Test-Path $sevenZipExe) -and (Test-Path $sevenZipSfx) -and (Test-Path $portableConfig)) {
+    if (Test-Path $portableArchive) {
+        Remove-Item -Force $portableArchive
+    }
+    if (Test-Path $portableVersionedPath) {
+        Remove-Item -Force $portableVersionedPath
+    }
+    & $sevenZipExe a -t7z -mx=9 $portableArchive (Join-Path $stageDir "*")
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create portable archive via 7-Zip."
+    }
+    cmd /c "copy /b `"$sevenZipSfx`" + `"$portableConfig`" + `"$portableArchive`" `"$portableVersionedPath`" >nul"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create portable executable SFX."
+    }
+    Copy-Item -Path $portableVersionedPath -Destination $portableStablePath -Force
+    Remove-Item -Force $portableArchive
+} else {
+    Write-Host "7-Zip or portable config missing; skipped portable SFX creation."
+}
+
 Write-Step "Optional NSIS Installer"
 $makensis = Get-Command makensis -ErrorAction SilentlyContinue
 if (-not $makensis) {
@@ -145,7 +176,14 @@ if (-not $makensis) {
 }
 if ($makensis) {
     $buildBinDir = $stageDir
-    & $makensis.Source /V2 "/DVERSION=$Version" "/DBUILD_BIN_DIR=$buildBinDir" installer.nsi
+    if (Test-Path $installerVersionedPath) {
+        Remove-Item -Force $installerVersionedPath
+    }
+    & $makensis.Source /V2 "/DVERSION=$Version" "/DBUILD_BIN_DIR=$buildBinDir" "/DOUTFILE=$installerVersionedPath" installer.nsi
+    if ($LASTEXITCODE -ne 0) {
+        throw "NSIS installer build failed."
+    }
+    Copy-Item -Path $installerVersionedPath -Destination $installerStablePath -Force
 } else {
     Write-Host "makensis not found; skipped installer build."
 }
@@ -153,3 +191,9 @@ if ($makensis) {
 Write-Host ""
 Write-Host "Release staging dir: $stageDir"
 Write-Host "Release zip: $zipPath"
+if (Test-Path $installerVersionedPath) {
+    Write-Host "Release installer: $installerVersionedPath"
+}
+if (Test-Path $portableVersionedPath) {
+    Write-Host "Release portable: $portableVersionedPath"
+}

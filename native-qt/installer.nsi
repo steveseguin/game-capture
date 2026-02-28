@@ -1,31 +1,31 @@
-; Versus Native Qt Installer Script
+; Game Capture Native Qt Installer Script
 ; NSIS 3.x
 
 !include "MUI2.nsh"
 
 ; General
-Name "Versus"
+Name "Game Capture"
 !ifndef VERSION
-!define VERSION "0.2.5"
+!define VERSION "0.1.0"
 !endif
 !ifndef BUILD_BIN_DIR
 !define BUILD_BIN_DIR "build\bin"
 !endif
 !ifndef OUTFILE
-!define OUTFILE "dist\Versus-${VERSION}-Setup.exe"
+!define OUTFILE "dist\game-capture-setup.exe"
 !endif
 OutFile "${OUTFILE}"
-InstallDir "$PROGRAMFILES64\Versus"
-InstallDirRegKey HKLM "Software\Versus" "InstallDir"
+InstallDir "$PROGRAMFILES64\Game Capture"
+InstallDirRegKey HKLM "Software\GameCapture" "InstallDir"
 RequestExecutionLevel admin
 
 ; Version Info
 VIProductVersion "${VERSION}.0"
-VIAddVersionKey "ProductName" "Versus"
+VIAddVersionKey "ProductName" "Game Capture"
 VIAddVersionKey "ProductVersion" "${VERSION}"
-VIAddVersionKey "FileDescription" "Versus - Esports Game Capture"
+VIAddVersionKey "FileDescription" "Game Capture - Windows Game Capture"
 VIAddVersionKey "FileVersion" "${VERSION}"
-VIAddVersionKey "LegalCopyright" "Copyright (c) 2024"
+VIAddVersionKey "LegalCopyright" "Copyright (c) 2026"
 
 ; Interface Settings
 !define MUI_ABORTWARNING
@@ -64,20 +64,20 @@ Section "Install"
 
     ; Create shortcuts
     SetOutPath "$INSTDIR"
-    CreateDirectory "$SMPROGRAMS\Versus"
-    CreateShortcut "$SMPROGRAMS\Versus\Versus.lnk" "$INSTDIR\versus-qt.exe" "" "$INSTDIR\versus-qt.exe"
-    CreateShortcut "$SMPROGRAMS\Versus\Uninstall.lnk" "$INSTDIR\uninstall.exe"
-    CreateShortcut "$DESKTOP\Versus.lnk" "$INSTDIR\versus-qt.exe" "" "$INSTDIR\versus-qt.exe"
+    CreateDirectory "$SMPROGRAMS\Game Capture"
+    CreateShortcut "$SMPROGRAMS\Game Capture\Game Capture.lnk" "$INSTDIR\versus-qt.exe" "" "$INSTDIR\versus-qt.exe"
+    CreateShortcut "$SMPROGRAMS\Game Capture\Uninstall.lnk" "$INSTDIR\uninstall.exe"
+    CreateShortcut "$DESKTOP\Game Capture.lnk" "$INSTDIR\versus-qt.exe" "" "$INSTDIR\versus-qt.exe"
 
     ; Registry
-    WriteRegStr HKLM "Software\Versus" "InstallDir" "$INSTDIR"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "DisplayName" "Versus"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "UninstallString" "$INSTDIR\uninstall.exe"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "DisplayVersion" "${VERSION}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "DisplayIcon" "$INSTDIR\versus-qt.exe"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "Publisher" "VDO.Ninja"
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "NoModify" 1
-    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus" "NoRepair" 1
+    WriteRegStr HKLM "Software\GameCapture" "InstallDir" "$INSTDIR"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayName" "Game Capture"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "UninstallString" "$INSTDIR\uninstall.exe"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayVersion" "${VERSION}"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayIcon" "$INSTDIR\versus-qt.exe"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "Publisher" "VDO.Ninja"
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "NoModify" 1
+    WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "NoRepair" 1
 
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\uninstall.exe"
@@ -95,12 +95,12 @@ Section "Uninstall"
     RMDir "$INSTDIR"
 
     ; Remove shortcuts
-    Delete "$SMPROGRAMS\Versus\Versus.lnk"
-    Delete "$SMPROGRAMS\Versus\Uninstall.lnk"
-    Delete "$DESKTOP\Versus.lnk"
-    RMDir "$SMPROGRAMS\Versus"
+    Delete "$SMPROGRAMS\Game Capture\Game Capture.lnk"
+    Delete "$SMPROGRAMS\Game Capture\Uninstall.lnk"
+    Delete "$DESKTOP\Game Capture.lnk"
+    RMDir "$SMPROGRAMS\Game Capture"
 
     ; Remove registry
-    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Versus"
-    DeleteRegKey HKLM "Software\Versus"
+    DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture"
+    DeleteRegKey HKLM "Software\GameCapture"
 SectionEnd
