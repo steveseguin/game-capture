@@ -149,6 +149,28 @@
         text-underline-offset: 2px;
       }
 
+      .preview {
+        margin-top: 0.95rem;
+        padding: 0.75rem;
+        border-radius: 14px;
+        background: rgba(8, 19, 38, 0.72);
+        border: 1px solid rgba(123, 170, 255, 0.2);
+      }
+
+      .preview img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border-radius: 10px;
+        border: 1px solid rgba(123, 170, 255, 0.28);
+      }
+
+      .preview figcaption {
+        margin-top: 0.46rem;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
       .grid {
         margin-top: 1rem;
         display: grid;
@@ -236,6 +258,15 @@
             >github.com/steveseguin/game-capture/releases/latest</a
           >
         </p>
+
+        <figure class="preview">
+          <img
+            src="./app-screenshot.png"
+            alt="Game Capture app window showing window selection and go live controls"
+            loading="lazy"
+          />
+          <figcaption>Current Windows app interface (native Qt build)</figcaption>
+        </figure>
       </section>
 
       <section class="grid" aria-label="Intro">

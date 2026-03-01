@@ -70,7 +70,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-release-r
 
 ## Releases
 
-Use `docs/RELEASES.md` for the exact release checklist, including fixed asset names and optional VirusTotal submission.
+Use `docs/RELEASES.md` for the exact release checklist, including fixed asset names, signing commands, VirusTotal commands, and troubleshooting.
 
 ## Contributing
 
