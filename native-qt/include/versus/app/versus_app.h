@@ -169,6 +169,7 @@ class VersusApp {
     int64_t lastCaptureResizeMs_ = 0;
     int64_t lastHqReconfigureMs_ = 0;
     int64_t lastResizeKeyframeRequestMs_ = 0;
+    bool hqAspectLocked_ = false;
     std::atomic<bool> lqEncoderInitialized_{false};
     bool roomCodecWarningEmitted_ = false;
 

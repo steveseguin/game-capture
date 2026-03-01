@@ -164,6 +164,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
     lastCaptureResizeMs_ = 0;
     lastHqReconfigureMs_ = 0;
     lastResizeKeyframeRequestMs_ = 0;
+    hqAspectLocked_ = false;
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
         hasLatestVideoFrame_ = false;
@@ -241,6 +242,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
     }
     activeHqWidth_ = std::max(2, config.width & ~1);
     activeHqHeight_ = std::max(2, config.height & ~1);
+    hqAspectLocked_ = false;
     spdlog::info("[App] Video encoder active: {} (hardware={})",
                  videoEncoder_.activeEncoderName(), videoEncoder_.isHardwareEncoderActive());
 
@@ -328,6 +330,7 @@ void VersusApp::stopCapture() {
     lastCaptureResizeMs_ = 0;
     lastHqReconfigureMs_ = 0;
     lastResizeKeyframeRequestMs_ = 0;
+    hqAspectLocked_ = false;
     capturing_ = false;
 }
 
@@ -340,6 +343,7 @@ void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
     if (!capturing_) {
         activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
         activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
+        hqAspectLocked_ = false;
     }
 }
 
@@ -957,6 +961,7 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
         videoConfig_ = nextConfig;
         activeHqWidth_ = std::max(2, nextConfig.width & ~1);
         activeHqHeight_ = std::max(2, nextConfig.height & ~1);
+        hqAspectLocked_ = false;
         return true;
     }
 
@@ -979,12 +984,14 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
             } else {
                 activeHqWidth_ = std::max(2, previousConfig.width & ~1);
                 activeHqHeight_ = std::max(2, previousConfig.height & ~1);
+                hqAspectLocked_ = false;
             }
             return false;
         }
         activeHqWidth_ = std::max(2, nextConfig.width & ~1);
         activeHqHeight_ = std::max(2, nextConfig.height & ~1);
         lastHqReconfigureMs_ = steadyNowMs();
+        hqAspectLocked_ = false;
     } else if (bitrateChanged) {
         spdlog::info("[App] Applying runtime bitrate update: {} kbps", nextConfig.bitrate);
         videoEncoder_.setBitrate(nextConfig.bitrate);
@@ -1027,6 +1034,7 @@ bool VersusApp::enforceRoomCodecLock() {
         activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
         activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
         lastHqReconfigureMs_ = steadyNowMs();
+        hqAspectLocked_ = false;
         return true;
     }
 
@@ -1037,6 +1045,7 @@ bool VersusApp::enforceRoomCodecLock() {
     } else {
         activeHqWidth_ = std::max(2, previousConfig.width & ~1);
         activeHqHeight_ = std::max(2, previousConfig.height & ~1);
+        hqAspectLocked_ = false;
     }
     return false;
 }
@@ -1726,11 +1735,16 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
         activeHqHeight_ = baseHeight;
     }
 
+    if (hqAspectLocked_) {
+        return true;
+    }
+
     int desiredWidth = baseWidth;
     int desiredHeight = baseHeight;
     computeAspectMatchedResolution(frame.width, frame.height, baseWidth, baseHeight, desiredWidth, desiredHeight);
 
     if (desiredWidth == activeHqWidth_ && desiredHeight == activeHqHeight_) {
+        hqAspectLocked_ = true;
         return true;
     }
 
@@ -1765,12 +1779,14 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
         }
         activeHqWidth_ = previousConfig.width;
         activeHqHeight_ = previousConfig.height;
+        hqAspectLocked_ = true;
         return true;
     }
 
     activeHqWidth_ = desiredWidth;
     activeHqHeight_ = desiredHeight;
     lastHqReconfigureMs_ = nowMs;
+    hqAspectLocked_ = true;
 
     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
     lastKeyframeSendMs_.store(0, std::memory_order_relaxed);

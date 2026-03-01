@@ -68,37 +68,37 @@ const char *videoCodecName(VideoCodec codec) {
     }
 }
 
-struct AspectFitRect {
+struct AspectCoverRect {
     int x = 0;
     int y = 0;
     int width = 0;
     int height = 0;
 };
 
-AspectFitRect computeAspectFitRect(int srcW, int srcH, int dstW, int dstH) {
-    AspectFitRect rect;
+AspectCoverRect computeAspectCoverRect(int srcW, int srcH, int dstW, int dstH) {
+    AspectCoverRect rect;
     if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) {
         return rect;
     }
 
-    const int64_t widthFromHeight = static_cast<int64_t>(srcW) * dstH / srcH;
-    const int64_t heightFromWidth = static_cast<int64_t>(srcH) * dstW / srcW;
+    const int64_t cropWidthFromHeight = static_cast<int64_t>(srcH) * dstW / dstH;
+    const int64_t cropHeightFromWidth = static_cast<int64_t>(srcW) * dstH / dstW;
 
-    if (widthFromHeight <= dstW) {
-        rect.width = static_cast<int>(std::max<int64_t>(1, widthFromHeight));
-        rect.height = dstH;
+    if (cropWidthFromHeight <= srcW) {
+        rect.width = static_cast<int>(std::max<int64_t>(1, cropWidthFromHeight));
+        rect.height = srcH;
     } else {
-        rect.width = dstW;
-        rect.height = static_cast<int>(std::max<int64_t>(1, heightFromWidth));
+        rect.width = srcW;
+        rect.height = static_cast<int>(std::max<int64_t>(1, cropHeightFromWidth));
     }
 
-    rect.x = (dstW - rect.width) / 2;
-    rect.y = (dstH - rect.height) / 2;
+    rect.x = (srcW - rect.width) / 2;
+    rect.y = (srcH - rect.height) / 2;
     return rect;
 }
 
-void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
-                       uint8_t *dst, int dstW, int dstH, int dstStride) {
+void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
+                         uint8_t *dst, int dstW, int dstH, int dstStride) {
     if (!dst || dstW <= 0 || dstH <= 0 || dstStride < (dstW * 4)) {
         return;
     }
@@ -116,19 +116,19 @@ void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
         return;
     }
 
-    const AspectFitRect fit = computeAspectFitRect(srcW, srcH, dstW, dstH);
-    if (fit.width <= 0 || fit.height <= 0) {
+    const AspectCoverRect cover = computeAspectCoverRect(srcW, srcH, dstW, dstH);
+    if (cover.width <= 0 || cover.height <= 0) {
         return;
     }
 
-    for (int y = 0; y < fit.height; ++y) {
-        const int srcY = std::clamp((y * srcH) / fit.height, 0, srcH - 1);
+    for (int y = 0; y < dstH; ++y) {
+        const int srcY = cover.y + std::clamp((y * cover.height) / dstH, 0, cover.height - 1);
         const uint8_t *srcRow = src + static_cast<size_t>(srcY) * srcStride;
-        uint8_t *dstRow = dst + static_cast<size_t>(fit.y + y) * dstStride + fit.x * 4;
-        for (int x = 0; x < fit.width; ++x) {
-            const int srcX = std::clamp((x * srcW) / fit.width, 0, srcW - 1);
+        uint8_t *dstRow = dst + static_cast<size_t>(y) * dstStride;
+        for (int x = 0; x < dstW; ++x) {
+            const int srcX = cover.x + std::clamp((x * cover.width) / dstW, 0, cover.width - 1);
             const uint8_t *srcPixel = srcRow + srcX * 4;
-            uint8_t *dstPixel = dstRow + x * 4;
+            uint8_t *dstPixel = dstRow + static_cast<size_t>(x) * 4;
             dstPixel[0] = srcPixel[0];
             dstPixel[1] = srcPixel[1];
             dstPixel[2] = srcPixel[2];
@@ -314,8 +314,8 @@ class VideoEncoder::Impl {
         if (aspectFitInputBuffer_.size() != paddedSize) {
             aspectFitInputBuffer_.resize(paddedSize);
         }
-        blitBgraAspectFit(input.data.data(), input.width, input.height, input.stride,
-                          aspectFitInputBuffer_.data(), swsSrcW, swsSrcH, swsSrcW * 4);
+        blitBgraAspectCover(input.data.data(), input.width, input.height, input.stride,
+                            aspectFitInputBuffer_.data(), swsSrcW, swsSrcH, swsSrcW * 4);
 
         if (!swsCtx_ || lastWidth_ != swsSrcW || lastHeight_ != swsSrcH) {
             if (swsCtx_) {
@@ -2504,8 +2504,8 @@ class VideoEncoder::Impl {
         if (conversionScratchBgra_.size() != scratchSize) {
             conversionScratchBgra_.resize(scratchSize);
         }
-        blitBgraAspectFit(bgra, srcW, srcH, srcStride,
-                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
+        blitBgraAspectCover(bgra, srcW, srcH, srcStride,
+                            conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
 
         uint8_t* yPlane = nv12;
         uint8_t* uvPlane = nv12 + dstW * dstH;
@@ -2549,8 +2549,8 @@ class VideoEncoder::Impl {
         if (conversionScratchBgra_.size() != scratchSize) {
             conversionScratchBgra_.resize(scratchSize);
         }
-        blitBgraAspectFit(bgra, srcW, srcH, srcStride,
-                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
+        blitBgraAspectCover(bgra, srcW, srcH, srcStride,
+                            conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
 
         std::fill(yPlane, yPlane + (dstW * dstH), static_cast<uint8_t>(16));
         std::fill(uPlane, uPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
@@ -2587,7 +2587,7 @@ class VideoEncoder::Impl {
 
     void convertBGRAtoRGB32(const uint8_t *bgra, int srcW, int srcH, int srcStride,
                             uint8_t *dst, int dstW, int dstH) {
-        blitBgraAspectFit(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4);
+        blitBgraAspectCover(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4);
     }
 
     EncoderConfig config_{};
