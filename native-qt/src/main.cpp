@@ -27,6 +27,7 @@ int main(int argc, char *argv[]) {
     std::string videoCodecArg;
     std::string ffmpegPathArg;
     std::string ffmpegOptionsArg;
+    std::string windowFilterArg;
     int width = 0;
     int height = 0;
     int fps = 0;
@@ -61,6 +62,8 @@ int main(int argc, char *argv[]) {
             ffmpegPathArg = arg.substr(14);
         } else if (arg.find("--ffmpeg-options=") == 0) {
             ffmpegOptionsArg = arg.substr(17);
+        } else if (arg.find("--window=") == 0) {
+            windowFilterArg = arg.substr(9);
         } else if (arg.find("--resolution=") == 0) {
             const std::string resolution = arg.substr(13);
             const auto xPos = resolution.find('x');
@@ -265,12 +268,44 @@ int main(int argc, char *argv[]) {
         options.remoteControlEnabled = remoteControlEnabled;
         options.remoteControlToken = remoteControlToken;
 
-        QTimer::singleShot(1000, [&core, options]() {
+        QTimer::singleShot(1000, [&core, options, windowFilterArg]() {
             // Auto-select first available window for capture
             auto windows = core.listWindows();
             if (!windows.empty()) {
-                spdlog::info("[Headless] Found {} windows, capturing first: {}", windows.size(), windows[0].name);
-                if (!core.startCapture(windows[0].id)) {
+                const auto toLowerCopy = [](std::string value) {
+                    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+                        return static_cast<char>(std::tolower(ch));
+                    });
+                    return value;
+                };
+
+                const std::string filter = toLowerCopy(windowFilterArg);
+                const versus::video::WindowInfo *selected = nullptr;
+
+                if (!filter.empty()) {
+                    for (const auto &window : windows) {
+                        const std::string nameLower = toLowerCopy(window.name);
+                        const std::string exeLower = toLowerCopy(window.executableName);
+                        if (nameLower.find(filter) != std::string::npos ||
+                            exeLower.find(filter) != std::string::npos) {
+                            selected = &window;
+                            break;
+                        }
+                    }
+                    if (!selected) {
+                        spdlog::error("[Headless] No window matched --window={} ({} windows available)",
+                                      windowFilterArg,
+                                      windows.size());
+                        spdlog::default_logger()->flush();
+                        QApplication::quit();
+                        return;
+                    }
+                } else {
+                    selected = &windows[0];
+                }
+
+                spdlog::info("[Headless] Found {} windows, capturing: {}", windows.size(), selected->name);
+                if (!core.startCapture(selected->id)) {
                     spdlog::error("[Headless] startCapture failed");
                     spdlog::default_logger()->flush();
                     QApplication::quit();
