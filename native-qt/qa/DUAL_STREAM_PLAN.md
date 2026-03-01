@@ -2,7 +2,7 @@
 
 Last updated: 2026-02-23
 Status: LOCKED
-Owner: Publisher pipeline (`native-qt/src/app/versus_app.cpp`)
+Owner: Publisher pipeline (`native-qt/src/app` core module)
 
 ## Goal
 
@@ -84,7 +84,7 @@ Viewer to publisher init message:
     "audio": true,
     "label": "optional client label",
     "system": {
-      "app": "versus-web",
+      "app": "game-capture-web",
       "version": "x.y.z",
       "platform": "win|mac|linux|ios|android",
       "browser": "chrome|edge|firefox|safari"
@@ -114,7 +114,7 @@ Publisher info response additions:
 - Add a peer media state struct (`role`, `tier`, `initReceived`, `videoEnabled`, `audioEnabled`, `initDeadlineMs`).
 
 2. Peer session updates
-- Extend `PeerSession` in `versus_app.h` with room-init and tier metadata.
+- Extend `PeerSession` in the app core header with room-init and tier metadata.
 - Track whether peer is currently eligible for HQ/LQ routing.
 
 3. Dual encoder plumbing
@@ -146,9 +146,9 @@ Publisher info response additions:
 
 ## Required Code Touch Points
 
-- `native-qt/include/versus/app/versus_app.h`
-- `native-qt/src/app/versus_app.cpp`
-- `native-qt/include/versus/video/video_encoder.h` (only if helper API needed)
+- `native-qt/include/*/app/*` (app core header declarations)
+- `native-qt/src/app/*` (publisher routing/runtime behavior)
+- `native-qt/include/*/video/*` (only if helper API needed)
 - `native-qt/tests/*` (new policy/unit coverage)
 - `native-qt/e2e/*` (new dual-tier E2E coverage)
 

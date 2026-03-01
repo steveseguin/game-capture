@@ -9,7 +9,7 @@ Provide repeatable proof that reconnect, encoder stability, control-channel hand
 ## Execution Order
 
 1. Build tests in release mode.
-- `cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DVERSUS_BUILD_TESTS=ON ...`
+- `cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -D<BUILD_TESTS_OPTION>=ON ...`
 - `cmake --build .`
 
 2. Run deterministic fast gate.

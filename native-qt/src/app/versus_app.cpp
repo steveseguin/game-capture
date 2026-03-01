@@ -359,7 +359,7 @@ bool VersusApp::goLive(const StartOptions &options) {
         streamId_ = options.streamId;
     }
     if (streamId_.empty()) {
-        streamId_ = "versus_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+        streamId_ = "gamecapture_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     }
 
     if (remoteControlEnabled_.load(std::memory_order_relaxed) && remoteControlToken_.empty()) {
@@ -1108,7 +1108,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     nlohmann::json info;
 
     info["label"] = startOptions_.label;
-    info["version"] = "versus-native-qt/0.2.6";
+    info["version"] = "game-capture-native-qt/0.2.6";
     info["maxviewers_url"] = maxViewers_.load(std::memory_order_relaxed);
     info["quality_url"] = effectiveBitrate;
     info["width_url"] = effectiveWidth;

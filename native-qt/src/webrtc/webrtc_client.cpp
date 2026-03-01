@@ -200,7 +200,7 @@ struct WebRtcClient::Impl {
                 spdlog::info("[WebRTC] Configuring video codec: H264");
                 break;
         }
-        video.addSSRC(videoSsrc, "versus-video");
+        video.addSSRC(videoSsrc, "gamecapture-video");
         videoTrack = pc->addTrack(video);
 
         videoTrack->onOpen([this]() {
@@ -213,7 +213,7 @@ struct WebRtcClient::Impl {
             videoTrackOpen.store(false);
         });
 
-        videoRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(videoSsrc, "versus-video", kVideoPayloadType, kVideoClockRate);
+        videoRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(videoSsrc, "gamecapture-video", kVideoPayloadType, kVideoClockRate);
         switch (videoCodec) {
             case PeerConfig::VideoCodec::H265:
                 videoPacketizer =
@@ -244,7 +244,7 @@ struct WebRtcClient::Impl {
 
         rtc::Description::Audio audio("audio", rtc::Description::Direction::SendOnly);
         audio.addOpusCodec(kAudioPayloadType);
-        audio.addSSRC(audioSsrc, "versus-audio");
+        audio.addSSRC(audioSsrc, "gamecapture-audio");
         audioTrack = pc->addTrack(audio);
 
         audioTrack->onOpen([this]() {
@@ -256,7 +256,7 @@ struct WebRtcClient::Impl {
             audioTrackOpen.store(false);
         });
 
-        audioRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(audioSsrc, "versus-audio", kAudioPayloadType, kAudioClockRate);
+        audioRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(audioSsrc, "gamecapture-audio", kAudioPayloadType, kAudioClockRate);
         audioPacketizer = std::make_shared<rtc::OpusRtpPacketizer>(audioRtpConfig);
         auto audioReporter = std::make_shared<rtc::RtcpSrReporter>(audioRtpConfig);
         auto audioNack = std::make_shared<rtc::RtcpNackResponder>();

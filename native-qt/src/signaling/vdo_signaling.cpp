@@ -98,7 +98,7 @@ std::string generateUuid() {
 std::string generateStreamId() {
     auto now = std::chrono::system_clock::now().time_since_epoch().count();
     std::stringstream ss;
-    ss << "versus_" << std::hex << now;
+    ss << "gamecapture_" << std::hex << now;
     return ss.str();
 }
 
@@ -159,7 +159,7 @@ bool aesEncryptCbc(const std::string &plain, const std::string &phrase, std::str
     mbedtls_ctr_drbg_init(&rng);
     mbedtls_entropy_init(&entropy);
 
-    const char *pers = "versus-vdo";
+    const char *pers = "gamecapture-vdo";
     if (mbedtls_ctr_drbg_seed(&rng, mbedtls_entropy_func, &entropy,
                               reinterpret_cast<const unsigned char *>(pers), std::strlen(pers)) != 0) {
         mbedtls_ctr_drbg_free(&rng);

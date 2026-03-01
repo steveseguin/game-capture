@@ -1,10 +1,10 @@
 @echo off
 setlocal
 
-REM Build and run tests for Versus Native Qt
+REM Build and run tests for Game Capture Native Qt
 REM Run this from a Visual Studio Developer Command Prompt
 
-echo === Versus Native Qt Test Build ===
+echo === Game Capture Native Qt Test Build ===
 
 REM Create test build directory
 if not exist build-test mkdir build-test
