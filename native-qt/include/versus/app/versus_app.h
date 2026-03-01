@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <functional>
 #include <mutex>
@@ -70,6 +71,8 @@ class VersusApp {
     void stopSignalingRecoveryThread();
     void startVideoMaintenanceThread();
     void stopVideoMaintenanceThread();
+    void startEncodeThread();
+    void stopEncodeThread();
     bool hasAnyActiveVideoTrack() const;
     bool hasAnyActiveAudioTrack() const;
     void sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet);
@@ -123,6 +126,11 @@ class VersusApp {
     std::thread signalingRecoveryThread_;
     std::thread videoMaintenanceThread_;
     std::atomic<bool> videoMaintenanceRunning_{false};
+    std::thread encodeThread_;
+    std::atomic<bool> encodeThreadRunning_{false};
+    std::mutex encodeNotifyMutex_;
+    std::condition_variable encodeFrameCV_;
+    bool encodeFrameReady_ = false;
     mutable std::mutex peerSessionsMutex_;
     mutable std::mutex signalingOpsMutex_;
     mutable std::mutex runtimeEventMutex_;

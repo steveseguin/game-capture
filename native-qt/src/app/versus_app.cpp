@@ -250,35 +250,18 @@ bool VersusApp::startCapture(const std::string &windowId) {
             lastLog = now;
         }
 
-        if (!live_) {
-            return;
+        // Notify the encode thread instead of encoding inline.
+        // This decouples capture from encoding so the frame pool can deliver
+        // the next frame immediately without waiting for encode to finish.
+        {
+            std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
+            encodeFrameReady_ = true;
         }
-
-        const bool trackActive = hasAnyActiveVideoTrack();
-        const bool wasTrackActive = videoTrackActive_.exchange(trackActive);
-        if (!trackActive) {
-            static auto lastNoViewerLog = std::chrono::steady_clock::now();
-            if (std::chrono::duration_cast<std::chrono::seconds>(now - lastNoViewerLog).count() >= 5) {
-                spdlog::debug("[Frame] No active viewer track yet; skipping encode");
-                lastNoViewerLog = now;
-            }
-            return;
-        }
-
-        if (!wasTrackActive) {
-            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-            spdlog::info("[Frame] Video track became active; forcing keyframe on next frame");
-        }
-
-        if (!encodeAndSendVideoFrame(frame, false)) {
-            static int sendFailCount = 0;
-            if (++sendFailCount % 100 == 1) {
-                spdlog::warn("[Frame] encodeAndSendVideoFrame failed (count={})", sendFailCount);
-            }
-        }
+        encodeFrameCV_.notify_one();
     });
 
     capturing_ = true;
+    startEncodeThread();
     startVideoMaintenanceThread();
     return true;
 }
@@ -289,6 +272,7 @@ void VersusApp::stopCapture() {
     }
 
     stopVideoMaintenanceThread();
+    stopEncodeThread();
     windowCapture_.stopCapture();
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
@@ -1878,6 +1862,76 @@ void VersusApp::stopVideoMaintenanceThread() {
         return;
     }
     videoMaintenanceThread_.join();
+}
+
+void VersusApp::startEncodeThread() {
+    if (encodeThreadRunning_.exchange(true)) {
+        return;
+    }
+
+    encodeThread_ = std::thread([this]() {
+        spdlog::info("[EncodeThread] Started");
+        while (encodeThreadRunning_.load()) {
+            {
+                std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
+                encodeFrameCV_.wait_for(lock, std::chrono::milliseconds(50),
+                    [this] { return encodeFrameReady_ || !encodeThreadRunning_.load(); });
+                if (!encodeThreadRunning_.load()) {
+                    break;
+                }
+                if (!encodeFrameReady_) {
+                    continue;
+                }
+                encodeFrameReady_ = false;
+            }
+
+            if (!live_) {
+                continue;
+            }
+
+            const bool trackActive = hasAnyActiveVideoTrack();
+            const bool wasTrackActive = videoTrackActive_.exchange(trackActive);
+            if (!trackActive) {
+                continue;
+            }
+
+            if (!wasTrackActive) {
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                spdlog::info("[EncodeThread] Video track became active; forcing keyframe on next frame");
+            }
+
+            video::CapturedFrame frame;
+            {
+                std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+                frame = latestVideoFrame_;
+            }
+
+            if (frame.data.empty()) {
+                continue;
+            }
+
+            if (!encodeAndSendVideoFrame(frame, false)) {
+                static int sendFailCount = 0;
+                if (++sendFailCount % 100 == 1) {
+                    spdlog::warn("[EncodeThread] encodeAndSendVideoFrame failed (count={})", sendFailCount);
+                }
+            }
+        }
+        spdlog::info("[EncodeThread] Stopped");
+    });
+}
+
+void VersusApp::stopEncodeThread() {
+    encodeThreadRunning_.store(false);
+    encodeFrameCV_.notify_one();
+    if (!encodeThread_.joinable()) {
+        return;
+    }
+    if (encodeThread_.get_id() == std::this_thread::get_id()) {
+        encodeThread_.detach();
+        return;
+    }
+    encodeThread_.join();
 }
 
 bool VersusApp::hasAnyActiveVideoTrack() const {
