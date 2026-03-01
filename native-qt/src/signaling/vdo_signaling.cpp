@@ -20,7 +20,6 @@
 #include <queue>
 #include <random>
 #include <sstream>
-#include <thread>
 
 
 namespace versus::signaling {
@@ -100,28 +99,6 @@ std::string generateStreamId() {
     std::stringstream ss;
     ss << "gamecapture_" << std::hex << now;
     return ss.str();
-}
-
-std::chrono::milliseconds clientPingInterval() {
-    constexpr int kDefaultIntervalMs = 5000;
-    constexpr long kMinIntervalMs = 50;
-    constexpr long kMaxIntervalMs = 60000;
-
-    if (const char *env = std::getenv("VERSUS_SIGNALING_CLIENT_PING_INTERVAL_MS")) {
-        char *end = nullptr;
-        const long parsed = std::strtol(env, &end, 10);
-        if (end != env && *end == '\0' && parsed > 0) {
-            const long clamped = std::clamp(parsed, kMinIntervalMs, kMaxIntervalMs);
-            if (clamped != parsed) {
-                spdlog::warn("[Signaling] Clamped VERSUS_SIGNALING_CLIENT_PING_INTERVAL_MS={} to {}ms",
-                             parsed, clamped);
-            }
-            return std::chrono::milliseconds(clamped);
-        }
-        spdlog::warn("[Signaling] Ignoring invalid VERSUS_SIGNALING_CLIENT_PING_INTERVAL_MS='{}'", env);
-    }
-
-    return std::chrono::milliseconds(kDefaultIntervalMs);
 }
 
 std::vector<uint8_t> sha256Bytes(const std::string &input) {
@@ -270,8 +247,6 @@ struct VdoSignaling::Impl {
     std::atomic<bool> connected{false};
     std::atomic<bool> connectionFailed{false};
     std::atomic<bool> published{false};
-    std::thread keepaliveThread;
-    std::atomic<bool> keepaliveRunning{false};
     ConnectedCallback onConnected;
     DisconnectedCallback onDisconnected;
     ErrorCallback onError;
@@ -282,18 +257,6 @@ struct VdoSignaling::Impl {
     OfferRequestCallback onOfferRequest;
     ListingCallback onListing;
     std::map<std::string, PeerInfo> peers;
-
-    void stopKeepaliveThread() {
-        keepaliveRunning.store(false);
-        if (!keepaliveThread.joinable()) {
-            return;
-        }
-        if (keepaliveThread.get_id() == std::this_thread::get_id()) {
-            spdlog::warn("[Signaling] stopKeepaliveThread called from keepalive thread; deferring join");
-            return;
-        }
-        keepaliveThread.join();
-    }
 
     void handleMessage(const std::string &payload) {
         json msg;
@@ -506,9 +469,6 @@ VdoSignaling::~VdoSignaling() {
 }
 
 bool VdoSignaling::connect(const std::string &server) {
-    // Ensure no stale keepalive thread is left joinable after prior disconnects.
-    impl_->stopKeepaliveThread();
-
     if (impl_->connected.load()) {
         disconnect();
     }
@@ -517,6 +477,7 @@ bool VdoSignaling::connect(const std::string &server) {
     // Configure WebSocket with proper timeout
     rtc::WebSocket::Configuration wsConfig;
     wsConfig.connectionTimeout = std::chrono::seconds(60);
+    wsConfig.pingInterval = std::chrono::milliseconds::zero();
     wsConfig.disableTlsVerification = false;
 
     std::shared_ptr<rtc::WebSocket> socket;
@@ -556,7 +517,6 @@ bool VdoSignaling::connect(const std::string &server) {
         }
         spdlog::info("[Signaling] WebSocket onClosed callback triggered");
         impl_->connected.store(false);
-        impl_->keepaliveRunning.store(false);  // Stop keepalive thread
         if (impl_->onDisconnected) {
             impl_->onDisconnected();
         }
@@ -599,49 +559,10 @@ bool VdoSignaling::connect(const std::string &server) {
         }
     }
 
-    // Keepalive pings are required on many VDO.Ninja deployments to prevent idle socket closure.
-    // Enabled by default; can be disabled via VERSUS_SIGNALING_CLIENT_PING=0.
-    bool enableClientPing = true;
-    if (const char *env = std::getenv("VERSUS_SIGNALING_CLIENT_PING")) {
-        std::string value(env);
-        std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
-        if (value == "0" || value == "false" || value == "no" || value == "off") {
-            enableClientPing = false;
-        } else if (value == "1" || value == "true" || value == "yes" || value == "on") {
-            enableClientPing = true;
-        }
-    }
-
-    if (enableClientPing) {
-        const auto pingInterval = clientPingInterval();
-        impl_->keepaliveRunning.store(true);
-        impl_->keepaliveThread = std::thread([this, pingInterval]() {
-            spdlog::info("[Signaling] Keepalive thread started (interval={}ms)", pingInterval.count());
-            while (impl_->keepaliveRunning.load() && impl_->connected.load()) {
-                std::this_thread::sleep_for(pingInterval);
-                if (impl_->keepaliveRunning.load() && impl_->connected.load()) {
-                    json ping;
-                    ping["ping"] = std::chrono::system_clock::now().time_since_epoch().count();
-                    impl_->sendMessage(ping);
-                    spdlog::debug("[Signaling] Sent keepalive ping");
-                }
-            }
-            spdlog::info("[Signaling] Keepalive thread stopped");
-        });
-    } else {
-        impl_->keepaliveRunning.store(false);
-        spdlog::info("[Signaling] Client keepalive ping disabled");
-    }
-
     return true;
 }
 
 void VdoSignaling::disconnect() {
-    // Stop keepalive thread
-    impl_->stopKeepaliveThread();
-
     std::shared_ptr<rtc::WebSocket> socketRef;
     {
         std::lock_guard<std::mutex> lock(impl_->mutex);
