@@ -99,7 +99,7 @@ AspectFitRect computeAspectFitRect(int srcW, int srcH, int dstW, int dstH) {
 
 void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
                        uint8_t *dst, int dstW, int dstH, int dstStride) {
-    if (!src || !dst || srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0 || srcStride <= 0 || dstStride <= 0) {
+    if (!dst || dstW <= 0 || dstH <= 0 || dstStride < (dstW * 4)) {
         return;
     }
 
@@ -110,6 +110,10 @@ void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
         for (int x = 0; x < dstW; ++x) {
             row[x * 4 + 3] = 255;
         }
+    }
+
+    if (!src || srcW <= 0 || srcH <= 0 || srcStride < (srcW * 4)) {
+        return;
     }
 
     const AspectFitRect fit = computeAspectFitRect(srcW, srcH, dstW, dstH);
@@ -296,7 +300,11 @@ class VideoEncoder::Impl {
     }
 
     bool prepareFrame(const CapturedFrame &input) {
-        if (input.format != CapturedFrame::Format::BGRA || input.data.empty()) {
+        if (input.format != CapturedFrame::Format::BGRA ||
+            input.data.empty() ||
+            input.width <= 0 ||
+            input.height <= 0 ||
+            input.stride < (input.width * 4)) {
             return false;
         }
 
@@ -1394,6 +1402,9 @@ class VideoEncoder::Impl {
             spdlog::warn("[FFmpegEncoder] Unsupported input pixel format {}", static_cast<int>(input.format));
             return false;
         }
+        if (input.data.empty() || input.width <= 0 || input.height <= 0 || input.stride < (input.width * 4)) {
+            return false;
+        }
         const int dstW = std::max(1, config_.width);
         const int dstH = std::max(1, config_.height);
         const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH) * 4;
@@ -1407,9 +1418,6 @@ class VideoEncoder::Impl {
             return true;
         }
 
-        if (input.data.empty()) {
-            return false;
-        }
         convertBGRAtoRGB32(input.data.data(),
                            input.width,
                            input.height,
@@ -2327,6 +2335,12 @@ class VideoEncoder::Impl {
         const InputPacking packing = inputPackingFromSubtype(inputSubtype_);
 
         if (input.format == CapturedFrame::Format::BGRA) {
+            if (input.data.empty() ||
+                input.width <= 0 ||
+                input.height <= 0 ||
+                input.stride < (input.width * 4)) {
+                return false;
+            }
             if (packing == InputPacking::NV12) {
                 out.resize(static_cast<size_t>(dstW) * dstH * 3 / 2);
                 convertBGRAtoNV12(input.data.data(), input.width, input.height, input.stride,

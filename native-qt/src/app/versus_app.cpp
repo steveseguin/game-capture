@@ -18,6 +18,7 @@ constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kRoomInitTimeoutMs = 7000;
 constexpr int64_t kResizeReconfigureCooldownMs = 700;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
+constexpr int64_t kResizeStabilizationMs = 450;
 constexpr int kLqWidth = 640;
 constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
@@ -160,6 +161,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
     activeHqHeight_ = 0;
     lastCaptureWidth_ = 0;
     lastCaptureHeight_ = 0;
+    lastCaptureResizeMs_ = 0;
     lastHqReconfigureMs_ = 0;
     lastResizeKeyframeRequestMs_ = 0;
     {
@@ -323,6 +325,7 @@ void VersusApp::stopCapture() {
     activeHqHeight_ = 0;
     lastCaptureWidth_ = 0;
     lastCaptureHeight_ = 0;
+    lastCaptureResizeMs_ = 0;
     lastHqReconfigureMs_ = 0;
     lastResizeKeyframeRequestMs_ = 0;
     capturing_ = false;
@@ -1701,6 +1704,7 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
     if (captureResized) {
         lastCaptureWidth_ = frame.width;
         lastCaptureHeight_ = frame.height;
+        lastCaptureResizeMs_ = nowMs;
 
         if ((lastResizeKeyframeRequestMs_ == 0) ||
             ((nowMs - lastResizeKeyframeRequestMs_) >= kResizeKeyframeCooldownMs)) {
@@ -1708,6 +1712,10 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
             lastResizeKeyframeRequestMs_ = nowMs;
         }
+    }
+
+    if ((lastCaptureResizeMs_ != 0) && ((nowMs - lastCaptureResizeMs_) < kResizeStabilizationMs)) {
+        return true;
     }
 
     const int baseWidth = std::max(2, videoConfig_.width & ~1);
