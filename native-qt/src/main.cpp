@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <filesystem>
 #include <sstream>
 
 #include <spdlog/spdlog.h>
@@ -13,6 +15,26 @@
 
 #include "versus/app/versus_app.h"
 #include "versus/ui/main_window.h"
+
+namespace {
+
+std::string resolveLogFilePath() {
+#ifdef _WIN32
+    const char *localAppData = std::getenv("LOCALAPPDATA");
+    std::filesystem::path logDir = localAppData && *localAppData
+        ? std::filesystem::path(localAppData)
+        : std::filesystem::current_path();
+    logDir /= "GameCapture";
+    logDir /= "logs";
+    std::error_code ec;
+    std::filesystem::create_directories(logDir, ec);
+    return (logDir / "game-capture-debug.log").string();
+#else
+    return "game-capture-debug.log";
+#endif
+}
+
+}  // namespace
 
 int main(int argc, char *argv[]) {
     // Check for --headless mode
@@ -126,8 +148,10 @@ int main(int argc, char *argv[]) {
             auto console_logger = spdlog::stdout_color_mt("game-capture");
             spdlog::set_default_logger(console_logger);
         } else {
-            auto file_logger = spdlog::basic_logger_mt("game-capture", "game-capture-debug.log", true);
+            const std::string logPath = resolveLogFilePath();
+            auto file_logger = spdlog::basic_logger_mt("game-capture", logPath, true);
             spdlog::set_default_logger(file_logger);
+            spdlog::info("Logging to {}", logPath);
         }
         spdlog::set_level(spdlog::level::debug);
         spdlog::flush_on(spdlog::level::debug);

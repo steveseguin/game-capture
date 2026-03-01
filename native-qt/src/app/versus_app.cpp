@@ -1779,7 +1779,14 @@ void VersusApp::startSignalingRecovery() {
                     "Still reconnecting to signaling server. Existing viewers may continue, but new viewers cannot join until reconnect succeeds.",
                     false);
             }
-            std::this_thread::sleep_for(std::chrono::seconds(std::min(10, attempt)));
+            const int waitSeconds = std::min(10, attempt);
+            for (int tick = 0; tick < waitSeconds * 10; ++tick) {
+                if (!live_ || stopRequested_.load()) {
+                    reconnecting_.store(false);
+                    return;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
         }
     });
 }

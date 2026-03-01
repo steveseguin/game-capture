@@ -112,6 +112,7 @@ class MainWindow : public QMainWindow {
     // Stats timer
     QTimer *statsTimer_ = nullptr;
     QTimer *previewTimer_ = nullptr;
+    QTimer *stopWatchdogTimer_ = nullptr;
 
     // State
     bool isLive_ = false;
@@ -119,6 +120,7 @@ class MainWindow : public QMainWindow {
     bool reconnectNoticeActive_ = false;
     bool quitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
+    quint64 stopOpId_ = 0;
     QString selectedWindowId_;
 };
 

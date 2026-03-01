@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDesktopServices>
+#include <QDir>
 #include <QFormLayout>
 #include <QFontDatabase>
 #include <QFrame>
@@ -14,8 +15,10 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPointer>
+#include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStandardPaths>
 #include <QStyle>
 #include <QUrlQuery>
 #include <QUrl>
@@ -121,6 +124,20 @@ QIcon makeBrandTrayFallbackIcon() {
     return QIcon(pixmap);
 }
 
+QString defaultLogFolderPath() {
+    QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
+    if (localAppData.isEmpty()) {
+        localAppData = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    } else {
+        localAppData = QDir(localAppData).filePath("GameCapture/logs");
+    }
+    if (localAppData.isEmpty()) {
+        localAppData = QDir::currentPath();
+    }
+    QDir().mkpath(localAppData);
+    return QDir(localAppData).absolutePath();
+}
+
 MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString &input) {
     ParsedStreamTarget parsed;
     const QString trimmed = input.trimmed();
@@ -177,6 +194,21 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
     previewTimer_->setInterval(1500);
     connect(previewTimer_, &QTimer::timeout, this, &MainWindow::refreshSelectedWindowPreview);
     previewTimer_->start();
+
+    stopWatchdogTimer_ = new QTimer(this);
+    stopWatchdogTimer_->setSingleShot(true);
+    stopWatchdogTimer_->setInterval(12000);
+    connect(stopWatchdogTimer_, &QTimer::timeout, this, [this]() {
+        if (!stopInProgress_) {
+            return;
+        }
+        stopInProgress_ = false;
+        updateStatus("Stop is taking longer than expected. Try STOP again or Quit from tray.", "error");
+        if (goLiveButton_) {
+            goLiveButton_->setEnabled(true);
+        }
+        updateGoLiveButton();
+    });
 
     // Initial window list
     refreshWindowList();
@@ -365,6 +397,11 @@ void MainWindow::setupMenuBar() {
                 .arg(APP_BRAND, APP_VERSION_TEXT));
     });
     helpMenu->addSeparator();
+    auto *openLogsAction = helpMenu->addAction("Open Log Folder");
+    connect(openLogsAction, &QAction::triggered, this, []() {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(defaultLogFolderPath()));
+    });
+    helpMenu->addSeparator();
     auto *openVdoAction = helpMenu->addAction("Open VDO.Ninja");
     connect(openVdoAction, &QAction::triggered, this, []() {
         QDesktopServices::openUrl(QUrl("https://vdo.ninja/"));
@@ -372,8 +409,8 @@ void MainWindow::setupMenuBar() {
 }
 
 void MainWindow::setupUI() {
-    auto *central = new QWidget(this);
-    auto *layout = new QVBoxLayout(central);
+    auto *content = new QWidget(this);
+    auto *layout = new QVBoxLayout(content);
     layout->setSpacing(12);
     layout->setContentsMargins(16, 16, 16, 16);
 
@@ -658,8 +695,13 @@ void MainWindow::setupUI() {
 
     layout->addStretch();
 
-    setCentralWidget(central);
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setWidget(content);
+    setCentralWidget(scrollArea);
     resize(980, 720);
+    setMinimumSize(760, 520);
 
     // Keep desktop UX consistent: buttons should show a hand cursor on hover.
     for (auto *button : findChildren<QPushButton *>()) {
@@ -941,25 +983,35 @@ void MainWindow::onGoLiveClicked() {
         }
 
         stopInProgress_ = true;
+        const quint64 stopOpId = ++stopOpId_;
         reconnectNoticeActive_ = false;
         updateStatus("Stopping...", "connecting");
         if (goLiveButton_) {
             goLiveButton_->setEnabled(false);
         }
         updateGoLiveButton();
+        if (stopWatchdogTimer_) {
+            stopWatchdogTimer_->start();
+        }
 
         QPointer<MainWindow> self(this);
         auto *core = core_;
-        QtConcurrent::run([self, core]() {
+        QtConcurrent::run([self, core, stopOpId]() {
             core->stopLive();
             core->stopCapture();
 
             if (!self) {
                 return;
             }
-            QMetaObject::invokeMethod(self, [self]() {
+            QMetaObject::invokeMethod(self, [self, stopOpId]() {
                 if (!self) {
                     return;
+                }
+                if (stopOpId != self->stopOpId_) {
+                    return;
+                }
+                if (self->stopWatchdogTimer_) {
+                    self->stopWatchdogTimer_->stop();
                 }
 
                 self->isLive_ = false;
@@ -1365,21 +1417,7 @@ void MainWindow::onAdvancedToggleChanged(bool checked) {
     if (!advancedPanel_) {
         return;
     }
-
     advancedPanel_->setVisible(checked);
-    QTimer::singleShot(0, this, [this, checked]() {
-        if (!isVisible()) {
-            return;
-        }
-
-        const int currentWidth = width();
-        const int targetHeight = std::max(minimumSizeHint().height(), sizeHint().height());
-        if (checked) {
-            resize(currentWidth, std::max(height(), targetHeight));
-        } else {
-            resize(currentWidth, targetHeight);
-        }
-    });
 }
 
 void MainWindow::syncCodecUiState() {
