@@ -4,6 +4,7 @@
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDir>
+#include <QCursor>
 #include <QFormLayout>
 #include <QFontDatabase>
 #include <QFrame>
@@ -15,6 +16,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPointer>
+#include <QToolTip>
 #include <QScrollArea>
 #include <QSignalBlocker>
 #include <QSplitter>
@@ -485,6 +487,8 @@ void MainWindow::setupUI() {
 
     advancedToggle_ = new QCheckBox("Show advanced settings", this);
     advancedToggle_->setChecked(false);
+    advancedToggle_->setProperty("locked", false);
+    advancedToggle_->setCursor(Qt::PointingHandCursor);
     layout->addWidget(advancedToggle_);
 
     advancedPanel_ = new QWidget(this);
@@ -493,6 +497,16 @@ void MainWindow::setupUI() {
     layout->addWidget(advancedPanel_);
     advancedPanel_->setVisible(false);
     connect(advancedToggle_, &QCheckBox::toggled, this, &MainWindow::onAdvancedToggleChanged);
+    connect(advancedToggle_, &QCheckBox::clicked, this, [this](bool) {
+        if (!advancedToggle_ || !advancedToggle_->property("locked").toBool()) {
+            return;
+        }
+        QToolTip::showText(
+            QCursor::pos(),
+            "Cannot change settings while live. Stop stream first.",
+            advancedToggle_);
+        updateStatus("Stop stream before changing advanced settings", "connecting");
+    });
 
     roomInput_ = new QLineEdit(this);
     roomInput_->setPlaceholderText("Room ID (optional)");
@@ -832,6 +846,12 @@ void MainWindow::applyDarkTheme() {
             color: %2;
             spacing: 8px;
         }
+        QCheckBox:disabled {
+            color: #5f7285;
+        }
+        QCheckBox[locked="true"] {
+            color: #5f7285;
+        }
         QCheckBox::indicator {
             width: 14px;
             height: 14px;
@@ -840,9 +860,18 @@ void MainWindow::applyDarkTheme() {
             border: 1px solid #4a6076;
             background-color: #0d1620;
         }
+        QCheckBox::indicator:disabled,
+        QCheckBox[locked="true"]::indicator {
+            border: 1px solid #3b4f62;
+            background-color: #0b1520;
+        }
         QCheckBox::indicator:checked {
             border: 1px solid %4;
             background-color: %4;
+        }
+        QCheckBox[locked="true"]::indicator:checked {
+            border: 1px solid #3b4f62;
+            background-color: #1d2f42;
         }
         QComboBox::drop-down {
             border: none;
@@ -1485,9 +1514,17 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
         passwordInput_->setEnabled(enabled);
     }
     if (advancedToggle_) {
-        advancedToggle_->setEnabled(enabled);
-        advancedToggle_->setToolTip(
-            enabled ? QString() : QStringLiteral("Stop stream to change capture settings"));
+        const bool locked = !enabled;
+        advancedToggle_->setEnabled(true);
+        advancedToggle_->setCheckable(!locked);
+        advancedToggle_->setProperty("locked", locked);
+        advancedToggle_->setCursor(locked ? Qt::ForbiddenCursor : Qt::PointingHandCursor);
+        advancedToggle_->setToolTip(locked
+            ? QStringLiteral("Cannot change settings while live. Stop stream first.")
+            : QString());
+        advancedToggle_->style()->unpolish(advancedToggle_);
+        advancedToggle_->style()->polish(advancedToggle_);
+        advancedToggle_->update();
     }
 
     if (roomInput_) {
