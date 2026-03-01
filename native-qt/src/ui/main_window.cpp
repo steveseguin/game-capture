@@ -11,6 +11,7 @@
 #include <QIcon>
 #include <QMenuBar>
 #include <QMetaObject>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPointer>
 #include <QSignalBlocker>
@@ -28,6 +29,10 @@
 
 namespace versus::ui {
 
+#ifndef APP_VERSION
+#define APP_VERSION "dev"
+#endif
+
 // Dark theme colors
 static const QString COLOR_BG = "#0b1016";
 static const QString COLOR_INPUT = "#101b27";
@@ -41,6 +46,7 @@ static const QString APP_WINDOW_TITLE = "Game Capture - Powered by VDO.Ninja";
 static const QString APP_BRAND = "Game Capture";
 static const QString APP_TRAY_IDLE = "Game Capture - Idle";
 static const QString APP_TRAY_LIVE = "Game Capture - LIVE";
+static const QString APP_VERSION_TEXT = QStringLiteral(APP_VERSION);
 
 versus::video::VideoCodec codecFromUiValue(const QString &value) {
     if (value == "h265") {
@@ -350,6 +356,15 @@ void MainWindow::setupMenuBar() {
     });
 
     auto *helpMenu = menuBar()->addMenu("&Help");
+    auto *aboutAction = helpMenu->addAction("About Game Capture");
+    connect(aboutAction, &QAction::triggered, this, [this]() {
+        QMessageBox::about(
+            this,
+            "About Game Capture",
+            QString("%1\nVersion %2\nPowered by VDO.Ninja")
+                .arg(APP_BRAND, APP_VERSION_TEXT));
+    });
+    helpMenu->addSeparator();
     auto *openVdoAction = helpMenu->addAction("Open VDO.Ninja");
     connect(openVdoAction, &QAction::triggered, this, []() {
         QDesktopServices::openUrl(QUrl("https://vdo.ninja/"));
@@ -632,6 +647,14 @@ void MainWindow::setupUI() {
     statsPanel_ = new StatsPanel(this);
     statsPanel_->setVisible(false);
     layout->addWidget(statsPanel_);
+
+    auto *footerLayout = new QHBoxLayout();
+    footerLayout->addStretch();
+    auto *versionLabel = new QLabel(QString("Version %1").arg(APP_VERSION_TEXT), this);
+    versionLabel->setObjectName("versionLabel");
+    versionLabel->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+    footerLayout->addWidget(versionLabel);
+    layout->addLayout(footerLayout);
 
     layout->addStretch();
 

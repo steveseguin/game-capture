@@ -12,6 +12,10 @@
 namespace versus::app {
 namespace {
 
+#ifndef APP_VERSION
+#define APP_VERSION "dev"
+#endif
+
 constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
@@ -82,6 +86,10 @@ const char *videoCodecName(video::VideoCodec codec) {
         default:
             return "Unknown";
     }
+}
+
+std::string publisherVersionTag() {
+    return std::string("game-capture-native-qt/") + APP_VERSION;
 }
 
 webrtc::PeerConfig::VideoCodec toPeerVideoCodec(video::VideoCodec codec) {
@@ -1173,7 +1181,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     nlohmann::json info;
 
     info["label"] = startOptions_.label;
-    info["version"] = "game-capture-native-qt/0.2.24";
+    info["version"] = publisherVersionTag();
     info["maxviewers_url"] = maxViewers_.load(std::memory_order_relaxed);
     info["quality_url"] = effectiveBitrate;
     info["width_url"] = effectiveWidth;

@@ -153,6 +153,10 @@ add_executable(game-capture WIN32 ${VERSUS_SOURCES} ${VERSUS_HEADERS} ${VERSUS_R
 
 set_target_properties(game-capture PROPERTIES AUTOMOC ON)
 
+target_compile_definitions(game-capture PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+)
+
 target_include_directories(game-capture PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
@@ -267,6 +271,9 @@ if(VERSUS_BUILD_TESTS)
 
     add_library(versus-lib STATIC ${VERSUS_LIB_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES})
     set_target_properties(versus-lib PROPERTIES AUTOMOC ON)
+    target_compile_definitions(versus-lib PUBLIC
+        APP_VERSION="${PROJECT_VERSION}"
+    )
     target_include_directories(versus-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(versus-lib PUBLIC
         Threads::Threads
