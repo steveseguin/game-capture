@@ -1835,10 +1835,25 @@ class VideoEncoder::Impl {
             return false;
         }
         const std::string encoderLower = toLowerCopy(activeEncoderName_);
-        // Intel Quick Sync tends to accept RGB32 efficiently. NVIDIA/others prefer NV12.
-        return encoderLower.find("intel") != std::string::npos ||
-               encoderLower.find("quick sync") != std::string::npos ||
-               encoderLower.find("qsv") != std::string::npos;
+        const bool intelLike = encoderLower.find("intel") != std::string::npos ||
+                               encoderLower.find("quick sync") != std::string::npos ||
+                               encoderLower.find("qsv") != std::string::npos;
+        if (intelLike) {
+            return true;
+        }
+
+        const bool nvidiaLike = encoderLower.find("nvidia") != std::string::npos ||
+                                encoderLower.find("nvenc") != std::string::npos ||
+                                encoderLower.find("geforce") != std::string::npos;
+        if (!nvidiaLike) {
+            return false;
+        }
+
+        // For 1080p+ / >30fps targets, prefer RGB input so the MFT can handle color conversion internally.
+        // This avoids a costly per-frame BGRA->NV12 conversion path on CPU.
+        const int64_t pixels =
+            static_cast<int64_t>(std::max(1, config_.width)) * static_cast<int64_t>(std::max(1, config_.height));
+        return config_.frameRate > 30 || pixels >= (1920LL * 1080LL);
     }
 
     DWORD sampleSizeForSubtype(const GUID &subtype) const {
