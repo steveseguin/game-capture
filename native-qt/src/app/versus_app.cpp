@@ -16,6 +16,8 @@ constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kRoomInitTimeoutMs = 7000;
+constexpr int64_t kResizeReconfigureCooldownMs = 700;
+constexpr int64_t kResizeKeyframeCooldownMs = 700;
 constexpr int kLqWidth = 640;
 constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
@@ -64,6 +66,32 @@ bool jsonBoolLike(const nlohmann::json &value, bool defaultValue) {
         }
     }
     return defaultValue;
+}
+
+void computeAspectMatchedResolution(int srcW,
+                                    int srcH,
+                                    int maxW,
+                                    int maxH,
+                                    int &outW,
+                                    int &outH) {
+    srcW = std::max(1, srcW);
+    srcH = std::max(1, srcH);
+    maxW = std::max(2, maxW & ~1);
+    maxH = std::max(2, maxH & ~1);
+
+    const int64_t widthFromHeight = static_cast<int64_t>(srcW) * static_cast<int64_t>(maxH) / srcH;
+    const int64_t heightFromWidth = static_cast<int64_t>(srcH) * static_cast<int64_t>(maxW) / srcW;
+
+    if (widthFromHeight <= maxW) {
+        outW = static_cast<int>(std::max<int64_t>(2, widthFromHeight));
+        outH = maxH;
+    } else {
+        outW = maxW;
+        outH = static_cast<int>(std::max<int64_t>(2, heightFromWidth));
+    }
+
+    outW = std::clamp(outW & ~1, 2, maxW);
+    outH = std::clamp(outH & ~1, 2, maxH);
 }
 
 const char *videoCodecName(video::VideoCodec codec) {
@@ -128,6 +156,12 @@ bool VersusApp::startCapture(const std::string &windowId) {
     pendingGlobalKeyframe_.store(false);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
+    activeHqWidth_ = 0;
+    activeHqHeight_ = 0;
+    lastCaptureWidth_ = 0;
+    lastCaptureHeight_ = 0;
+    lastHqReconfigureMs_ = 0;
+    lastResizeKeyframeRequestMs_ = 0;
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
         hasLatestVideoFrame_ = false;
@@ -203,6 +237,8 @@ bool VersusApp::startCapture(const std::string &windowId) {
         windowCapture_.stopCapture();
         return false;
     }
+    activeHqWidth_ = std::max(2, config.width & ~1);
+    activeHqHeight_ = std::max(2, config.height & ~1);
     spdlog::info("[App] Video encoder active: {} (hardware={})",
                  videoEncoder_.activeEncoderName(), videoEncoder_.isHardwareEncoderActive());
 
@@ -283,6 +319,12 @@ void VersusApp::stopCapture() {
     pendingGlobalKeyframe_.store(false);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
+    activeHqWidth_ = 0;
+    activeHqHeight_ = 0;
+    lastCaptureWidth_ = 0;
+    lastCaptureHeight_ = 0;
+    lastHqReconfigureMs_ = 0;
+    lastResizeKeyframeRequestMs_ = 0;
     capturing_ = false;
 }
 
@@ -292,6 +334,10 @@ void VersusApp::setSelectedWindow(const std::string &windowId) {
 
 void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
     videoConfig_ = config;
+    if (!capturing_) {
+        activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
+        activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
+    }
 }
 
 bool VersusApp::goLive(const StartOptions &options) {
@@ -906,6 +952,8 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
 
     if (!capturing_) {
         videoConfig_ = nextConfig;
+        activeHqWidth_ = std::max(2, nextConfig.width & ~1);
+        activeHqHeight_ = std::max(2, nextConfig.height & ~1);
         return true;
     }
 
@@ -925,9 +973,15 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
             spdlog::error("[App] Failed runtime reconfigure; restoring previous encoder config");
             if (!videoEncoder_.initialize(previousConfig)) {
                 spdlog::error("[App] Failed to restore previous encoder config after runtime reconfigure failure");
+            } else {
+                activeHqWidth_ = std::max(2, previousConfig.width & ~1);
+                activeHqHeight_ = std::max(2, previousConfig.height & ~1);
             }
             return false;
         }
+        activeHqWidth_ = std::max(2, nextConfig.width & ~1);
+        activeHqHeight_ = std::max(2, nextConfig.height & ~1);
+        lastHqReconfigureMs_ = steadyNowMs();
     } else if (bitrateChanged) {
         spdlog::info("[App] Applying runtime bitrate update: {} kbps", nextConfig.bitrate);
         videoEncoder_.setBitrate(nextConfig.bitrate);
@@ -967,6 +1021,9 @@ bool VersusApp::enforceRoomCodecLock() {
     videoEncoder_.shutdown();
     shutdownLqEncoderLocked();
     if (videoEncoder_.initialize(videoConfig_)) {
+        activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
+        activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
+        lastHqReconfigureMs_ = steadyNowMs();
         return true;
     }
 
@@ -974,6 +1031,9 @@ bool VersusApp::enforceRoomCodecLock() {
     videoConfig_ = previousConfig;
     if (!videoEncoder_.initialize(previousConfig)) {
         spdlog::error("[App] Failed to restore previous encoder config after room codec lock failure");
+    } else {
+        activeHqWidth_ = std::max(2, previousConfig.width & ~1);
+        activeHqHeight_ = std::max(2, previousConfig.height & ~1);
     }
     return false;
 }
@@ -1111,10 +1171,18 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         assignedTier = assignStreamTier(peer->roomMode, roleValid, peerRole);
     }
 
+    int hqWidth = 0;
+    int hqHeight = 0;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        hqWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+        hqHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+    }
+
     const bool peerWantsLq = assignedTier == StreamTier::LQ;
     const int effectiveBitrate = peerWantsLq ? kLqBitrateKbps : videoConfig_.bitrate;
-    const int effectiveWidth = peerWantsLq ? kLqWidth : videoConfig_.width;
-    const int effectiveHeight = peerWantsLq ? kLqHeight : videoConfig_.height;
+    const int effectiveWidth = peerWantsLq ? kLqWidth : hqWidth;
+    const int effectiveHeight = peerWantsLq ? kLqHeight : hqHeight;
     const int effectiveFps = peerWantsLq ? kLqFps : videoConfig_.frameRate;
 
     nlohmann::json msg;
@@ -1482,8 +1550,15 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         return false;
     }
 
-    bool requestKeyframe = forceKeyframe || pendingGlobalKeyframe_.exchange(false, std::memory_order_relaxed);
     const int64_t nowMs = steadyNowMs();
+
+    if (!hqPeers.empty()) {
+        if (!adaptHqEncoderToFrameLocked(frame, nowMs)) {
+            return false;
+        }
+    }
+
+    bool requestKeyframe = forceKeyframe || pendingGlobalKeyframe_.exchange(false, std::memory_order_relaxed);
 
     video::EncodedPacket hqPacket;
     video::EncodedPacket lqPacket;
@@ -1615,6 +1690,84 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         }
     }
     return sentAny;
+}
+
+bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, int64_t nowMs) {
+    if (frame.width <= 0 || frame.height <= 0) {
+        return true;
+    }
+
+    const bool captureResized = frame.width != lastCaptureWidth_ || frame.height != lastCaptureHeight_;
+    if (captureResized) {
+        lastCaptureWidth_ = frame.width;
+        lastCaptureHeight_ = frame.height;
+
+        if ((lastResizeKeyframeRequestMs_ == 0) ||
+            ((nowMs - lastResizeKeyframeRequestMs_) >= kResizeKeyframeCooldownMs)) {
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            lastResizeKeyframeRequestMs_ = nowMs;
+        }
+    }
+
+    const int baseWidth = std::max(2, videoConfig_.width & ~1);
+    const int baseHeight = std::max(2, videoConfig_.height & ~1);
+
+    if (activeHqWidth_ <= 0 || activeHqHeight_ <= 0) {
+        activeHqWidth_ = baseWidth;
+        activeHqHeight_ = baseHeight;
+    }
+
+    int desiredWidth = baseWidth;
+    int desiredHeight = baseHeight;
+    computeAspectMatchedResolution(frame.width, frame.height, baseWidth, baseHeight, desiredWidth, desiredHeight);
+
+    if (desiredWidth == activeHqWidth_ && desiredHeight == activeHqHeight_) {
+        return true;
+    }
+
+    if ((lastHqReconfigureMs_ != 0) && ((nowMs - lastHqReconfigureMs_) < kResizeReconfigureCooldownMs)) {
+        return true;
+    }
+
+    video::EncoderConfig adaptiveConfig = videoConfig_;
+    adaptiveConfig.width = desiredWidth;
+    adaptiveConfig.height = desiredHeight;
+
+    video::EncoderConfig previousConfig = videoConfig_;
+    previousConfig.width = std::max(2, activeHqWidth_ & ~1);
+    previousConfig.height = std::max(2, activeHqHeight_ & ~1);
+
+    spdlog::info("[App] Adaptive HQ reconfigure: source={}x{} base={}x{} -> output={}x{}",
+                 frame.width,
+                 frame.height,
+                 baseWidth,
+                 baseHeight,
+                 desiredWidth,
+                 desiredHeight);
+
+    videoEncoder_.shutdown();
+    if (!videoEncoder_.initialize(adaptiveConfig)) {
+        spdlog::error("[App] Adaptive HQ reconfigure failed; restoring {}x{}",
+                      previousConfig.width,
+                      previousConfig.height);
+        if (!videoEncoder_.initialize(previousConfig)) {
+            spdlog::error("[App] Failed to restore HQ encoder after adaptive reconfigure failure");
+            return false;
+        }
+        activeHqWidth_ = previousConfig.width;
+        activeHqHeight_ = previousConfig.height;
+        return true;
+    }
+
+    activeHqWidth_ = desiredWidth;
+    activeHqHeight_ = desiredHeight;
+    lastHqReconfigureMs_ = nowMs;
+
+    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+    lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+    lastResizeKeyframeRequestMs_ = nowMs;
+    return true;
 }
 
 bool VersusApp::getCachedVideoFrame(video::CapturedFrame &frame) {

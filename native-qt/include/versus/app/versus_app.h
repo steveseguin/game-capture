@@ -87,6 +87,7 @@ class VersusApp {
     void shutdownLqEncoderLocked();
     bool isControlMessageAuthorized(const std::string &token) const;
     bool encodeAndSendVideoFrame(const versus::video::CapturedFrame &frame, bool forceKeyframe);
+    bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
     bool getCachedVideoFrame(versus::video::CapturedFrame &frame);
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
     void removePeerSession(const std::string &uuid, const std::string &session);
@@ -161,6 +162,12 @@ class VersusApp {
     std::mutex latestVideoFrameMutex_;
     versus::video::CapturedFrame latestVideoFrame_;
     bool hasLatestVideoFrame_ = false;
+    int activeHqWidth_ = 0;
+    int activeHqHeight_ = 0;
+    int lastCaptureWidth_ = 0;
+    int lastCaptureHeight_ = 0;
+    int64_t lastHqReconfigureMs_ = 0;
+    int64_t lastResizeKeyframeRequestMs_ = 0;
     std::atomic<bool> lqEncoderInitialized_{false};
     bool roomCodecWarningEmitted_ = false;
 
