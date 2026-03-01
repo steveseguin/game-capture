@@ -908,7 +908,7 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
         const int clamped = std::clamp(bitrateKbps, 250, 100000);
         nextConfig.bitrate = clamped;
         nextConfig.minBitrate = std::max(250, clamped / 2);
-        nextConfig.maxBitrate = std::max(nextConfig.maxBitrate, clamped + 2000);
+        nextConfig.maxBitrate = std::max(nextConfig.maxBitrate, std::max(clamped + 4000, (clamped * 3) / 2));
     }
 
     const bool hasResolutionRequest = width > 0 || height > 0;
@@ -1173,7 +1173,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     nlohmann::json info;
 
     info["label"] = startOptions_.label;
-    info["version"] = "game-capture-native-qt/0.2.6";
+    info["version"] = "game-capture-native-qt/0.2.21";
     info["maxviewers_url"] = maxViewers_.load(std::memory_order_relaxed);
     info["quality_url"] = effectiveBitrate;
     info["width_url"] = effectiveWidth;

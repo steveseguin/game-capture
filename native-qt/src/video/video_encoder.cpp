@@ -103,16 +103,15 @@ void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
         return;
     }
 
-    const size_t dstSize = static_cast<size_t>(dstStride) * static_cast<size_t>(dstH);
-    std::fill(dst, dst + dstSize, 0);
-    for (int y = 0; y < dstH; ++y) {
-        uint8_t *row = dst + static_cast<size_t>(y) * dstStride;
-        for (int x = 0; x < dstW; ++x) {
-            row[x * 4 + 3] = 255;
-        }
-    }
-
     if (!src || srcW <= 0 || srcH <= 0 || srcStride < (srcW * 4)) {
+        const size_t rowSize = static_cast<size_t>(dstW) * 4;
+        for (int y = 0; y < dstH; ++y) {
+            uint8_t *row = dst + static_cast<size_t>(y) * dstStride;
+            std::memset(row, 0, rowSize);
+            for (int x = 0; x < dstW; ++x) {
+                row[x * 4 + 3] = 255;
+            }
+        }
         return;
     }
 
@@ -121,13 +120,40 @@ void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
         return;
     }
 
+    if (cover.x == 0 && cover.y == 0 &&
+        cover.width == srcW && cover.height == srcH &&
+        srcW == dstW && srcH == dstH) {
+        const size_t rowBytes = static_cast<size_t>(dstW) * 4;
+        for (int y = 0; y < dstH; ++y) {
+            const uint8_t *srcRow = src + static_cast<size_t>(y) * srcStride;
+            uint8_t *dstRow = dst + static_cast<size_t>(y) * dstStride;
+            std::memcpy(dstRow, srcRow, rowBytes);
+        }
+        return;
+    }
+
+    thread_local std::vector<int> xMap;
+    thread_local std::vector<int> yMap;
+    xMap.resize(static_cast<size_t>(dstW));
+    yMap.resize(static_cast<size_t>(dstH));
+
+    for (int x = 0; x < dstW; ++x) {
+        int srcX = cover.x + static_cast<int>((static_cast<int64_t>(x) * cover.width) / dstW);
+        const int maxX = cover.x + cover.width - 1;
+        xMap[static_cast<size_t>(x)] = std::min(srcX, maxX);
+    }
+
     for (int y = 0; y < dstH; ++y) {
-        const int srcY = cover.y + std::clamp((y * cover.height) / dstH, 0, cover.height - 1);
-        const uint8_t *srcRow = src + static_cast<size_t>(srcY) * srcStride;
+        int srcY = cover.y + static_cast<int>((static_cast<int64_t>(y) * cover.height) / dstH);
+        const int maxY = cover.y + cover.height - 1;
+        yMap[static_cast<size_t>(y)] = std::min(srcY, maxY);
+    }
+
+    for (int y = 0; y < dstH; ++y) {
+        const uint8_t *srcRow = src + static_cast<size_t>(yMap[static_cast<size_t>(y)]) * srcStride;
         uint8_t *dstRow = dst + static_cast<size_t>(y) * dstStride;
         for (int x = 0; x < dstW; ++x) {
-            const int srcX = cover.x + std::clamp((x * cover.width) / dstW, 0, cover.width - 1);
-            const uint8_t *srcPixel = srcRow + srcX * 4;
+            const uint8_t *srcPixel = srcRow + static_cast<size_t>(xMap[static_cast<size_t>(x)]) * 4;
             uint8_t *dstPixel = dstRow + static_cast<size_t>(x) * 4;
             dstPixel[0] = srcPixel[0];
             dstPixel[1] = srcPixel[1];
@@ -1759,7 +1785,14 @@ class VideoEncoder::Impl {
         return buffer;
     }
 
-    static int inputPriority(const GUID &subtype) {
+    static int inputPriority(const GUID &subtype, bool preferRgb32) {
+        if (preferRgb32) {
+            if (subtype == MFVideoFormat_ARGB32 || subtype == MFVideoFormat_RGB32) return 0;
+            if (subtype == MFVideoFormat_NV12) return 1;
+            if (subtype == MFVideoFormat_IYUV) return 2;
+            if (subtype == MFVideoFormat_YV12) return 3;
+            return 100;
+        }
         if (subtype == MFVideoFormat_NV12) return 0;
         if (subtype == MFVideoFormat_IYUV) return 1;
         if (subtype == MFVideoFormat_YV12) return 2;
@@ -1877,6 +1910,7 @@ class VideoEncoder::Impl {
     bool chooseInputType(ComPtr<IMFMediaType> &outType, GUID &outSubtype) {
         HRESULT hr = S_OK;
         int bestPriority = 999;
+        const bool preferRgb32 = usingHardware_;
 
         for (DWORD i = 0; i < 64; ++i) {
             ComPtr<IMFMediaType> available;
@@ -1912,7 +1946,7 @@ class VideoEncoder::Impl {
                 continue;
             }
 
-            const int priority = inputPriority(subtype);
+            const int priority = inputPriority(subtype, preferRgb32);
             spdlog::info("[VideoEncoder] Accept input type idx={} subtype={} priority={}",
                          i, subtypeName(subtype), priority);
             if (priority < bestPriority) {
@@ -1926,13 +1960,19 @@ class VideoEncoder::Impl {
             return true;
         }
 
-        const std::array<GUID, 5> manualTypes = {
-            MFVideoFormat_NV12,
-            MFVideoFormat_IYUV,
-            MFVideoFormat_YV12,
-            MFVideoFormat_ARGB32,
-            MFVideoFormat_RGB32
-        };
+        const std::array<GUID, 5> manualTypes = preferRgb32
+            ? std::array<GUID, 5>{
+                  MFVideoFormat_ARGB32,
+                  MFVideoFormat_RGB32,
+                  MFVideoFormat_NV12,
+                  MFVideoFormat_IYUV,
+                  MFVideoFormat_YV12}
+            : std::array<GUID, 5>{
+                  MFVideoFormat_NV12,
+                  MFVideoFormat_IYUV,
+                  MFVideoFormat_YV12,
+                  MFVideoFormat_ARGB32,
+                  MFVideoFormat_RGB32};
 
         for (const GUID &subtype : manualTypes) {
             ComPtr<IMFMediaType> candidate;
@@ -2509,35 +2549,37 @@ class VideoEncoder::Impl {
 
         uint8_t* yPlane = nv12;
         uint8_t* uvPlane = nv12 + dstW * dstH;
-        std::fill(yPlane, yPlane + (dstW * dstH), static_cast<uint8_t>(16));
-        std::fill(uvPlane, uvPlane + (dstW * dstH / 2), static_cast<uint8_t>(128));
+        if ((dstW & 1) != 0 || (dstH & 1) != 0) {
+            std::fill(uvPlane, uvPlane + (dstW * dstH / 2), static_cast<uint8_t>(128));
+        }
 
         for (int y = 0; y < dstH; y++) {
+            const uint8_t* srcRow = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
+            uint8_t* yRow = yPlane + static_cast<size_t>(y) * dstW;
             for (int x = 0; x < dstW; x++) {
-                const uint8_t* pixel = conversionScratchBgra_.data() +
-                                       (static_cast<size_t>(y) * dstW + x) * 4;
-                uint8_t b = pixel[0];
-                uint8_t g = pixel[1];
-                uint8_t r = pixel[2];
+                const uint8_t* pixel = srcRow + static_cast<size_t>(x) * 4;
+                const int b = pixel[0];
+                const int g = pixel[1];
+                const int r = pixel[2];
 
                 // BT.601 conversion
-                int yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-                yPlane[y * dstW + x] = (uint8_t)std::clamp(yVal, 0, 255);
+                const int yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
+                yRow[x] = static_cast<uint8_t>(std::clamp(yVal, 0, 255));
             }
         }
 
         for (int y = 0; y + 1 < dstH; y += 2) {
+            const uint8_t* srcRow = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
+            uint8_t* uvRow = uvPlane + static_cast<size_t>(y / 2) * dstW;
             for (int x = 0; x + 1 < dstW; x += 2) {
-                const uint8_t* pixel = conversionScratchBgra_.data() +
-                                       (static_cast<size_t>(y) * dstW + x) * 4;
+                const uint8_t* pixel = srcRow + static_cast<size_t>(x) * 4;
                 const int b = pixel[0];
                 const int g = pixel[1];
                 const int r = pixel[2];
                 const int u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                 const int v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-                const int uvIndex = (y / 2) * dstW + x;
-                uvPlane[uvIndex] = static_cast<uint8_t>(std::clamp(u, 0, 255));
-                uvPlane[uvIndex + 1] = static_cast<uint8_t>(std::clamp(v, 0, 255));
+                uvRow[x] = static_cast<uint8_t>(std::clamp(u, 0, 255));
+                uvRow[x + 1] = static_cast<uint8_t>(std::clamp(v, 0, 255));
             }
         }
     }
@@ -2552,35 +2594,39 @@ class VideoEncoder::Impl {
         blitBgraAspectCover(bgra, srcW, srcH, srcStride,
                             conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
 
-        std::fill(yPlane, yPlane + (dstW * dstH), static_cast<uint8_t>(16));
-        std::fill(uPlane, uPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
-        std::fill(vPlane, vPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
+        if ((dstW & 1) != 0 || (dstH & 1) != 0) {
+            std::fill(uPlane, uPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
+            std::fill(vPlane, vPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
+        }
 
         for (int y = 0; y < dstH; ++y) {
+            const uint8_t *srcRow = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
+            uint8_t *yRow = yPlane + static_cast<size_t>(y) * dstW;
             for (int x = 0; x < dstW; ++x) {
-                const uint8_t *pixel = conversionScratchBgra_.data() +
-                                       (static_cast<size_t>(y) * dstW + x) * 4;
+                const uint8_t *pixel = srcRow + static_cast<size_t>(x) * 4;
                 const int b = pixel[0];
                 const int g = pixel[1];
                 const int r = pixel[2];
                 const int yVal = ((66 * r + 129 * g + 25 * b + 128) >> 8) + 16;
-                yPlane[y * dstW + x] = static_cast<uint8_t>(std::clamp(yVal, 0, 255));
+                yRow[x] = static_cast<uint8_t>(std::clamp(yVal, 0, 255));
             }
         }
 
         for (int y = 0; y + 1 < dstH; y += 2) {
+            const uint8_t *srcRow = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
+            uint8_t *uRow = uPlane + static_cast<size_t>(y / 2) * (dstW / 2);
+            uint8_t *vRow = vPlane + static_cast<size_t>(y / 2) * (dstW / 2);
             for (int x = 0; x + 1 < dstW; x += 2) {
-                const uint8_t *pixel = conversionScratchBgra_.data() +
-                                       (static_cast<size_t>(y) * dstW + x) * 4;
+                const uint8_t *pixel = srcRow + static_cast<size_t>(x) * 4;
                 const int b = pixel[0];
                 const int g = pixel[1];
                 const int r = pixel[2];
 
                 const int u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                 const int v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
-                const int chromaIndex = (y / 2) * (dstW / 2) + (x / 2);
-                uPlane[chromaIndex] = static_cast<uint8_t>(std::clamp(u, 0, 255));
-                vPlane[chromaIndex] = static_cast<uint8_t>(std::clamp(v, 0, 255));
+                const int chromaX = x / 2;
+                uRow[chromaX] = static_cast<uint8_t>(std::clamp(u, 0, 255));
+                vRow[chromaX] = static_cast<uint8_t>(std::clamp(v, 0, 255));
             }
         }
     }

@@ -213,6 +213,9 @@ class WindowCapture::Impl {
             captureSession_ = nullptr;
         }
         captureItem_ = nullptr;
+        graphicsDevice_ = nullptr;
+        lastContentWidth_ = 0;
+        lastContentHeight_ = 0;
     }
 
     bool getLatestFrame(CapturedFrame &outFrame) {
@@ -260,6 +263,13 @@ class WindowCapture::Impl {
 
             auto d3dDevice = inspectable.as<winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>();
             auto size = captureItem_.Size();
+            if (size.Width <= 0 || size.Height <= 0) {
+                spdlog::error("[Capture::Impl] Invalid capture item size {}x{}", size.Width, size.Height);
+                return false;
+            }
+            graphicsDevice_ = d3dDevice;
+            lastContentWidth_ = size.Width;
+            lastContentHeight_ = size.Height;
             spdlog::info("[Capture::Impl] Creating frame pool, size={}x{}", size.Width, size.Height);
             framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
                 d3dDevice,
@@ -309,12 +319,44 @@ class WindowCapture::Impl {
         if (!frame) {
             return;
         }
+
+        const auto contentSize = frame.ContentSize();
+        const int contentWidth = contentSize.Width;
+        const int contentHeight = contentSize.Height;
+        if (contentWidth <= 0 || contentHeight <= 0) {
+            return;
+        }
+
+        if ((contentWidth != lastContentWidth_) || (contentHeight != lastContentHeight_)) {
+            lastContentWidth_ = contentWidth;
+            lastContentHeight_ = contentHeight;
+            if (framePool_ && graphicsDevice_) {
+                try {
+                    framePool_.Recreate(
+                        graphicsDevice_,
+                        winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
+                        2,
+                        contentSize);
+                    spdlog::info("[Capture::Impl] Capture content resized, recreated frame pool: {}x{}",
+                                 contentWidth,
+                                 contentHeight);
+                } catch (const winrt::hresult_error &e) {
+                    spdlog::warn("[Capture::Impl] Frame pool recreate failed hr=0x{:08x} msg={}",
+                                 static_cast<unsigned int>(e.code()),
+                                 winrt::to_string(e.message()));
+                } catch (...) {
+                    spdlog::warn("[Capture::Impl] Frame pool recreate failed with unknown exception");
+                }
+            }
+            return;
+        }
+
         auto surface = frame.Surface();
         auto access = surface.as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
         winrt::com_ptr<ID3D11Texture2D> texture;
         winrt::check_hresult(access->GetInterface(winrt::guid_of<ID3D11Texture2D>(), texture.put_void()));
         int64_t timestamp = frame.SystemRelativeTime().count();
-        processFrame(texture.get(), timestamp);
+        processFrame(texture.get(), timestamp, contentWidth, contentHeight);
     }
 
     void captureLoop() {
@@ -330,12 +372,17 @@ class WindowCapture::Impl {
             }
             winrt::com_ptr<ID3D11Texture2D> texture;
             resource->QueryInterface(texture.put());
-            processFrame(texture.get(), frameInfo.LastPresentTime.QuadPart);
+            D3D11_TEXTURE2D_DESC desc;
+            texture->GetDesc(&desc);
+            processFrame(texture.get(),
+                         frameInfo.LastPresentTime.QuadPart,
+                         static_cast<int>(desc.Width),
+                         static_cast<int>(desc.Height));
             outputDuplication_->ReleaseFrame();
         }
     }
 
-    void processFrame(ID3D11Texture2D *texture, int64_t timestamp) {
+    void processFrame(ID3D11Texture2D *texture, int64_t timestamp, int contentWidth, int contentHeight) {
         D3D11_TEXTURE2D_DESC desc;
         texture->GetDesc(&desc);
 
@@ -359,12 +406,12 @@ class WindowCapture::Impl {
         }
 
         CapturedFrame frame;
-        frame.width = desc.Width;
-        frame.height = desc.Height;
+        frame.width = std::max(1, std::min<int>(contentWidth, static_cast<int>(desc.Width)));
+        frame.height = std::max(1, std::min<int>(contentHeight, static_cast<int>(desc.Height)));
         frame.stride = mapped.RowPitch;
         frame.timestamp = timestamp;
         frame.format = CapturedFrame::Format::BGRA;
-        size_t dataSize = mapped.RowPitch * desc.Height;
+        size_t dataSize = static_cast<size_t>(mapped.RowPitch) * static_cast<size_t>(frame.height);
         frame.data.resize(dataSize);
         std::memcpy(frame.data.data(), mapped.pData, dataSize);
         context_->Unmap(stagingTexture_.get(), 0);
@@ -387,6 +434,7 @@ class WindowCapture::Impl {
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem captureItem_{nullptr};
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool framePool_{nullptr};
     winrt::Windows::Graphics::Capture::GraphicsCaptureSession captureSession_{nullptr};
+    winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice graphicsDevice_{nullptr};
 
     HWND targetHwnd_ = nullptr;
     int targetWidth_ = 0;
@@ -396,6 +444,8 @@ class WindowCapture::Impl {
 
     UINT stagingWidth_ = 0;
     UINT stagingHeight_ = 0;
+    int lastContentWidth_ = 0;
+    int lastContentHeight_ = 0;
 
     std::mutex frameMutex_;
     CapturedFrame latestFrame_;

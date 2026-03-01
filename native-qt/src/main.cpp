@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
     if (bitrateKbps > 0) {
         encoderOverride.bitrate = bitrateKbps;
         encoderOverride.minBitrate = std::max(500, bitrateKbps / 2);
-        encoderOverride.maxBitrate = bitrateKbps + 2000;
+        encoderOverride.maxBitrate = std::max(bitrateKbps + 4000, (bitrateKbps * 3) / 2);
         hasVideoConfigOverride = true;
     }
     if (!ffmpegPathArg.empty()) {
