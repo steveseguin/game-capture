@@ -16,9 +16,7 @@ constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kRoomInitTimeoutMs = 7000;
-constexpr int64_t kResizeReconfigureCooldownMs = 700;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
-constexpr int64_t kResizeStabilizationMs = 450;
 constexpr int kLqWidth = 640;
 constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
@@ -67,32 +65,6 @@ bool jsonBoolLike(const nlohmann::json &value, bool defaultValue) {
         }
     }
     return defaultValue;
-}
-
-void computeAspectMatchedResolution(int srcW,
-                                    int srcH,
-                                    int maxW,
-                                    int maxH,
-                                    int &outW,
-                                    int &outH) {
-    srcW = std::max(1, srcW);
-    srcH = std::max(1, srcH);
-    maxW = std::max(2, maxW & ~1);
-    maxH = std::max(2, maxH & ~1);
-
-    const int64_t widthFromHeight = static_cast<int64_t>(srcW) * static_cast<int64_t>(maxH) / srcH;
-    const int64_t heightFromWidth = static_cast<int64_t>(srcH) * static_cast<int64_t>(maxW) / srcW;
-
-    if (widthFromHeight <= maxW) {
-        outW = static_cast<int>(std::max<int64_t>(2, widthFromHeight));
-        outH = maxH;
-    } else {
-        outW = maxW;
-        outH = static_cast<int>(std::max<int64_t>(2, heightFromWidth));
-    }
-
-    outW = std::clamp(outW & ~1, 2, maxW);
-    outH = std::clamp(outH & ~1, 2, maxH);
 }
 
 const char *videoCodecName(video::VideoCodec codec) {
@@ -1722,75 +1694,6 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
             lastResizeKeyframeRequestMs_ = nowMs;
         }
     }
-
-    if ((lastCaptureResizeMs_ != 0) && ((nowMs - lastCaptureResizeMs_) < kResizeStabilizationMs)) {
-        return true;
-    }
-
-    const int baseWidth = std::max(2, videoConfig_.width & ~1);
-    const int baseHeight = std::max(2, videoConfig_.height & ~1);
-
-    if (activeHqWidth_ <= 0 || activeHqHeight_ <= 0) {
-        activeHqWidth_ = baseWidth;
-        activeHqHeight_ = baseHeight;
-    }
-
-    if (hqAspectLocked_) {
-        return true;
-    }
-
-    int desiredWidth = baseWidth;
-    int desiredHeight = baseHeight;
-    computeAspectMatchedResolution(frame.width, frame.height, baseWidth, baseHeight, desiredWidth, desiredHeight);
-
-    if (desiredWidth == activeHqWidth_ && desiredHeight == activeHqHeight_) {
-        hqAspectLocked_ = true;
-        return true;
-    }
-
-    if ((lastHqReconfigureMs_ != 0) && ((nowMs - lastHqReconfigureMs_) < kResizeReconfigureCooldownMs)) {
-        return true;
-    }
-
-    video::EncoderConfig adaptiveConfig = videoConfig_;
-    adaptiveConfig.width = desiredWidth;
-    adaptiveConfig.height = desiredHeight;
-
-    video::EncoderConfig previousConfig = videoConfig_;
-    previousConfig.width = std::max(2, activeHqWidth_ & ~1);
-    previousConfig.height = std::max(2, activeHqHeight_ & ~1);
-
-    spdlog::info("[App] Adaptive HQ reconfigure: source={}x{} base={}x{} -> output={}x{}",
-                 frame.width,
-                 frame.height,
-                 baseWidth,
-                 baseHeight,
-                 desiredWidth,
-                 desiredHeight);
-
-    videoEncoder_.shutdown();
-    if (!videoEncoder_.initialize(adaptiveConfig)) {
-        spdlog::error("[App] Adaptive HQ reconfigure failed; restoring {}x{}",
-                      previousConfig.width,
-                      previousConfig.height);
-        if (!videoEncoder_.initialize(previousConfig)) {
-            spdlog::error("[App] Failed to restore HQ encoder after adaptive reconfigure failure");
-            return false;
-        }
-        activeHqWidth_ = previousConfig.width;
-        activeHqHeight_ = previousConfig.height;
-        hqAspectLocked_ = true;
-        return true;
-    }
-
-    activeHqWidth_ = desiredWidth;
-    activeHqHeight_ = desiredHeight;
-    lastHqReconfigureMs_ = nowMs;
-    hqAspectLocked_ = true;
-
-    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-    lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
-    lastResizeKeyframeRequestMs_ = nowMs;
     return true;
 }
 
