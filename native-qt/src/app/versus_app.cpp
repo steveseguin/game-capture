@@ -628,6 +628,9 @@ void VersusApp::setupSignalingCallbacks() {
         webrtc::PeerConfig peerConfig;
         peerConfig.iceServers = {"stun:stun.l.google.com:19302"};
         peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
+        peerConfig.videoWidth = std::max(1, videoConfig_.width);
+        peerConfig.videoHeight = std::max(1, videoConfig_.height);
+        peerConfig.videoFps = std::max(1, videoConfig_.frameRate);
         if (videoConfig_.codec == video::VideoCodec::VP9 || videoConfig_.codec == video::VideoCodec::VP8) {
             spdlog::warn("[App] Requested codec {} is not supported in the current WebRTC publisher path; using H.264",
                          videoCodecName(videoConfig_.codec));

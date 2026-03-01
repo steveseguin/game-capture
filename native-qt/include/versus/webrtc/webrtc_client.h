@@ -30,6 +30,9 @@ struct PeerConfig {
         AV1
     };
     VideoCodec videoCodec = VideoCodec::H264;
+    int videoWidth = 1920;
+    int videoHeight = 1080;
+    int videoFps = 60;
 };
 
 enum class ConnectionState {

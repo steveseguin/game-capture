@@ -12,6 +12,7 @@
 
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -35,6 +36,24 @@ rtc::binary toBinary(const std::vector<uint8_t> &data) {
         out.push_back(static_cast<rtc::byte>(byte));
     }
     return out;
+}
+
+std::string selectH264ProfileLevelId(int width, int height, int fps) {
+    const int safeWidth = std::max(1, width);
+    const int safeHeight = std::max(1, height);
+    const int safeFps = std::max(1, fps);
+
+    const long long pixels = static_cast<long long>(safeWidth) * static_cast<long long>(safeHeight);
+    if (safeFps > 30 || pixels > (1280LL * 720LL)) {
+        // Level 4.2 allows 1080p60 class streams.
+        return "42e02a";
+    }
+    if (pixels > (640LL * 480LL)) {
+        // Level 3.1 comfortably covers 720p30 class streams.
+        return "42e01f";
+    }
+    // Level 3.0 for SD class streams.
+    return "42e01e";
 }
 
 }  // namespace
@@ -70,6 +89,9 @@ struct WebRtcClient::Impl {
     uint32_t videoSsrc = 2222222;
     uint32_t audioSsrc = 3333333;
     PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
+    int configuredVideoWidth = 1920;
+    int configuredVideoHeight = 1080;
+    int configuredVideoFps = 60;
 
     void bindDataChannel(const std::shared_ptr<rtc::DataChannel> &channel, const char *origin) {
         if (!channel) {
@@ -194,10 +216,19 @@ struct WebRtcClient::Impl {
                 break;
             case PeerConfig::VideoCodec::H264:
             default:
-                // Use Constrained Baseline @ Level 3.1 (42e01f) for browser compatibility.
-                video.addH264Codec(kVideoPayloadType,
-                                   "profile-level-id=42e01f;packetization-mode=1;level-asymmetry-allowed=1");
-                spdlog::info("[WebRTC] Configuring video codec: H264");
+                // Choose H.264 level based on configured publish target to avoid advertising 3.1 for 1080p60.
+                const std::string levelId = selectH264ProfileLevelId(
+                    configuredVideoWidth,
+                    configuredVideoHeight,
+                    configuredVideoFps);
+                const std::string fmtp =
+                    "profile-level-id=" + levelId + ";packetization-mode=1;level-asymmetry-allowed=1";
+                video.addH264Codec(kVideoPayloadType, fmtp);
+                spdlog::info("[WebRTC] Configuring video codec: H264 ({}x{}@{} fmtp={})",
+                             configuredVideoWidth,
+                             configuredVideoHeight,
+                             configuredVideoFps,
+                             fmtp);
                 break;
         }
         video.addSSRC(videoSsrc, "gamecapture-video");
@@ -273,6 +304,9 @@ WebRtcClient::~WebRtcClient() { shutdown(); }
 
 bool WebRtcClient::initialize(const PeerConfig &config) {
     impl_->videoCodec = config.videoCodec;
+    impl_->configuredVideoWidth = std::max(1, config.videoWidth);
+    impl_->configuredVideoHeight = std::max(1, config.videoHeight);
+    impl_->configuredVideoFps = std::max(1, config.videoFps);
 
     rtc::Configuration rtcConfig;
     for (const auto &ice : config.iceServers) {
