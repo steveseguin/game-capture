@@ -1,8 +1,8 @@
-// Test VDO.Ninja WebSocket with longer wait and viewer prompt
+﻿// Test VDO.Ninja WebSocket with longer wait and viewer prompt
 const WebSocket = require('ws');
 
 const url = 'wss://wss.vdo.ninja:443';
-const streamId = 'versus_test_' + Date.now();
+const streamId = 'game_capture_test_' + Date.now();
 
 console.log('Connecting to', url);
 console.log('Stream ID:', streamId);
@@ -57,3 +57,4 @@ setTimeout(() => {
     console.log('\nTest complete after 60 seconds, closing...');
     ws.close();
 }, 60000);
+

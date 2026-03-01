@@ -1,7 +1,8 @@
-<!DOCTYPE RCC>
+﻿<!DOCTYPE RCC>
 <RCC version="1.0">
   <qresource prefix="/icons">
-    <file>versus.ico</file>
+    <file>vdoninja.ico</file>
     <file>logo.png</file>
   </qresource>
 </RCC>
+

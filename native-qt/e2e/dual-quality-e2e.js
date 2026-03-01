@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 
 const fs = require('fs');
@@ -131,9 +131,9 @@ function detectPublisherBinary(explicitPath) {
   }
 
   const candidates = [
-    path.resolve(__dirname, '../build-review2/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build-test/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build/bin/Release/versus-qt.exe')
+    path.resolve(__dirname, '../build-review2/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build-test/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build/bin/Release/game-capture.exe')
   ];
 
   for (const candidate of candidates) {
@@ -160,7 +160,7 @@ function buildViewerUrl(config) {
 function spawnPublisher(config) {
   const command = detectPublisherBinary(config.publisherPath);
   if (!command) {
-    throw new Error('Could not find versus-qt.exe. Build native-qt first or pass --publisher-path.');
+    throw new Error('Could not find game-capture.exe. Build native-qt first or pass --publisher-path.');
   }
 
   const durationMs = Math.max(240000, config.startupDelayMs + config.timeoutMs + config.holdMs + 90000);
@@ -310,11 +310,11 @@ async function installInfoProbe(page, uuid) {
     }
 
     const rpc = sessionObj.rpcs[peerUuid];
-    const probe = window.__versusInfoProbe || { records: [] };
+    const probe = window.__gameCaptureInfoProbe || { records: [] };
     if (!Array.isArray(probe.records)) {
       probe.records = [];
     }
-    window.__versusInfoProbe = probe;
+    window.__gameCaptureInfoProbe = probe;
 
     const parseMessage = (event, channelName) => {
       let payload = '';
@@ -345,10 +345,10 @@ async function installInfoProbe(page, uuid) {
       if (!channel) {
         return false;
       }
-      if (channel.__versusInfoProbeAttached) {
+      if (channel.__gameCaptureInfoProbeAttached) {
         return true;
       }
-      channel.__versusInfoProbeAttached = true;
+      channel.__gameCaptureInfoProbeAttached = true;
       if (typeof channel.addEventListener === 'function') {
         channel.addEventListener('message', (event) => parseMessage(event, channelName));
         return true;
@@ -379,7 +379,7 @@ async function waitForTierInfo(page, expectedTier, timeoutMs) {
   let last = null;
   while (Date.now() - start < timeoutMs) {
     last = await page.evaluate((tier) => {
-      const probe = window.__versusInfoProbe || { records: [] };
+      const probe = window.__gameCaptureInfoProbe || { records: [] };
       const records = Array.isArray(probe.records) ? probe.records : [];
       const infoRecord = records.find((entry) => {
         const info = entry && entry.message ? entry.message.info : null;
@@ -448,7 +448,7 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config) {
       audio: true,
       label: `${role}-viewer`,
       system: {
-        app: 'versus-e2e-dual-quality',
+        app: 'game-capture-e2e-dual-quality',
         version: '1',
         platform: 'playwright',
         browser: 'chromium'
@@ -689,3 +689,4 @@ main().catch((err) => {
   console.error('[DUAL-QUALITY] Unhandled error:', err);
   process.exit(1);
 });
+

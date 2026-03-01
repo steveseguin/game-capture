@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 
 const fs = require('fs');
@@ -35,7 +35,7 @@ function buildRunScopedId(base, maxLen, runIndex, attempt, fallbackPrefix) {
 
 function parseArgs(argv) {
   const args = {
-    publisher: 'versus',
+    publisher: 'game-capture',
     publisherPath: '',
     streamId: `soak_${Date.now()}`,
     room: '',
@@ -410,3 +410,4 @@ main().catch((err) => {
   console.error('[SOAK] Unhandled error:', err);
   process.exit(1);
 });
+

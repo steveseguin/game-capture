@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
     [string]$Version = "0.2.6",
@@ -9,8 +9,8 @@ $ErrorActionPreference = "Stop"
 
 function Resolve-ExecutablePath([string]$RepoRoot, [string]$BuildDir, [string]$Configuration) {
     $candidates = @(
-        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/versus-qt.exe"),
-        (Join-Path $RepoRoot "$BuildDir/bin/versus-qt.exe")
+        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/game-capture.exe"),
+        (Join-Path $RepoRoot "$BuildDir/bin/game-capture.exe")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) {
@@ -30,7 +30,7 @@ Set-Location $repoRoot
 
 $exePath = Resolve-ExecutablePath -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration
 if (-not $exePath) {
-    throw "Could not locate versus-qt.exe in build output. Build first: $BuildDir"
+    throw "Could not locate game-capture.exe in build output. Build first: $BuildDir"
 }
 
 $artifactPrefix = "game-capture"
@@ -48,8 +48,8 @@ if (Test-Path $stageDir) {
     Remove-Item -Recurse -Force $stageDir
 }
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
-Copy-Item -Path $exePath -Destination (Join-Path $stageDir "versus-qt.exe") -Force
-Copy-Item -Path (Join-Path $repoRoot "resources/versus.ico") -Destination (Join-Path $stageDir "versus.ico") -Force
+Copy-Item -Path $exePath -Destination (Join-Path $stageDir "game-capture.exe") -Force
+Copy-Item -Path (Join-Path $repoRoot "resources/vdoninja.ico") -Destination (Join-Path $stageDir "vdoninja.ico") -Force
 
 $windeployqt = Get-Command windeployqt -ErrorAction SilentlyContinue
 if ($windeployqt) {
@@ -125,9 +125,9 @@ if ($latestReport) {
     $notes += ""
 }
 $notes += "Contents:"
-$notes += "- versus-qt.exe"
+$notes += "- game-capture.exe"
 $notes += "- Qt runtime files (if windeployqt is available)"
-$notes += "- versus.ico"
+$notes += "- vdoninja.ico"
 
 Set-Content -Path (Join-Path $stageDir "RELEASE-NOTES.txt") -Value $notes -Encoding UTF8
 
@@ -135,7 +135,7 @@ Write-Step "Code Signing (Best Effort - Staged Binary)"
 $signScript = Join-Path $PSScriptRoot "sign-artifacts.ps1"
 if (Test-Path $signScript) {
     try {
-        & $signScript -FilePaths @(Join-Path $stageDir "versus-qt.exe")
+        & $signScript -FilePaths @(Join-Path $stageDir "game-capture.exe")
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Code-signing staged binary reported errors; continuing."
         }
@@ -254,3 +254,4 @@ if (Test-Path $installerVersionedPath) {
 if (Test-Path $portableVersionedPath) {
     Write-Host "Release portable: $portableVersionedPath"
 }
+

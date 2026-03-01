@@ -1,4 +1,4 @@
-; Game Capture Native Qt Installer Script
+﻿; Game Capture Native Qt Installer Script
 ; NSIS 3.x
 
 !include "MUI2.nsh"
@@ -29,8 +29,8 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026"
 
 ; Interface Settings
 !define MUI_ABORTWARNING
-!define MUI_ICON "resources\versus.ico"
-!define MUI_UNICON "resources\versus.ico"
+!define MUI_ICON "resources\vdoninja.ico"
+!define MUI_UNICON "resources\vdoninja.ico"
 
 ; Pages
 !insertmacro MUI_PAGE_WELCOME
@@ -49,9 +49,9 @@ Section "Install"
     SetOutPath "$INSTDIR"
 
     ; Main executable
-    File "${BUILD_BIN_DIR}\versus-qt.exe"
+    File "${BUILD_BIN_DIR}\game-capture.exe"
     File /nonfatal "${BUILD_BIN_DIR}\*.dll"
-    File /nonfatal "${BUILD_BIN_DIR}\versus.ico"
+    File /nonfatal "${BUILD_BIN_DIR}\vdoninja.ico"
     File /nonfatal "${BUILD_BIN_DIR}\RELEASE-NOTES.txt"
 
     ; Qt plugins - platforms
@@ -65,16 +65,16 @@ Section "Install"
     ; Create shortcuts
     SetOutPath "$INSTDIR"
     CreateDirectory "$SMPROGRAMS\Game Capture"
-    CreateShortcut "$SMPROGRAMS\Game Capture\Game Capture.lnk" "$INSTDIR\versus-qt.exe" "" "$INSTDIR\versus-qt.exe"
+    CreateShortcut "$SMPROGRAMS\Game Capture\Game Capture.lnk" "$INSTDIR\game-capture.exe" "" "$INSTDIR\game-capture.exe"
     CreateShortcut "$SMPROGRAMS\Game Capture\Uninstall.lnk" "$INSTDIR\uninstall.exe"
-    CreateShortcut "$DESKTOP\Game Capture.lnk" "$INSTDIR\versus-qt.exe" "" "$INSTDIR\versus-qt.exe"
+    CreateShortcut "$DESKTOP\Game Capture.lnk" "$INSTDIR\game-capture.exe" "" "$INSTDIR\game-capture.exe"
 
     ; Registry
     WriteRegStr HKLM "Software\GameCapture" "InstallDir" "$INSTDIR"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayName" "Game Capture"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "UninstallString" "$INSTDIR\uninstall.exe"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayVersion" "${VERSION}"
-    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayIcon" "$INSTDIR\versus-qt.exe"
+    WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "DisplayIcon" "$INSTDIR\game-capture.exe"
     WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "Publisher" "VDO.Ninja"
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "NoModify" 1
     WriteRegDWORD HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture" "NoRepair" 1
@@ -104,3 +104,4 @@ Section "Uninstall"
     DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\GameCapture"
     DeleteRegKey HKLM "Software\GameCapture"
 SectionEnd
+

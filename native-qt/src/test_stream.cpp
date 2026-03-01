@@ -1,4 +1,4 @@
-// Minimal streaming test - no GUI required
+﻿// Minimal streaming test - no GUI required
 #include <rtc/rtc.hpp>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -24,7 +24,7 @@ void sendMessage(const json& msg) {
 }
 
 int main(int argc, char* argv[]) {
-    std::string streamId = argc > 1 ? argv[1] : "test_versus_app";
+    std::string streamId = argc > 1 ? argv[1] : "test_game_capture_app";
 
     std::cout << "=== VDO.Ninja Stream Test ===\n";
     std::cout << "Stream ID: " << streamId << "\n";
@@ -195,3 +195,4 @@ int main(int argc, char* argv[]) {
 
     return gotAnswer ? 0 : 1;
 }
+

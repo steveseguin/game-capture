@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
     [string]$PublisherPath = "",
@@ -27,8 +27,8 @@ function Resolve-PublisherExecutable([string]$RepoRoot, [string]$BuildDir, [stri
     }
 
     $candidates = @(
-        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/versus-qt.exe"),
-        (Join-Path $RepoRoot "$BuildDir/bin/versus-qt.exe")
+        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/game-capture.exe"),
+        (Join-Path $RepoRoot "$BuildDir/bin/game-capture.exe")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) {
@@ -41,7 +41,7 @@ function Resolve-PublisherExecutable([string]$RepoRoot, [string]$BuildDir, [stri
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $publisherExe = Resolve-PublisherExecutable -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration -ExplicitPath $PublisherPath
 if (-not $publisherExe) {
-    throw "Could not locate versus-qt.exe for BuildDir '$BuildDir' and Configuration '$Configuration'. Build first or pass -PublisherPath."
+    throw "Could not locate game-capture.exe for BuildDir '$BuildDir' and Configuration '$Configuration'. Build first or pass -PublisherPath."
 }
 
 $scriptPath = Join-Path $PSScriptRoot "run-release-readiness.ps1"
@@ -80,3 +80,4 @@ cmd /c $viewerChurnCmd
 if ($LASTEXITCODE -ne 0) {
     throw "Viewer churn E2E failed with exit code $LASTEXITCODE"
 }
+

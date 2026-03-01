@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 setlocal
 
 set BASE_DIR=%~dp0
@@ -11,8 +11,8 @@ set SEVENZIP=C:\Program Files\7-Zip\7z.exe
 
 if not exist "%DIST%" mkdir "%DIST%"
 
-if not exist "%SRC%\versus-qt.exe" (
-  echo Missing source executable: %SRC%\versus-qt.exe
+if not exist "%SRC%\game-capture.exe" (
+  echo Missing source executable: %SRC%\game-capture.exe
   echo Build the app first so portable packaging has staged binaries.
   exit /b 1
 )
@@ -30,3 +30,4 @@ del "%DIST%\%ARCHIVE_NAME%.7z"
 
 echo Done! Created %DIST%\%ARCHIVE_NAME%.exe
 dir "%DIST%\%ARCHIVE_NAME%.exe"
+

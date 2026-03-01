@@ -1,4 +1,4 @@
-#include "versus/ui/main_window.h"
+﻿#include "versus/ui/main_window.h"
 
 #include <QApplication>
 #include <QClipboard>
@@ -580,7 +580,7 @@ void MainWindow::setupTrayIcon() {
     }
 
     trayIcon_ = new QSystemTrayIcon(this);
-    trayBaseIcon_ = QIcon(":/icons/versus.ico");
+    trayBaseIcon_ = QIcon(":/icons/vdoninja.ico");
     trayIcon_->setIcon(trayBaseIcon_);
     trayIcon_->setToolTip(APP_TRAY_IDLE);
 
@@ -1300,3 +1300,4 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 }
 
 }  // namespace versus::ui
+

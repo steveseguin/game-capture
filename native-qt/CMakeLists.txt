@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.24)
-project(versus-native-qt VERSION 0.2.6 LANGUAGES CXX)
+﻿cmake_minimum_required(VERSION 3.24)
+project(game-capture-native-qt VERSION 0.2.6 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -149,15 +149,15 @@ if(WIN32)
     set(APP_ICON_RC ${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc)
 endif()
 
-add_executable(versus-qt WIN32 ${VERSUS_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES} ${APP_ICON_RC})
+add_executable(game-capture WIN32 ${VERSUS_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES} ${APP_ICON_RC})
 
-set_target_properties(versus-qt PROPERTIES AUTOMOC ON)
+set_target_properties(game-capture PROPERTIES AUTOMOC ON)
 
-target_include_directories(versus-qt PRIVATE
+target_include_directories(game-capture PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(versus-qt PRIVATE
+target_link_libraries(game-capture PRIVATE
     Threads::Threads
     Qt6::Widgets
     spdlog::spdlog
@@ -169,13 +169,13 @@ target_link_libraries(versus-qt PRIVATE
     opus
 )
 
-target_include_directories(versus-qt PRIVATE
+target_include_directories(game-capture PRIVATE
     ${opus_SOURCE_DIR}/include
     ${libdatachannel_SOURCE_DIR}/deps/json/include
 )
 
 if(WIN32)
-    target_link_libraries(versus-qt PRIVATE
+    target_link_libraries(game-capture PRIVATE
         ole32
         oleaut32
         uuid
@@ -190,11 +190,11 @@ if(WIN32)
 endif()
 
 if(VERSUS_USE_NVENC)
-    target_compile_definitions(versus-qt PRIVATE VERSUS_USE_NVENC)
+    target_compile_definitions(game-capture PRIVATE VERSUS_USE_NVENC)
 endif()
 
 if(VERSUS_USE_GRAPHICS_CAPTURE)
-    target_compile_definitions(versus-qt PRIVATE VERSUS_USE_GRAPHICS_CAPTURE)
+    target_compile_definitions(game-capture PRIVATE VERSUS_USE_GRAPHICS_CAPTURE)
 endif()
 
 # WebSocket test executable
@@ -350,3 +350,4 @@ if(VERSUS_BUILD_TESTS)
     set_tests_properties(VdoSignalingTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 endif()
+

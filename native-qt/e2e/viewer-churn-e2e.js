@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 
 const fs = require('fs');
@@ -120,9 +120,9 @@ function detectPublisherBinary(explicitPath) {
   }
 
   const candidates = [
-    path.resolve(__dirname, '../build-review2/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build-test/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build/bin/Release/versus-qt.exe')
+    path.resolve(__dirname, '../build-review2/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build-test/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build/bin/Release/game-capture.exe')
   ];
 
   for (const candidate of candidates) {
@@ -151,7 +151,7 @@ function buildViewerUrl(config) {
 function spawnPublisher(config) {
   const command = detectPublisherBinary(config.publisherPath);
   if (!command) {
-    throw new Error('Could not find versus-qt.exe. Build native-qt first or pass --publisher-path.');
+    throw new Error('Could not find game-capture.exe. Build native-qt first or pass --publisher-path.');
   }
 
   const cycleBudgetMs = (config.timeoutMs + config.holdMs + 2000) * config.cycles;
@@ -286,7 +286,7 @@ async function sendViewerInitIfConfigured(page, config) {
       audio: config.initAudio,
       label: config.label,
       system: {
-        app: 'versus-e2e-viewer-churn',
+        app: 'game-capture-e2e-viewer-churn',
         version: '1',
         platform: 'playwright',
         browser: 'chromium'
@@ -540,3 +540,4 @@ main().catch((err) => {
   console.error('[VIEWER-CHURN] Unhandled error:', err);
   process.exit(1);
 });
+

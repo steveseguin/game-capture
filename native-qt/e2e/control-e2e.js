@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 
 const fs = require('fs');
@@ -113,9 +113,9 @@ function detectPublisherBinary(explicitPath) {
   }
 
   const candidates = [
-    path.resolve(__dirname, '../build-review2/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build-test/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build/bin/Release/versus-qt.exe')
+    path.resolve(__dirname, '../build-review2/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build-test/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build/bin/Release/game-capture.exe')
   ];
 
   for (const candidate of candidates) {
@@ -144,7 +144,7 @@ function buildViewerUrl(config) {
 function spawnPublisher(config) {
   const command = detectPublisherBinary(config.publisherPath);
   if (!command) {
-    throw new Error('Could not find versus-qt.exe. Build native-qt first or pass --publisher-path.');
+    throw new Error('Could not find game-capture.exe. Build native-qt first or pass --publisher-path.');
   }
 
   const durationMs = Math.max(180000, config.startupDelayMs + config.timeoutMs + config.holdMs + 30000);
@@ -324,11 +324,11 @@ async function installControlAckProbe(page, uuid) {
     }
 
     const rpc = sessionObj.rpcs[peerUuid];
-    const probe = window.__versusControlProbe || { acks: [] };
+    const probe = window.__gameCaptureControlProbe || { acks: [] };
     if (!Array.isArray(probe.acks)) {
       probe.acks = [];
     }
-    window.__versusControlProbe = probe;
+    window.__gameCaptureControlProbe = probe;
 
     const parseMessage = (event, channelName) => {
       let payload = '';
@@ -359,10 +359,10 @@ async function installControlAckProbe(page, uuid) {
       if (!channel) {
         return false;
       }
-      if (channel.__versusControlProbeAttached) {
+      if (channel.__gameCaptureControlProbeAttached) {
         return true;
       }
-      channel.__versusControlProbeAttached = true;
+      channel.__gameCaptureControlProbeAttached = true;
 
       if (typeof channel.addEventListener === 'function') {
         channel.addEventListener('message', (event) => parseMessage(event, channelName));
@@ -395,7 +395,7 @@ async function waitForControlAck(page, timeoutMs, expectedBitrate) {
   let lastState = null;
   while (Date.now() - start < timeoutMs) {
     lastState = await page.evaluate((bitrate) => {
-      const probe = window.__versusControlProbe || { acks: [] };
+      const probe = window.__gameCaptureControlProbe || { acks: [] };
       const acks = Array.isArray(probe.acks) ? probe.acks : [];
       const latest = acks.length ? acks[acks.length - 1] : null;
       const success = acks.find((entry) => {
@@ -470,7 +470,7 @@ async function main() {
           audio: config.initAudio,
           label: config.label,
           system: {
-            app: 'versus-e2e-control',
+            app: 'game-capture-e2e-control',
             version: '1',
             platform: 'playwright',
             browser: 'chromium'
@@ -587,3 +587,4 @@ main().catch((err) => {
   console.error('[CONTROL] Unhandled error:', err);
   process.exit(1);
 });
+

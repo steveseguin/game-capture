@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 
 const fs = require('fs');
@@ -12,8 +12,8 @@ function nowStamp() {
 
 function parseArgs(argv) {
   const args = {
-    publisher: 'versus',
-    streamId: `versus_e2e_${Date.now()}`,
+    publisher: 'game-capture',
+    streamId: `game_capture_e2e_${Date.now()}`,
     room: '',
     password: '',
     label: 'e2e',
@@ -127,9 +127,9 @@ function detectPublisherBinary(explicitPath) {
   }
 
   const candidates = [
-    path.resolve(__dirname, '../build-review2/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build-test/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build/bin/Release/versus-qt.exe')
+    path.resolve(__dirname, '../build-review2/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build-test/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build/bin/Release/game-capture.exe')
   ];
 
   for (const candidate of candidates) {
@@ -186,7 +186,7 @@ function spawnPublisher(config) {
   } else {
     command = detectPublisherBinary(config.publisherPath);
     if (!command) {
-      throw new Error('Could not find versus-qt.exe. Build native-qt first or pass --publisher-path.');
+      throw new Error('Could not find game-capture.exe. Build native-qt first or pass --publisher-path.');
     }
     args = [
       '--headless',
@@ -316,7 +316,7 @@ async function sendViewerInitIfConfigured(page, initOptions, timeoutMs) {
       audio: !!initOptions.audio,
       label: initOptions.label || '',
       system: {
-        app: 'versus-e2e',
+        app: 'game-capture-e2e',
         version: '1',
         platform: 'playwright',
         browser: 'chromium'
@@ -507,3 +507,4 @@ main().catch((err) => {
   console.error('[E2E] Unhandled error:', err);
   process.exit(1);
 });
+

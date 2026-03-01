@@ -1,8 +1,8 @@
-// Test VDO.Ninja WebSocket with fixed stream ID
+﻿// Test VDO.Ninja WebSocket with fixed stream ID
 const WebSocket = require('ws');
 
 const url = 'wss://wss.vdo.ninja:443';
-const streamId = 'versus_fixed_test';
+const streamId = 'game_capture_fixed_test';
 
 console.log('Connecting to', url);
 console.log('Stream ID:', streamId);
@@ -56,3 +56,4 @@ ws.on('error', function error(err) {
 });
 
 console.log('Press Ctrl+C to stop\n');
+

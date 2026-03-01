@@ -1,4 +1,5 @@
-// Windows resource file for Versus Qt application
+﻿// Windows resource file for Game Capture application
 // This embeds the application icon into the .exe
 
-IDI_ICON1 ICON "versus.ico"
+IDI_ICON1 ICON "vdoninja.ico"
+

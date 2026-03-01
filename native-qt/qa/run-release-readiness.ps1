@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
     [string]$PublisherPath = "",
@@ -72,8 +72,8 @@ function Resolve-PublisherExecutable([string]$RepoRoot, [string]$BuildDir, [stri
     }
 
     $candidates = @(
-        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/versus-qt.exe"),
-        (Join-Path $RepoRoot "$BuildDir/bin/versus-qt.exe")
+        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/game-capture.exe"),
+        (Join-Path $RepoRoot "$BuildDir/bin/game-capture.exe")
     )
     foreach ($candidate in $candidates) {
         if (Test-Path $candidate) {
@@ -93,7 +93,7 @@ Set-Location $repoRoot
 
 $publisherExe = Resolve-PublisherExecutable -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration -ExplicitPath $PublisherPath
 if (-not $publisherExe) {
-    throw "Could not locate versus-qt.exe for BuildDir '$BuildDir' and Configuration '$Configuration'. Build first or pass -PublisherPath."
+    throw "Could not locate game-capture.exe for BuildDir '$BuildDir' and Configuration '$Configuration'. Build first or pass -PublisherPath."
 }
 
 if ($IncludeSoak -and $SkipSoak) {
@@ -394,13 +394,13 @@ if ($makensis) {
         $distDir = Join-Path $repoRoot "dist"
         $stageCandidates = @()
         if (Test-Path $distDir) {
-            foreach ($pattern in @("game-capture-*-win64", "Versus-*-win64")) {
+            foreach ($pattern in @("game-capture-*-win64")) {
                 $stageCandidates += Get-ChildItem -Path $distDir -Directory -Filter $pattern -ErrorAction SilentlyContinue
             }
         }
         $stageCandidate = $stageCandidates |
             Where-Object {
-                (Test-Path (Join-Path $_.FullName "versus-qt.exe")) -and
+                (Test-Path (Join-Path $_.FullName "game-capture.exe")) -and
                 (Test-Path (Join-Path $_.FullName "platforms\qwindows.dll"))
             } |
             Sort-Object LastWriteTime -Descending |
@@ -418,7 +418,7 @@ if ($makensis) {
                 $installerBinDir = Join-Path $repoRoot "$BuildDir/bin"
             }
         }
-        foreach ($requiredRelPath in @("versus-qt.exe", "platforms\qwindows.dll")) {
+        foreach ($requiredRelPath in @("game-capture.exe", "platforms\qwindows.dll")) {
             $requiredPath = Join-Path $installerBinDir $requiredRelPath
             if (-not (Test-Path $requiredPath)) {
                 throw "Installer smoke missing required staged artifact: $requiredPath"
@@ -455,3 +455,4 @@ Write-Host "Report written to: $reportPath"
 if (-not $allPass) {
     exit 1
 }
+

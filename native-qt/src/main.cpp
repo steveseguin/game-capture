@@ -1,4 +1,4 @@
-#include <QApplication>
+﻿#include <QApplication>
 #include <QIcon>
 #include <QMetaObject>
 #include <QTimer>
@@ -120,21 +120,21 @@ int main(int argc, char *argv[]) {
     // Set up logging - console for headless, file otherwise
     try {
         if (headless) {
-            auto console_logger = spdlog::stdout_color_mt("versus");
+            auto console_logger = spdlog::stdout_color_mt("game-capture");
             spdlog::set_default_logger(console_logger);
         } else {
-            auto file_logger = spdlog::basic_logger_mt("versus", "versus-debug.log", true);
+            auto file_logger = spdlog::basic_logger_mt("game-capture", "game-capture-debug.log", true);
             spdlog::set_default_logger(file_logger);
         }
         spdlog::set_level(spdlog::level::debug);
         spdlog::flush_on(spdlog::level::debug);
-        spdlog::info("Versus app starting (headless={})", headless);
+        spdlog::info("Game Capture app starting (headless={})", headless);
     } catch (...) {
         // Fall back to default logger
     }
 
     QApplication app(argc, argv);
-    app.setWindowIcon(QIcon(":/icons/versus.ico"));
+    app.setWindowIcon(QIcon(":/icons/vdoninja.ico"));
     versus::app::VersusApp core;
     core.initialize();
     core.onRuntimeEvent([headless](const std::string &message, bool fatal) {
@@ -313,3 +313,4 @@ int main(int argc, char *argv[]) {
     core.shutdown();
     return result;
 }
+

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 
 const fs = require('fs');
@@ -134,9 +134,9 @@ function detectPublisherBinary(explicitPath) {
   }
 
   const candidates = [
-    path.resolve(__dirname, '../build-review2/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build-test/bin/Release/versus-qt.exe'),
-    path.resolve(__dirname, '../build/bin/Release/versus-qt.exe')
+    path.resolve(__dirname, '../build-review2/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build-test/bin/Release/game-capture.exe'),
+    path.resolve(__dirname, '../build/bin/Release/game-capture.exe')
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) {
@@ -164,7 +164,7 @@ function buildViewerUrl(streamId, room, password) {
 function spawnPublisher(config, options) {
   const command = detectPublisherBinary(config.publisherPath);
   if (!command) {
-    throw new Error('Could not find versus-qt.exe. Build native-qt first or pass --publisher-path.');
+    throw new Error('Could not find game-capture.exe. Build native-qt first or pass --publisher-path.');
   }
 
   const durationMs = Math.max(
@@ -348,7 +348,7 @@ async function sendInitMessage(page, room, role, video, audio, label, timeoutMs)
       audio: !!audio,
       label,
       system: {
-        app: 'versus-e2e-dual-requirements',
+        app: 'game-capture-e2e-dual-requirements',
         version: '1',
         platform: 'playwright',
         browser: 'chromium'
@@ -365,11 +365,11 @@ async function installInfoProbe(page, uuid) {
       return { ok: false, reason: 'no_rpc' };
     }
     const rpc = sessionObj.rpcs[peerUuid];
-    const probe = window.__versusInfoProbe || { records: [] };
+    const probe = window.__gameCaptureInfoProbe || { records: [] };
     if (!Array.isArray(probe.records)) {
       probe.records = [];
     }
-    window.__versusInfoProbe = probe;
+    window.__gameCaptureInfoProbe = probe;
 
     const parseMessage = (event, channelName) => {
       if (!event || typeof event.data !== 'string') {
@@ -396,10 +396,10 @@ async function installInfoProbe(page, uuid) {
       if (!channel) {
         return false;
       }
-      if (channel.__versusInfoProbeAttached) {
+      if (channel.__gameCaptureInfoProbeAttached) {
         return true;
       }
-      channel.__versusInfoProbeAttached = true;
+      channel.__gameCaptureInfoProbeAttached = true;
       if (typeof channel.addEventListener === 'function') {
         channel.addEventListener('message', (event) => parseMessage(event, channelName));
         return true;
@@ -426,7 +426,7 @@ async function waitForInfoField(page, fieldName, expectedValue, timeoutMs) {
   let last = null;
   while (Date.now() - start < timeoutMs) {
     last = await page.evaluate(({ field, expected }) => {
-      const probe = window.__versusInfoProbe || { records: [] };
+      const probe = window.__gameCaptureInfoProbe || { records: [] };
       const records = Array.isArray(probe.records) ? probe.records : [];
       const infoRecords = records
         .filter((entry) => entry && entry.message && entry.message.info)
@@ -458,11 +458,11 @@ async function installControlAckProbe(page, uuid) {
       return { ok: false, reason: 'no_rpc' };
     }
     const rpc = sessionObj.rpcs[peerUuid];
-    const probe = window.__versusControlProbe || { acks: [] };
+    const probe = window.__gameCaptureControlProbe || { acks: [] };
     if (!Array.isArray(probe.acks)) {
       probe.acks = [];
     }
-    window.__versusControlProbe = probe;
+    window.__gameCaptureControlProbe = probe;
 
     const parseMessage = (event, channelName) => {
       if (!event || typeof event.data !== 'string') {
@@ -489,10 +489,10 @@ async function installControlAckProbe(page, uuid) {
       if (!channel) {
         return false;
       }
-      if (channel.__versusControlProbeAttached) {
+      if (channel.__gameCaptureControlProbeAttached) {
         return true;
       }
-      channel.__versusControlProbeAttached = true;
+      channel.__gameCaptureControlProbeAttached = true;
       if (typeof channel.addEventListener === 'function') {
         channel.addEventListener('message', (event) => parseMessage(event, channelName));
         return true;
@@ -519,7 +519,7 @@ async function waitForControlAck(page, timeoutMs) {
   let last = null;
   while (Date.now() - start < timeoutMs) {
     last = await page.evaluate(() => {
-      const probe = window.__versusControlProbe || { acks: [] };
+      const probe = window.__gameCaptureControlProbe || { acks: [] };
       const acks = Array.isArray(probe.acks) ? probe.acks : [];
       const okAck = acks.find((entry) => entry && entry.message && entry.message.ok === true) || null;
       const latest = acks.length ? acks[acks.length - 1] : null;
@@ -1038,3 +1038,4 @@ main().catch((err) => {
   console.error('[DUAL-REQ] Unhandled error:', err);
   process.exit(1);
 });
+
