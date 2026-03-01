@@ -338,7 +338,9 @@ void MainWindow::setupMenuBar() {
 
     auto *viewMenu = menuBar()->addMenu("&View");
     auto *refreshAction = viewMenu->addAction("Refresh Windows");
-    connect(refreshAction, &QAction::triggered, this, &MainWindow::onRefreshWindows);
+    connect(refreshAction, &QAction::triggered, this, [this]() {
+        onRefreshWindows();
+    });
 
     minimizeToTrayOnCloseAction_ = viewMenu->addAction("Minimize To Tray On Close");
     minimizeToTrayOnCloseAction_->setCheckable(true);
@@ -368,6 +370,7 @@ void MainWindow::setupUI() {
     windowListWidget_->setMinimumWidth(300);
     connect(windowListWidget_, &WindowListWidget::windowSelected, this, &MainWindow::onWindowSelected);
     connect(windowListWidget_, &WindowListWidget::refreshRequested, this, &MainWindow::onRefreshWindows);
+    connect(windowListWidget_, &WindowListWidget::autoRefreshRequested, this, &MainWindow::onAutoRefreshWindows);
     captureSplitter->addWidget(windowListWidget_);
 
     // Selected window preview
@@ -886,8 +889,15 @@ void MainWindow::onWindowSelected(const QString &windowId) {
 }
 
 void MainWindow::onRefreshWindows() {
+    if (windowListWidget_) {
+        windowListWidget_->requestThumbnailRefresh();
+    }
     refreshWindowList();
     refreshSelectedWindowPreview();
+}
+
+void MainWindow::onAutoRefreshWindows() {
+    refreshWindowList();
 }
 
 void MainWindow::refreshWindowList() {

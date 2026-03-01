@@ -42,6 +42,7 @@ class MainWindow : public QMainWindow {
   private slots:
     void onWindowSelected(const QString &windowId);
     void onRefreshWindows();
+    void onAutoRefreshWindows();
     void onGoLiveClicked();
     void onTrayIconActivated(QSystemTrayIcon::ActivationReason reason);
     void onStatsTimer();

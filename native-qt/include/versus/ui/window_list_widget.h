@@ -21,10 +21,12 @@ class WindowListWidget : public QWidget {
     void setWindowList(const std::vector<versus::video::WindowInfo> &windows);
     QString selectedWindowId() const;
     void setAutoRefreshEnabled(bool enabled);
+    void requestThumbnailRefresh();
 
   signals:
     void windowSelected(const QString &windowId);
     void refreshRequested();
+    void autoRefreshRequested();
 
   private slots:
     void onItemClicked(QListWidgetItem *item);
@@ -32,9 +34,9 @@ class WindowListWidget : public QWidget {
     void onAutoRefresh();
 
   private:
-    void applyThumbnail(QLabel *thumbnailLabel, const versus::video::WindowInfo &window);
+    void applyThumbnail(QLabel *thumbnailLabel, const versus::video::WindowInfo &window, bool forceRefresh = false);
     QWidget* createItemWidget(const versus::video::WindowInfo &window);
-    void updateItemWidget(QWidget *widget, const versus::video::WindowInfo &window);
+    void updateItemWidget(QWidget *widget, const versus::video::WindowInfo &window, bool forceThumbnailRefresh);
 
     QListWidget *listWidget_ = nullptr;
     QPushButton *refreshButton_ = nullptr;
@@ -42,6 +44,7 @@ class WindowListWidget : public QWidget {
     QString selectedWindowId_;
     QMap<QString, QListWidgetItem*> windowItems_;  // Track items by window ID
     QMap<QString, QPixmap> thumbnailCache_;
+    bool forceThumbnailRefreshOnNextSet_ = false;
 };
 
 }  // namespace versus::ui

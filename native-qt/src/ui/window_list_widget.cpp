@@ -47,19 +47,23 @@ WindowListWidget::WindowListWidget(QWidget *parent)
     autoRefreshTimer_->start();
 }
 
-void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel, const versus::video::WindowInfo &window) {
+void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel,
+                                      const versus::video::WindowInfo &window,
+                                      bool forceRefresh) {
     if (!thumbnailLabel) {
         return;
     }
 
     const QString windowId = QString::fromStdString(window.id);
-    const auto cached = thumbnailCache_.constFind(windowId);
-    if (cached != thumbnailCache_.constEnd() && !cached.value().isNull()) {
-        thumbnailLabel->setPixmap(cached.value());
-        thumbnailLabel->setText(QString());
-        thumbnailLabel->setProperty("hasThumbnail", true);
-        thumbnailLabel->setProperty("thumbnailRetryCount", 0);
-        return;
+    if (!forceRefresh) {
+        const auto cached = thumbnailCache_.constFind(windowId);
+        if (cached != thumbnailCache_.constEnd() && !cached.value().isNull()) {
+            thumbnailLabel->setPixmap(cached.value());
+            thumbnailLabel->setText(QString());
+            thumbnailLabel->setProperty("hasThumbnail", true);
+            thumbnailLabel->setProperty("thumbnailRetryCount", 0);
+            return;
+        }
     }
 
     QPixmap thumb = versus::video::WindowCapture::captureWindowThumbnail(window.id);
@@ -149,7 +153,9 @@ QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &win
     return widget;
 }
 
-void WindowListWidget::updateItemWidget(QWidget *widget, const versus::video::WindowInfo &window) {
+void WindowListWidget::updateItemWidget(QWidget *widget,
+                                        const versus::video::WindowInfo &window,
+                                        bool forceThumbnailRefresh) {
     if (auto *titleLabel = widget->findChild<QLabel*>("title")) {
         titleLabel->setText(QString::fromStdString(window.name));
     }
@@ -157,6 +163,11 @@ void WindowListWidget::updateItemWidget(QWidget *widget, const versus::video::Wi
         exeLabel->setText(QString::fromStdString(window.executableName));
     }
     if (auto *thumbnailLabel = widget->findChild<QLabel*>("thumbnail")) {
+        if (forceThumbnailRefresh) {
+            applyThumbnail(thumbnailLabel, window, true);
+            return;
+        }
+
         if (thumbnailLabel->property("hasThumbnail").toBool()) {
             return;
         }
@@ -170,6 +181,12 @@ void WindowListWidget::updateItemWidget(QWidget *widget, const versus::video::Wi
 }
 
 void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo> &windows) {
+    const bool forceThumbnailRefresh = forceThumbnailRefreshOnNextSet_;
+    forceThumbnailRefreshOnNextSet_ = false;
+    if (forceThumbnailRefresh) {
+        thumbnailCache_.clear();
+    }
+
     // Build set of incoming window IDs
     QSet<QString> incomingIds;
     for (const auto &window : windows) {
@@ -234,7 +251,7 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
             // Update existing item
             QListWidgetItem *item = windowItems_[id];
             if (QWidget *widget = listWidget_->itemWidget(item)) {
-                updateItemWidget(widget, window);
+                updateItemWidget(widget, window, forceThumbnailRefresh);
             }
         } else {
             // Add new item
@@ -268,6 +285,10 @@ void WindowListWidget::setAutoRefreshEnabled(bool enabled) {
     }
 }
 
+void WindowListWidget::requestThumbnailRefresh() {
+    forceThumbnailRefreshOnNextSet_ = true;
+}
+
 void WindowListWidget::onItemClicked(QListWidgetItem *item) {
     if (!item || !(item->flags() & Qt::ItemIsSelectable)) {
         return;
@@ -278,11 +299,12 @@ void WindowListWidget::onItemClicked(QListWidgetItem *item) {
 }
 
 void WindowListWidget::onRefreshClicked() {
+    requestThumbnailRefresh();
     emit refreshRequested();
 }
 
 void WindowListWidget::onAutoRefresh() {
-    emit refreshRequested();
+    emit autoRefreshRequested();
 }
 
 }  // namespace versus::ui
