@@ -115,6 +115,7 @@ class MainWindow : public QMainWindow {
     // State
     bool isLive_ = false;
     bool stopInProgress_ = false;
+    bool reconnectNoticeActive_ = false;
     bool quitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
     QString selectedWindowId_;

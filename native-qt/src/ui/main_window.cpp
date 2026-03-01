@@ -92,6 +92,29 @@ QIcon makeTrayLiveIcon(const QIcon &baseIcon, bool live) {
     return QIcon(pixmap);
 }
 
+QIcon makeBrandTrayFallbackIcon() {
+    const QSize iconSize(64, 64);
+    QPixmap pixmap(iconSize);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor("#ff2f5d"));
+    painter.drawRoundedRect(QRectF(2.0, 2.0, 60.0, 60.0), 14.0, 14.0);
+
+    QFont markFont("Bahnschrift SemiBold", 34);
+    if (!QFontDatabase().families().contains(markFont.family())) {
+        markFont = QFont("Segoe UI", 32, QFont::Bold);
+    }
+    painter.setFont(markFont);
+    painter.setPen(Qt::white);
+    painter.drawText(pixmap.rect(), Qt::AlignCenter, "N");
+    painter.end();
+
+    return QIcon(pixmap);
+}
+
 MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString &input) {
     ParsedStreamTarget parsed;
     const QString trimmed = input.trimmed();
@@ -161,14 +184,51 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
                     return;
                 }
 
-                updateStatus(status, "error");
+                const QString lower = status.toLower();
+                const bool reconnectingMsg = lower.contains("attempting to reconnect") ||
+                                             lower.contains("still reconnecting");
+                const bool reconnectedMsg = lower.contains("reconnected to signaling server");
+                const bool disconnectedMsg = lower.contains("connection dropped");
+
+                QString statusClass = "ready";
+                if (fatal) {
+                    statusClass = "error";
+                } else if (reconnectingMsg || disconnectedMsg) {
+                    statusClass = "connecting";
+                } else if (isLive_) {
+                    statusClass = "live";
+                }
+                updateStatus(status, statusClass);
+
                 if (trayIcon_ && trayIcon_->supportsMessages()) {
-                    trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Warning, 5000);
+                    if (fatal) {
+                        trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Warning, 5000);
+                    } else if ((reconnectingMsg || disconnectedMsg) && !isVisible() && !reconnectNoticeActive_) {
+                        trayIcon_->showMessage(
+                            APP_BRAND,
+                            "Connection dropped. Attempting to reconnect...",
+                            QSystemTrayIcon::Information,
+                            4000);
+                        reconnectNoticeActive_ = true;
+                    } else if (reconnectedMsg && reconnectNoticeActive_ && !isVisible()) {
+                        trayIcon_->showMessage(
+                            APP_BRAND,
+                            "Reconnected to signaling server.",
+                            QSystemTrayIcon::Information,
+                            3000);
+                        reconnectNoticeActive_ = false;
+                    } else if (reconnectedMsg) {
+                        reconnectNoticeActive_ = false;
+                    }
+                } else if (reconnectedMsg) {
+                    reconnectNoticeActive_ = false;
                 }
 
                 if (!fatal) {
                     return;
                 }
+
+                reconnectNoticeActive_ = false;
 
                 if (core_ && isLive_) {
                     core_->stopLive();
@@ -595,7 +655,10 @@ void MainWindow::setupTrayIcon() {
     }
 
     trayIcon_ = new QSystemTrayIcon(this);
-    trayBaseIcon_ = QIcon(":/icons/vdoninja.ico");
+    trayBaseIcon_ = QIcon(":/icons/logo.png");
+    if (trayBaseIcon_.isNull()) {
+        trayBaseIcon_ = QIcon(":/icons/vdoninja.ico");
+    }
     if (trayBaseIcon_.isNull()) {
         trayBaseIcon_ = windowIcon();
     }
@@ -603,7 +666,7 @@ void MainWindow::setupTrayIcon() {
         trayBaseIcon_ = qApp->windowIcon();
     }
     if (trayBaseIcon_.isNull()) {
-        trayBaseIcon_ = style()->standardIcon(QStyle::SP_ComputerIcon);
+        trayBaseIcon_ = makeBrandTrayFallbackIcon();
     }
     trayIcon_->setIcon(trayBaseIcon_);
     trayIcon_->setToolTip(APP_TRAY_IDLE);
@@ -845,6 +908,7 @@ void MainWindow::onGoLiveClicked() {
         }
 
         stopInProgress_ = true;
+        reconnectNoticeActive_ = false;
         updateStatus("Stopping...", "connecting");
         if (goLiveButton_) {
             goLiveButton_->setEnabled(false);
@@ -1036,6 +1100,7 @@ void MainWindow::onGoLiveClicked() {
         }
 
         isLive_ = true;
+        reconnectNoticeActive_ = false;
         statsTimer_->start();
         if (previewTimer_) {
             previewTimer_->stop();
