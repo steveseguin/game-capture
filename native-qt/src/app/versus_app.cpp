@@ -1173,7 +1173,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     nlohmann::json info;
 
     info["label"] = startOptions_.label;
-    info["version"] = "game-capture-native-qt/0.2.22";
+    info["version"] = "game-capture-native-qt/0.2.23";
     info["maxviewers_url"] = maxViewers_.load(std::memory_order_relaxed);
     info["quality_url"] = effectiveBitrate;
     info["width_url"] = effectiveWidth;

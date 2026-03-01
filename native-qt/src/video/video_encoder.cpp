@@ -416,6 +416,7 @@ class VideoEncoder::Impl {
         config_ = config;
         spdlog::info("[VideoEncoder] Initializing MF encoder {}x{} @{}kbps", config.width, config.height, config.bitrate);
         frameCount_ = 0;
+        lastInputTimestamp_ = 0;
         activeCodec_ = VideoCodec::H264;
 
         const bool requireExternalFfmpeg =
@@ -575,6 +576,7 @@ class VideoEncoder::Impl {
         activeEncoderName_.clear();
         activeCodec_ = VideoCodec::H264;
         frameCount_ = 0;
+        lastInputTimestamp_ = 0;
         inputSubtype_ = MFVideoFormat_NV12;
     }
 
@@ -612,9 +614,25 @@ class VideoEncoder::Impl {
 
         inputSample->AddBuffer(inputBuffer.Get());
 
-        LONGLONG timestamp = frameCount_ * 10000000LL / config_.frameRate;
+        const LONGLONG frameStep = std::max<LONGLONG>(1, 10000000LL / std::max(1, config_.frameRate));
+        LONGLONG timestamp =
+            (input.timestamp > 0) ? static_cast<LONGLONG>(input.timestamp)
+                                  : (frameCount_ * frameStep);
+        if (lastInputTimestamp_ > 0 && timestamp <= lastInputTimestamp_) {
+            timestamp = lastInputTimestamp_ + frameStep;
+        }
+
+        LONGLONG sampleDuration = frameStep;
+        if (lastInputTimestamp_ > 0) {
+            const LONGLONG delta = timestamp - lastInputTimestamp_;
+            if (delta > 0 && delta < 10000000LL) {
+                sampleDuration = delta;
+            }
+        }
+
         inputSample->SetSampleTime(timestamp);
-        inputSample->SetSampleDuration(10000000LL / config_.frameRate);
+        inputSample->SetSampleDuration(sampleDuration);
+        lastInputTimestamp_ = timestamp;
 
         auto pullOutput = [&](EncodedPacket &packet, bool &produced) -> HRESULT {
             produced = false;
@@ -705,7 +723,10 @@ class VideoEncoder::Impl {
             }
 
             packet.data.assign(encodedData, encodedData + encodedSize);
-            const LONGLONG outTimestamp = frameCount_ * 10000000LL / config_.frameRate;
+            LONGLONG outTimestamp = timestamp;
+            if (FAILED(resultSample->GetSampleTime(&outTimestamp))) {
+                outTimestamp = timestamp;
+            }
             packet.pts = outTimestamp;
             packet.dts = outTimestamp;
             packet.isKeyframe = false;
@@ -2672,6 +2693,7 @@ class VideoEncoder::Impl {
     int pendingNeedInputEvents_ = 0;
     int pendingHaveOutputEvents_ = 0;
     int64_t frameCount_ = 0;
+    int64_t lastInputTimestamp_ = 0;
     int64_t externalFramesSubmitted_ = 0;
     int64_t externalPacketCount_ = 0;
     ExternalOutputFormat externalOutputFormat_ = ExternalOutputFormat::AnnexB;
