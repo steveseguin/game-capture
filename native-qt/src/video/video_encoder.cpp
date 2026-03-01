@@ -1809,6 +1809,17 @@ class VideoEncoder::Impl {
         return InputPacking::Unsupported;
     }
 
+    bool shouldPreferRgbInput() const {
+        if (!usingHardware_) {
+            return false;
+        }
+        const std::string encoderLower = toLowerCopy(activeEncoderName_);
+        // Intel Quick Sync tends to accept RGB32 efficiently. NVIDIA/others prefer NV12.
+        return encoderLower.find("intel") != std::string::npos ||
+               encoderLower.find("quick sync") != std::string::npos ||
+               encoderLower.find("qsv") != std::string::npos;
+    }
+
     DWORD sampleSizeForSubtype(const GUID &subtype) const {
         const DWORD width = static_cast<DWORD>(std::max(1, config_.width));
         const DWORD height = static_cast<DWORD>(std::max(1, config_.height));
@@ -1910,7 +1921,7 @@ class VideoEncoder::Impl {
     bool chooseInputType(ComPtr<IMFMediaType> &outType, GUID &outSubtype) {
         HRESULT hr = S_OK;
         int bestPriority = 999;
-        const bool preferRgb32 = usingHardware_;
+        const bool preferRgb32 = shouldPreferRgbInput();
 
         for (DWORD i = 0; i < 64; ++i) {
             ComPtr<IMFMediaType> available;
@@ -2296,10 +2307,13 @@ class VideoEncoder::Impl {
             return;
         }
 
-        // Intel Quick Sync async MFT can stall under repeated connect/disconnect churn.
-        // Prefer synchronous ProcessInput/ProcessOutput mode for stability.
+        // Some hardware MFTs can stall or underfeed in async mode under real-time churn.
+        // Prefer synchronous ProcessInput/ProcessOutput mode for these vendors.
         const std::string encoderLower = toLowerCopy(activeEncoderName_);
-        if (encoderLower.find("quick sync") != std::string::npos) {
+        if (encoderLower.find("quick sync") != std::string::npos ||
+            encoderLower.find("intel") != std::string::npos ||
+            encoderLower.find("qsv") != std::string::npos ||
+            encoderLower.find("nvidia") != std::string::npos) {
             spdlog::info("[VideoEncoder] Forcing synchronous MFT mode for '{}'", activeEncoderName_);
             return;
         }
