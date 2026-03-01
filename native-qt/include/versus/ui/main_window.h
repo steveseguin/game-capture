@@ -61,6 +61,7 @@ class MainWindow : public QMainWindow {
     void syncCodecUiState();
     int selectedBitrateKbps() const;
     void updateTrayLiveIndicator(bool live);
+    void setConfigControlsEnabled(bool enabled);
     void closeEvent(QCloseEvent *event) override;
 
     versus::app::VersusApp *core_ = nullptr;

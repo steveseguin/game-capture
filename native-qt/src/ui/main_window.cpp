@@ -321,6 +321,7 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
                 if (windowListWidget_) {
                     windowListWidget_->setAutoRefreshEnabled(true);
                 }
+                setConfigControlsEnabled(true);
                 refreshSelectedWindowPreview();
                 updateGoLiveButton();
             }, Qt::QueuedConnection);
@@ -1068,6 +1069,7 @@ void MainWindow::onGoLiveClicked() {
                 if (self->windowListWidget_) {
                     self->windowListWidget_->setAutoRefreshEnabled(true);
                 }
+                self->setConfigControlsEnabled(true);
                 self->refreshSelectedWindowPreview();
                 if (self->goLiveButton_) {
                     self->goLiveButton_->setEnabled(!self->selectedWindowId_.isEmpty());
@@ -1190,6 +1192,7 @@ void MainWindow::onGoLiveClicked() {
         if (previewTimer_) {
             previewTimer_->stop();
         }
+        setConfigControlsEnabled(false);
 
         updateStatus("LIVE", "live");
 
@@ -1469,6 +1472,74 @@ int MainWindow::selectedBitrateKbps() const {
         return presetValue;
     }
     return customBitrateSpin_->value();
+}
+
+void MainWindow::setConfigControlsEnabled(bool enabled) {
+    if (windowListWidget_) {
+        windowListWidget_->setEnabled(enabled);
+    }
+    if (streamIdInput_) {
+        streamIdInput_->setEnabled(enabled);
+    }
+    if (passwordInput_) {
+        passwordInput_->setEnabled(enabled);
+    }
+    if (advancedToggle_) {
+        advancedToggle_->setEnabled(enabled);
+        advancedToggle_->setToolTip(
+            enabled ? QString() : QStringLiteral("Stop stream to change capture settings"));
+    }
+
+    if (roomInput_) {
+        roomInput_->setEnabled(enabled);
+    }
+    if (labelInput_) {
+        labelInput_->setEnabled(enabled);
+    }
+    if (resolutionSelect_) {
+        resolutionSelect_->setEnabled(enabled);
+    }
+    if (fpsSelect_) {
+        fpsSelect_->setEnabled(enabled);
+    }
+    if (bitrateSelect_) {
+        bitrateSelect_->setEnabled(enabled);
+    }
+    if (customBitrateSpin_) {
+        const bool customBitrateSelected = bitrateSelect_ && bitrateSelect_->currentData().toInt() <= 0;
+        customBitrateSpin_->setEnabled(enabled && customBitrateSelected);
+    }
+    if (viewerLimitSpin_) {
+        viewerLimitSpin_->setEnabled(enabled);
+    }
+    if (remoteControlCheck_) {
+        remoteControlCheck_->setEnabled(enabled);
+    }
+    if (remoteControlTokenInput_) {
+        const bool remoteControlEnabled = remoteControlCheck_ && remoteControlCheck_->isChecked();
+        remoteControlTokenInput_->setEnabled(enabled && remoteControlEnabled);
+    }
+    if (encoderSelect_) {
+        encoderSelect_->setEnabled(enabled);
+    }
+    if (codecSelect_) {
+        codecSelect_->setEnabled(enabled);
+    }
+    if (alphaWorkflowCheck_) {
+        alphaWorkflowCheck_->setEnabled(enabled && codecSupportsAlphaWorkflow(
+            codecFromUiValue(codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"))));
+    }
+    if (ffmpegPathInput_) {
+        ffmpegPathInput_->setEnabled(enabled);
+    }
+    if (ffmpegOptionsInput_) {
+        ffmpegOptionsInput_->setEnabled(enabled);
+    }
+
+    if (enabled) {
+        onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
+        syncCodecUiState();
+    }
 }
 
 void MainWindow::updateTrayLiveIndicator(bool live) {

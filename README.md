@@ -19,6 +19,9 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 3. Enter a stream ID (or paste a full VDO.Ninja URL) and go live.
 4. Use the generated view links in OBS.
 
+While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
+Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
+
 Web landing/download page:
 - `docs/gamecapture.html`
 
