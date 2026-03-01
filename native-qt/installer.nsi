@@ -54,14 +54,33 @@ Function un.EnsureGameCaptureClosed
     nsExec::ExecToLog 'taskkill /F /T /IM game-capture.exe'
 FunctionEnd
 
+Function RemoveExistingInstall
+    IfFileExists "$INSTDIR\uninstall.exe" 0 done
+    DetailPrint "Existing install detected; running previous uninstaller..."
+    ExecWait '"$INSTDIR\uninstall.exe" /S _?=$INSTDIR'
+done:
+FunctionEnd
+
 ; Installer Section
 Section "Install"
     Call EnsureGameCaptureClosed
+    Call RemoveExistingInstall
+    Call EnsureGameCaptureClosed
+    Sleep 600
 
     SetOutPath "$INSTDIR"
 
+    ; Best effort cleanup of stale/legacy file names before copy.
+    Delete /REBOOTOK "$INSTDIR\game-capture.exe"
+    Delete /REBOOTOK "$INSTDIR\game-catpure.exe"
+    Delete /REBOOTOK "$INSTDIR\game-catpure.ede"
+
     ; Main executable
+    ClearErrors
     File "${BUILD_BIN_DIR}\game-capture.exe"
+    IfErrors 0 +3
+    MessageBox MB_ICONSTOP|MB_OK "Game Capture is still running or files are locked. Close the app and retry setup."
+    Abort
     File /nonfatal "${BUILD_BIN_DIR}\*.dll"
     File /nonfatal "${BUILD_BIN_DIR}\vdoninja.ico"
     File /nonfatal "${BUILD_BIN_DIR}\RELEASE-NOTES.txt"
