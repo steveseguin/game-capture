@@ -34,6 +34,19 @@ std::string toLowerCopy(std::string value) {
     return value;
 }
 
+bool isStreamIdInUseAlert(const std::string &messageLower) {
+    return messageLower.find("streamid-already-published") != std::string::npos ||
+           messageLower.find("already in use") != std::string::npos ||
+           messageLower.find("already has this stream id") != std::string::npos ||
+           messageLower.find("already has this streamid") != std::string::npos ||
+           messageLower.find("duplicate stream") != std::string::npos ||
+           ((messageLower.find("stream") != std::string::npos ||
+             messageLower.find("stream id") != std::string::npos ||
+             messageLower.find("streamid") != std::string::npos) &&
+            (messageLower.find("in use") != std::string::npos ||
+             messageLower.find("already has") != std::string::npos));
+}
+
 bool jsonBoolLike(const nlohmann::json &value, bool defaultValue) {
     if (value.is_boolean()) {
         return value.get<bool>();
@@ -490,16 +503,16 @@ void VersusApp::setupSignalingCallbacks() {
         if (!live_ || stopRequested_.load()) {
             return;
         }
+        if (signaling_.isConnected()) {
+            spdlog::warn("[Signaling] Ignoring reconnect on non-fatal error while socket remains connected");
+            return;
+        }
         startSignalingRecovery();
     });
 
     signaling_.onAlert([this](const std::string &message) {
         const std::string lower = toLowerCopy(message);
-        const bool streamIdInUse =
-            lower.find("streamid-already-published") != std::string::npos ||
-            lower.find("already in use") != std::string::npos ||
-            (lower.find("stream") != std::string::npos &&
-             lower.find("in use") != std::string::npos);
+        const bool streamIdInUse = isStreamIdInUseAlert(lower);
 
         if (streamIdInUse) {
             const std::string notify =

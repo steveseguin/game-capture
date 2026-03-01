@@ -12,12 +12,14 @@
 #include <QMenuBar>
 #include <QMetaObject>
 #include <QPainter>
+#include <QPointer>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStyle>
 #include <QUrlQuery>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <spdlog/spdlog.h>
 
@@ -572,6 +574,11 @@ void MainWindow::setupUI() {
 
     setCentralWidget(central);
     resize(980, 720);
+
+    // Keep desktop UX consistent: buttons should show a hand cursor on hover.
+    for (auto *button : findChildren<QPushButton *>()) {
+        button->setCursor(Qt::PointingHandCursor);
+    }
 }
 
 void MainWindow::setupTrayIcon() {
@@ -813,48 +820,92 @@ void MainWindow::onGoLiveClicked() {
     }
 
     if (isLive_) {
-        core_->stopLive();
-        core_->stopCapture();
-
-        isLive_ = false;
-        statsTimer_->stop();
-        if (previewTimer_) {
-            previewTimer_->start();
+        if (stopInProgress_) {
+            return;
         }
 
-        updateStatus("Stopped", "idle");
-        shareLabel_->clear();
-        if (copyShareLinkButton_) {
-            copyShareLinkButton_->setEnabled(false);
+        stopInProgress_ = true;
+        updateStatus("Stopping...", "connecting");
+        if (goLiveButton_) {
+            goLiveButton_->setEnabled(false);
         }
-        if (openShareLinkButton_) {
-            openShareLinkButton_->setEnabled(false);
-        }
-        statsPanel_->setVisible(false);
-        statsPanel_->clear();
-        audioMeter_->setValue(0);
-        audioLevelLabel_->setText("-inf dB");
-        encoderStatusLabel_->setText("Active Encoder: (not streaming)");
-        encoderStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+        updateGoLiveButton();
 
-        if (trayIcon_) {
-            updateTrayLiveIndicator(false);
-        }
-        if (copyShareLinkAction_) {
-            copyShareLinkAction_->setEnabled(false);
-        }
-        if (copyShareLinkTrayAction_) {
-            copyShareLinkTrayAction_->setEnabled(false);
-        }
-        if (openShareLinkAction_) {
-            openShareLinkAction_->setEnabled(false);
-        }
-        if (openShareLinkTrayAction_) {
-            openShareLinkTrayAction_->setEnabled(false);
-        }
+        QPointer<MainWindow> self(this);
+        auto *core = core_;
+        QtConcurrent::run([self, core]() {
+            core->stopLive();
+            core->stopCapture();
 
-        windowListWidget_->setAutoRefreshEnabled(true);
-        refreshSelectedWindowPreview();
+            if (!self) {
+                return;
+            }
+            QMetaObject::invokeMethod(self, [self]() {
+                if (!self) {
+                    return;
+                }
+
+                self->isLive_ = false;
+                self->stopInProgress_ = false;
+                if (self->statsTimer_) {
+                    self->statsTimer_->stop();
+                }
+                if (self->previewTimer_) {
+                    self->previewTimer_->start();
+                }
+
+                self->updateStatus("Stopped", "idle");
+                if (self->shareLabel_) {
+                    self->shareLabel_->clear();
+                }
+                if (self->copyShareLinkButton_) {
+                    self->copyShareLinkButton_->setEnabled(false);
+                }
+                if (self->openShareLinkButton_) {
+                    self->openShareLinkButton_->setEnabled(false);
+                }
+                if (self->statsPanel_) {
+                    self->statsPanel_->setVisible(false);
+                    self->statsPanel_->clear();
+                }
+                if (self->audioMeter_) {
+                    self->audioMeter_->setValue(0);
+                }
+                if (self->audioLevelLabel_) {
+                    self->audioLevelLabel_->setText("-inf dB");
+                }
+                if (self->encoderStatusLabel_) {
+                    self->encoderStatusLabel_->setText("Active Encoder: (not streaming)");
+                    self->encoderStatusLabel_->setStyleSheet(
+                        QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+                }
+
+                if (self->trayIcon_) {
+                    self->updateTrayLiveIndicator(false);
+                }
+                if (self->copyShareLinkAction_) {
+                    self->copyShareLinkAction_->setEnabled(false);
+                }
+                if (self->copyShareLinkTrayAction_) {
+                    self->copyShareLinkTrayAction_->setEnabled(false);
+                }
+                if (self->openShareLinkAction_) {
+                    self->openShareLinkAction_->setEnabled(false);
+                }
+                if (self->openShareLinkTrayAction_) {
+                    self->openShareLinkTrayAction_->setEnabled(false);
+                }
+
+                if (self->windowListWidget_) {
+                    self->windowListWidget_->setAutoRefreshEnabled(true);
+                }
+                self->refreshSelectedWindowPreview();
+                if (self->goLiveButton_) {
+                    self->goLiveButton_->setEnabled(!self->selectedWindowId_.isEmpty());
+                }
+                self->updateGoLiveButton();
+            }, Qt::QueuedConnection);
+        });
     } else {
         updateStatus("Connecting...", "connecting");
 
@@ -1043,6 +1094,22 @@ void MainWindow::onGoLiveClicked() {
 }
 
 void MainWindow::updateGoLiveButton() {
+    if (stopInProgress_) {
+        goLiveButton_->setText("STOPPING...");
+        goLiveButton_->setStyleSheet(QString(
+            "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }")
+            .arg(COLOR_YELLOW));
+        if (goLiveAction_) {
+            goLiveAction_->setText("Stopping...");
+            goLiveAction_->setEnabled(false);
+        }
+        if (goLiveMenuAction_) {
+            goLiveMenuAction_->setText("Stopping...");
+            goLiveMenuAction_->setEnabled(false);
+        }
+        return;
+    }
+
     if (isLive_) {
         goLiveButton_->setText("STOP");
         goLiveButton_->setStyleSheet(QString(
@@ -1051,9 +1118,11 @@ void MainWindow::updateGoLiveButton() {
         ).arg(COLOR_RED));
         if (goLiveAction_) {
             goLiveAction_->setText("Stop");
+            goLiveAction_->setEnabled(true);
         }
         if (goLiveMenuAction_) {
             goLiveMenuAction_->setText("Stop");
+            goLiveMenuAction_->setEnabled(true);
         }
     } else {
         goLiveButton_->setText("GO LIVE");
@@ -1063,9 +1132,11 @@ void MainWindow::updateGoLiveButton() {
         ).arg(COLOR_ACCENT, COLOR_ACCENT_HOVER));
         if (goLiveAction_) {
             goLiveAction_->setText("Go Live");
+            goLiveAction_->setEnabled(!selectedWindowId_.isEmpty());
         }
         if (goLiveMenuAction_) {
             goLiveMenuAction_->setText("Go Live");
+            goLiveMenuAction_->setEnabled(!selectedWindowId_.isEmpty());
         }
     }
 }
