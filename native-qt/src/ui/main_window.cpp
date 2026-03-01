@@ -583,11 +583,28 @@ void MainWindow::setupUI() {
 
 void MainWindow::setupTrayIcon() {
     if (!QSystemTrayIcon::isSystemTrayAvailable()) {
+        spdlog::warn("[UI] System tray unavailable; disabling Minimize To Tray On Close");
+        minimizeToTrayOnClose_ = false;
+        if (minimizeToTrayOnCloseAction_) {
+            QSignalBlocker blocker(minimizeToTrayOnCloseAction_);
+            minimizeToTrayOnCloseAction_->setChecked(false);
+            minimizeToTrayOnCloseAction_->setEnabled(false);
+            minimizeToTrayOnCloseAction_->setToolTip("System tray is unavailable on this system");
+        }
         return;
     }
 
     trayIcon_ = new QSystemTrayIcon(this);
     trayBaseIcon_ = QIcon(":/icons/vdoninja.ico");
+    if (trayBaseIcon_.isNull()) {
+        trayBaseIcon_ = windowIcon();
+    }
+    if (trayBaseIcon_.isNull()) {
+        trayBaseIcon_ = qApp->windowIcon();
+    }
+    if (trayBaseIcon_.isNull()) {
+        trayBaseIcon_ = style()->standardIcon(QStyle::SP_ComputerIcon);
+    }
     trayIcon_->setIcon(trayBaseIcon_);
     trayIcon_->setToolTip(APP_TRAY_IDLE);
 
@@ -650,6 +667,9 @@ void MainWindow::setupTrayIcon() {
     trayIcon_->setContextMenu(trayMenu_);
     connect(trayIcon_, &QSystemTrayIcon::activated, this, &MainWindow::onTrayIconActivated);
     trayIcon_->show();
+    if (!trayIcon_->isVisible()) {
+        spdlog::warn("[UI] Tray icon failed to become visible after setup");
+    }
     updateTrayLiveIndicator(false);
 }
 
@@ -1351,7 +1371,25 @@ void MainWindow::refreshSelectedWindowPreview() {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    if (!quitRequested_ && trayIcon_ && minimizeToTrayOnClose_) {
+    if (!quitRequested_ && minimizeToTrayOnClose_) {
+        if (!trayIcon_ && QSystemTrayIcon::isSystemTrayAvailable()) {
+            setupTrayIcon();
+        }
+
+        if (trayIcon_ && !trayIcon_->isVisible()) {
+            trayIcon_->show();
+        }
+
+        if (!trayIcon_ || !trayIcon_->isVisible()) {
+            event->ignore();
+            show();
+            raise();
+            activateWindow();
+            updateStatus("System tray unavailable. App remains open.", "error");
+            spdlog::warn("[UI] Close-to-tray requested but tray icon is unavailable; keeping window visible");
+            return;
+        }
+
         event->ignore();
         hide();
         if (showHideAction_) {
@@ -1360,7 +1398,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         if (trayIcon_->supportsMessages()) {
             trayIcon_->showMessage(
                 APP_BRAND,
-                "Still running in system tray",
+                "Still running in system tray (next to the clock)",
                 QSystemTrayIcon::Information,
                 3000);
         }
