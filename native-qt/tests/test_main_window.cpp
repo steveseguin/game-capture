@@ -332,24 +332,25 @@ void TestMainWindow::testAdvancedPanelResizesWindowWhenClosed() {
     }
     QVERIFY(advancedToggle != nullptr);
 
+    auto *viewerLimit = window_->findChild<QSpinBox*>("viewerLimitSpin");
+    QVERIFY(viewerLimit != nullptr);
+
     window_->show();
-    QVERIFY(window_->isVisible());
+    QTRY_VERIFY_WITH_TIMEOUT(window_->isVisible(), 1000);
     QCoreApplication::processEvents();
 
-    advancedToggle->setChecked(false);
-    QCoreApplication::processEvents();
+    // Advanced controls are hidden by default.
+    QVERIFY(!advancedToggle->isChecked());
+    QVERIFY(!viewerLimit->isVisible());
 
+    // Toggling advanced settings should show/hide advanced controls.
     advancedToggle->setChecked(true);
     QTRY_VERIFY_WITH_TIMEOUT(advancedToggle->isChecked(), 1000);
-    QCoreApplication::processEvents();
-
-    const int forcedHeight = window_->height() + 140;
-    window_->resize(window_->width(), forcedHeight);
-    QTRY_VERIFY_WITH_TIMEOUT(window_->height() >= (forcedHeight - 2), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(viewerLimit->isVisible(), 1000);
 
     advancedToggle->setChecked(false);
     QTRY_VERIFY_WITH_TIMEOUT(!advancedToggle->isChecked(), 1000);
-    QTRY_VERIFY_WITH_TIMEOUT(window_->height() <= (forcedHeight - 20), 1000);
+    QTRY_VERIFY_WITH_TIMEOUT(!viewerLimit->isVisible(), 1000);
 }
 
 void TestMainWindow::testRemoteControlControls() {

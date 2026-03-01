@@ -147,7 +147,7 @@ void TestWindowListWidget::testRefreshSignal() {
 }
 
 void TestWindowListWidget::testAutoRefreshTimer() {
-    QSignalSpy spy(widget_, &versus::ui::WindowListWidget::refreshRequested);
+    QSignalSpy spy(widget_, &versus::ui::WindowListWidget::autoRefreshRequested);
     QVERIFY(spy.isValid());
 
     // Auto-refresh is enabled by default with 3 second interval

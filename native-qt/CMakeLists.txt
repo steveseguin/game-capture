@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.29 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.30 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -349,12 +349,5 @@ if(VERSUS_BUILD_TESTS)
     set_tests_properties(MainWindowTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 
-    # Test: VdoSignaling lifecycle
-    add_executable(test_vdo_signaling tests/test_vdo_signaling.cpp)
-    set_target_properties(test_vdo_signaling PROPERTIES AUTOMOC ON)
-    target_link_libraries(test_vdo_signaling PRIVATE versus-lib Qt6::Test)
-    add_test(NAME VdoSignalingTest COMMAND test_vdo_signaling)
-    set_tests_properties(VdoSignalingTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 endif()
 

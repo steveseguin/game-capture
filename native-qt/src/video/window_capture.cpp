@@ -45,6 +45,8 @@ namespace versus::video {
 
 namespace {
 
+constexpr int kFramePoolBufferCount = 4;
+
 bool tryParseWindowHandle(const std::string &windowId, HWND &outHwnd) {
     if (windowId.empty()) {
         return false;
@@ -274,7 +276,7 @@ class WindowCapture::Impl {
             framePool_ = winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool::CreateFreeThreaded(
                 d3dDevice,
                 winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                2,
+                kFramePoolBufferCount,
                 size);
 
             framePool_.FrameArrived([this](auto const &sender, auto const &) { onFrameArrived(sender); });
@@ -335,7 +337,7 @@ class WindowCapture::Impl {
                     framePool_.Recreate(
                         graphicsDevice_,
                         winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,
-                        2,
+                        kFramePoolBufferCount,
                         contentSize);
                     spdlog::info("[Capture::Impl] Capture content resized, recreated frame pool: {}x{}",
                                  contentWidth,

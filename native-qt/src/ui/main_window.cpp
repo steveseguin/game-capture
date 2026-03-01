@@ -528,7 +528,7 @@ void MainWindow::setupUI() {
     advancedForm->addRow("FPS", fpsSelect_);
 
     bitrateSelect_ = new QComboBox(this);
-    bitrateSelect_->addItem("Ultra (24000 kbps)", QVariant(24000));
+    bitrateSelect_->addItem("Ultra (20000 kbps)", QVariant(20000));
     bitrateSelect_->addItem("High (12000 kbps)", QVariant(12000));
     bitrateSelect_->addItem("Medium (6000 kbps)", QVariant(6000));
     bitrateSelect_->addItem("Low (3000 kbps)", QVariant(3000));
