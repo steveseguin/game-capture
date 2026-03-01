@@ -44,8 +44,20 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026"
 ; Languages
 !insertmacro MUI_LANGUAGE "English"
 
+Function EnsureGameCaptureClosed
+    ; Avoid "Error opening file for writing" when Qt DLLs are still locked.
+    nsExec::ExecToLog 'taskkill /F /T /IM game-capture.exe'
+FunctionEnd
+
+Function un.EnsureGameCaptureClosed
+    ; Uninstaller needs its own function namespace in NSIS.
+    nsExec::ExecToLog 'taskkill /F /T /IM game-capture.exe'
+FunctionEnd
+
 ; Installer Section
 Section "Install"
+    Call EnsureGameCaptureClosed
+
     SetOutPath "$INSTDIR"
 
     ; Main executable
@@ -85,6 +97,8 @@ SectionEnd
 
 ; Uninstaller Section
 Section "Uninstall"
+    Call un.EnsureGameCaptureClosed
+
     ; Remove files
     Delete "$INSTDIR\*.*"
     RMDir /r "$INSTDIR\platforms"
