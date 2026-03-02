@@ -66,3 +66,6 @@ native-qt/qa/reports/
 
 /.vt-apikey
 /native-qt/.vt-apikey
+
+# Local helper tooling
+/.tools/
