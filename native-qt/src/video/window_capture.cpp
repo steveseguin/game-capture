@@ -112,10 +112,27 @@ class WindowCapture::Impl {
             context_.put());
 
         if (FAILED(hr)) {
+            spdlog::warn("[Capture::Impl] D3D11CreateDevice failed hr=0x{:08x}", static_cast<unsigned int>(hr));
             return false;
         }
 
-        useGraphicsCapture_ = winrt::Windows::Graphics::Capture::GraphicsCaptureSession::IsSupported();
+        useGraphicsCapture_ = false;
+#ifdef VERSUS_USE_GRAPHICS_CAPTURE
+        try {
+            useGraphicsCapture_ = winrt::Windows::Graphics::Capture::GraphicsCaptureSession::IsSupported();
+        } catch (const winrt::hresult_error &e) {
+            spdlog::warn("[Capture::Impl] GraphicsCapture support probe failed hr=0x{:08x} msg={}",
+                         static_cast<unsigned int>(e.code()),
+                         winrt::to_string(e.message()));
+            useGraphicsCapture_ = false;
+        } catch (const std::exception &e) {
+            spdlog::warn("[Capture::Impl] GraphicsCapture support probe threw std::exception: {}", e.what());
+            useGraphicsCapture_ = false;
+        } catch (...) {
+            spdlog::warn("[Capture::Impl] GraphicsCapture support probe failed with unknown exception");
+            useGraphicsCapture_ = false;
+        }
+#endif
         return true;
     }
 

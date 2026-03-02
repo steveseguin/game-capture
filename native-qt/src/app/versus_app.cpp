@@ -4,6 +4,7 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -21,6 +22,9 @@ constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kRoomInitTimeoutMs = 7000;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
+constexpr int kHardwareFailSampleWindow = 300;
+constexpr double kHardwareFailRatioThreshold = 0.35;
+constexpr int kHardwareMaxSelfRecoveries = 2;
 constexpr int kLqWidth = 640;
 constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
@@ -37,6 +41,41 @@ std::string toLowerCopy(std::string value) {
         return static_cast<char>(std::tolower(ch));
     });
     return value;
+}
+
+const char *hardwareEncoderLabel(video::HardwareEncoder encoder) {
+    switch (encoder) {
+        case video::HardwareEncoder::NVENC:
+            return "NVENC";
+        case video::HardwareEncoder::QuickSync:
+            return "QuickSync";
+        case video::HardwareEncoder::AMF:
+            return "AMF";
+        case video::HardwareEncoder::None:
+        default:
+            return "Software";
+    }
+}
+
+bool encoderNameMatchesHardwarePreference(const std::string &encoderName, video::HardwareEncoder mode) {
+    const std::string lower = toLowerCopy(encoderName);
+    switch (mode) {
+        case video::HardwareEncoder::NVENC:
+            return lower.find("nvidia") != std::string::npos ||
+                   lower.find("nvenc") != std::string::npos ||
+                   lower.find("geforce") != std::string::npos;
+        case video::HardwareEncoder::QuickSync:
+            return lower.find("intel") != std::string::npos ||
+                   lower.find("quick sync") != std::string::npos ||
+                   lower.find("qsv") != std::string::npos;
+        case video::HardwareEncoder::AMF:
+            return lower.find("amd") != std::string::npos ||
+                   lower.find("amf") != std::string::npos ||
+                   lower.find("radeon") != std::string::npos;
+        case video::HardwareEncoder::None:
+        default:
+            return false;
+    }
 }
 
 bool isStreamIdInUseAlert(const std::string &messageLower) {
@@ -144,6 +183,10 @@ bool VersusApp::startCapture(const std::string &windowId) {
     lastCaptureResizeMs_ = 0;
     lastHqReconfigureMs_ = 0;
     lastResizeKeyframeRequestMs_ = 0;
+    hardwareEncodeSampleCount_ = 0;
+    hardwareEncodeFailCount_ = 0;
+    hardwareRecoveryAttemptCount_ = 0;
+    hardwareAutoFallbackTriggered_ = false;
     hqAspectLocked_ = false;
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
@@ -294,6 +337,10 @@ void VersusApp::stopCapture() {
     lastCaptureResizeMs_ = 0;
     lastHqReconfigureMs_ = 0;
     lastResizeKeyframeRequestMs_ = 0;
+    hardwareEncodeSampleCount_ = 0;
+    hardwareEncodeFailCount_ = 0;
+    hardwareRecoveryAttemptCount_ = 0;
+    hardwareAutoFallbackTriggered_ = false;
     hqAspectLocked_ = false;
     capturing_ = false;
 }
@@ -329,6 +376,10 @@ bool VersusApp::goLive(const StartOptions &options) {
     pliWindowCount_.store(0, std::memory_order_relaxed);
     lastCpuWarningMs_.store(0, std::memory_order_relaxed);
     softwareOverloadSamples_.store(0, std::memory_order_relaxed);
+    hardwareEncodeSampleCount_ = 0;
+    hardwareEncodeFailCount_ = 0;
+    hardwareRecoveryAttemptCount_ = 0;
+    hardwareAutoFallbackTriggered_ = false;
 
     room_ = options.room;
     password_ = options.password;
@@ -1552,7 +1603,159 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         }
 
         const auto encodeStart = std::chrono::steady_clock::now();
-        if (videoEncoder_.encode(frame, hqPacket)) {
+        const bool hardwareEncodingBefore = videoEncoder_.isHardwareEncoderActive();
+        const bool encodeOk = videoEncoder_.encode(frame, hqPacket);
+
+        if (hardwareEncodingBefore && !externalFfmpegEncoder) {
+            hardwareEncodeSampleCount_++;
+            if (!encodeOk) {
+                hardwareEncodeFailCount_++;
+            }
+            if (!hardwareAutoFallbackTriggered_ && hardwareEncodeSampleCount_ >= kHardwareFailSampleWindow) {
+                const double failRate = static_cast<double>(hardwareEncodeFailCount_) /
+                                        static_cast<double>(std::max(1, hardwareEncodeSampleCount_));
+                if (failRate >= kHardwareFailRatioThreshold) {
+                    const std::string unstableEncoder = videoEncoder_.activeEncoderName();
+                    const std::string unstableEncoderLower = toLowerCopy(unstableEncoder);
+                    spdlog::warn(
+                        "[App] Hardware encoder '{}' unstable (failures={}/{} {:.1f}%), attempting hardware-only recovery",
+                        unstableEncoder,
+                        hardwareEncodeFailCount_,
+                        hardwareEncodeSampleCount_,
+                        failRate * 100.0);
+
+                    auto reinitAndCheck = [&](const video::EncoderConfig &candidateConfig,
+                                              bool rejectSoftware,
+                                              bool rejectSameEncoder,
+                                              const char *stepLabel,
+                                              const char *modeLabel) {
+                        videoEncoder_.shutdown();
+                        if (!videoEncoder_.initialize(candidateConfig)) {
+                            spdlog::warn("[App] {} failed for mode {}", stepLabel, modeLabel);
+                            return false;
+                        }
+
+                        const std::string candidateName = videoEncoder_.activeEncoderName();
+                        const std::string candidateNameLower = toLowerCopy(candidateName);
+                        if (rejectSoftware && !videoEncoder_.isHardwareEncoderActive()) {
+                            spdlog::warn(
+                                "[App] {} for mode {} resolved to software encoder '{}'; rejecting",
+                                stepLabel,
+                                modeLabel,
+                                candidateName);
+                            return false;
+                        }
+                        if (candidateConfig.preferredHardware != video::HardwareEncoder::None &&
+                            !encoderNameMatchesHardwarePreference(candidateName, candidateConfig.preferredHardware)) {
+                            spdlog::warn(
+                                "[App] {} for mode {} selected mismatched encoder '{}'; rejecting",
+                                stepLabel,
+                                modeLabel,
+                                candidateName);
+                            return false;
+                        }
+                        if (rejectSameEncoder && candidateNameLower == unstableEncoderLower) {
+                            spdlog::warn(
+                                "[App] {} for mode {} selected the same unstable encoder '{}'; rejecting",
+                                stepLabel,
+                                modeLabel,
+                                candidateName);
+                            return false;
+                        }
+                        return true;
+                    };
+
+                    bool switchedToHardware = false;
+
+                    if (hardwareRecoveryAttemptCount_ < kHardwareMaxSelfRecoveries) {
+                        video::EncoderConfig selfRecoveryConfig = videoConfig_;
+                        selfRecoveryConfig.codec = video::VideoCodec::H264;
+                        if (reinitAndCheck(selfRecoveryConfig, true, false, "Self-recovery reinit", "current")) {
+                            hardwareRecoveryAttemptCount_++;
+                            videoConfig_ = selfRecoveryConfig;
+                            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                            emitRuntimeEvent(
+                                "Hardware encoder became unstable; restarted hardware encoder to recover.",
+                                false);
+                            spdlog::info("[App] Hardware self-recovery succeeded (attempt {}/{}) with '{}'",
+                                         hardwareRecoveryAttemptCount_,
+                                         kHardwareMaxSelfRecoveries,
+                                         videoEncoder_.activeEncoderName());
+                            switchedToHardware = true;
+                        }
+                    }
+
+                    if (!switchedToHardware) {
+                        const std::array<video::HardwareEncoder, 3> hardwareFallbackOrder = {
+                            video::HardwareEncoder::QuickSync,
+                            video::HardwareEncoder::AMF,
+                            video::HardwareEncoder::NVENC};
+
+                        for (const auto mode : hardwareFallbackOrder) {
+                            if (mode == videoConfig_.preferredHardware) {
+                                continue;
+                            }
+
+                            video::EncoderConfig candidateConfig = videoConfig_;
+                            candidateConfig.preferredHardware = mode;
+                            candidateConfig.codec = video::VideoCodec::H264;
+                            candidateConfig.forceFfmpegNvenc = false;
+
+                            if (!reinitAndCheck(candidateConfig,
+                                                true,
+                                                true,
+                                                "Alternate hardware recovery",
+                                                hardwareEncoderLabel(mode))) {
+                                continue;
+                            }
+
+                            hardwareRecoveryAttemptCount_ = 0;
+                            videoConfig_ = candidateConfig;
+                            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                            emitRuntimeEvent(
+                                "Primary hardware encoder became unstable; switched to alternate hardware encoder.",
+                                false);
+                            spdlog::info("[App] Switched to alternate hardware encoder '{}'",
+                                         videoEncoder_.activeEncoderName());
+                            switchedToHardware = true;
+                            break;
+                        }
+                    }
+
+                    if (!switchedToHardware) {
+                        video::EncoderConfig fallbackConfig = videoConfig_;
+                        fallbackConfig.preferredHardware = video::HardwareEncoder::None;
+                        fallbackConfig.codec = video::VideoCodec::H264;
+                        fallbackConfig.forceFfmpegNvenc = false;
+
+                        videoEncoder_.shutdown();
+                        if (videoEncoder_.initialize(fallbackConfig)) {
+                            videoConfig_ = fallbackConfig;
+                            hardwareAutoFallbackTriggered_ = true;
+                            hardwareRecoveryAttemptCount_ = 0;
+                            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                            emitRuntimeEvent(
+                                "All hardware encoder options were unstable; switched to software H.264.",
+                                false);
+                            spdlog::warn("[App] All hardware fallback options failed; switched to software H.264");
+                        } else {
+                            spdlog::error("[App] Software fallback encoder initialization failed");
+                        }
+                    }
+                }
+                hardwareEncodeSampleCount_ = 0;
+                hardwareEncodeFailCount_ = 0;
+            }
+        } else if (!hardwareEncodingBefore) {
+            hardwareEncodeSampleCount_ = 0;
+            hardwareEncodeFailCount_ = 0;
+            hardwareRecoveryAttemptCount_ = 0;
+        }
+
+        if (encodeOk) {
             haveHqPacket = true;
             const auto encodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                              std::chrono::steady_clock::now() - encodeStart)

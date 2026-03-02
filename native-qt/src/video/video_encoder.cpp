@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <cctype>
+#include <condition_variable>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -519,28 +520,9 @@ class VideoEncoder::Impl {
                 if (!config_.forceFfmpegNvenc &&
                     config_.preferredHardware == HardwareEncoder::NVENC &&
                     !matchesPreferredHardware(activeEncoderName_, HardwareEncoder::NVENC)) {
-                    spdlog::warn("[VideoEncoder] Requested NVENC but active encoder is '{}'; trying FFmpeg NVENC fallback",
-                                 activeEncoderName_);
-                    if (initializeExternalFfmpegNvenc()) {
-                        if (runWarmupProbe()) {
-                            resetCurrentTransform();
-                            shutdownMf();
-                            releaseCom();
-                            initialized_ = true;
-                            usingHardware_ = externalUsingHardware_;
-                            activeEncoderName_ = externalEncoderName_;
-                            activeCodec_ = config_.codec;
-                            frameCount_ = 0;
-                            spdlog::info("[VideoEncoder] Using hardware encoder: {}", activeEncoderName_);
-                            return true;
-                        }
-                        spdlog::warn("[VideoEncoder] FFmpeg NVENC fallback failed warm-up; keeping '{}'",
-                                     candidate.name);
-                        shutdownExternalFfmpegNvenc();
-                    } else {
-                        spdlog::warn("[VideoEncoder] FFmpeg NVENC fallback unavailable; keeping '{}'",
-                                     candidate.name);
-                    }
+                    spdlog::warn(
+                        "[VideoEncoder] Requested NVENC but active encoder is '{}'; continuing with Media Foundation path",
+                        activeEncoderName_);
                 }
 
                 frameCount_ = 0;
@@ -774,22 +756,27 @@ class VideoEncoder::Impl {
             pumpAsyncEvents();
 
             bool produced = false;
+            bool havePrefetchedOutput = false;
+            EncodedPacket prefetchedOutput;
             if (pendingHaveOutputEvents_ > 0) {
-                hr = pullOutput(output, produced);
+                EncodedPacket preInputPacket;
+                hr = pullOutput(preInputPacket, produced);
                 if (SUCCEEDED(hr) && produced) {
                     pendingHaveOutputEvents_ = std::max(0, pendingHaveOutputEvents_ - 1);
-                    return true;
-                }
-                if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
-                    pendingHaveOutputEvents_ = 0;
+                    prefetchedOutput = std::move(preInputPacket);
+                    havePrefetchedOutput = true;
                 } else {
-                    pendingHaveOutputEvents_ = std::max(0, pendingHaveOutputEvents_ - 1);
-                }
-                if (FAILED(hr) && hr != MF_E_TRANSFORM_STREAM_CHANGE) {
-                    static int asyncOutputFailCount = 0;
-                    if (++asyncOutputFailCount % 100 == 1) {
-                        spdlog::warn("[MFEncoder] Async ProcessOutput failed hr=0x{:08x} (count={})",
-                                     static_cast<unsigned>(hr), asyncOutputFailCount);
+                    if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
+                        pendingHaveOutputEvents_ = 0;
+                    } else {
+                        pendingHaveOutputEvents_ = std::max(0, pendingHaveOutputEvents_ - 1);
+                    }
+                    if (FAILED(hr) && hr != MF_E_TRANSFORM_STREAM_CHANGE) {
+                        static int asyncOutputFailCount = 0;
+                        if (++asyncOutputFailCount % 100 == 1) {
+                            spdlog::warn("[MFEncoder] Async ProcessOutput failed hr=0x{:08x} (count={})",
+                                         static_cast<unsigned>(hr), asyncOutputFailCount);
+                        }
                     }
                 }
             }
@@ -798,6 +785,10 @@ class VideoEncoder::Impl {
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                 pumpAsyncEvents();
                 if (pendingNeedInputEvents_ <= 0) {
+                    if (havePrefetchedOutput) {
+                        output = std::move(prefetchedOutput);
+                        return true;
+                    }
                     return false;
                 }
             }
@@ -806,12 +797,16 @@ class VideoEncoder::Impl {
             if (hr == MF_E_NOTACCEPTING) {
                 pendingNeedInputEvents_ = 0;
                 pumpAsyncEvents();
-                if (pendingHaveOutputEvents_ > 0) {
+                if (!havePrefetchedOutput && pendingHaveOutputEvents_ > 0) {
                     hr = pullOutput(output, produced);
                     if (SUCCEEDED(hr) && produced) {
                         pendingHaveOutputEvents_ = std::max(0, pendingHaveOutputEvents_ - 1);
                         return true;
                     }
+                }
+                if (havePrefetchedOutput) {
+                    output = std::move(prefetchedOutput);
+                    return true;
                 }
                 return false;
             }
@@ -821,10 +816,19 @@ class VideoEncoder::Impl {
                     spdlog::warn("[MFEncoder] Async ProcessInput failed hr=0x{:08x} (count={})",
                                  static_cast<unsigned>(hr), asyncInputFailCount);
                 }
+                if (havePrefetchedOutput) {
+                    output = std::move(prefetchedOutput);
+                    return true;
+                }
                 return false;
             }
             pendingNeedInputEvents_ = std::max(0, pendingNeedInputEvents_ - 1);
             frameCount_++;
+
+            if (havePrefetchedOutput) {
+                output = std::move(prefetchedOutput);
+                return true;
+            }
 
             pumpAsyncEvents();
             if (pendingHaveOutputEvents_ > 0) {
@@ -1191,6 +1195,12 @@ class VideoEncoder::Impl {
                                  encoderName.find("_amf") != std::string::npos;
         externalEncoderName_ = "FFmpeg " + encoderName;
         externalIvfHeaderParsed_ = false;
+        externalInputIsNv12_ = true;
+        if (config_.codec == VideoCodec::AV1 && config_.enableAlpha && !externalUsingHardware_) {
+            // Keep BGRA input for software AV1 alpha workflows.
+            externalInputIsNv12_ = false;
+        }
+        const char *inputPixelFormat = externalInputIsNv12_ ? "nv12" : "bgra";
 
         std::vector<std::string> args = {
             "-hide_banner",
@@ -1198,7 +1208,7 @@ class VideoEncoder::Impl {
             "-nostats",
             "-fflags", "+nobuffer",
             "-f", "rawvideo",
-            "-pix_fmt", "bgra",
+            "-pix_fmt", inputPixelFormat,
             "-video_size", std::to_string(width) + "x" + std::to_string(height),
             "-framerate", std::to_string(frameRate),
             "-i", "-",
@@ -1369,13 +1379,19 @@ class VideoEncoder::Impl {
         externalProcess_ = processInfo.hProcess;
         externalThread_ = processInfo.hThread;
         externalFfmpegArgs_ = args;
-        externalOutputBuffer_.clear();
         externalInputBuffer_.clear();
         externalFramesSubmitted_ = 0;
         externalPacketCount_ = 0;
         externalFirstPacketLogged_ = false;
         externalForceKeyframeRequested_ = false;
+        externalIvfHeaderParsed_ = false;
         usingExternalFfmpeg_ = true;
+
+        if (!startExternalIoWorkers()) {
+            spdlog::warn("[FFmpegEncoder] Failed to start FFmpeg IO workers");
+            shutdownExternalFfmpegNvenc();
+            return false;
+        }
 
         const DWORD waitResult = WaitForSingleObject(externalProcess_, 25);
         if (waitResult == WAIT_OBJECT_0) {
@@ -1386,17 +1402,29 @@ class VideoEncoder::Impl {
             return false;
         }
 
-        spdlog::info("[FFmpegEncoder] Started FFmpeg pipeline: {} codec={} encoder={}",
+        spdlog::info("[FFmpegEncoder] Started FFmpeg pipeline: {} codec={} encoder={} input={}",
                      externalFfmpegPath_.string(),
                      videoCodecName(config_.codec),
-                     encoderName);
+                     encoderName,
+                     externalInputIsNv12_ ? "nv12" : "bgra");
         return true;
     }
 
     void shutdownExternalFfmpegNvenc() {
-        if (externalStdInWrite_) {
-            CloseHandle(externalStdInWrite_);
+        {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
+            externalIoStopRequested_ = true;
+        }
+        externalIoCv_.notify_all();
+
+        HANDLE stdInWrite = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
+            stdInWrite = externalStdInWrite_;
             externalStdInWrite_ = nullptr;
+        }
+        if (stdInWrite) {
+            CloseHandle(stdInWrite);
         }
 
         if (externalProcess_) {
@@ -1407,10 +1435,23 @@ class VideoEncoder::Impl {
             }
         }
 
-        if (externalStdOutRead_) {
-            CloseHandle(externalStdOutRead_);
+        HANDLE stdOutRead = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
+            stdOutRead = externalStdOutRead_;
             externalStdOutRead_ = nullptr;
         }
+        if (stdOutRead) {
+            CloseHandle(stdOutRead);
+        }
+
+        if (externalWriterThread_.joinable()) {
+            externalWriterThread_.join();
+        }
+        if (externalReaderThread_.joinable()) {
+            externalReaderThread_.join();
+        }
+
         if (externalThread_) {
             CloseHandle(externalThread_);
             externalThread_ = nullptr;
@@ -1428,6 +1469,12 @@ class VideoEncoder::Impl {
         externalFirstPacketLogged_ = false;
         externalForceKeyframeRequested_ = false;
         externalIvfHeaderParsed_ = false;
+        externalInputIsNv12_ = true;
+        externalIoStopRequested_ = false;
+        externalWriterFailed_ = false;
+        externalReaderFailed_ = false;
+        externalPendingInputBytes_ = 0;
+        externalFramesWritten_ = 0;
         externalEncoderName_.clear();
         externalUsingHardware_ = false;
         usingExternalFfmpeg_ = false;
@@ -1444,6 +1491,200 @@ class VideoEncoder::Impl {
         }
     }
 
+    bool startExternalIoWorkers() {
+        {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
+            externalIoStopRequested_ = false;
+            externalWriterFailed_ = false;
+            externalReaderFailed_ = false;
+            externalInputQueue_.clear();
+            externalOutputBuffer_.clear();
+            externalPendingInputBytes_ = 0;
+            externalFramesWritten_ = 0;
+        }
+
+        try {
+            externalWriterThread_ = std::thread([this]() { externalWriterLoop(); });
+            externalReaderThread_ = std::thread([this]() { externalReaderLoop(); });
+        } catch (const std::exception &e) {
+            spdlog::warn("[FFmpegEncoder] Failed to start IO worker thread: {}", e.what());
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                externalIoStopRequested_ = true;
+            }
+            externalIoCv_.notify_all();
+            if (externalWriterThread_.joinable()) {
+                externalWriterThread_.join();
+            }
+            if (externalReaderThread_.joinable()) {
+                externalReaderThread_.join();
+            }
+            return false;
+        } catch (...) {
+            spdlog::warn("[FFmpegEncoder] Failed to start IO worker thread (unknown exception)");
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                externalIoStopRequested_ = true;
+            }
+            externalIoCv_.notify_all();
+            if (externalWriterThread_.joinable()) {
+                externalWriterThread_.join();
+            }
+            if (externalReaderThread_.joinable()) {
+                externalReaderThread_.join();
+            }
+            return false;
+        }
+        return true;
+    }
+
+    void externalWriterLoop() {
+        for (;;) {
+            std::vector<uint8_t> frame;
+            {
+                std::unique_lock<std::mutex> lock(externalIoMutex_);
+                externalIoCv_.wait(lock, [this]() {
+                    return externalIoStopRequested_ || !externalInputQueue_.empty();
+                });
+                if (externalIoStopRequested_) {
+                    return;
+                }
+                if (externalInputQueue_.empty()) {
+                    continue;
+                }
+                frame = std::move(externalInputQueue_.front());
+                externalInputQueue_.pop_front();
+                if (externalPendingInputBytes_ >= frame.size()) {
+                    externalPendingInputBytes_ -= frame.size();
+                } else {
+                    externalPendingInputBytes_ = 0;
+                }
+            }
+
+            size_t offset = 0;
+            while (offset < frame.size()) {
+                HANDLE stdInHandle = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(externalIoMutex_);
+                    if (externalIoStopRequested_) {
+                        return;
+                    }
+                    stdInHandle = externalStdInWrite_;
+                }
+
+                if (!stdInHandle) {
+                    std::lock_guard<std::mutex> lock(externalIoMutex_);
+                    externalWriterFailed_ = true;
+                    externalIoStopRequested_ = true;
+                    externalIoCv_.notify_all();
+                    return;
+                }
+
+                const DWORD chunkBytes = static_cast<DWORD>(std::min<size_t>(64 * 1024, frame.size() - offset));
+                DWORD bytesWritten = 0;
+                const BOOL writeOk = WriteFile(stdInHandle,
+                                               frame.data() + offset,
+                                               chunkBytes,
+                                               &bytesWritten,
+                                               nullptr);
+                if (!writeOk || bytesWritten == 0) {
+                    const DWORD err = GetLastError();
+                    if (err != ERROR_BROKEN_PIPE && err != ERROR_NO_DATA && err != ERROR_INVALID_HANDLE) {
+                        spdlog::warn("[FFmpegEncoder] FFmpeg writer thread failed to write frame chunk (err={})", err);
+                    }
+                    std::lock_guard<std::mutex> lock(externalIoMutex_);
+                    externalWriterFailed_ = true;
+                    externalIoStopRequested_ = true;
+                    externalIoCv_.notify_all();
+                    return;
+                }
+                offset += bytesWritten;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                externalFramesWritten_++;
+            }
+            externalIoCv_.notify_all();
+        }
+    }
+
+    void externalReaderLoop() {
+        std::array<uint8_t, 65536> chunk = {};
+        for (;;) {
+            HANDLE stdOutHandle = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                if (externalIoStopRequested_) {
+                    return;
+                }
+                stdOutHandle = externalStdOutRead_;
+            }
+
+            if (!stdOutHandle) {
+                return;
+            }
+
+            DWORD bytesRead = 0;
+            const BOOL readOk = ReadFile(stdOutHandle, chunk.data(), static_cast<DWORD>(chunk.size()), &bytesRead, nullptr);
+            if (!readOk || bytesRead == 0) {
+                const DWORD err = GetLastError();
+                if (err != ERROR_BROKEN_PIPE && err != ERROR_NO_DATA && err != ERROR_INVALID_HANDLE) {
+                    std::lock_guard<std::mutex> lock(externalIoMutex_);
+                    if (!externalIoStopRequested_) {
+                        spdlog::warn("[FFmpegEncoder] FFmpeg reader thread failed to read output (err={})", err);
+                        externalReaderFailed_ = true;
+                        externalIoStopRequested_ = true;
+                    }
+                }
+                externalIoCv_.notify_all();
+                return;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                externalOutputBuffer_.insert(externalOutputBuffer_.end(), chunk.begin(), chunk.begin() + bytesRead);
+            }
+            externalIoCv_.notify_all();
+        }
+    }
+
+    bool enqueueExternalInputFrame(std::vector<uint8_t> frame) {
+        constexpr size_t kMaxQueuedFrames = 3;
+        constexpr size_t kMaxQueuedBytes = 64 * 1024 * 1024;
+
+        if (frame.empty()) {
+            return false;
+        }
+
+        std::unique_lock<std::mutex> lock(externalIoMutex_);
+        if (externalWriterFailed_ || externalReaderFailed_ || externalIoStopRequested_) {
+            return false;
+        }
+
+        const auto enqueueDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
+        while (!externalIoStopRequested_ &&
+               !externalWriterFailed_ &&
+               !externalReaderFailed_ &&
+               externalInputQueue_.size() >= kMaxQueuedFrames) {
+            if (externalIoCv_.wait_until(lock, enqueueDeadline) == std::cv_status::timeout) {
+                return false;
+            }
+        }
+
+        if (externalWriterFailed_ || externalReaderFailed_ || externalIoStopRequested_) {
+            return false;
+        }
+        if ((externalPendingInputBytes_ + frame.size()) > kMaxQueuedBytes) {
+            return false;
+        }
+
+        externalPendingInputBytes_ += frame.size();
+        externalInputQueue_.push_back(std::move(frame));
+        externalIoCv_.notify_all();
+        return true;
+    }
+
     bool prepareExternalInputFrame(const CapturedFrame &input) {
         if (input.format != CapturedFrame::Format::BGRA) {
             spdlog::warn("[FFmpegEncoder] Unsupported input pixel format {}", static_cast<int>(input.format));
@@ -1454,9 +1695,22 @@ class VideoEncoder::Impl {
         }
         const int dstW = std::max(1, config_.width);
         const int dstH = std::max(1, config_.height);
+
+        if (externalInputIsNv12_) {
+            const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH) * 3 / 2;
+            externalInputBuffer_.resize(frameSize);
+            convertBGRAtoNV12(input.data.data(),
+                              input.width,
+                              input.height,
+                              input.stride,
+                              externalInputBuffer_.data(),
+                              dstW,
+                              dstH);
+            return true;
+        }
+
         const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH) * 4;
         externalInputBuffer_.resize(frameSize);
-
         if (input.width == dstW &&
             input.height == dstH &&
             input.stride == dstW * 4 &&
@@ -1472,25 +1726,6 @@ class VideoEncoder::Impl {
                            externalInputBuffer_.data(),
                            dstW,
                            dstH);
-        return true;
-    }
-
-    bool readExternalOutputChunk() {
-        if (!externalStdOutRead_) {
-            return false;
-        }
-        DWORD available = 0;
-        if (!PeekNamedPipe(externalStdOutRead_, nullptr, 0, nullptr, &available, nullptr) || available == 0) {
-            return false;
-        }
-
-        std::array<uint8_t, 65536> chunk = {};
-        const DWORD toRead = std::min<DWORD>(available, static_cast<DWORD>(chunk.size()));
-        DWORD bytesRead = 0;
-        if (!ReadFile(externalStdOutRead_, chunk.data(), toRead, &bytesRead, nullptr) || bytesRead == 0) {
-            return false;
-        }
-        externalOutputBuffer_.insert(externalOutputBuffer_.end(), chunk.begin(), chunk.begin() + bytesRead);
         return true;
     }
 
@@ -1726,41 +1961,61 @@ class VideoEncoder::Impl {
             return false;
         }
 
-        DWORD bytesWritten = 0;
-        const DWORD frameBytes = static_cast<DWORD>(externalInputBuffer_.size());
-        const BOOL writeOk = WriteFile(externalStdInWrite_,
-                                       externalInputBuffer_.data(),
-                                       frameBytes,
-                                       &bytesWritten,
-                                       nullptr);
-        if (!writeOk || bytesWritten != frameBytes) {
-            spdlog::warn("[FFmpegEncoder] Failed to write frame to ffmpeg stdin");
+        if (!enqueueExternalInputFrame(std::move(externalInputBuffer_))) {
+            spdlog::warn("[FFmpegEncoder] Failed to queue frame for FFmpeg pipeline; restarting");
             restartExternalFfmpegNvenc();
             return false;
         }
         externalFramesSubmitted_++;
 
-        const int waitBudgetMs = std::max(8, (2000 / std::max(1, config_.frameRate)));
+        const int waitBudgetMs = std::max(10, (3000 / std::max(1, config_.frameRate)));
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitBudgetMs);
         while (std::chrono::steady_clock::now() < deadline) {
-            bool readAny = false;
-            while (readExternalOutputChunk()) {
-                readAny = true;
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                if (popExternalPacket(output)) {
+                    return true;
+                }
+                if (externalWriterFailed_ || externalReaderFailed_) {
+                    break;
+                }
             }
+
+            if (WaitForSingleObject(externalProcess_, 0) == WAIT_OBJECT_0) {
+                break;
+            }
+
+            std::unique_lock<std::mutex> lock(externalIoMutex_);
+            externalIoCv_.wait_for(lock, std::chrono::milliseconds(2), [this]() {
+                return !externalOutputBuffer_.empty() || externalWriterFailed_ || externalReaderFailed_;
+            });
+        }
+
+        bool ioWorkerFailed = false;
+        {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
             if (popExternalPacket(output)) {
                 return true;
             }
-            if (!readAny) {
-                if (WaitForSingleObject(externalProcess_, 0) == WAIT_OBJECT_0) {
-                    break;
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            if (externalWriterFailed_ || externalReaderFailed_) {
+                ioWorkerFailed = true;
             }
         }
-
-        while (readExternalOutputChunk()) {
+        if (ioWorkerFailed) {
+            spdlog::warn("[FFmpegEncoder] FFmpeg IO worker failure detected; restarting pipeline");
+            restartExternalFfmpegNvenc();
+            return false;
         }
-        return popExternalPacket(output);
+
+        if (WaitForSingleObject(externalProcess_, 0) == WAIT_OBJECT_0) {
+            DWORD exitCode = 0;
+            GetExitCodeProcess(externalProcess_, &exitCode);
+            spdlog::warn("[FFmpegEncoder] ffmpeg process exited during encode wait (code={})", exitCode);
+            shutdownExternalFfmpegNvenc();
+            return false;
+        }
+
+        return false;
     }
 
   private:
@@ -1845,15 +2100,13 @@ class VideoEncoder::Impl {
         const bool nvidiaLike = encoderLower.find("nvidia") != std::string::npos ||
                                 encoderLower.find("nvenc") != std::string::npos ||
                                 encoderLower.find("geforce") != std::string::npos;
-        if (!nvidiaLike) {
+        if (nvidiaLike) {
+            // On recent NVIDIA MFT builds, RGB32 input can become unstable under sustained real-time screen capture
+            // (frequent ProcessOutput/ProcessInput failures). Prefer NV12 for reliability.
             return false;
         }
 
-        // For 1080p+ / >30fps targets, prefer RGB input so the MFT can handle color conversion internally.
-        // This avoids a costly per-frame BGRA->NV12 conversion path on CPU.
-        const int64_t pixels =
-            static_cast<int64_t>(std::max(1, config_.width)) * static_cast<int64_t>(std::max(1, config_.height));
-        return config_.frameRate > 30 || pixels >= (1920LL * 1080LL);
+        return false;
     }
 
     DWORD sampleSizeForSubtype(const GUID &subtype) const {
@@ -2344,12 +2597,12 @@ class VideoEncoder::Impl {
         }
 
         // Some hardware MFTs can stall or underfeed in async mode under real-time churn.
-        // Prefer synchronous ProcessInput/ProcessOutput mode for these vendors.
+        // Keep Intel/QSV in synchronous mode, but allow NVIDIA MFTs to remain async to
+        // avoid E_UNEXPECTED ProcessOutput timing violations.
         const std::string encoderLower = toLowerCopy(activeEncoderName_);
         if (encoderLower.find("quick sync") != std::string::npos ||
             encoderLower.find("intel") != std::string::npos ||
-            encoderLower.find("qsv") != std::string::npos ||
-            encoderLower.find("nvidia") != std::string::npos) {
+            encoderLower.find("qsv") != std::string::npos) {
             spdlog::info("[VideoEncoder] Forcing synchronous MFT mode for '{}'", activeEncoderName_);
             return;
         }
@@ -2705,6 +2958,7 @@ class VideoEncoder::Impl {
     bool externalForceKeyframeRequested_ = false;
     bool externalFirstPacketLogged_ = false;
     bool externalIvfHeaderParsed_ = false;
+    bool externalInputIsNv12_ = true;
     int pendingNeedInputEvents_ = 0;
     int pendingHaveOutputEvents_ = 0;
     int64_t frameCount_ = 0;
@@ -2718,6 +2972,16 @@ class VideoEncoder::Impl {
     std::vector<uint8_t> externalInputBuffer_;
     std::vector<uint8_t> externalOutputBuffer_;
     std::vector<uint8_t> conversionScratchBgra_;
+    std::mutex externalIoMutex_;
+    std::condition_variable externalIoCv_;
+    std::deque<std::vector<uint8_t>> externalInputQueue_;
+    std::thread externalWriterThread_;
+    std::thread externalReaderThread_;
+    bool externalIoStopRequested_ = false;
+    bool externalWriterFailed_ = false;
+    bool externalReaderFailed_ = false;
+    size_t externalPendingInputBytes_ = 0;
+    int64_t externalFramesWritten_ = 0;
     HANDLE externalStdInWrite_ = nullptr;
     HANDLE externalStdOutRead_ = nullptr;
     HANDLE externalProcess_ = nullptr;

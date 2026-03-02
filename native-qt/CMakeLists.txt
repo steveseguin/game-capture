@@ -349,5 +349,9 @@ if(VERSUS_BUILD_TESTS)
     set_tests_properties(MainWindowTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 
+    # Benchmark helper: Video encoder real-time throughput/stability probe
+    add_executable(bench_video_encoder tests/bench_video_encoder.cpp)
+    target_link_libraries(bench_video_encoder PRIVATE versus-lib)
+
 endif()
 
