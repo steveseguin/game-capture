@@ -547,6 +547,20 @@ async function waitForPublisherLog(publisher, pattern, timeoutMs) {
   return { ok: false, outputTail: finalOutput.trim().split(/\r?\n/).slice(-40).join('\n') };
 }
 
+async function extractPublisherViewUrl(publisher, timeoutMs) {
+  const start = Date.now();
+  const pattern = /VIEW URL:\s*(https?:\/\/\S+)/;
+  while (Date.now() - start < timeoutMs) {
+    const output = `${publisher.stdout.join('')}\n${publisher.stderr.join('')}`;
+    const match = pattern.exec(output);
+    if (match) {
+      return { ok: true, url: match[1] };
+    }
+    await wait(250);
+  }
+  return { ok: false };
+}
+
 async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, config, tag) {
   const page = await context.newPage();
   try {
@@ -744,21 +758,50 @@ async function caseDirectHqOnly(input) {
   );
 }
 
-async function caseRoomInitTimeout(input) {
+async function caseRoomImplicitViewerFallback(input) {
   const { context, viewerUrl, openedPages, publisher } = input;
   const page = await context.newPage();
   openedPages.push(page);
   await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
   const peerState = await waitForSessionPeer(page, 12000);
-  assertOk(peerState && peerState.ready, 'room-init-timeout: session peer unavailable', peerState);
+  assertOk(peerState && peerState.ready, 'room-implicit-viewer-fallback: session peer unavailable', peerState);
 
-  await wait(ROOM_INIT_TIMEOUT_MS + 3500);
-  const state = await collectState(page);
-  assertOk(!state.hasDecodedVideo, 'room-init-timeout: decoded video before init timeout', state);
+  const decode = await waitForDecodedVideo(page, 20000, 'room-implicit-viewer-fallback');
+  assertOk(decode.ok, 'room-implicit-viewer-fallback: decode failed', decode.state || decode);
 
-  const timeoutLog = await waitForPublisherLog(publisher, /missing init payload/i, 6000);
-  assertOk(timeoutLog.ok, 'room-init-timeout: missing timeout disconnect log', timeoutLog);
+  const fallbackLog = await waitForPublisherLog(publisher, /Implicit room init fallback .*viewer\/lq/i, 8000);
+  assertOk(fallbackLog.ok, 'room-implicit-viewer-fallback: missing implicit fallback log', fallbackLog);
+
+  const timeoutLog = await waitForPublisherLog(publisher, /missing init payload/i, 2000);
+  assertOk(!timeoutLog.ok, 'room-implicit-viewer-fallback: unexpected init-timeout disconnect', timeoutLog);
+}
+
+async function caseSpecialCharPassword(input) {
+  const { context, openedPages, publisher, viewerUrl } = input;
+
+  // Step 1: Verify publisher-generated VIEW URL has proper encoding
+  const extracted = await extractPublisherViewUrl(publisher, 15000);
+  assertOk(extracted.ok, 'special-char-password: publisher did not emit VIEW URL', extracted);
+
+  const publisherUrl = extracted.url;
+  assertOk(
+    !publisherUrl.includes('&password=Test$') && !publisherUrl.includes('#'),
+    'special-char-password: VIEW URL contains unencoded special characters',
+    { url: publisherUrl }
+  );
+
+  // Step 2: Connect using harness-built URL (URLSearchParams-encoded) to test
+  // that the room with special-char password actually works end-to-end
+  const page = await context.newPage();
+  openedPages.push(page);
+  await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+  const peerState = await waitForSessionPeer(page, 12000);
+  assertOk(peerState && peerState.ready, 'special-char-password: session peer unavailable', peerState);
+
+  const decode = await waitForDecodedVideo(page, 20000, 'special-char-password');
+  assertOk(decode.ok, 'special-char-password: decode failed', decode.state || decode);
 }
 
 async function caseMaxViewers(input) {
@@ -987,10 +1030,20 @@ async function main() {
 
   if (cases[cases.length - 1].pass) {
     cases.push(await executeCase(
-      'room_init_timeout',
+      'room_implicit_viewer_fallback',
       config,
       { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'inittime' },
-      caseRoomInitTimeout
+      caseRoomImplicitViewerFallback
+    ));
+  }
+
+  if (cases[cases.length - 1].pass) {
+    const specPwConfig = { ...config, password: 'Test$&Room#1!' };
+    cases.push(await executeCase(
+      'special_char_password',
+      specPwConfig,
+      { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'specpw' },
+      caseSpecialCharPassword
     ));
   }
 

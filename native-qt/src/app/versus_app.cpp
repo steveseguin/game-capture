@@ -21,6 +21,7 @@ constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kRoomInitTimeoutMs = 7000;
+constexpr int64_t kRoomInitGracePeriodMs = 1500;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
 constexpr int kHardwareFailSampleWindow = 300;
 constexpr double kHardwareFailRatioThreshold = 0.35;
@@ -809,13 +810,19 @@ void VersusApp::setupSignalingCallbacks() {
             peerPtr->dataChannelOpen.store(open, std::memory_order_relaxed);
             if (open) {
                 if (peerPtr->roomMode) {
-                    peerPtr->initDeadlineMs.store(steadyNowMs() + kRoomInitTimeoutMs, std::memory_order_relaxed);
+                    if (!peerPtr->initReceived.load(std::memory_order_relaxed)) {
+                        // Give app-aware viewers a grace period to send init
+                        // before falling back to implicit viewer/lq.
+                        peerPtr->initDeadlineMs.store(
+                            steadyNowMs() + kRoomInitGracePeriodMs, std::memory_order_relaxed);
+                    }
                 } else {
                     peerPtr->initReceived.store(true, std::memory_order_relaxed);
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                 sendPeerDataInfo(peerPtr, true);
-            } else if (peerPtr->roomMode) {
+            } else if (peerPtr->roomMode && !peerPtr->initReceived.load(std::memory_order_relaxed)) {
                 peerPtr->initDeadlineMs.store(steadyNowMs() + kRoomInitTimeoutMs, std::memory_order_relaxed);
             }
         });
@@ -1116,7 +1123,7 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
 }
 
 void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
-    std::vector<std::pair<std::string, std::string>> expired;
+    std::vector<std::shared_ptr<PeerSession>> expired;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
         for (const auto &entry : peerSessions_) {
@@ -1131,14 +1138,25 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
             if (deadlineMs <= 0 || nowMs < deadlineMs) {
                 continue;
             }
-            expired.emplace_back(peer->uuid, peer->session);
+            expired.push_back(peer);
         }
     }
 
-    for (const auto &entry : expired) {
-        spdlog::warn("[App] Closing room peer {}:{} due to missing init payload", entry.first, entry.second);
-        emitRuntimeEvent("A room peer was dropped because init metadata was not received in time.", false);
-        removePeerSession(entry.first, entry.second);
+    for (const auto &peer : expired) {
+        if (peer->dataChannelOpen.load(std::memory_order_relaxed)) {
+            // Data channel is open but no init arrived — fall back to viewer/LQ.
+            spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/lq",
+                         peer->uuid, peer->session);
+            applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        } else {
+            // Data channel never opened — drop the peer.
+            spdlog::warn("[App] Closing room peer {}:{} due to missing init payload",
+                         peer->uuid, peer->session);
+            emitRuntimeEvent("A room peer was dropped because init metadata was not received in time.", false);
+            removePeerSession(peer->uuid, peer->session);
+        }
     }
 }
 
@@ -1338,11 +1356,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         msg.contains("scene") ||
         msg.contains("director") ||
         msg.contains("guest") ||
-        msg.contains("viewer") ||
-        msg.contains("video") ||
-        msg.contains("audio") ||
-        msg.contains("system") ||
-        msg.contains("label");
+        msg.contains("viewer");
     const nlohmann::json *initPtr = nullptr;
     if (msg.contains("init") && msg["init"].is_object()) {
         initPtr = &msg["init"];
@@ -1354,24 +1368,31 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         const auto &init = *initPtr;
         PeerRole role = PeerRole::Unknown;
         bool roleValid = false;
+        const bool hasRoleString = init.contains("role") && init["role"].is_string();
+        const bool sceneRequested = init.contains("scene") && jsonBoolLike(init["scene"], false);
+        const bool directorRequested = init.contains("director") && jsonBoolLike(init["director"], false);
+        const bool guestRequested = init.contains("guest") && jsonBoolLike(init["guest"], false);
+        const bool viewerRequested = init.contains("viewer") && jsonBoolLike(init["viewer"], false);
+        const bool hasExplicitRoleSignal =
+            hasRoleString || sceneRequested || directorRequested || guestRequested || viewerRequested;
 
-        if (init.contains("role") && init["role"].is_string()) {
+        if (hasRoleString) {
             role = parsePeerRole(init["role"].get<std::string>());
             roleValid = role != PeerRole::Unknown;
         }
-        if (!roleValid && init.contains("scene") && jsonBoolLike(init["scene"], false)) {
+        if (!roleValid && sceneRequested) {
             role = PeerRole::Scene;
             roleValid = true;
         }
-        if (!roleValid && init.contains("director") && jsonBoolLike(init["director"], false)) {
+        if (!roleValid && directorRequested) {
             role = PeerRole::Director;
             roleValid = true;
         }
-        if (!roleValid && init.contains("guest") && jsonBoolLike(init["guest"], false)) {
+        if (!roleValid && guestRequested) {
             role = PeerRole::Guest;
             roleValid = true;
         }
-        if (!roleValid && init.contains("viewer") && jsonBoolLike(init["viewer"], false)) {
+        if (!roleValid && viewerRequested) {
             role = PeerRole::Viewer;
             roleValid = true;
         }
@@ -1402,6 +1423,11 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             if (system.contains("browser") && system["browser"].is_string()) {
                 peer->systemBrowser = system["browser"].get<std::string>();
             }
+        }
+
+        if (!hasExplicitRoleSignal && peer->roomMode && peer->initReceived.load(std::memory_order_relaxed)) {
+            sendPeerDataInfo(peer, true);
+            return;
         }
 
         applyPeerInitState(peer, roleValid, role, videoEnabled, audioEnabled);

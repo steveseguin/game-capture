@@ -39,7 +39,8 @@ This is intended to reduce upstream load in room workflows while keeping gamepla
 `DEC-005` Data-channel gating
 - For room links, do not send media to a peer until a valid init object is received over data channel.
 - Init may declare peer role and media preferences (`audio` / `video`).
-- If init is missing after timeout, close that peer session (fail closed).
+- If the stock viewer opens the data channel without app-specific init metadata, implicitly treat it as `viewer`/`LQ` for compatibility.
+- If the data channel never opens, close that peer session after timeout.
 
 `DEC-006` Security model
 - No auth guard on role claim for HQ/LQ selection.
@@ -69,7 +70,8 @@ This is intended to reduce upstream load in room workflows while keeping gamepla
 | Room | `director` | LQ | 640x360@30, 2 Mbps |
 | Room | `guest` | LQ | 640x360@30, 2 Mbps |
 | Room | `viewer` | LQ | 640x360@30, 2 Mbps |
-| Room | unknown/missing | no media then disconnect on timeout | Fail closed |
+| Room | unknown/missing before data channel | no media then disconnect on timeout | Fail closed |
+| Room | missing init after data channel opens | LQ | Implicit compatibility fallback |
 
 ## Data Channel Contract (v1)
 

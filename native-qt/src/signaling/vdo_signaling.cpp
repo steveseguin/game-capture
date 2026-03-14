@@ -129,6 +129,37 @@ std::string hashHex(const std::string &input, size_t hexLength) {
     return toHex(digest);
 }
 
+// RFC 3986 percent-encoding for URL query values.
+std::string urlEncode(const std::string &value) {
+    std::ostringstream oss;
+    oss << std::uppercase << std::hex;
+    for (unsigned char ch : value) {
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+            ch == '-' || ch == '_' || ch == '.' || ch == '~') {
+            oss << static_cast<char>(ch);
+        } else {
+            oss << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+        }
+    }
+    return oss.str();
+}
+
+// Matches JavaScript's encodeURIComponent() which does not encode: - _ . ~ ! ' ( ) *
+std::string jsEncodeURIComponent(const std::string &value) {
+    std::ostringstream oss;
+    oss << std::uppercase << std::hex;
+    for (unsigned char ch : value) {
+        if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
+            ch == '-' || ch == '_' || ch == '.' || ch == '~' ||
+            ch == '!' || ch == '\'' || ch == '(' || ch == ')' || ch == '*') {
+            oss << static_cast<char>(ch);
+        } else {
+            oss << '%' << std::setw(2) << std::setfill('0') << static_cast<int>(ch);
+        }
+    }
+    return oss.str();
+}
+
 bool aesEncryptCbc(const std::string &plain, const std::string &phrase, std::string &outHex, std::string &outVector) {
     std::vector<uint8_t> iv(16);
     mbedtls_ctr_drbg_context rng;
@@ -228,7 +259,9 @@ std::string effectivePassword(const std::string &password, bool encryptionDisabl
     if (password.empty()) {
         return "someEncryptionKey123";
     }
-    return password;
+    // VDO.Ninja's JS sanitizePassword() runs encodeURIComponent() on the
+    // password before hashing, so we must match that behavior exactly.
+    return jsEncodeURIComponent(password);
 }
 
 }  // namespace
@@ -752,14 +785,14 @@ std::string VdoSignaling::getViewUrl() const {
     if (impl_->streamId.empty()) {
         return "";
     }
-    std::string url = "https://vdo.ninja/?view=" + impl_->streamId;
+    std::string url = "https://vdo.ninja/?view=" + urlEncode(impl_->streamId);
     if (!impl_->roomId.empty()) {
-        url += "&room=" + impl_->roomId + "&solo";
+        url += "&room=" + urlEncode(impl_->roomId) + "&solo";
     }
     if (impl_->encryptionDisabled) {
         url += "&password=false";
     } else if (!impl_->password.empty()) {
-        url += "&password=" + impl_->password;
+        url += "&password=" + urlEncode(impl_->password);
     }
     return url;
 }

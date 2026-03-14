@@ -123,7 +123,7 @@ Add one release gate entry:
 - `DS-REQ-003`: PASS
 - Evidence:
   - Unit route gating in `DualStreamPolicyTest`.
-  - `room_init_timeout` case in `npm run e2e:dual-quality-requirements`.
+  - `room_implicit_viewer_fallback` case in `npm run e2e:dual-quality-requirements`.
 
 - `DS-REQ-004`: PASS
 - Evidence:
