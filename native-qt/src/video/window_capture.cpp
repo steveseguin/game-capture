@@ -11,6 +11,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <appmodel.h>
 #include <dwmapi.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
@@ -22,6 +23,7 @@
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
+#include <winrt/Windows.Security.Authorization.AppCapabilityAccess.h>
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
 #pragma comment(lib, "windowsapp.lib")
@@ -81,6 +83,33 @@ QPixmap captureViaScreenGrab(HWND hwnd, int maxWidth, int maxHeight) {
     }
     return grabbed.scaled(maxWidth, maxHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 }
+
+#ifdef VERSUS_USE_GRAPHICS_CAPTURE
+
+const char *appCapabilityAccessStatusToString(
+    winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus status) {
+    using Status = winrt::Windows::Security::Authorization::AppCapabilityAccess::AppCapabilityAccessStatus;
+    switch (status) {
+        case Status::DeniedBySystem:
+            return "DeniedBySystem";
+        case Status::NotDeclaredByApp:
+            return "NotDeclaredByApp";
+        case Status::DeniedByUser:
+            return "DeniedByUser";
+        case Status::UserPromptRequired:
+            return "UserPromptRequired";
+        case Status::Allowed:
+            return "Allowed";
+    }
+    return "Unknown";
+}
+
+bool hasPackageIdentity() {
+    UINT32 packageNameLength = 0;
+    return GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
+}
+
+#endif
 
 }  // namespace
 
@@ -253,9 +282,55 @@ class WindowCapture::Impl {
     bool isCapturing() const { return capturing_; }
 
   private:
+#ifdef VERSUS_USE_GRAPHICS_CAPTURE
+    void requestBorderlessCaptureAccess() {
+        if (borderlessAccessRequested_) {
+            return;
+        }
+        borderlessAccessRequested_ = true;
+
+        if (!hasPackageIdentity()) {
+            spdlog::info("[Capture::Impl] No package identity detected; Windows may refuse graphicsCaptureWithoutBorder "
+                         "for unpackaged builds");
+        }
+
+        try {
+            using winrt::Windows::Graphics::Capture::GraphicsCaptureAccess;
+            using winrt::Windows::Graphics::Capture::GraphicsCaptureAccessKind;
+            const auto status = GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless).get();
+            spdlog::info("[Capture::Impl] Borderless capture access request completed with status={}",
+                         appCapabilityAccessStatusToString(status));
+        } catch (const winrt::hresult_error &e) {
+            spdlog::warn("[Capture::Impl] Borderless capture access request failed hr=0x{:08x} msg={}",
+                         static_cast<unsigned int>(e.code()),
+                         winrt::to_string(e.message()));
+        } catch (const std::exception &e) {
+            spdlog::warn("[Capture::Impl] Borderless capture access request threw std::exception: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[Capture::Impl] Borderless capture access request failed with unknown exception");
+        }
+    }
+
+    void applyBorderlessCapturePreference() {
+        try {
+            captureSession_.IsBorderRequired(false);
+            spdlog::info("[Capture::Impl] Requested borderless graphics capture session");
+        } catch (const winrt::hresult_error &e) {
+            spdlog::warn("[Capture::Impl] Failed to disable graphics capture border hr=0x{:08x} msg={}",
+                         static_cast<unsigned int>(e.code()),
+                         winrt::to_string(e.message()));
+        } catch (const std::exception &e) {
+            spdlog::warn("[Capture::Impl] Failed to disable graphics capture border: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[Capture::Impl] Failed to disable graphics capture border with unknown exception");
+        }
+    }
+#endif
+
     bool startGraphicsCapture(HWND hwnd) {
         try {
             spdlog::info("[Capture::Impl] startGraphicsCapture for hwnd={}", (void*)hwnd);
+            requestBorderlessCaptureAccess();
             auto interop = winrt::get_activation_factory<winrt::Windows::Graphics::Capture::GraphicsCaptureItem, IGraphicsCaptureItemInterop>();
             winrt::com_ptr<IUnknown> itemUnk;
             HRESULT hr = interop->CreateForWindow(
@@ -299,6 +374,7 @@ class WindowCapture::Impl {
             framePool_.FrameArrived([this](auto const &sender, auto const &) { onFrameArrived(sender); });
             captureSession_ = framePool_.CreateCaptureSession(captureItem_);
             captureSession_.IsCursorCaptureEnabled(false);
+            applyBorderlessCapturePreference();
             captureSession_.StartCapture();
             capturing_ = true;
             spdlog::info("[Capture::Impl] Graphics capture started successfully");
@@ -450,6 +526,9 @@ class WindowCapture::Impl {
     winrt::com_ptr<IDXGIOutputDuplication> outputDuplication_;
 
     bool useGraphicsCapture_ = false;
+#ifdef VERSUS_USE_GRAPHICS_CAPTURE
+    bool borderlessAccessRequested_ = false;
+#endif
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem captureItem_{nullptr};
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool framePool_{nullptr};
     winrt::Windows::Graphics::Capture::GraphicsCaptureSession captureSession_{nullptr};

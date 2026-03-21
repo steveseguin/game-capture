@@ -46,6 +46,7 @@ function parseArgs(argv) {
     streamId: `dual_req_${seed}`,
     room: `dual_req_room_${seed}`,
     password: '',
+    cases: [],
     label: 'dual-quality-requirements',
     server: 'wss://wss.vdo.ninja:443',
     salt: 'vdo.ninja',
@@ -70,6 +71,12 @@ function parseArgs(argv) {
       args.room = arg.slice('--room='.length);
     } else if (arg.startsWith('--password=')) {
       args.password = arg.slice('--password='.length);
+    } else if (arg.startsWith('--cases=')) {
+      args.cases = arg
+        .slice('--cases='.length)
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
     } else if (arg.startsWith('--label=')) {
       args.label = arg.slice('--label='.length);
     } else if (arg.startsWith('--server=')) {
@@ -108,6 +115,7 @@ function parseArgs(argv) {
   args.room = sanitizeId(args.room, 30, `dual_req_room_${fallbackSeed}`);
   args.streamIdNormalized = args.streamId !== args.originalStreamId;
   args.roomNormalized = args.room !== args.originalRoom;
+  args.caseFilter = args.cases.length ? new Set(args.cases) : null;
   return args;
 }
 
@@ -1008,15 +1016,28 @@ async function main() {
 
   const cases = [];
   const startedAt = Date.now();
+  let canContinue = true;
 
-  cases.push(await executeCase(
+  async function maybeExecuteCase(name, caseConfig, execConfig, fn) {
+    if (config.caseFilter && !config.caseFilter.has(name)) {
+      return null;
+    }
+    if (!canContinue) {
+      return null;
+    }
+    const result = await executeCase(name, caseConfig, execConfig, fn);
+    cases.push(result);
+    canContinue = result.pass;
+    return result;
+  }
+
+  let entry = await maybeExecuteCase(
     'direct_hq_only',
     config,
     { roomMode: false, maxViewers: 4, remoteToken: '', idSuffix: 'dirhq' },
     caseDirectHqOnly
-  ));
-  {
-    const entry = cases[cases.length - 1];
+  );
+  if (entry) {
     if (entry.pass) {
       const output = entry.publisherOutput || '';
       if (/tier=lq/i.test(output) || /LQ encoder active/i.test(output)) {
@@ -1024,51 +1045,44 @@ async function main() {
         entry.failure = {
           message: 'direct-hq-only: observed LQ path in publisher output'
         };
+        canContinue = false;
       }
     }
   }
 
-  if (cases[cases.length - 1].pass) {
-    cases.push(await executeCase(
-      'room_implicit_viewer_fallback',
-      config,
-      { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'inittime' },
-      caseRoomImplicitViewerFallback
-    ));
-  }
+  await maybeExecuteCase(
+    'room_implicit_viewer_fallback',
+    config,
+    { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'inittime' },
+    caseRoomImplicitViewerFallback
+  );
 
-  if (cases[cases.length - 1].pass) {
-    const specPwConfig = { ...config, password: 'Test$&Room#1!' };
-    cases.push(await executeCase(
-      'special_char_password',
-      specPwConfig,
-      { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'specpw' },
-      caseSpecialCharPassword
-    ));
-  }
+  const specPwConfig = { ...config, password: 'Test$&Room#1!' };
+  await maybeExecuteCase(
+    'special_char_password',
+    specPwConfig,
+    { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'specpw' },
+    caseSpecialCharPassword
+  );
 
-  if (cases[cases.length - 1].pass) {
-    cases.push(await executeCase(
-      'room_max_viewers',
-      config,
-      { roomMode: true, maxViewers: 2, remoteToken: '', idSuffix: 'maxv' },
-      caseMaxViewers
-    ));
-  }
+  await maybeExecuteCase(
+    'room_max_viewers',
+    config,
+    { roomMode: true, maxViewers: 2, remoteToken: '', idSuffix: 'maxv' },
+    caseMaxViewers
+  );
 
-  if (cases[cases.length - 1].pass) {
-    cases.push(await executeCase(
-      'reconnect_control_media',
-      config,
-      {
-        roomMode: true,
-        maxViewers: 6,
-        remoteToken: config.remoteToken || DEFAULT_REMOTE_TOKEN,
-        idSuffix: 'ctrlrec'
-      },
-      caseReconnectControlMedia
-    ));
-  }
+  await maybeExecuteCase(
+    'reconnect_control_media',
+    config,
+    {
+      roomMode: true,
+      maxViewers: 6,
+      remoteToken: config.remoteToken || DEFAULT_REMOTE_TOKEN,
+      idSuffix: 'ctrlrec'
+    },
+    caseReconnectControlMedia
+  );
 
   const finishedAt = Date.now();
   const { reportPath, allPass } = writeReport(config, startedAt, finishedAt, cases);
@@ -1091,4 +1105,3 @@ main().catch((err) => {
   console.error('[DUAL-REQ] Unhandled error:', err);
   process.exit(1);
 });
-
