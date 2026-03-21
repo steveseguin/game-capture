@@ -15,6 +15,7 @@
 
 #include "versus/app/versus_app.h"
 #include "versus/ui/main_window.h"
+#include "versus/video/window_capture.h"
 
 namespace {
 
@@ -319,26 +320,10 @@ int main(int argc, char *argv[]) {
             // Auto-select first available window for capture
             auto windows = core.listWindows();
             if (!windows.empty()) {
-                const auto toLowerCopy = [](std::string value) {
-                    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
-                        return static_cast<char>(std::tolower(ch));
-                    });
-                    return value;
-                };
-
-                const std::string filter = toLowerCopy(windowFilterArg);
                 const versus::video::WindowInfo *selected = nullptr;
 
-                if (!filter.empty()) {
-                    for (const auto &window : windows) {
-                        const std::string nameLower = toLowerCopy(window.name);
-                        const std::string exeLower = toLowerCopy(window.executableName);
-                        if (nameLower.find(filter) != std::string::npos ||
-                            exeLower.find(filter) != std::string::npos) {
-                            selected = &window;
-                            break;
-                        }
-                    }
+                if (!windowFilterArg.empty()) {
+                    selected = versus::video::findBestWindowMatch(windows, windowFilterArg);
                     if (!selected) {
                         spdlog::error("[Headless] No window matched --window={} ({} windows available)",
                                       windowFilterArg,
@@ -351,7 +336,12 @@ int main(int argc, char *argv[]) {
                     selected = &windows[0];
                 }
 
-                spdlog::info("[Headless] Found {} windows, capturing: {}", windows.size(), selected->name);
+                spdlog::info("[Headless] Found {} windows, capturing: {} [{} {}x{}]",
+                             windows.size(),
+                             selected->name,
+                             selected->executableName,
+                             selected->width,
+                             selected->height);
                 if (!core.startCapture(selected->id)) {
                     spdlog::error("[Headless] startCapture failed");
                     spdlog::default_logger()->flush();

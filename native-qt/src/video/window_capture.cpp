@@ -43,6 +43,117 @@ using com_ptr = Microsoft::WRL::ComPtr<T>;
 
 namespace versus::video {
 
+namespace {
+
+std::string toLowerCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+std::string executableStem(std::string executableName) {
+    executableName = toLowerCopy(std::move(executableName));
+    const size_t lastSlash = executableName.find_last_of("/\\");
+    if (lastSlash != std::string::npos) {
+        executableName.erase(0, lastSlash + 1);
+    }
+    if (executableName.size() > 4 && executableName.ends_with(".exe")) {
+        executableName.resize(executableName.size() - 4);
+    }
+    return executableName;
+}
+
+int windowMatchScore(const WindowInfo &window, const std::string &filterLower) {
+    if (filterLower.empty()) {
+        return 0;
+    }
+
+    const std::string titleLower = toLowerCopy(window.name);
+    const std::string exeLower = toLowerCopy(window.executableName);
+    const std::string exeStemLower = executableStem(window.executableName);
+
+    int score = 0;
+    const auto titlePos = titleLower.find(filterLower);
+    if (titleLower == filterLower) {
+        score = std::max(score, 1000);
+    } else if (titlePos != std::string::npos) {
+        score = std::max(score, 850);
+        if (titlePos == 0) {
+            score = std::max(score, 900);
+        }
+        if (titlePos + filterLower.size() == titleLower.size()) {
+            score = std::max(score, 920);
+        }
+        if (titleLower.find(" - " + filterLower) != std::string::npos ||
+            titleLower.find(filterLower + " - ") != std::string::npos) {
+            score = std::max(score, 950);
+        }
+    }
+
+    if (exeStemLower == filterLower) {
+        score = std::max(score, 700);
+    } else if (exeLower == filterLower || exeLower == filterLower + ".exe") {
+        score = std::max(score, 680);
+    } else if (exeStemLower.find(filterLower) != std::string::npos) {
+        score = std::max(score, 620);
+    } else if (exeLower.find(filterLower) != std::string::npos) {
+        score = std::max(score, 600);
+    }
+
+    if (score == 0) {
+        return 0;
+    }
+
+    if (titlePos != std::string::npos) {
+        score += 50;
+    }
+
+    if (window.width > 0 && window.height > 0) {
+        const int areaBonus = std::min(40, (window.width * window.height) / 500000);
+        score += areaBonus;
+    }
+
+    if (titlePos == std::string::npos && titleLower.size() <= 16) {
+        score -= 25;
+    }
+
+    return score;
+}
+
+}  // namespace
+
+const WindowInfo *findBestWindowMatch(const std::vector<WindowInfo> &windows, const std::string &filter) {
+    if (windows.empty()) {
+        return nullptr;
+    }
+
+    if (filter.empty()) {
+        return &windows.front();
+    }
+
+    const std::string filterLower = toLowerCopy(filter);
+    const WindowInfo *best = nullptr;
+    int bestScore = 0;
+    int bestArea = -1;
+
+    for (const auto &window : windows) {
+        const int score = windowMatchScore(window, filterLower);
+        if (score <= 0) {
+            continue;
+        }
+
+        const int area = std::max(0, window.width) * std::max(0, window.height);
+        if (!best || score > bestScore || (score == bestScore && area > bestArea)) {
+            best = &window;
+            bestScore = score;
+            bestArea = area;
+        }
+    }
+
+    return best;
+}
+
 #ifdef _WIN32
 
 namespace {
@@ -581,18 +692,7 @@ std::vector<WindowInfo> WindowCapture::getWindows() {
 WindowInfo *WindowCapture::findWindowByName(const std::string &partialName) {
     static std::vector<WindowInfo> cached;
     cached = getWindows();
-    std::string lowerPartial = partialName;
-    std::transform(lowerPartial.begin(), lowerPartial.end(), lowerPartial.begin(), ::tolower);
-    for (auto &window : cached) {
-        std::string lowerName = window.name;
-        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-        std::string lowerExe = window.executableName;
-        std::transform(lowerExe.begin(), lowerExe.end(), lowerExe.begin(), ::tolower);
-        if (lowerName.find(lowerPartial) != std::string::npos || lowerExe.find(lowerPartial) != std::string::npos) {
-            return &window;
-        }
-    }
-    return nullptr;
+    return const_cast<WindowInfo *>(findBestWindowMatch(cached, partialName));
 }
 
 bool WindowCapture::startCapture(const std::string &windowId, int width, int height, int fps) {

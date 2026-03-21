@@ -19,6 +19,8 @@ struct WindowInfo {
     int height = 0;
 };
 
+const WindowInfo *findBestWindowMatch(const std::vector<WindowInfo> &windows, const std::string &filter);
+
 struct CapturedFrame {
     std::vector<uint8_t> data;
     int width = 0;
