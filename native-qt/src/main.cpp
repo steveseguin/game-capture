@@ -50,6 +50,7 @@ int main(int argc, char *argv[]) {
     std::string ffmpegPathArg;
     std::string ffmpegOptionsArg;
     std::string windowFilterArg;
+    versus::webrtc::IceMode iceMode = versus::webrtc::IceMode::All;
     int width = 0;
     int height = 0;
     int fps = 0;
@@ -84,6 +85,20 @@ int main(int argc, char *argv[]) {
             ffmpegPathArg = arg.substr(14);
         } else if (arg.find("--ffmpeg-options=") == 0) {
             ffmpegOptionsArg = arg.substr(17);
+        } else if (arg.find("--ice-mode=") == 0) {
+            std::string normalized = arg.substr(11);
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (normalized.empty() || normalized == "all") {
+                iceMode = versus::webrtc::IceMode::All;
+            } else if (normalized == "host" || normalized == "host-only" || normalized == "host_only") {
+                iceMode = versus::webrtc::IceMode::HostOnly;
+            } else if (normalized == "relay" || normalized == "turn") {
+                iceMode = versus::webrtc::IceMode::Relay;
+            } else if (normalized == "stun" || normalized == "stun-only" || normalized == "stun_only") {
+                iceMode = versus::webrtc::IceMode::StunOnly;
+            }
         } else if (arg.find("--window=") == 0) {
             windowFilterArg = arg.substr(9);
         } else if (arg.find("--resolution=") == 0) {
@@ -277,8 +292,15 @@ int main(int argc, char *argv[]) {
 
     if (headless) {
         // Headless mode - auto-configure and start streaming
-        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={}",
-                     streamId, room.empty() ? "(none)" : room, password, server, durationMs, maxViewers, remoteControlEnabled);
+        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={}",
+                     streamId,
+                     room.empty() ? "(none)" : room,
+                     password,
+                     server,
+                     durationMs,
+                     maxViewers,
+                     remoteControlEnabled,
+                     versus::webrtc::iceModeName(iceMode));
 
         // Configure
         versus::app::StartOptions options;
@@ -291,6 +313,7 @@ int main(int argc, char *argv[]) {
         options.maxViewers = maxViewers;
         options.remoteControlEnabled = remoteControlEnabled;
         options.remoteControlToken = remoteControlToken;
+        options.iceMode = iceMode;
 
         QTimer::singleShot(1000, [&core, options, windowFilterArg]() {
             // Auto-select first available window for capture

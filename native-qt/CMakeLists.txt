@@ -121,6 +121,7 @@ set(VERSUS_SOURCES
     src/ui/stats_panel.cpp
     src/signaling/vdo_signaling.cpp
     src/webrtc/webrtc_client.cpp
+    src/webrtc/ice_config.cpp
     src/video/window_capture.cpp
     src/video/video_encoder.cpp
     src/audio/opus_encoder.cpp
@@ -135,6 +136,7 @@ set(VERSUS_HEADERS
     include/versus/ui/stats_panel.h
     include/versus/signaling/vdo_signaling.h
     include/versus/webrtc/webrtc_client.h
+    include/versus/webrtc/ice_config.h
     include/versus/video/window_capture.h
     include/versus/video/video_encoder.h
     include/versus/audio/opus_encoder.h
@@ -190,6 +192,7 @@ if(WIN32)
         dwmapi
         d3d11
         dxgi
+        winhttp
     )
 endif()
 
@@ -263,6 +266,7 @@ if(VERSUS_BUILD_TESTS)
         src/ui/stats_panel.cpp
         src/signaling/vdo_signaling.cpp
         src/webrtc/webrtc_client.cpp
+        src/webrtc/ice_config.cpp
         src/video/window_capture.cpp
         src/video/video_encoder.cpp
         src/audio/opus_encoder.cpp
@@ -291,7 +295,7 @@ if(VERSUS_BUILD_TESTS)
     )
     if(WIN32)
         target_link_libraries(versus-lib PUBLIC
-            ole32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi
+            ole32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi winhttp
         )
     endif()
     if(VERSUS_USE_NVENC)
@@ -341,6 +345,14 @@ if(VERSUS_BUILD_TESTS)
     set_tests_properties(VdoSignalingTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 
+    # Test: ICE config helpers
+    add_executable(test_ice_config tests/test_ice_config.cpp)
+    set_target_properties(test_ice_config PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_ice_config PRIVATE versus-lib Qt6::Test)
+    add_test(NAME IceConfigTest COMMAND test_ice_config)
+    set_tests_properties(IceConfigTest PROPERTIES
+        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+
     # Test: StatsPanel
     add_executable(test_stats_panel tests/test_stats_panel.cpp)
     set_target_properties(test_stats_panel PROPERTIES AUTOMOC ON)
@@ -362,4 +374,3 @@ if(VERSUS_BUILD_TESTS)
     target_link_libraries(bench_video_encoder PRIVATE versus-lib)
 
 endif()
-

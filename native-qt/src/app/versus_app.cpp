@@ -20,8 +20,8 @@ namespace {
 constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
-constexpr int64_t kRoomInitTimeoutMs = 7000;
 constexpr int64_t kRoomInitGracePeriodMs = 1500;
+constexpr int64_t kDirectInitGracePeriodMs = 1000;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
 constexpr int kHardwareFailSampleWindow = 300;
 constexpr double kHardwareFailRatioThreshold = 0.35;
@@ -389,6 +389,14 @@ bool VersusApp::goLive(const StartOptions &options) {
     remoteControlEnabled_.store(options.remoteControlEnabled, std::memory_order_relaxed);
     remoteControlToken_ = options.remoteControlToken;
     roomCodecWarningEmitted_ = false;
+    iceMode_ = options.iceMode;
+
+    const auto resolvedIce = webrtc::resolveIceConfig(iceMode_);
+    resolvedIceServers_ = resolvedIce.servers;
+    if (iceMode_ == webrtc::IceMode::Relay && !resolvedIce.hasTurnServers()) {
+        emitRuntimeEvent("Relay-only ICE mode was requested, but no TURN servers were available.", true);
+        return false;
+    }
 
     clearPeerSessions();
     setupSignalingCallbacks();
@@ -653,16 +661,18 @@ void VersusApp::setupSignalingCallbacks() {
         peer->candidateType = "local";
         peer->answerReceived = false;
         peer->roomMode = !room_.empty();
-        if (peer->roomMode) {
-            applyPeerInitState(peer, false, PeerRole::Unknown, true, true);
-            peer->initDeadlineMs.store(steadyNowMs() + kRoomInitTimeoutMs, std::memory_order_relaxed);
-        } else {
-            applyPeerInitState(peer, false, PeerRole::Unknown, true, true);
-        }
+        peer->initReceived.store(false, std::memory_order_relaxed);
+        peer->roleValid.store(false, std::memory_order_relaxed);
+        peer->role.store(PeerRole::Unknown, std::memory_order_relaxed);
+        peer->assignedTier.store(StreamTier::None, std::memory_order_relaxed);
+        peer->videoEnabled.store(true, std::memory_order_relaxed);
+        peer->audioEnabled.store(true, std::memory_order_relaxed);
+        peer->initDeadlineMs.store(0, std::memory_order_relaxed);
         peer->client = std::make_unique<webrtc::WebRtcClient>();
 
         webrtc::PeerConfig peerConfig;
-        peerConfig.iceServers = {"stun:stun.l.google.com:19302"};
+        peerConfig.iceServers = resolvedIceServers_;
+        peerConfig.iceMode = iceMode_;
         peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
         peerConfig.videoWidth = std::max(1, videoConfig_.width);
         peerConfig.videoHeight = std::max(1, videoConfig_.height);
@@ -809,21 +819,14 @@ void VersusApp::setupSignalingCallbacks() {
             }
             peerPtr->dataChannelOpen.store(open, std::memory_order_relaxed);
             if (open) {
-                if (peerPtr->roomMode) {
-                    if (!peerPtr->initReceived.load(std::memory_order_relaxed)) {
-                        // Give app-aware viewers a grace period to send init
-                        // before falling back to implicit viewer/lq.
-                        peerPtr->initDeadlineMs.store(
-                            steadyNowMs() + kRoomInitGracePeriodMs, std::memory_order_relaxed);
-                    }
-                } else {
-                    peerPtr->initReceived.store(true, std::memory_order_relaxed);
+                if (!peerPtr->initReceived.load(std::memory_order_relaxed)) {
+                    const int64_t graceMs = peerPtr->roomMode ? kRoomInitGracePeriodMs : kDirectInitGracePeriodMs;
+                    peerPtr->initDeadlineMs.store(steadyNowMs() + graceMs, std::memory_order_relaxed);
                 }
-                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                 sendPeerDataInfo(peerPtr, true);
-            } else if (peerPtr->roomMode && !peerPtr->initReceived.load(std::memory_order_relaxed)) {
-                peerPtr->initDeadlineMs.store(steadyNowMs() + kRoomInitTimeoutMs, std::memory_order_relaxed);
+                applyPeerMediaPlan(peerPtr, "datachannel-open");
+            } else {
+                peerPtr->initDeadlineMs.store(0, std::memory_order_relaxed);
             }
         });
 
@@ -832,21 +835,8 @@ void VersusApp::setupSignalingCallbacks() {
             peerSessions_[key] = peer;
         }
 
-        const auto offerSdp = peer->client->createOffer();
-        if (offerSdp.empty()) {
-            spdlog::error("[WebRTC] Failed to create offer for {}:{}", uuid, resolvedSession);
-            removePeerSession(uuid, resolvedSession);
+        if (!sendPeerOffer(peer, "bootstrap")) {
             return;
-        }
-
-        signaling::SignalOffer offer;
-        offer.uuid = uuid;
-        offer.session = resolvedSession;
-        offer.streamId = resolvedStreamId;
-        offer.sdp = offerSdp;
-        {
-            std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-            signaling_.sendOffer(offer);
         }
     });
 
@@ -860,8 +850,6 @@ void VersusApp::setupSignalingCallbacks() {
         spdlog::info("[Signaling] onAnswer uuid={} session={}", answer.uuid, answer.session);
 
         std::shared_ptr<PeerSession> peer;
-        std::vector<PendingCandidate> buffered;
-        std::string candidateType = "local";
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
             auto it = peerSessions_.find(makePeerKey(answer.uuid, answer.session));
@@ -882,28 +870,9 @@ void VersusApp::setupSignalingCallbacks() {
             }
 
             peer = it->second;
-            peer->answerReceived = true;
-            buffered = peer->pendingCandidates;
-            peer->pendingCandidates.clear();
-            candidateType = peer->candidateType;
         }
 
-        peer->client->setRemoteDescription(answer.sdp, "answer");
-        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-
-        for (const auto &pending : buffered) {
-            signaling::SignalCandidate cand;
-            cand.uuid = peer->uuid;
-            cand.candidate = pending.candidate;
-            cand.mid = pending.mid;
-            cand.mlineIndex = pending.mlineIndex;
-            cand.session = peer->session;
-            cand.type = candidateType;
-            {
-                std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-                signaling_.sendCandidate(cand);
-            }
-        }
+        applyPeerAnswer(peer, answer.sdp, "signaling-wss");
     });
 
     signaling_.onCandidate([this](const signaling::SignalCandidate &cand) {
@@ -1096,8 +1065,6 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
         peer->assignedTier.store(tier, std::memory_order_relaxed);
         if (initReady) {
             peer->initDeadlineMs.store(0, std::memory_order_relaxed);
-        } else {
-            peer->initDeadlineMs.store(steadyNowMs() + kRoomInitTimeoutMs, std::memory_order_relaxed);
         }
         spdlog::info("[App] Peer init {}:{} roomMode=1 role={} roleValid={} tier={} video={} audio={}",
                      peer->uuid,
@@ -1128,10 +1095,7 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
         for (const auto &entry : peerSessions_) {
             const auto &peer = entry.second;
-            if (!peer || !peer->roomMode) {
-                continue;
-            }
-            if (peer->initReceived.load(std::memory_order_relaxed)) {
+            if (!peer || peer->initReceived.load(std::memory_order_relaxed)) {
                 continue;
             }
             const int64_t deadlineMs = peer->initDeadlineMs.load(std::memory_order_relaxed);
@@ -1143,20 +1107,28 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
     }
 
     for (const auto &peer : expired) {
-        if (peer->dataChannelOpen.load(std::memory_order_relaxed)) {
-            // Data channel is open but no init arrived — fall back to viewer/LQ.
-            spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/lq",
-                         peer->uuid, peer->session);
-            applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
-            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
-        } else {
-            // Data channel never opened — drop the peer.
-            spdlog::warn("[App] Closing room peer {}:{} due to missing init payload",
-                         peer->uuid, peer->session);
-            emitRuntimeEvent("A room peer was dropped because init metadata was not received in time.", false);
-            removePeerSession(peer->uuid, peer->session);
+        if (peer->initReceived.load(std::memory_order_relaxed)) {
+            continue;
         }
+        peer->initDeadlineMs.store(0, std::memory_order_relaxed);
+        if (!peer->dataChannelOpen.load(std::memory_order_relaxed)) {
+            continue;
+        }
+
+        if (peer->roomMode) {
+            // Room viewers that never send control metadata fall back to viewer/LQ after the grace window.
+            spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/lq",
+                         peer->uuid,
+                         peer->session);
+        } else {
+            // Direct viewers that never send control metadata fall back to viewer/HQ after the grace window.
+            spdlog::info("[App] Implicit direct init fallback {}:{} -> viewer/hq",
+                         peer->uuid,
+                         peer->session);
+        }
+        applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
+        applyPeerMediaPlan(peer, peer->roomMode ? "room-init-fallback" : "direct-init-fallback");
+        sendPeerDataInfo(peer, true);
     }
 }
 
@@ -1319,6 +1291,9 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (!peer) {
         return;
     }
+    if (tryHandlePeerSignalMessage(peer, message)) {
+        return;
+    }
 
     auto msg = nlohmann::json::parse(message, nullptr, false);
     if (msg.is_discarded()) {
@@ -1425,7 +1400,16 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             }
         }
 
-        if (!hasExplicitRoleSignal && peer->roomMode && peer->initReceived.load(std::memory_order_relaxed)) {
+        const bool hasExplicitMediaSignal = init.contains("video") || init.contains("audio");
+        if (!hasExplicitRoleSignal && peer->initReceived.load(std::memory_order_relaxed)) {
+            role = peer->role.load(std::memory_order_relaxed);
+            roleValid = peer->roleValid.load(std::memory_order_relaxed);
+        }
+
+        if (!hasExplicitRoleSignal &&
+            !hasExplicitMediaSignal &&
+            peer->roomMode &&
+            peer->initReceived.load(std::memory_order_relaxed)) {
             sendPeerDataInfo(peer, true);
             return;
         }
@@ -1448,6 +1432,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
         peer->client->sendDataMessage(ack.dump());
         sendPeerDataInfo(peer, true);
+        applyPeerMediaPlan(peer, hasExplicitRoleSignal ? "peer-init" : "peer-media-update");
     }
 
     const bool requestKeyframe = msg.contains("keyframe") ? jsonBoolLike(msg["keyframe"], false) : false;
@@ -2231,6 +2216,208 @@ void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket 
             continue;
         }
         peer->client->sendAudio(packet);
+    }
+}
+
+bool VersusApp::tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message) {
+    if (!peer || !peer->client || message.empty()) {
+        return false;
+    }
+
+    signaling::ParsedSignalMessage parsed;
+    if (!signaling_.tryParseSignalPayload(message, parsed)) {
+        return false;
+    }
+
+    bool handled = false;
+    if (parsed.hasOffer) {
+        spdlog::warn("[App] Ignoring unexpected datachannel offer {}:{}",
+                     peer->uuid,
+                     peer->session);
+        handled = true;
+    }
+
+    if (parsed.hasAnswer) {
+        const std::string answerUuid = parsed.answer.uuid.empty() ? peer->uuid : parsed.answer.uuid;
+        const std::string answerSession = parsed.answer.session.empty() ? peer->session : parsed.answer.session;
+        const bool sameSession = !parsed.answer.session.empty() && answerSession == peer->session;
+        const bool sameUuid = answerUuid == peer->uuid;
+        const bool channelScoped = parsed.answer.session.empty() && parsed.answer.uuid.empty();
+        if ((sameUuid && answerSession == peer->session) || sameSession || channelScoped) {
+            if (!sameUuid && sameSession) {
+                spdlog::info("[App] Accepting datachannel answer by session match {}:{} payloadUuid={}",
+                             peer->uuid,
+                             peer->session,
+                             parsed.answer.uuid);
+            }
+            applyPeerAnswer(peer, parsed.answer.sdp, "datachannel");
+        } else {
+            spdlog::warn("[App] Ignoring datachannel answer for mismatched peer uuid={} session={}",
+                         parsed.answer.uuid,
+                         parsed.answer.session);
+        }
+        handled = true;
+    }
+
+    for (const auto &candidate : parsed.candidates) {
+        const std::string candidateUuid = candidate.uuid.empty() ? peer->uuid : candidate.uuid;
+        const std::string candidateSession = candidate.session.empty() ? peer->session : candidate.session;
+        const bool sameSession = !candidate.session.empty() && candidateSession == peer->session;
+        const bool sameUuid = candidateUuid == peer->uuid;
+        const bool channelScoped = candidate.session.empty() && candidate.uuid.empty();
+        if (!((sameUuid && candidateSession == peer->session) || sameSession || channelScoped)) {
+            spdlog::warn("[App] Ignoring datachannel candidate for mismatched peer uuid={} session={}",
+                         candidate.uuid,
+                         candidate.session);
+            handled = true;
+            continue;
+        }
+        if (!sameUuid && sameSession) {
+            spdlog::info("[App] Accepting datachannel candidate by session match {}:{} payloadUuid={}",
+                         peer->uuid,
+                         peer->session,
+                         candidate.uuid);
+        }
+        peer->client->addRemoteCandidate(candidate.candidate, candidate.mid, candidate.mlineIndex);
+        handled = true;
+    }
+
+    return handled;
+}
+
+bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason) {
+    if (!peer || !peer->client) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+            return false;
+        }
+        it->second->answerReceived = false;
+        it->second->pendingCandidates.clear();
+        it->second->renegotiationQueued.store(false, std::memory_order_relaxed);
+        it->second->candidateType = "local";
+    }
+
+    spdlog::info("[App] Sending offer {}:{} reason={}",
+                 peer->uuid,
+                 peer->session,
+                 reason ? reason : "unspecified");
+
+    const auto offerSdp = peer->client->createOffer();
+    if (offerSdp.empty()) {
+        spdlog::error("[WebRTC] Failed to create offer for {}:{} (reason={})",
+                      peer->uuid,
+                      peer->session,
+                      reason ? reason : "unspecified");
+        removePeerSession(peer->uuid, peer->session);
+        return false;
+    }
+
+    signaling::SignalOffer offer;
+    offer.uuid = peer->uuid;
+    offer.session = peer->session;
+    offer.streamId = peer->streamId;
+    offer.sdp = offerSdp;
+    {
+        std::lock_guard<std::mutex> lock(signalingOpsMutex_);
+        signaling_.sendOffer(offer);
+    }
+    return true;
+}
+
+void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source) {
+    if (!peer || !peer->client || sdp.empty()) {
+        return;
+    }
+
+    std::vector<PendingCandidate> buffered;
+    std::string candidateType = "local";
+    bool queuedRenegotiation = false;
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+            return;
+        }
+        it->second->answerReceived = true;
+        buffered = it->second->pendingCandidates;
+        it->second->pendingCandidates.clear();
+        candidateType = it->second->candidateType;
+        queuedRenegotiation = it->second->renegotiationQueued.exchange(false, std::memory_order_relaxed);
+    }
+
+    spdlog::info("[App] Applying peer answer {}:{} source={}",
+                 peer->uuid,
+                 peer->session,
+                 source ? source : "unknown");
+
+    peer->client->setRemoteDescription(sdp, "answer");
+    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+
+    for (const auto &pending : buffered) {
+        signaling::SignalCandidate cand;
+        cand.uuid = peer->uuid;
+        cand.candidate = pending.candidate;
+        cand.mid = pending.mid;
+        cand.mlineIndex = pending.mlineIndex;
+        cand.session = peer->session;
+        cand.type = candidateType;
+        {
+            std::lock_guard<std::mutex> lock(signalingOpsMutex_);
+            signaling_.sendCandidate(cand);
+        }
+    }
+
+    if (queuedRenegotiation) {
+        applyPeerMediaPlan(peer, "queued-media-plan");
+    }
+}
+
+void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, const char *reason) {
+    if (!peer || !peer->client) {
+        return;
+    }
+    if (!peer->dataChannelOpen.load(std::memory_order_relaxed)) {
+        return;
+    }
+
+    const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
+    const bool wantVideo = initReceived && peer->videoEnabled.load(std::memory_order_relaxed);
+    const bool wantAudio = initReceived && peer->audioEnabled.load(std::memory_order_relaxed);
+
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+            return;
+        }
+        if (!it->second->answerReceived) {
+            it->second->renegotiationQueued.store(true, std::memory_order_relaxed);
+            spdlog::info("[App] Queued media-plan renegotiation {}:{} reason={}",
+                         peer->uuid,
+                         peer->session,
+                         reason ? reason : "unspecified");
+            return;
+        }
+    }
+
+    const auto change = peer->client->ensureMediaTracks(wantVideo, wantAudio);
+    if (!change.changed) {
+        return;
+    }
+
+    if (change.videoAdded) {
+        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+    }
+
+    if (!sendPeerOffer(peer, reason)) {
+        return;
     }
 }
 

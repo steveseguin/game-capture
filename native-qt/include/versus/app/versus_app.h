@@ -31,6 +31,7 @@ struct StartOptions {
     int maxViewers = 10;
     bool remoteControlEnabled = false;
     std::string remoteControlToken;
+    webrtc::IceMode iceMode = webrtc::IceMode::All;
 };
 
 class VersusApp {
@@ -78,7 +79,11 @@ class VersusApp {
     void sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet);
     bool applyRuntimeVideoControl(int bitrateKbps, int width, int height, int fps);
     void handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message);
+    bool tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message);
     void sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool includeMiniStats);
+    bool sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason);
+    void applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source);
+    void applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, const char *reason);
     bool enforceRoomCodecLock();
     void applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
                             bool roleValid,
@@ -123,6 +128,8 @@ class VersusApp {
     std::atomic<int> pliWindowCount_{0};
     std::atomic<int64_t> lastCpuWarningMs_{0};
     std::atomic<int> softwareOverloadSamples_{0};
+    std::vector<versus::webrtc::IceServerConfig> resolvedIceServers_;
+    versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::All;
     std::thread signalingRecoveryThread_;
     std::thread videoMaintenanceThread_;
     std::atomic<bool> videoMaintenanceRunning_{false};
@@ -161,6 +168,7 @@ class VersusApp {
         std::string systemBrowser;
         std::atomic<bool> waitingForKeyframe{true};
         std::atomic<bool> dataChannelOpen{false};
+        std::atomic<bool> renegotiationQueued{false};
         std::vector<PendingCandidate> pendingCandidates;
         std::unique_ptr<versus::webrtc::WebRtcClient> client;
     };

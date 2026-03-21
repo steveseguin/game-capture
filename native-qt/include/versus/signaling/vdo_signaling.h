@@ -47,6 +47,14 @@ struct SignalCandidate {
     std::string type;
 };
 
+struct ParsedSignalMessage {
+    bool hasOffer = false;
+    SignalOffer offer;
+    bool hasAnswer = false;
+    SignalAnswer answer;
+    std::vector<SignalCandidate> candidates;
+};
+
 class VdoSignaling {
   public:
     using ConnectedCallback = std::function<void()>;
@@ -75,6 +83,7 @@ class VdoSignaling {
     bool sendOffer(const SignalOffer &offer);
     bool sendAnswer(const SignalAnswer &answer);
     bool sendCandidate(const SignalCandidate &candidate);
+    bool tryParseSignalPayload(const std::string &payload, ParsedSignalMessage &parsed) const;
     void setCandidateType(const std::string &type);
 
     void setPassword(const std::string &password);

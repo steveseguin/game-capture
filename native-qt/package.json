@@ -10,6 +10,7 @@
     "e2e:bitrate": "node e2e/bitrate-smoke.js",
     "e2e:chrome-fps": "node e2e/chrome-fps-verify.js",
     "e2e:control": "node e2e/control-e2e.js",
+    "e2e:ice-connectivity": "node e2e/ice-connectivity-e2e.js",
     "e2e:dual-quality": "node e2e/dual-quality-e2e.js",
     "e2e:dual-quality-churn": "node e2e/dual-quality-churn-e2e.js",
     "e2e:dual-quality-init-fuzz": "node e2e/dual-quality-init-fuzz-e2e.js",

@@ -1,6 +1,7 @@
 #include "versus/webrtc/webrtc_client.h"
 
 #include <rtc/common.hpp>
+#include <rtc/configuration.hpp>
 #include <rtc/rtc.hpp>
 #include <rtc/av1rtppacketizer.hpp>
 #include <rtc/h264rtppacketizer.hpp>
@@ -92,6 +93,22 @@ struct WebRtcClient::Impl {
     int configuredVideoWidth = 1920;
     int configuredVideoHeight = 1080;
     int configuredVideoFps = 60;
+    IceMode iceMode = IceMode::All;
+
+    void resetMediaState() {
+        videoTrack.reset();
+        audioTrack.reset();
+        videoPacketizer.reset();
+        audioPacketizer.reset();
+        videoRtpConfig.reset();
+        audioRtpConfig.reset();
+        videoTrackOpen.store(false);
+        audioTrackOpen.store(false);
+        sentFirstKeyframe.store(false);
+        firstVideoPacketLogged.store(false);
+        videoPacketsSent.store(0);
+        videoBytesSent.store(0);
+    }
 
     void bindDataChannel(const std::shared_ptr<rtc::DataChannel> &channel, const char *origin) {
         if (!channel) {
@@ -196,13 +213,15 @@ struct WebRtcClient::Impl {
         }
     }
 
-    void setupTracks() {
-        videoTrackOpen.store(false);
-        audioTrackOpen.store(false);
-        dataChannelOpen.store(false);
-        firstVideoPacketLogged.store(false);
-        videoPacketsSent.store(0);
-        videoBytesSent.store(0);
+    bool ensureVideoTrack() {
+        if (!pc) {
+            return false;
+        }
+        if (videoTrack) {
+            return true;
+        }
+
+        spdlog::info("[WebRTC] Adding video track after control-plane bootstrap");
 
         rtc::Description::Video video("video", rtc::Description::Direction::SendOnly);
         switch (videoCodec) {
@@ -233,6 +252,10 @@ struct WebRtcClient::Impl {
         }
         video.addSSRC(videoSsrc, "gamecapture-video");
         videoTrack = pc->addTrack(video);
+        if (!videoTrack) {
+            spdlog::error("[WebRTC] Failed to add video track");
+            return false;
+        }
 
         videoTrack->onOpen([this]() {
             spdlog::info("[WebRTC] Video track opened");
@@ -272,11 +295,31 @@ struct WebRtcClient::Impl {
         videoPacketizer->addToChain(videoNack);
         videoPacketizer->addToChain(videoPli);
         videoTrack->setMediaHandler(videoPacketizer);
+        if (videoTrack->isOpen()) {
+            videoTrackOpen.store(true);
+            trackOpenedTime = std::chrono::steady_clock::now();
+            spdlog::info("[WebRTC] Video track already open after addTrack");
+        }
+        return true;
+    }
 
+    bool ensureAudioTrack() {
+        if (!pc) {
+            return false;
+        }
+        if (audioTrack) {
+            return true;
+        }
+
+        spdlog::info("[WebRTC] Adding audio track after control-plane bootstrap");
         rtc::Description::Audio audio("audio", rtc::Description::Direction::SendOnly);
         audio.addOpusCodec(kAudioPayloadType);
         audio.addSSRC(audioSsrc, "gamecapture-audio");
         audioTrack = pc->addTrack(audio);
+        if (!audioTrack) {
+            spdlog::error("[WebRTC] Failed to add audio track");
+            return false;
+        }
 
         audioTrack->onOpen([this]() {
             spdlog::info("[WebRTC] Audio track opened");
@@ -294,7 +337,16 @@ struct WebRtcClient::Impl {
         audioPacketizer->addToChain(audioReporter);
         audioPacketizer->addToChain(audioNack);
         audioTrack->setMediaHandler(audioPacketizer);
+        if (audioTrack->isOpen()) {
+            audioTrackOpen.store(true);
+            spdlog::info("[WebRTC] Audio track already open after addTrack");
+        }
+        return true;
+    }
 
+    void setupBootstrapTransport() {
+        resetMediaState();
+        dataChannelOpen.store(false);
         bindDataChannel(pc->createDataChannel("sendChannel"), "local");
     }
 };
@@ -307,11 +359,26 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     impl_->configuredVideoWidth = std::max(1, config.videoWidth);
     impl_->configuredVideoHeight = std::max(1, config.videoHeight);
     impl_->configuredVideoFps = std::max(1, config.videoFps);
+    impl_->iceMode = config.iceMode;
 
     rtc::Configuration rtcConfig;
     for (const auto &ice : config.iceServers) {
-        rtcConfig.iceServers.emplace_back(ice);
+        rtc::IceServer server(ice.url);
+        if (!ice.username.empty()) {
+            server.username = ice.username;
+        }
+        if (!ice.credential.empty()) {
+            server.password = ice.credential;
+        }
+        rtcConfig.iceServers.emplace_back(std::move(server));
     }
+    if (config.iceMode == IceMode::Relay) {
+        rtcConfig.iceTransportPolicy = rtc::TransportPolicy::Relay;
+    }
+    // libdatachannel skips SRTP transport setup for datachannel-only sessions
+    // unless this is forced up front, which breaks late addTrack renegotiation.
+    rtcConfig.forceMediaTransport = true;
+    impl_->config = rtcConfig;
 
     impl_->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
 
@@ -342,6 +409,12 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     });
 
     impl_->pc->onLocalCandidate([this](rtc::Candidate candidate) {
+        if (!candidateAllowedForMode(candidate.candidate(), impl_->iceMode)) {
+            spdlog::info("[WebRTC] Dropping local ICE candidate due to mode={}: {}",
+                         iceModeName(impl_->iceMode),
+                         candidate.candidate());
+            return;
+        }
         if (impl_->iceCallback) {
             impl_->iceCallback(candidate.candidate(), candidate.mid(), 0);
         }
@@ -371,7 +444,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         impl_->bindDataChannel(channel, "remote");
     });
 
-    impl_->setupTracks();
+    impl_->setupBootstrapTransport();
     return true;
 }
 
@@ -381,10 +454,7 @@ void WebRtcClient::shutdown() {
         impl_->pc->close();
         impl_->pc.reset();
     }
-    impl_->videoTrack.reset();
-    impl_->audioTrack.reset();
-    impl_->videoTrackOpen.store(false);
-    impl_->audioTrackOpen.store(false);
+    impl_->resetMediaState();
 }
 
 void WebRtcClient::resetPeerConnection() {
@@ -396,21 +466,12 @@ void WebRtcClient::resetPeerConnection() {
         impl_->pc->close();
         impl_->pc.reset();
     }
-    impl_->videoTrack.reset();
-    impl_->audioTrack.reset();
-    impl_->videoPacketizer.reset();
-    impl_->audioPacketizer.reset();
-    impl_->videoTrackOpen.store(false);
-    impl_->audioTrackOpen.store(false);
+    impl_->resetMediaState();
     impl_->gatheringComplete.store(false);
-    impl_->sentFirstKeyframe.store(false);
     impl_->localDescription.clear();
 
     // Create fresh PeerConnection
-    rtc::Configuration rtcConfig;
-    rtcConfig.iceServers.emplace_back("stun:stun.l.google.com:19302");
-
-    impl_->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
+    impl_->pc = std::make_shared<rtc::PeerConnection>(impl_->config);
 
     impl_->pc->onStateChange([this](rtc::PeerConnection::State state) {
         const char* stateStr = "unknown";
@@ -439,6 +500,12 @@ void WebRtcClient::resetPeerConnection() {
     });
 
     impl_->pc->onLocalCandidate([this](rtc::Candidate candidate) {
+        if (!candidateAllowedForMode(candidate.candidate(), impl_->iceMode)) {
+            spdlog::info("[WebRTC] Dropping local ICE candidate due to mode={}: {}",
+                         iceModeName(impl_->iceMode),
+                         candidate.candidate());
+            return;
+        }
         if (impl_->iceCallback) {
             impl_->iceCallback(candidate.candidate(), candidate.mid(), 0);
         }
@@ -462,7 +529,7 @@ void WebRtcClient::resetPeerConnection() {
         impl_->bindDataChannel(channel, "remote");
     });
 
-    impl_->setupTracks();
+    impl_->setupBootstrapTransport();
     spdlog::info("[WebRTC] PeerConnection reset complete");
 }
 
@@ -508,6 +575,7 @@ std::string WebRtcClient::createOffer() {
     auto desc = impl_->pc->localDescription();
     if (desc) {
         std::string sdp = std::string(*desc);
+        sdp = filterSessionDescriptionForMode(sdp, impl_->iceMode);
         spdlog::info("[WebRTC] Offer created with {} bytes, gathering complete={}",
                      sdp.size(), impl_->gatheringComplete.load());
         // Log full SDP for debugging
@@ -563,8 +631,31 @@ void WebRtcClient::setDataChannelStateCallback(DataChannelStateCallback cb) {
     impl_->dataChannelStateCallback = std::move(cb);
 }
 
+MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAudio) {
+    MediaPlanChange change;
+    if (!impl_->pc) {
+        return change;
+    }
+
+    if (enableVideo && !impl_->videoTrack && impl_->ensureVideoTrack()) {
+        change.changed = true;
+        change.videoAdded = true;
+    }
+    if (enableAudio && !impl_->audioTrack && impl_->ensureAudioTrack()) {
+        change.changed = true;
+        change.audioAdded = true;
+    }
+
+    if (change.changed) {
+        spdlog::info("[WebRTC] Applied media plan: videoAdded={} audioAdded={}",
+                     change.videoAdded,
+                     change.audioAdded);
+    }
+    return change;
+}
+
 bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
-    if (!impl_->videoTrack || !impl_->videoTrack->isOpen()) {
+    if (!impl_->videoTrack || !impl_->videoTrack->isOpen() || !impl_->videoRtpConfig) {
         return false;
     }
     if (packet.data.empty()) {
@@ -603,7 +694,7 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
 }
 
 bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet) {
-    if (!impl_->audioTrack || !impl_->audioTrack->isOpen()) {
+    if (!impl_->audioTrack || !impl_->audioTrack->isOpen() || !impl_->audioRtpConfig) {
         return false;
     }
 
@@ -637,11 +728,31 @@ bool WebRtcClient::isDataChannelOpen() const {
 }
 
 bool WebRtcClient::hasActiveVideoTrack() const {
-    return impl_->videoTrackOpen.load();
+    if (!impl_->videoTrack) {
+        impl_->videoTrackOpen.store(false);
+        return false;
+    }
+    const bool open = impl_->videoTrack->isOpen();
+    impl_->videoTrackOpen.store(open);
+    return open;
 }
 
 bool WebRtcClient::hasActiveAudioTrack() const {
-    return impl_->audioTrackOpen.load();
+    if (!impl_->audioTrack) {
+        impl_->audioTrackOpen.store(false);
+        return false;
+    }
+    const bool open = impl_->audioTrack->isOpen();
+    impl_->audioTrackOpen.store(open);
+    return open;
+}
+
+bool WebRtcClient::hasConfiguredVideoTrack() const {
+    return static_cast<bool>(impl_->videoTrack);
+}
+
+bool WebRtcClient::hasConfiguredAudioTrack() const {
+    return static_cast<bool>(impl_->audioTrack);
 }
 
 }  // namespace versus::webrtc

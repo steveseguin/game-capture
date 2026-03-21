@@ -7,6 +7,8 @@
 
 #include <rtc/common.hpp>
 
+#include "versus/webrtc/ice_config.h"
+
 namespace versus::webrtc {
 
 struct EncodedVideoPacket {
@@ -23,7 +25,8 @@ struct EncodedAudioPacket {
 };
 
 struct PeerConfig {
-    std::vector<std::string> iceServers;
+    std::vector<IceServerConfig> iceServers;
+    IceMode iceMode = IceMode::All;
     enum class VideoCodec {
         H264,
         H265,
@@ -40,6 +43,12 @@ enum class ConnectionState {
     Connecting,
     Connected,
     Failed
+};
+
+struct MediaPlanChange {
+    bool changed = false;
+    bool videoAdded = false;
+    bool audioAdded = false;
 };
 
 class WebRtcClient {
@@ -67,6 +76,7 @@ class WebRtcClient {
     void setKeyframeRequestCallback(KeyframeRequestCallback cb);
     void setDataMessageCallback(DataMessageCallback cb);
     void setDataChannelStateCallback(DataChannelStateCallback cb);
+    MediaPlanChange ensureMediaTracks(bool enableVideo, bool enableAudio);
 
     bool sendVideo(const EncodedVideoPacket &packet);
     bool sendAudio(const EncodedAudioPacket &packet);
@@ -74,6 +84,8 @@ class WebRtcClient {
     bool isDataChannelOpen() const;
     bool hasActiveVideoTrack() const;
     bool hasActiveAudioTrack() const;
+    bool hasConfiguredVideoTrack() const;
+    bool hasConfiguredAudioTrack() const;
 
   private:
     struct Impl;

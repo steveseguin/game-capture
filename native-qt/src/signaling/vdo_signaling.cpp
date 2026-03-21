@@ -264,6 +264,122 @@ std::string effectivePassword(const std::string &password, bool encryptionDisabl
     return jsEncodeURIComponent(password);
 }
 
+bool parseSignalPayloadJson(const json &msg,
+                            const std::string &password,
+                            const std::string &salt,
+                            bool encryptionDisabled,
+                            ParsedSignalMessage &parsed) {
+    parsed = ParsedSignalMessage{};
+
+    if (msg.contains("description")) {
+        std::string description;
+        if (msg["description"].is_string() && msg.contains("vector")) {
+            auto pass = effectivePassword(password, encryptionDisabled);
+            std::string decrypted;
+            if (!aesDecryptCbc(msg["description"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
+                spdlog::warn("Failed to decrypt SDP");
+                return false;
+            }
+            description = decrypted;
+        } else if (msg["description"].is_object()) {
+            description = msg["description"].dump();
+        } else if (msg["description"].is_string()) {
+            description = msg["description"].get<std::string>();
+        }
+
+        if (description.empty()) {
+            return false;
+        }
+
+        json descJson = json::parse(description, nullptr, false);
+        if (descJson.is_discarded()) {
+            return false;
+        }
+
+        const std::string sdp = descJson.value("sdp", "");
+        const std::string type = descJson.value("type", "");
+        if (type == "offer") {
+            parsed.hasOffer = true;
+            parsed.offer = SignalOffer{msg.value("UUID", ""), sdp, msg.value("session", ""), msg.value("streamID", "")};
+            return !parsed.offer.sdp.empty();
+        }
+        if (type == "answer") {
+            parsed.hasAnswer = true;
+            parsed.answer = SignalAnswer{msg.value("UUID", ""), sdp, msg.value("session", ""), msg.value("streamID", "")};
+            return !parsed.answer.sdp.empty();
+        }
+        return false;
+    }
+
+    if (msg.contains("candidate")) {
+        std::string candidate;
+        if (msg["candidate"].is_string() && msg.contains("vector")) {
+            auto pass = effectivePassword(password, encryptionDisabled);
+            std::string decrypted;
+            if (!aesDecryptCbc(msg["candidate"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
+                spdlog::warn("Failed to decrypt ICE candidate");
+                return false;
+            }
+            candidate = decrypted;
+        } else if (msg["candidate"].is_object()) {
+            candidate = msg["candidate"].dump();
+        } else if (msg["candidate"].is_string()) {
+            candidate = msg["candidate"].get<std::string>();
+        }
+
+        json candJson = json::parse(candidate, nullptr, false);
+        if (candJson.is_discarded()) {
+            return false;
+        }
+
+        SignalCandidate cand;
+        cand.uuid = msg.value("UUID", "");
+        cand.candidate = candJson.value("candidate", "");
+        cand.mid = candJson.value("sdpMid", "");
+        cand.mlineIndex = candJson.value("sdpMLineIndex", 0);
+        cand.session = msg.value("session", "");
+        cand.type = msg.value("type", "");
+        parsed.candidates.push_back(cand);
+        return !parsed.candidates.empty();
+    }
+
+    if (msg.contains("candidates")) {
+        std::string candidatePayload;
+        if (msg["candidates"].is_string() && msg.contains("vector")) {
+            auto pass = effectivePassword(password, encryptionDisabled);
+            std::string decrypted;
+            if (!aesDecryptCbc(msg["candidates"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
+                spdlog::warn("Failed to decrypt ICE bundle");
+                return false;
+            }
+            candidatePayload = decrypted;
+        } else if (msg["candidates"].is_array()) {
+            candidatePayload = msg["candidates"].dump();
+        } else if (msg["candidates"].is_string()) {
+            candidatePayload = msg["candidates"].get<std::string>();
+        }
+
+        json candArray = json::parse(candidatePayload, nullptr, false);
+        if (!candArray.is_array()) {
+            return false;
+        }
+
+        for (const auto &candItem : candArray) {
+            SignalCandidate cand;
+            cand.uuid = msg.value("UUID", "");
+            cand.candidate = candItem.value("candidate", "");
+            cand.mid = candItem.value("sdpMid", "");
+            cand.mlineIndex = candItem.value("sdpMLineIndex", 0);
+            cand.session = msg.value("session", "");
+            cand.type = msg.value("type", "");
+            parsed.candidates.push_back(cand);
+        }
+        return !parsed.candidates.empty();
+    }
+
+    return false;
+}
+
 }  // namespace
 
 struct VdoSignaling::Impl {
@@ -350,104 +466,15 @@ struct VdoSignaling::Impl {
             return;
         }
 
-        if (msg.contains("description")) {
-            std::string description;
-            if (msg["description"].is_string() && msg.contains("vector")) {
-                auto pass = effectivePassword(password, encryptionDisabled);
-                std::string decrypted;
-                if (!aesDecryptCbc(msg["description"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
-                    spdlog::warn("Failed to decrypt SDP");
-                    return;
-                }
-                description = decrypted;
-            } else if (msg["description"].is_object()) {
-                description = msg["description"].dump();
-            } else if (msg["description"].is_string()) {
-                description = msg["description"].get<std::string>();
+        ParsedSignalMessage parsed;
+        if (parseSignalPayloadJson(msg, password, salt, encryptionDisabled, parsed)) {
+            if (parsed.hasOffer && onOffer) {
+                onOffer(parsed.offer);
             }
-
-            if (!description.empty()) {
-                json descJson = json::parse(description, nullptr, false);
-                if (!descJson.is_discarded()) {
-                    description = descJson.value("sdp", "");
-                    std::string type = descJson.value("type", "");
-                    if (type == "offer") {
-                        if (onOffer) {
-                            SignalOffer offer{msg.value("UUID", ""), description, msg.value("session", ""), msg.value("streamID", "")};
-                            onOffer(offer);
-                        }
-                    } else if (type == "answer") {
-                        if (onAnswer) {
-                            SignalAnswer answer{msg.value("UUID", ""), description, msg.value("session", ""), msg.value("streamID", "")};
-                            onAnswer(answer);
-                        }
-                    }
-                }
+            if (parsed.hasAnswer && onAnswer) {
+                onAnswer(parsed.answer);
             }
-            return;
-        }
-
-        if (msg.contains("candidate")) {
-            std::string candidate;
-            if (msg["candidate"].is_string() && msg.contains("vector")) {
-                auto pass = effectivePassword(password, encryptionDisabled);
-                std::string decrypted;
-                if (!aesDecryptCbc(msg["candidate"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
-                    spdlog::warn("Failed to decrypt ICE candidate");
-                    return;
-                }
-                candidate = decrypted;
-            } else if (msg["candidate"].is_object()) {
-                candidate = msg["candidate"].dump();
-            } else if (msg["candidate"].is_string()) {
-                candidate = msg["candidate"].get<std::string>();
-            }
-
-            json candJson = json::parse(candidate, nullptr, false);
-            if (candJson.is_discarded()) {
-                return;
-            }
-            SignalCandidate cand;
-            cand.uuid = msg.value("UUID", "");
-            cand.candidate = candJson.value("candidate", "");
-            cand.mid = candJson.value("sdpMid", "");
-            cand.mlineIndex = candJson.value("sdpMLineIndex", 0);
-            cand.session = msg.value("session", "");
-            cand.type = msg.value("type", "");
-            if (onCandidate) {
-                onCandidate(cand);
-            }
-            return;
-        }
-
-        if (msg.contains("candidates")) {
-            std::string candidatePayload;
-            if (msg["candidates"].is_string() && msg.contains("vector")) {
-                auto pass = effectivePassword(password, encryptionDisabled);
-                std::string decrypted;
-                if (!aesDecryptCbc(msg["candidates"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
-                    spdlog::warn("Failed to decrypt ICE bundle");
-                    return;
-                }
-                candidatePayload = decrypted;
-            } else if (msg["candidates"].is_array()) {
-                candidatePayload = msg["candidates"].dump();
-            } else if (msg["candidates"].is_string()) {
-                candidatePayload = msg["candidates"].get<std::string>();
-            }
-
-            json candArray = json::parse(candidatePayload, nullptr, false);
-            if (!candArray.is_array()) {
-                return;
-            }
-            for (const auto &candItem : candArray) {
-                SignalCandidate cand;
-                cand.uuid = msg.value("UUID", "");
-                cand.candidate = candItem.value("candidate", "");
-                cand.mid = candItem.value("sdpMid", "");
-                cand.mlineIndex = candItem.value("sdpMLineIndex", 0);
-                cand.session = msg.value("session", "");
-                cand.type = msg.value("type", "");
+            for (const auto &cand : parsed.candidates) {
                 if (onCandidate) {
                     onCandidate(cand);
                 }
@@ -499,6 +526,15 @@ VdoSignaling::VdoSignaling() : impl_(std::make_unique<Impl>()) {
 
 VdoSignaling::~VdoSignaling() {
     disconnect();
+}
+
+bool VdoSignaling::tryParseSignalPayload(const std::string &payload, ParsedSignalMessage &parsed) const {
+    json msg = json::parse(payload, nullptr, false);
+    if (msg.is_discarded() || !msg.is_object()) {
+        parsed = ParsedSignalMessage{};
+        return false;
+    }
+    return parseSignalPayloadJson(msg, impl_->password, impl_->salt, impl_->encryptionDisabled, parsed);
 }
 
 bool VdoSignaling::connect(const std::string &server) {
