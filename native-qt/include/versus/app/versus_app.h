@@ -101,6 +101,7 @@ class VersusApp {
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
     std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
                                                                 const std::string &session) const;
+    void shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer);
     void removePeerSession(const std::string &uuid, const std::string &session);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
@@ -196,6 +197,8 @@ class VersusApp {
     int hardwareEncodeFailCount_ = 0;
     int hardwareRecoveryAttemptCount_ = 0;
     bool hardwareAutoFallbackTriggered_ = false;
+    int softwareExternalEncodeFailCount_ = 0;
+    int64_t softwareExternalFailWindowStartMs_ = 0;
     std::atomic<bool> lqEncoderInitialized_{false};
     bool roomCodecWarningEmitted_ = false;
 

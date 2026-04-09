@@ -1611,6 +1611,7 @@ class VideoEncoder::Impl {
                 } else {
                     externalPendingInputBytes_ = 0;
                 }
+                externalIoCv_.notify_all();
             }
 
             size_t offset = 0;
@@ -1719,7 +1720,12 @@ class VideoEncoder::Impl {
                !externalWriterFailed_ &&
                !externalReaderFailed_ &&
                externalInputQueue_.size() >= kMaxQueuedFrames) {
-            if (externalIoCv_.wait_until(lock, enqueueDeadline) == std::cv_status::timeout) {
+            if (!externalIoCv_.wait_until(lock, enqueueDeadline, [this]() {
+                    return externalIoStopRequested_ ||
+                           externalWriterFailed_ ||
+                           externalReaderFailed_ ||
+                           externalInputQueue_.size() < kMaxQueuedFrames;
+                })) {
                 return false;
             }
         }

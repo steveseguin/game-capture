@@ -1225,11 +1225,11 @@ void MainWindow::onGoLiveClicked() {
         return;
     }
 
-    if (isLive_) {
-        if (stopInProgress_) {
-            return;
-        }
+    if (startInProgress_ || stopInProgress_) {
+        return;
+    }
 
+    if (isLive_) {
         stopInProgress_ = true;
         const quint64 stopOpId = ++stopOpId_;
         reconnectNoticeActive_ = false;
@@ -1325,16 +1325,12 @@ void MainWindow::onGoLiveClicked() {
             }, Qt::QueuedConnection);
         });
     } else {
-        updateStatus("Connecting...", "connecting");
-
         const QString resolutionText = resolutionSelect_->currentData().toString();
         const QStringList parts = resolutionText.split('x');
         const int width = parts.size() > 0 ? parts[0].toInt() : 1920;
         const int height = parts.size() > 1 ? parts[1].toInt() : 1080;
         const int fps = fpsSelect_->currentData().toInt();
         const int bitrate = selectedBitrateKbps();
-
-        core_->setSelectedWindow(selectedWindowId_.toStdString());
 
         versus::video::EncoderConfig config;
         config.codec = codecFromUiValue(codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
@@ -1353,6 +1349,8 @@ void MainWindow::onGoLiveClicked() {
         }
 
         const QString encoderMode = encoderSelect_->currentData().toString();
+        const QString codecValue = codecSelect_ ? codecSelect_->currentData().toString() : QString("h264");
+        const std::string selectedWindowId = selectedWindowId_.toStdString();
         if (encoderMode == "nvenc") {
             config.preferredHardware = versus::video::HardwareEncoder::NVENC;
         } else if (encoderMode == "ffmpeg_nvenc") {
@@ -1377,21 +1375,14 @@ void MainWindow::onGoLiveClicked() {
                      config.frameRate,
                      config.bitrate,
                      encoderMode.toStdString(),
-                     codecSelect_ ? codecSelect_->currentData().toString().toStdString() : std::string("h264"),
+                     codecValue.toStdString(),
                      config.enableAlpha);
-        core_->setVideoConfig(config);
-
-        if (!core_->startCapture(selectedWindowId_.toStdString())) {
-            updateStatus("Failed to start capture", "error");
-            return;
-        }
 
         versus::app::StartOptions options;
         const QString streamTargetRaw = streamIdInput_->text().trimmed();
         const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
         if (!streamTargetRaw.isEmpty() && !parsedTarget.valid) {
             updateStatus("Invalid stream target URL", "error");
-            core_->stopCapture();
             return;
         }
 
@@ -1426,95 +1417,187 @@ void MainWindow::onGoLiveClicked() {
             }
         }
 
-        if (!core_->goLive(options)) {
-            updateStatus("Failed to connect", "error");
-            core_->stopCapture();
-            return;
-        }
-
-        isLive_ = true;
         reconnectNoticeActive_ = false;
-        statsTimer_->start();
+        startInProgress_ = true;
+        const quint64 startOpId = ++startOpId_;
+        updateStatus("Starting...", "connecting");
+        setConfigControlsEnabled(false);
         if (previewTimer_) {
             previewTimer_->stop();
         }
-        setConfigControlsEnabled(false);
+        if (goLiveButton_) {
+            goLiveButton_->setEnabled(false);
+        }
+        updateGoLiveButton();
 
-        updateStatus("LIVE", "live");
+        QPointer<MainWindow> self(this);
+        auto *core = core_;
+        QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode]() {
+            bool started = false;
+            QString failureStatus;
 
-        const QString shareLink = QString::fromStdString(core_->getShareLink());
-        if (shareLink.isEmpty()) {
-            shareLabel_->clear();
-        } else {
-            const QString escapedLink = shareLink.toHtmlEscaped();
-            shareLabel_->setText(QString("<a href=\"%1\" style=\"color: %2; text-decoration: underline;\">%1</a>")
-                                     .arg(escapedLink, COLOR_ACCENT));
-        }
-        shareLabel_->setTextFormat(Qt::RichText);
-        shareLabel_->setTextInteractionFlags(Qt::TextBrowserInteraction);
-        shareLabel_->setOpenExternalLinks(true);
-        if (copyShareLinkButton_) {
-            copyShareLinkButton_->setEnabled(!shareLink.isEmpty());
-        }
-        if (openShareLinkButton_) {
-            openShareLinkButton_->setEnabled(!shareLink.isEmpty());
-        }
-        if (copyShareLinkAction_) {
-            copyShareLinkAction_->setEnabled(!shareLink.isEmpty());
-        }
-        if (copyShareLinkTrayAction_) {
-            copyShareLinkTrayAction_->setEnabled(!shareLink.isEmpty());
-        }
-        if (openShareLinkAction_) {
-            openShareLinkAction_->setEnabled(!shareLink.isEmpty());
-        }
-        if (openShareLinkTrayAction_) {
-            openShareLinkTrayAction_->setEnabled(!shareLink.isEmpty());
-        }
+            core->setSelectedWindow(selectedWindowId);
+            core->setVideoConfig(config);
 
-        statsPanel_->setVisible(true);
+            if (!core->startCapture(selectedWindowId)) {
+                failureStatus = "Failed to start capture";
+            } else if (!core->goLive(options)) {
+                failureStatus = "Failed to connect";
+                core->stopCapture();
+            } else {
+                started = true;
+            }
 
-        if (trayIcon_) {
-            updateTrayLiveIndicator(true);
-        }
+            if (!self) {
+                return;
+            }
+            QMetaObject::invokeMethod(self, [self, startOpId, started, failureStatus, encoderMode]() {
+                if (!self) {
+                    return;
+                }
+                if (startOpId != self->startOpId_) {
+                    return;
+                }
 
-        const QString activeEncoder = QString::fromStdString(core_->getVideoEncoderName());
-        const bool hardwareEncoder = core_->isHardwareVideoEncoder();
-        const QString activeText = activeEncoder.isEmpty() ? "Unknown" : activeEncoder;
-        encoderStatusLabel_->setText(QString("Active Encoder: %1 (%2)")
-            .arg(activeText, hardwareEncoder ? "hardware" : "software"));
+                self->startInProgress_ = false;
+                if (!started) {
+                    self->isLive_ = false;
+                    self->updateStatus(failureStatus.isEmpty() ? "Failed to start stream" : failureStatus, "error");
+                    self->setConfigControlsEnabled(true);
+                    if (self->previewTimer_) {
+                        self->previewTimer_->start();
+                    }
+                    if (self->windowListWidget_) {
+                        self->windowListWidget_->setAutoRefreshEnabled(true);
+                    }
+                    self->refreshSelectedWindowPreview();
+                    self->updateGoLiveButton();
+                    return;
+                }
 
-        bool fallbackActive = false;
-        if (encoderMode == "nvenc" || encoderMode == "ffmpeg_nvenc") {
-            fallbackActive = !activeText.contains("nvidia", Qt::CaseInsensitive);
-        } else if (encoderMode == "qsv") {
-            fallbackActive = !activeText.contains("intel", Qt::CaseInsensitive) &&
-                             !activeText.contains("quick sync", Qt::CaseInsensitive) &&
-                             !activeText.contains("qsv", Qt::CaseInsensitive);
-        } else if (encoderMode == "amf") {
-            fallbackActive = !activeText.contains("amd", Qt::CaseInsensitive) &&
-                             !activeText.contains("radeon", Qt::CaseInsensitive) &&
-                             !activeText.contains("amf", Qt::CaseInsensitive);
-        } else if (encoderMode == "software") {
-            fallbackActive = hardwareEncoder;
-        }
+                self->isLive_ = true;
+                self->reconnectNoticeActive_ = false;
+                if (self->statsTimer_) {
+                    self->statsTimer_->start();
+                }
+                if (self->previewTimer_) {
+                    self->previewTimer_->stop();
+                }
+                self->setConfigControlsEnabled(false);
 
-        if (fallbackActive) {
-            encoderStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: bold;").arg(COLOR_YELLOW));
-            updateStatus("LIVE (fallback encoder)", "live");
-        } else {
-            encoderStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
-        }
+                self->updateStatus("LIVE", "live");
 
-        windowListWidget_->setAutoRefreshEnabled(false);
+                const QString shareLink = QString::fromStdString(self->core_->getShareLink());
+                if (self->shareLabel_) {
+                    if (shareLink.isEmpty()) {
+                        self->shareLabel_->clear();
+                    } else {
+                        const QString escapedLink = shareLink.toHtmlEscaped();
+                        self->shareLabel_->setText(
+                            QString("<a href=\"%1\" style=\"color: %2; text-decoration: underline;\">%1</a>")
+                                .arg(escapedLink, COLOR_ACCENT));
+                    }
+                    self->shareLabel_->setTextFormat(Qt::RichText);
+                    self->shareLabel_->setTextInteractionFlags(Qt::TextBrowserInteraction);
+                    self->shareLabel_->setOpenExternalLinks(true);
+                }
+                if (self->copyShareLinkButton_) {
+                    self->copyShareLinkButton_->setEnabled(!shareLink.isEmpty());
+                }
+                if (self->openShareLinkButton_) {
+                    self->openShareLinkButton_->setEnabled(!shareLink.isEmpty());
+                }
+                if (self->copyShareLinkAction_) {
+                    self->copyShareLinkAction_->setEnabled(!shareLink.isEmpty());
+                }
+                if (self->copyShareLinkTrayAction_) {
+                    self->copyShareLinkTrayAction_->setEnabled(!shareLink.isEmpty());
+                }
+                if (self->openShareLinkAction_) {
+                    self->openShareLinkAction_->setEnabled(!shareLink.isEmpty());
+                }
+                if (self->openShareLinkTrayAction_) {
+                    self->openShareLinkTrayAction_->setEnabled(!shareLink.isEmpty());
+                }
+
+                if (self->statsPanel_) {
+                    self->statsPanel_->setVisible(true);
+                }
+
+                if (self->trayIcon_) {
+                    self->updateTrayLiveIndicator(true);
+                }
+
+                const QString activeEncoder = QString::fromStdString(self->core_->getVideoEncoderName());
+                const bool hardwareEncoder = self->core_->isHardwareVideoEncoder();
+                const QString activeText = activeEncoder.isEmpty() ? "Unknown" : activeEncoder;
+                if (self->encoderStatusLabel_) {
+                    self->encoderStatusLabel_->setText(QString("Active Encoder: %1 (%2)")
+                        .arg(activeText, hardwareEncoder ? "hardware" : "software"));
+                }
+
+                bool fallbackActive = false;
+                if (encoderMode == "nvenc" || encoderMode == "ffmpeg_nvenc") {
+                    fallbackActive = !activeText.contains("nvidia", Qt::CaseInsensitive);
+                } else if (encoderMode == "qsv") {
+                    fallbackActive = !activeText.contains("intel", Qt::CaseInsensitive) &&
+                                     !activeText.contains("quick sync", Qt::CaseInsensitive) &&
+                                     !activeText.contains("qsv", Qt::CaseInsensitive);
+                } else if (encoderMode == "amf") {
+                    fallbackActive = !activeText.contains("amd", Qt::CaseInsensitive) &&
+                                     !activeText.contains("radeon", Qt::CaseInsensitive) &&
+                                     !activeText.contains("amf", Qt::CaseInsensitive);
+                } else if (encoderMode == "software") {
+                    fallbackActive = hardwareEncoder;
+                }
+
+                if (self->encoderStatusLabel_) {
+                    if (fallbackActive) {
+                        self->encoderStatusLabel_->setStyleSheet(
+                            QString("color: %1; font-size: 11px; font-weight: bold;").arg(COLOR_YELLOW));
+                        self->updateStatus("LIVE (fallback encoder)", "live");
+                    } else {
+                        self->encoderStatusLabel_->setStyleSheet(
+                            QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+                    }
+                }
+
+                if (self->windowListWidget_) {
+                    self->windowListWidget_->setAutoRefreshEnabled(false);
+                }
+                self->updateGoLiveButton();
+            }, Qt::QueuedConnection);
+        });
     }
 
     updateGoLiveButton();
 }
 
 void MainWindow::updateGoLiveButton() {
+    if (!goLiveButton_) {
+        return;
+    }
+
+    if (startInProgress_) {
+        goLiveButton_->setText("STARTING...");
+        goLiveButton_->setEnabled(false);
+        goLiveButton_->setStyleSheet(QString(
+            "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }")
+            .arg(COLOR_YELLOW));
+        if (goLiveAction_) {
+            goLiveAction_->setText("Starting...");
+            goLiveAction_->setEnabled(false);
+        }
+        if (goLiveMenuAction_) {
+            goLiveMenuAction_->setText("Starting...");
+            goLiveMenuAction_->setEnabled(false);
+        }
+        return;
+    }
+
     if (stopInProgress_) {
         goLiveButton_->setText("STOPPING...");
+        goLiveButton_->setEnabled(false);
         goLiveButton_->setStyleSheet(QString(
             "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }")
             .arg(COLOR_YELLOW));
@@ -1531,6 +1614,7 @@ void MainWindow::updateGoLiveButton() {
 
     if (isLive_) {
         goLiveButton_->setText("STOP");
+        goLiveButton_->setEnabled(true);
         goLiveButton_->setStyleSheet(QString(
             "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }"
             "QPushButton:hover { background-color: #ff4444; }"
@@ -1545,6 +1629,7 @@ void MainWindow::updateGoLiveButton() {
         }
     } else {
         goLiveButton_->setText("GO LIVE");
+        goLiveButton_->setEnabled(!selectedWindowId_.isEmpty());
         goLiveButton_->setStyleSheet(QString(
             "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }"
             "QPushButton:hover { background-color: %2; }"

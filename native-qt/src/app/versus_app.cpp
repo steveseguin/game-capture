@@ -189,6 +189,8 @@ bool VersusApp::startCapture(const std::string &windowId) {
     hardwareEncodeFailCount_ = 0;
     hardwareRecoveryAttemptCount_ = 0;
     hardwareAutoFallbackTriggered_ = false;
+    softwareExternalEncodeFailCount_ = 0;
+    softwareExternalFailWindowStartMs_ = 0;
     hqAspectLocked_ = false;
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
@@ -360,6 +362,8 @@ void VersusApp::stopCapture() {
     hardwareEncodeFailCount_ = 0;
     hardwareRecoveryAttemptCount_ = 0;
     hardwareAutoFallbackTriggered_ = false;
+    softwareExternalEncodeFailCount_ = 0;
+    softwareExternalFailWindowStartMs_ = 0;
     hqAspectLocked_ = false;
     capturing_ = false;
 }
@@ -399,6 +403,8 @@ bool VersusApp::goLive(const StartOptions &options) {
     hardwareEncodeFailCount_ = 0;
     hardwareRecoveryAttemptCount_ = 0;
     hardwareAutoFallbackTriggered_ = false;
+    softwareExternalEncodeFailCount_ = 0;
+    softwareExternalFailWindowStartMs_ = 0;
 
     room_ = options.room;
     password_ = options.password;
@@ -669,9 +675,7 @@ void VersusApp::setupSignalingCallbacks() {
                 peerSessions_.erase(existing);
             }
         }
-        if (replacedPeer && replacedPeer->client) {
-            replacedPeer->client->shutdown();
-        }
+        shutdownPeerClientAsync(replacedPeer);
 
         auto peer = std::make_shared<PeerSession>();
         peer->uuid = uuid;
@@ -1645,6 +1649,34 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     if (!hqPeers.empty()) {
         const bool externalFfmpegEncoder =
             videoEncoder_.activeEncoderName().find("FFmpeg") != std::string::npos;
+        auto fallbackUnstableSoftwareCodec = [&](const char *reason) {
+            if (videoEncoder_.activeCodec() == video::VideoCodec::H264) {
+                return false;
+            }
+
+            video::EncoderConfig fallbackConfig = videoConfig_;
+            fallbackConfig.codec = video::VideoCodec::H264;
+            fallbackConfig.forceFfmpegNvenc = false;
+
+            videoEncoder_.shutdown();
+            if (!videoEncoder_.initialize(fallbackConfig)) {
+                spdlog::error("[App] {} but H.264 fallback initialization failed", reason);
+                return false;
+            }
+
+            videoConfig_ = fallbackConfig;
+            softwareExternalEncodeFailCount_ = 0;
+            softwareExternalFailWindowStartMs_ = 0;
+            softwareOverloadSamples_.store(0, std::memory_order_relaxed);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            emitRuntimeEvent("Software fallback encoder was unstable; switched to H.264 for stability.", false);
+            spdlog::warn("[App] {}. Switched to '{}' ({})",
+                         reason,
+                         videoEncoder_.activeEncoderName(),
+                         videoEncoder_.activeCodecName());
+            return true;
+        };
         if (requestKeyframe && !externalFfmpegEncoder) {
             videoEncoder_.requestKeyframe();
         }
@@ -1832,11 +1864,36 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             } else {
                 softwareOverloadSamples_.store(0, std::memory_order_relaxed);
             }
+            if (externalFfmpegEncoder &&
+                !hardwareEncodingBefore &&
+                videoEncoder_.activeCodec() != video::VideoCodec::H264 &&
+                softwareExternalFailWindowStartMs_ != 0 &&
+                (steadyNowMs() - softwareExternalFailWindowStartMs_) > 15000) {
+                softwareExternalEncodeFailCount_ = 0;
+                softwareExternalFailWindowStartMs_ = 0;
+            }
 
             if (requestKeyframe && !hqPacket.isKeyframe && !externalFfmpegEncoder) {
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
         } else {
+            if (externalFfmpegEncoder &&
+                !hardwareEncodingBefore &&
+                videoEncoder_.activeCodec() != video::VideoCodec::H264) {
+                const int64_t failNowMs = steadyNowMs();
+                if (softwareExternalFailWindowStartMs_ == 0 ||
+                    (failNowMs - softwareExternalFailWindowStartMs_) > 15000) {
+                    softwareExternalFailWindowStartMs_ = failNowMs;
+                    softwareExternalEncodeFailCount_ = 0;
+                }
+                softwareExternalEncodeFailCount_++;
+                if (softwareExternalEncodeFailCount_ >= 2) {
+                    fallbackUnstableSoftwareCodec("Software external encoder repeatedly failed to encode");
+                }
+            } else {
+                softwareExternalEncodeFailCount_ = 0;
+                softwareExternalFailWindowStartMs_ = 0;
+            }
             if (requestKeyframe && !externalFfmpegEncoder) {
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
@@ -2110,7 +2167,21 @@ void VersusApp::startVideoMaintenanceThread() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(120));
                 continue;
             }
-            if ((nowMs - lastInfoBroadcastMs) >= kDataInfoIntervalMs) {
+            bool hasPendingInitPeer = false;
+            {
+                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+                for (const auto &entry : peerSessions_) {
+                    if (!entry.second || !entry.second->dataChannelOpen.load(std::memory_order_relaxed)) {
+                        continue;
+                    }
+                    if (!entry.second->initReceived.load(std::memory_order_relaxed)) {
+                        hasPendingInitPeer = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasPendingInitPeer && (nowMs - lastInfoBroadcastMs) >= kDataInfoIntervalMs) {
                 std::vector<std::shared_ptr<PeerSession>> peers;
                 {
                     std::lock_guard<std::mutex> lock(peerSessionsMutex_);
@@ -2585,13 +2656,29 @@ void VersusApp::removePeerSession(const std::string &uuid, const std::string &se
         hasRemainingPeers = !peerSessions_.empty();
     }
 
-    if (peer && peer->client) {
-        peer->client->shutdown();
-    }
+    shutdownPeerClientAsync(peer);
     if (!hasRemainingPeers) {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         shutdownLqEncoderLocked();
     }
+}
+
+void VersusApp::shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer || !peer->client) {
+        return;
+    }
+
+    std::thread([peer]() {
+        try {
+            if (peer->client) {
+                peer->client->shutdown();
+            }
+        } catch (const std::exception &e) {
+            spdlog::warn("[WebRTC] Peer shutdown threw exception: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[WebRTC] Peer shutdown threw unknown exception");
+        }
+    }).detach();
 }
 
 void VersusApp::clearPeerSessions() {
@@ -2607,10 +2694,8 @@ void VersusApp::clearPeerSessions() {
         peerSessions_.clear();
     }
 
-    for (auto &peer : peers) {
-        if (peer && peer->client) {
-            peer->client->shutdown();
-        }
+    for (const auto &peer : peers) {
+        shutdownPeerClientAsync(peer);
     }
     std::lock_guard<std::mutex> lock(videoSendMutex_);
     shutdownLqEncoderLocked();
