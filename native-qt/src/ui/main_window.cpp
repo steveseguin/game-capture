@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPointer>
+#include <QSettings>
 #include <QToolTip>
 #include <QScrollArea>
 #include <QSignalBlocker>
@@ -52,6 +53,8 @@ static const QString APP_BRAND = "Game Capture";
 static const QString APP_TRAY_IDLE = "Game Capture - Idle";
 static const QString APP_TRAY_LIVE = "Game Capture - LIVE";
 static const QString APP_VERSION_TEXT = QStringLiteral(APP_VERSION);
+static const QString APP_SETTINGS_ORG = "VDO.Ninja";
+static const QString APP_SETTINGS_NAME = "Game Capture";
 
 versus::video::VideoCodec codecFromUiValue(const QString &value) {
     if (value == "h265") {
@@ -75,6 +78,33 @@ bool codecRequiresFfmpegPath(versus::video::VideoCodec codec) {
 
 bool codecSupportsAlphaWorkflow(versus::video::VideoCodec codec) {
     return codec == versus::video::VideoCodec::AV1 || codec == versus::video::VideoCodec::VP9;
+}
+
+versus::webrtc::IceMode iceModeFromUiValue(const QString &value) {
+    if (value == "host-only") {
+        return versus::webrtc::IceMode::HostOnly;
+    }
+    if (value == "relay") {
+        return versus::webrtc::IceMode::Relay;
+    }
+    if (value == "stun-only") {
+        return versus::webrtc::IceMode::StunOnly;
+    }
+    return versus::webrtc::IceMode::All;
+}
+
+QSettings makeUiSettings() {
+    return QSettings(APP_SETTINGS_ORG, APP_SETTINGS_NAME);
+}
+
+void restoreComboByData(QComboBox *combo, const QVariant &data) {
+    if (!combo || !data.isValid()) {
+        return;
+    }
+    const int index = combo->findData(data);
+    if (index >= 0) {
+        combo->setCurrentIndex(index);
+    }
 }
 
 QIcon makeTrayLiveIcon(const QIcon &baseIcon, bool live) {
@@ -184,6 +214,8 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
     setupMenuBar();
     applyDarkTheme();
     setupUI();
+    loadPersistedSettings();
+    connectPersistedSettingSignals();
     setupTrayIcon();
 
     // Stats timer (update every second when live)
@@ -337,6 +369,170 @@ MainWindow::~MainWindow() {
     }
 }
 
+void MainWindow::loadPersistedSettings() {
+    loadingPersistedSettings_ = true;
+
+    QSettings settings = makeUiSettings();
+    const QByteArray geometry = settings.value("window/geometry").toByteArray();
+    if (!geometry.isEmpty()) {
+        restoreGeometry(geometry);
+    }
+
+    if (streamIdInput_) {
+        streamIdInput_->setText(settings.value("stream/target").toString());
+    }
+    if (roomInput_) {
+        roomInput_->setText(settings.value("stream/room").toString());
+    }
+    if (passwordInput_) {
+        passwordInput_->setText(settings.value("stream/password").toString());
+    }
+    if (labelInput_) {
+        labelInput_->setText(settings.value("stream/label").toString());
+    }
+    if (advancedToggle_) {
+        advancedToggle_->setChecked(settings.value("ui/advancedVisible", false).toBool());
+    }
+    if (customBitrateSpin_) {
+        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", 12000).toInt());
+    }
+    if (viewerLimitSpin_) {
+        viewerLimitSpin_->setValue(settings.value("stream/maxViewers", 10).toInt());
+    }
+    if (roomModeLqCheck_) {
+        roomModeLqCheck_->setChecked(settings.value("stream/roomModeLqEnabled", true).toBool());
+    }
+    if (remoteControlTokenInput_) {
+        remoteControlTokenInput_->setText(settings.value("control/token").toString());
+    }
+    if (ffmpegPathInput_) {
+        ffmpegPathInput_->setText(settings.value("video/ffmpegPath").toString());
+    }
+    if (ffmpegOptionsInput_) {
+        ffmpegOptionsInput_->setText(settings.value("video/ffmpegOptions").toString());
+    }
+
+    restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
+    restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
+    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 12000));
+    restoreComboByData(iceModeSelect_, settings.value("network/iceMode", "all"));
+    restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
+    restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
+
+    if (remoteControlCheck_) {
+        remoteControlCheck_->setChecked(settings.value("control/enabled", false).toBool());
+    }
+    if (alphaWorkflowCheck_) {
+        alphaWorkflowCheck_->setChecked(settings.value("video/alphaWorkflow", false).toBool());
+    }
+
+    minimizeToTrayOnClose_ = settings.value("ui/minimizeToTrayOnClose", true).toBool();
+    if (minimizeToTrayOnCloseAction_) {
+        minimizeToTrayOnCloseAction_->setChecked(minimizeToTrayOnClose_);
+    }
+
+    onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
+    syncCodecUiState();
+    loadingPersistedSettings_ = false;
+}
+
+void MainWindow::savePersistedSettings() {
+    if (loadingPersistedSettings_) {
+        return;
+    }
+
+    QSettings settings = makeUiSettings();
+    settings.setValue("window/geometry", saveGeometry());
+    settings.setValue("stream/target", streamIdInput_ ? streamIdInput_->text().trimmed() : QString());
+    settings.setValue("stream/room", roomInput_ ? roomInput_->text().trimmed() : QString());
+    settings.setValue("stream/password", passwordInput_ ? passwordInput_->text() : QString());
+    settings.setValue("stream/label", labelInput_ ? labelInput_->text() : QString());
+    settings.setValue("stream/maxViewers", viewerLimitSpin_ ? viewerLimitSpin_->value() : 10);
+    settings.setValue("stream/roomModeLqEnabled", roomModeLqCheck_ ? roomModeLqCheck_->isChecked() : true);
+    settings.setValue("ui/advancedVisible", advancedToggle_ ? advancedToggle_->isChecked() : false);
+    settings.setValue("ui/minimizeToTrayOnClose", minimizeToTrayOnClose_);
+    settings.setValue("video/resolution", resolutionSelect_ ? resolutionSelect_->currentData().toString() : QString("1920x1080"));
+    settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
+    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 12000);
+    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 12000);
+    settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
+    settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
+    settings.setValue("video/alphaWorkflow", alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false);
+    settings.setValue("video/ffmpegPath", ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString());
+    settings.setValue("video/ffmpegOptions", ffmpegOptionsInput_ ? ffmpegOptionsInput_->text() : QString());
+    settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
+    settings.setValue("control/enabled", remoteControlCheck_ ? remoteControlCheck_->isChecked() : false);
+    settings.setValue("control/token", remoteControlTokenInput_ ? remoteControlTokenInput_->text().trimmed() : QString());
+    settings.sync();
+}
+
+void MainWindow::connectPersistedSettingSignals() {
+    auto saveNow = [this]() {
+        savePersistedSettings();
+    };
+
+    if (streamIdInput_) {
+        connect(streamIdInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (roomInput_) {
+        connect(roomInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (passwordInput_) {
+        connect(passwordInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (labelInput_) {
+        connect(labelInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (advancedToggle_) {
+        connect(advancedToggle_, &QCheckBox::toggled, this, saveNow);
+    }
+    if (resolutionSelect_) {
+        connect(resolutionSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (fpsSelect_) {
+        connect(fpsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (bitrateSelect_) {
+        connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (customBitrateSpin_) {
+        connect(customBitrateSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
+    }
+    if (viewerLimitSpin_) {
+        connect(viewerLimitSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
+    }
+    if (roomModeLqCheck_) {
+        connect(roomModeLqCheck_, &QCheckBox::toggled, this, saveNow);
+    }
+    if (iceModeSelect_) {
+        connect(iceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (remoteControlCheck_) {
+        connect(remoteControlCheck_, &QCheckBox::toggled, this, saveNow);
+    }
+    if (remoteControlTokenInput_) {
+        connect(remoteControlTokenInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (encoderSelect_) {
+        connect(encoderSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (codecSelect_) {
+        connect(codecSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (alphaWorkflowCheck_) {
+        connect(alphaWorkflowCheck_, &QCheckBox::toggled, this, saveNow);
+    }
+    if (ffmpegPathInput_) {
+        connect(ffmpegPathInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (ffmpegOptionsInput_) {
+        connect(ffmpegOptionsInput_, &QLineEdit::textChanged, this, saveNow);
+    }
+    if (minimizeToTrayOnCloseAction_) {
+        connect(minimizeToTrayOnCloseAction_, &QAction::toggled, this, saveNow);
+    }
+}
+
 void MainWindow::setupMenuBar() {
     auto *fileMenu = menuBar()->addMenu("&File");
     goLiveMenuAction_ = fileMenu->addAction("Go Live");
@@ -443,6 +639,7 @@ void MainWindow::setupUI() {
     previewLabel_->setObjectName("selectedPreview");
     previewLabel_->setAlignment(Qt::AlignCenter);
     previewLabel_->setMinimumHeight(150);
+    previewLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     previewLabel_->setStyleSheet("background-color: #0a141e; border: 1px solid #263443; border-radius: 6px;");
     previewLayout->addWidget(previewLabel_);
     captureSplitter->addWidget(previewFrame);
@@ -510,6 +707,8 @@ void MainWindow::setupUI() {
 
     roomInput_ = new QLineEdit(this);
     roomInput_->setPlaceholderText("Room ID (optional)");
+    roomInput_->setToolTip(
+        "Room mode can route non-scene viewers to a lower-quality tier for bandwidth compatibility. Use the room-quality toggle below to disable that behavior.");
     advancedForm->addRow("Room", roomInput_);
 
     labelInput_ = new QLineEdit(this);
@@ -552,9 +751,28 @@ void MainWindow::setupUI() {
     viewerLimitSpin_->setSuffix(" viewers");
     advancedForm->addRow("Max Viewers", viewerLimitSpin_);
 
+    roomModeLqCheck_ = new QCheckBox("Use 640x360 for room guests/directors/viewers", this);
+    roomModeLqCheck_->setObjectName("roomModeLqCheck");
+    roomModeLqCheck_->setChecked(true);
+    roomModeLqCheck_->setToolTip(
+        "Enabled: non-scene room peers use the low-quality 640x360 tier. Disabled: room peers stay on the full-resolution HQ path.");
+    advancedForm->addRow("Room Quality", roomModeLqCheck_);
+
+    iceModeSelect_ = new QComboBox(this);
+    iceModeSelect_->setObjectName("iceModeSelect");
+    iceModeSelect_->addItem("Auto (Recommended)", QVariant("all"));
+    iceModeSelect_->addItem("Relay Only", QVariant("relay"));
+    iceModeSelect_->addItem("Direct STUN Only", QVariant("stun-only"));
+    iceModeSelect_->addItem("Host Only (LAN)", QVariant("host-only"));
+    iceModeSelect_->setToolTip(
+        "Auto tries direct UDP first and uses TURN when available. Relay Only is slower but often works better on restrictive networks.");
+    advancedForm->addRow("ICE Mode", iceModeSelect_);
+
     remoteControlCheck_ = new QCheckBox("Enable director control via data channel", this);
     remoteControlCheck_->setObjectName("remoteControlCheck");
     remoteControlCheck_->setChecked(false);
+    remoteControlCheck_->setToolTip(
+        "Allows a trusted VDO.Ninja director to request bitrate or resolution changes over the data channel while you are live.");
     advancedForm->addRow("Remote Control", remoteControlCheck_);
 
     remoteControlTokenInput_ = new QLineEdit(this);
@@ -1130,10 +1348,6 @@ void MainWindow::onGoLiveClicked() {
         config.ffmpegPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed().toStdString() : std::string();
         config.ffmpegOptions = ffmpegOptionsInput_ ? ffmpegOptionsInput_->text().toStdString() : std::string();
 
-        if (config.codec == versus::video::VideoCodec::VP9) {
-            updateStatus("VP9 transport is preview-only; use AV1 or H.264 for live publish", "error");
-            return;
-        }
         if (config.enableAlpha && !codecSupportsAlphaWorkflow(config.codec)) {
             config.enableAlpha = false;
         }
@@ -1194,6 +1408,9 @@ void MainWindow::onGoLiveClicked() {
         options.password = passwordText.isEmpty() ? parsedTarget.password.toStdString() : passwordText.toStdString();
         options.label = labelInput_ ? labelInput_->text().toStdString() : std::string();
         options.maxViewers = viewerLimitSpin_ ? viewerLimitSpin_->value() : 10;
+        options.roomModeLqEnabled = roomModeLqCheck_ ? roomModeLqCheck_->isChecked() : true;
+        options.iceMode = iceModeFromUiValue(
+            iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
         options.remoteControlEnabled = remoteControlCheck_ ? remoteControlCheck_->isChecked() : false;
         options.remoteControlToken = remoteControlTokenInput_
             ? remoteControlTokenInput_->text().trimmed().toStdString()
@@ -1488,7 +1705,7 @@ void MainWindow::syncCodecUiState() {
         if (selectedCodec == versus::video::VideoCodec::H265) {
             codecSelect_->setToolTip("H.265 is experimental and may not decode in Chromium-based viewers.");
         } else if (selectedCodec == versus::video::VideoCodec::VP9) {
-            codecSelect_->setToolTip("VP9 RTP transport is preview-only in this build.");
+            codecSelect_->setToolTip("VP9 publish is experimental and mainly intended for alpha/transparency workflows.");
         } else {
             codecSelect_->setToolTip(QString());
         }
@@ -1549,6 +1766,12 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (viewerLimitSpin_) {
         viewerLimitSpin_->setEnabled(enabled);
     }
+    if (roomModeLqCheck_) {
+        roomModeLqCheck_->setEnabled(enabled);
+    }
+    if (iceModeSelect_) {
+        iceModeSelect_->setEnabled(enabled);
+    }
     if (remoteControlCheck_) {
         remoteControlCheck_->setEnabled(enabled);
     }
@@ -1608,13 +1831,22 @@ void MainWindow::refreshSelectedWindowPreview() {
     }
 
     previewLabel_->setText(QString());
+    QSize targetSize = previewLabel_->contentsRect().size();
+    if (!targetSize.isValid() || targetSize.isEmpty()) {
+        targetSize = previewLabel_->size();
+    }
+    if (!targetSize.isValid() || targetSize.isEmpty()) {
+        targetSize = QSize(420, 220);
+    }
     previewLabel_->setPixmap(preview.scaled(
-        previewLabel_->size(),
+        targetSize,
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation));
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
+    savePersistedSettings();
+
     if (!quitRequested_ && minimizeToTrayOnClose_) {
         if (!trayIcon_ && QSystemTrayIcon::isSystemTrayAvailable()) {
             setupTrayIcon();
@@ -1653,4 +1885,3 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 }
 
 }  // namespace versus::ui
-

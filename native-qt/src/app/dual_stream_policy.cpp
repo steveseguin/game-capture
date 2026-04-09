@@ -48,7 +48,7 @@ const char *peerRoleName(PeerRole role) {
     }
 }
 
-StreamTier assignStreamTier(bool roomMode, bool roleValid, PeerRole role) {
+StreamTier assignStreamTier(bool roomMode, bool roomModeLqEnabled, bool roleValid, PeerRole role) {
     if (!roomMode) {
         return StreamTier::HQ;
     }
@@ -56,6 +56,9 @@ StreamTier assignStreamTier(bool roomMode, bool roleValid, PeerRole role) {
         return StreamTier::None;
     }
     if (role == PeerRole::Scene) {
+        return StreamTier::HQ;
+    }
+    if (!roomModeLqEnabled) {
         return StreamTier::HQ;
     }
     return StreamTier::LQ;
@@ -80,7 +83,7 @@ bool canSendVideo(const PeerRouteState &state) {
     if (state.roomMode && !state.initReceived) {
         return false;
     }
-    return assignStreamTier(state.roomMode, state.roleValid, state.role) != StreamTier::None;
+    return assignStreamTier(state.roomMode, state.roomModeLqEnabled, state.roleValid, state.role) != StreamTier::None;
 }
 
 bool canSendAudio(const PeerRouteState &state) {
@@ -90,7 +93,7 @@ bool canSendAudio(const PeerRouteState &state) {
     if (state.roomMode && !state.initReceived) {
         return false;
     }
-    return assignStreamTier(state.roomMode, state.roleValid, state.role) != StreamTier::None;
+    return assignStreamTier(state.roomMode, state.roomModeLqEnabled, state.roleValid, state.role) != StreamTier::None;
 }
 
 }  // namespace versus::app

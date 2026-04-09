@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.32",
+    [string]$Version = "0.2.33",
     [switch]$SkipVirusTotal = $false
 )
 
@@ -20,6 +20,16 @@ function Resolve-ExecutablePath([string]$RepoRoot, [string]$BuildDir, [string]$C
     return ""
 }
 
+function Test-BinaryContainsAsciiString([string]$Path, [string]$Needle) {
+    if (-not (Test-Path $Path) -or [string]::IsNullOrWhiteSpace($Needle)) {
+        return $false
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+    return $text.Contains($Needle)
+}
+
 function Write-Step([string]$Name) {
     Write-Host ""
     Write-Host "=== $Name ==="
@@ -31,6 +41,9 @@ Set-Location $repoRoot
 $exePath = Resolve-ExecutablePath -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration
 if (-not $exePath) {
     throw "Could not locate game-capture.exe in build output. Build first: $BuildDir"
+}
+if (-not (Test-BinaryContainsAsciiString -Path $exePath -Needle $Version)) {
+    throw "Selected executable does not contain the requested version string '$Version': $exePath. Rebuild before packaging."
 }
 
 $artifactPrefix = "game-capture"

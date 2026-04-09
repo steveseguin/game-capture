@@ -27,7 +27,7 @@ struct CapturedFrame {
     int height = 0;
     int stride = 0;
     int64_t timestamp = 0;
-    enum class Format { BGRA, NV12, I420 } format = Format::BGRA;
+    enum class Format { BGRA, NV12, I420, Gray } format = Format::BGRA;
 };
 
 class WindowCapture {

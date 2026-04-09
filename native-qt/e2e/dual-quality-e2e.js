@@ -236,6 +236,12 @@ async function collectState(page) {
   });
 }
 
+function pickDecodedVideo(state) {
+  const videos = state && Array.isArray(state.videos) ? state.videos : [];
+  return videos.find((video) =>
+    video && Number(video.width) > 0 && Number(video.height) > 0 && Number(video.currentTime) > 0) || videos[0] || null;
+}
+
 async function waitForDecodedVideo(page, timeoutMs, stageLabel) {
   const start = Date.now();
   let lastState = null;
@@ -374,6 +380,21 @@ async function installInfoProbe(page, uuid) {
   }, uuid);
 }
 
+async function waitForInfoProbe(page, uuid, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    // eslint-disable-next-line no-await-in-loop
+    last = await installInfoProbe(page, uuid);
+    if (last && last.ok) {
+      return last;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+  }
+  return last || { ok: false, reason: 'timeout' };
+}
+
 async function waitForTierInfo(page, expectedTier, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -431,6 +452,40 @@ function validateTierInfo(tier, info, sceneMinBitrateKbps) {
   return { ok: true };
 }
 
+async function waitForExpectedDimensions(page, expectedTier, timeoutMs, initialState = null) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = initialState;
+  let decoded = pickDecodedVideo(lastState);
+
+  while (Date.now() < deadline) {
+    if (!decoded || !lastState || !lastState.hasDecodedVideo) {
+      // eslint-disable-next-line no-await-in-loop
+      lastState = await collectState(page);
+      decoded = pickDecodedVideo(lastState) || decoded;
+    }
+
+    if (decoded) {
+      const width = Number(decoded.width) || 0;
+      const height = Number(decoded.height) || 0;
+      if (expectedTier === 'lq') {
+        if (width === LQ_WIDTH && height === LQ_HEIGHT) {
+          return { ok: true, state: lastState, decoded };
+        }
+      } else if (!(width <= LQ_WIDTH && height <= LQ_HEIGHT)) {
+        return { ok: true, state: lastState, decoded };
+      }
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+    // eslint-disable-next-line no-await-in-loop
+    lastState = await collectState(page);
+    decoded = pickDecodedVideo(lastState) || decoded;
+  }
+
+  return { ok: false, state: lastState, decoded };
+}
+
 async function openRoleViewer(context, viewerUrl, role, expectedTier, config) {
   const page = await context.newPage();
   await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -438,6 +493,15 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config) {
   const peerState = await waitForSessionPeer(page, Math.max(10000, Math.floor(config.timeoutMs / 2)));
   if (!peerState || !peerState.ready) {
     return { ok: false, stage: `${role}-session-peer`, state: peerState, page };
+  }
+
+  const probeInstall = await waitForInfoProbe(
+    page,
+    peerState.uuid,
+    Math.max(6000, Math.floor(config.timeoutMs / 3))
+  );
+  if (!probeInstall || !probeInstall.ok) {
+    return { ok: false, stage: `${role}-probe-install`, state: probeInstall, page };
   }
 
   const initPayload = {
@@ -469,32 +533,72 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config) {
     return { ok: false, stage: `${role}-send-init`, state: sendResult, page };
   }
 
+  const tierState = await waitForTierInfo(
+    page,
+    expectedTier,
+    Math.max(6000, Math.floor(config.timeoutMs / 2))
+  );
+  if (!tierState.ok) {
+    return { ok: false, stage: `${role}-tier-info`, state: tierState.state, page };
+  }
+
+  const tierInfo = tierState.state &&
+    tierState.state.infoRecord &&
+    tierState.state.infoRecord.message
+    ? tierState.state.infoRecord.message.info
+    : null;
+  const tierValidation = validateTierInfo(expectedTier, tierInfo, config.sceneMinBitrateKbps);
+  if (!tierValidation.ok) {
+    return {
+      ok: false,
+      stage: `${role}-tier-info-validation`,
+      state: { validation: tierValidation, tierState: tierState.state },
+      page
+    };
+  }
+
   const decodeResult = await waitForDecodedVideo(page, config.timeoutMs, `${role}-decoded`);
   if (!decodeResult.ok) {
     return { ok: false, stage: `${role}-decode`, state: decodeResult.state, page };
   }
 
-  const videos = decodeResult.state && Array.isArray(decodeResult.state.videos) ? decodeResult.state.videos : [];
-  const decoded = videos.find((video) =>
-    video && Number(video.width) > 0 && Number(video.height) > 0 && Number(video.currentTime) > 0) || videos[0] || null;
+  const decoded = pickDecodedVideo(decodeResult.state);
   if (!decoded) {
     return { ok: false, stage: `${role}-decoded-metadata`, state: decodeResult.state, page };
   }
 
-  if (expectedTier === 'lq') {
-    if (Number(decoded.width) !== LQ_WIDTH || Number(decoded.height) !== LQ_HEIGHT) {
-      return {
-        ok: false,
-        stage: `${role}-lq-dimensions`,
-        state: { width: decoded.width, height: decoded.height, decoded: decodeResult.state },
-        page
-      };
-    }
-  } else if (Number(decoded.width) <= LQ_WIDTH && Number(decoded.height) <= LQ_HEIGHT) {
+  const dimsResult = await waitForExpectedDimensions(
+    page,
+    expectedTier,
+    Math.max(4000, Math.floor(config.timeoutMs / 4)),
+    decodeResult.state
+  );
+  if (!dimsResult.ok) {
+    const failedDecoded = dimsResult.decoded || decoded;
+    return {
+      ok: false,
+      stage: expectedTier === 'lq' ? `${role}-lq-dimensions` : `${role}-hq-dimensions`,
+      state: {
+        width: failedDecoded ? failedDecoded.width : 0,
+        height: failedDecoded ? failedDecoded.height : 0,
+        decoded: dimsResult.state || decodeResult.state,
+        tier: tierState.state
+      },
+      page
+    };
+  }
+
+  const finalDecoded = dimsResult.decoded || decoded;
+  if (expectedTier !== 'lq' && Number(finalDecoded.width) <= LQ_WIDTH && Number(finalDecoded.height) <= LQ_HEIGHT) {
     return {
       ok: false,
       stage: `${role}-hq-dimensions`,
-      state: { width: decoded.width, height: decoded.height, decoded: decodeResult.state },
+      state: {
+        width: finalDecoded.width,
+        height: finalDecoded.height,
+        decoded: dimsResult.state || decodeResult.state,
+        tier: tierState.state
+      },
       page
     };
   }
@@ -503,8 +607,9 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config) {
     ok: true,
     page,
     peerState,
-    decodeState: decodeResult.state,
-    decodedDimensions: { width: decoded.width, height: decoded.height }
+    decodeState: dimsResult.state || decodeResult.state,
+    tierState: tierState.state,
+    decodedDimensions: { width: finalDecoded.width, height: finalDecoded.height }
   };
 }
 

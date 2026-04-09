@@ -1137,7 +1137,7 @@ class VideoEncoder::Impl {
             spdlog::warn("[FFmpegEncoder] ffmpeg.exe not found (set --ffmpeg-path or VERSUS_FFMPEG_PATH)");
             return false;
         }
-        if (config_.codec == VideoCodec::VP8 || config_.codec == VideoCodec::VP9) {
+        if (config_.codec == VideoCodec::VP8) {
             spdlog::warn("[FFmpegEncoder] Codec {} is not supported in current RTP transport path",
                          videoCodecName(config_.codec));
             return false;
@@ -1184,6 +1184,11 @@ class VideoEncoder::Impl {
                 chooseEncoder("av1_nvenc", "av1_qsv", "av1_amf", "libaom-av1");
                 externalOutputFormat_ = ExternalOutputFormat::Ivf;
                 break;
+            case VideoCodec::VP9:
+                // VP9 is always software (libvpx-vp9); no hardware variant.
+                encoderName = "libvpx-vp9";
+                externalOutputFormat_ = ExternalOutputFormat::Ivf;
+                break;
             case VideoCodec::H264:
             default:
                 chooseEncoder("h264_nvenc", "h264_qsv", "h264_amf", "libx264");
@@ -1196,11 +1201,16 @@ class VideoEncoder::Impl {
         externalEncoderName_ = "FFmpeg " + encoderName;
         externalIvfHeaderParsed_ = false;
         externalInputIsNv12_ = true;
+        externalInputIsGray_ = false;
         if (config_.codec == VideoCodec::AV1 && config_.enableAlpha && !externalUsingHardware_) {
             // Keep BGRA input for software AV1 alpha workflows.
             externalInputIsNv12_ = false;
+        } else if (config_.codec == VideoCodec::VP9 && config_.enableAlpha) {
+            // VP9 alpha encoder receives gray (Y-plane only) input representing the alpha channel.
+            externalInputIsNv12_ = false;
+            externalInputIsGray_ = true;
         }
-        const char *inputPixelFormat = externalInputIsNv12_ ? "nv12" : "bgra";
+        const char *inputPixelFormat = externalInputIsGray_ ? "gray" : (externalInputIsNv12_ ? "nv12" : "bgra");
 
         std::vector<std::string> args = {
             "-hide_banner",
@@ -1217,9 +1227,14 @@ class VideoEncoder::Impl {
             "-b:v", std::to_string(bitrate) + "k",
             "-maxrate", std::to_string(maxBitrate) + "k",
             "-bufsize", std::to_string(bufferSize) + "k",
-            "-g", std::to_string(gop),
-            "-force_key_frames", "expr:gte(t,n_forced*2.5)",
         };
+        // VP9 uses -g 1 (all-keyframes) for sync-safe streaming; other codecs use GOP-based keyframes.
+        if (config_.codec != VideoCodec::VP9) {
+            args.push_back("-g");
+            args.push_back(std::to_string(gop));
+            args.push_back("-force_key_frames");
+            args.push_back("expr:gte(t,n_forced*2.5)");
+        }
         if (encoderName.find("_nvenc") != std::string::npos) {
             args.push_back("-preset");
             args.push_back("llhq");
@@ -1258,6 +1273,24 @@ class VideoEncoder::Impl {
             args.push_back("1");
             args.push_back("-lag-in-frames");
             args.push_back("0");
+        } else if (encoderName == "libvpx-vp9") {
+            // Real-time low-latency VP9 settings.
+            // -g 1: all-keyframes for sync-safe streaming (already set above).
+            // -minrate = bitrate: force CBR (VP9 VBR by default).
+            args.push_back("-deadline");
+            args.push_back("realtime");
+            args.push_back("-cpu-used");
+            args.push_back("8");
+            args.push_back("-lag-in-frames");
+            args.push_back("0");
+            args.push_back("-row-mt");
+            args.push_back("1");
+            args.push_back("-tile-columns");
+            args.push_back("2");
+            args.push_back("-g");
+            args.push_back("1");
+            args.push_back("-minrate");
+            args.push_back(std::to_string(bitrate) + "k");
         }
 
         if (config_.codec == VideoCodec::AV1) {
@@ -1270,6 +1303,24 @@ class VideoEncoder::Impl {
                 }
                 args.push_back("-pix_fmt");
                 args.push_back("yuv420p");
+            }
+        } else if (config_.codec == VideoCodec::VP9) {
+            args.push_back("-pix_fmt");
+            args.push_back("yuv420p");
+            if (config_.enableAlpha) {
+                // Alpha encoder: full color range so Y=0→transparent, Y=255→opaque without scaling.
+                args.push_back("-color_range");
+                args.push_back("full");
+            } else {
+                // Primary encoder: standard broadcast colorspace metadata.
+                args.push_back("-colorspace");
+                args.push_back("bt709");
+                args.push_back("-color_primaries");
+                args.push_back("bt709");
+                args.push_back("-color_trc");
+                args.push_back("bt709");
+                args.push_back("-color_range");
+                args.push_back("tv");
             }
         } else {
             args.push_back("-pix_fmt");
@@ -1288,7 +1339,7 @@ class VideoEncoder::Impl {
             args.push_back("hevc_metadata=aud=insert");
             args.push_back("-f");
             args.push_back("hevc");
-        } else if (config_.codec == VideoCodec::AV1) {
+        } else if (config_.codec == VideoCodec::AV1 || config_.codec == VideoCodec::VP9) {
             args.push_back("-f");
             args.push_back("ivf");
         }
@@ -1470,6 +1521,7 @@ class VideoEncoder::Impl {
         externalForceKeyframeRequested_ = false;
         externalIvfHeaderParsed_ = false;
         externalInputIsNv12_ = true;
+        externalInputIsGray_ = false;
         externalIoStopRequested_ = false;
         externalWriterFailed_ = false;
         externalReaderFailed_ = false;
@@ -1686,6 +1738,42 @@ class VideoEncoder::Impl {
     }
 
     bool prepareExternalInputFrame(const CapturedFrame &input) {
+        const int dstW = std::max(1, config_.width);
+        const int dstH = std::max(1, config_.height);
+
+        if (externalInputIsGray_) {
+            // Gray (Y-plane only) for VP9 alpha encoder.
+            if (input.format != CapturedFrame::Format::Gray) {
+                spdlog::warn("[FFmpegEncoder] Expected Gray input for VP9 alpha encoder, got format {}",
+                             static_cast<int>(input.format));
+                return false;
+            }
+            if (input.data.empty() || input.width <= 0 || input.height <= 0) {
+                return false;
+            }
+            const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH);
+            externalInputBuffer_.resize(frameSize);
+            if (input.width == dstW && input.height == dstH &&
+                input.data.size() >= frameSize) {
+                std::memcpy(externalInputBuffer_.data(), input.data.data(), frameSize);
+            } else {
+                // Nearest-neighbor scale for gray frame.
+                const int srcStride = input.stride > 0 ? input.stride : input.width;
+                for (int y = 0; y < dstH; ++y) {
+                    const int srcY = (y * input.height) / dstH;
+                    for (int x = 0; x < dstW; ++x) {
+                        const int srcX = (x * input.width) / dstW;
+                        const size_t srcIdx = static_cast<size_t>(srcY) * static_cast<size_t>(srcStride) +
+                                             static_cast<size_t>(srcX);
+                        const size_t dstIdx = static_cast<size_t>(y) * static_cast<size_t>(dstW) +
+                                             static_cast<size_t>(x);
+                        externalInputBuffer_[dstIdx] = srcIdx < input.data.size() ? input.data[srcIdx] : 0;
+                    }
+                }
+            }
+            return true;
+        }
+
         if (input.format != CapturedFrame::Format::BGRA) {
             spdlog::warn("[FFmpegEncoder] Unsupported input pixel format {}", static_cast<int>(input.format));
             return false;
@@ -1693,8 +1781,6 @@ class VideoEncoder::Impl {
         if (input.data.empty() || input.width <= 0 || input.height <= 0 || input.stride < (input.width * 4)) {
             return false;
         }
-        const int dstW = std::max(1, config_.width);
-        const int dstH = std::max(1, config_.height);
 
         if (externalInputIsNv12_) {
             const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH) * 3 / 2;
@@ -2959,6 +3045,7 @@ class VideoEncoder::Impl {
     bool externalFirstPacketLogged_ = false;
     bool externalIvfHeaderParsed_ = false;
     bool externalInputIsNv12_ = true;
+    bool externalInputIsGray_ = false;
     int pendingNeedInputEvents_ = 0;
     int pendingHaveOutputEvents_ = 0;
     int64_t frameCount_ = 0;

@@ -29,6 +29,7 @@ struct StartOptions {
     std::string server = "wss://wss.vdo.ninja";
     std::string salt = "vdo.ninja";
     int maxViewers = 10;
+    bool roomModeLqEnabled = true;
     bool remoteControlEnabled = false;
     std::string remoteControlToken;
     webrtc::IceMode iceMode = webrtc::IceMode::All;
@@ -98,6 +99,8 @@ class VersusApp {
     bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
     bool getCachedVideoFrame(versus::video::CapturedFrame &frame);
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
+    std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
+                                                                const std::string &session) const;
     void removePeerSession(const std::string &uuid, const std::string &session);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
@@ -121,6 +124,7 @@ class VersusApp {
     std::atomic<float> audioLevelRms_{0.0f};
     std::atomic<float> audioPeak_{0.0f};
     std::atomic<int> maxViewers_{10};
+    std::atomic<bool> roomModeLqEnabled_{true};
     std::atomic<bool> remoteControlEnabled_{false};
     std::atomic<int64_t> lastRelayWarningMs_{0};
     std::atomic<int64_t> lastPacketLossWarningMs_{0};
@@ -151,8 +155,10 @@ class VersusApp {
         std::string uuid;
         std::string session;
         std::string streamId;
+        // VDO.Ninja uses this as a routing hint ("local" vs "remote"), not candidate transport type.
         std::string candidateType = "local";
         bool answerReceived = false;
+        bool offerDispatched = false;
         bool roomMode = false;
         std::atomic<bool> initReceived{false};
         std::atomic<bool> roleValid{false};
@@ -196,6 +202,8 @@ class VersusApp {
     versus::video::WindowCapture windowCapture_;
     versus::video::VideoEncoder videoEncoder_;
     versus::video::VideoEncoder videoEncoderLq_;
+    versus::video::VideoEncoder videoEncoderAlpha_;
+    std::vector<uint8_t> alphaGrayBuffer_;
     versus::audio::WindowAudioCaptureCore audioCapture_;
     versus::audio::OpusEncoder opusEncoder_;
     versus::signaling::VdoSignaling signaling_;

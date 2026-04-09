@@ -29,13 +29,15 @@ void TestDualStreamPolicy::testAssignStreamTier() {
     using versus::app::StreamTier;
     using versus::app::assignStreamTier;
 
-    QCOMPARE(assignStreamTier(false, false, PeerRole::Unknown), StreamTier::HQ);
-    QCOMPARE(assignStreamTier(false, true, PeerRole::Scene), StreamTier::HQ);
-    QCOMPARE(assignStreamTier(true, true, PeerRole::Scene), StreamTier::HQ);
-    QCOMPARE(assignStreamTier(true, true, PeerRole::Director), StreamTier::LQ);
-    QCOMPARE(assignStreamTier(true, true, PeerRole::Guest), StreamTier::LQ);
-    QCOMPARE(assignStreamTier(true, true, PeerRole::Viewer), StreamTier::LQ);
-    QCOMPARE(assignStreamTier(true, false, PeerRole::Unknown), StreamTier::None);
+    QCOMPARE(assignStreamTier(false, true, false, PeerRole::Unknown), StreamTier::HQ);
+    QCOMPARE(assignStreamTier(false, true, true, PeerRole::Scene), StreamTier::HQ);
+    QCOMPARE(assignStreamTier(true, true, true, PeerRole::Scene), StreamTier::HQ);
+    QCOMPARE(assignStreamTier(true, true, true, PeerRole::Director), StreamTier::LQ);
+    QCOMPARE(assignStreamTier(true, true, true, PeerRole::Guest), StreamTier::LQ);
+    QCOMPARE(assignStreamTier(true, true, true, PeerRole::Viewer), StreamTier::LQ);
+    QCOMPARE(assignStreamTier(true, false, true, PeerRole::Director), StreamTier::HQ);
+    QCOMPARE(assignStreamTier(true, false, true, PeerRole::Viewer), StreamTier::HQ);
+    QCOMPARE(assignStreamTier(true, true, false, PeerRole::Unknown), StreamTier::None);
 }
 
 void TestDualStreamPolicy::testCanSendVideoRequiresRoomInit() {
@@ -45,6 +47,7 @@ void TestDualStreamPolicy::testCanSendVideoRequiresRoomInit() {
 
     PeerRouteState direct;
     direct.roomMode = false;
+    direct.roomModeLqEnabled = true;
     direct.initReceived = false;
     direct.roleValid = false;
     direct.role = PeerRole::Unknown;
@@ -53,6 +56,7 @@ void TestDualStreamPolicy::testCanSendVideoRequiresRoomInit() {
 
     PeerRouteState roomPending;
     roomPending.roomMode = true;
+    roomPending.roomModeLqEnabled = true;
     roomPending.initReceived = false;
     roomPending.roleValid = false;
     roomPending.role = PeerRole::Unknown;
@@ -78,6 +82,7 @@ void TestDualStreamPolicy::testCanSendAudioHonorsFlags() {
 
     PeerRouteState roomViewer;
     roomViewer.roomMode = true;
+    roomViewer.roomModeLqEnabled = true;
     roomViewer.initReceived = true;
     roomViewer.roleValid = true;
     roomViewer.role = PeerRole::Viewer;

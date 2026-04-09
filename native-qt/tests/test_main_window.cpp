@@ -6,7 +6,9 @@
 #include <QComboBox>
 #include <QSpinBox>
 #include <QCheckBox>
+#include <QDir>
 #include <QProgressBar>
+#include <QSettings>
 #include <QSystemTrayIcon>
 
 #include "versus/ui/main_window.h"
@@ -36,6 +38,8 @@ private slots:
     void testAdvancedPanelResizesWindowWhenClosed();
     void testRemoteControlControls();
     void testResolutionOptions();
+    void testIceModeOptions();
+    void testRoomModeQualityToggle();
     void testBitrateOptions();
     void testCustomBitrateControl();
     void testAudioMeterExists();
@@ -49,7 +53,11 @@ private:
 };
 
 void TestMainWindow::initTestCase() {
-    // Called once before all tests
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    const QString settingsRoot = QDir::temp().filePath("game-capture-test-settings");
+    QDir(settingsRoot).removeRecursively();
+    QDir().mkpath(settingsRoot);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot);
 }
 
 void TestMainWindow::cleanupTestCase() {
@@ -57,6 +65,10 @@ void TestMainWindow::cleanupTestCase() {
 }
 
 void TestMainWindow::init() {
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.clear();
+    settings.sync();
+
     // Pass nullptr for core since we're just testing UI
     window_ = new versus::ui::MainWindow(nullptr);
 }
@@ -250,6 +262,21 @@ void TestMainWindow::testBitrateOptions() {
 
     // Check that High (12000) is selected by default
     QVERIFY(bitrateCombo->currentText().contains("12000"));
+}
+
+void TestMainWindow::testIceModeOptions() {
+    auto *iceModeCombo = window_->findChild<QComboBox*>("iceModeSelect");
+    QVERIFY(iceModeCombo != nullptr);
+    QCOMPARE(iceModeCombo->count(), 4);
+    QCOMPARE(iceModeCombo->currentData().toString(), QString("all"));
+    QVERIFY(iceModeCombo->findData("relay") >= 0);
+}
+
+void TestMainWindow::testRoomModeQualityToggle() {
+    auto *roomModeLqCheck = window_->findChild<QCheckBox*>("roomModeLqCheck");
+    QVERIFY(roomModeLqCheck != nullptr);
+    QVERIFY(roomModeLqCheck->isChecked());
+    QVERIFY(roomModeLqCheck->text().contains("640x360"));
 }
 
 void TestMainWindow::testPasswordInputDefaults() {

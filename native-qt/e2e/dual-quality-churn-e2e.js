@@ -366,6 +366,21 @@ async function installInfoProbe(page, uuid) {
   }, uuid);
 }
 
+async function waitForInfoProbe(page, uuid, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    // eslint-disable-next-line no-await-in-loop
+    last = await installInfoProbe(page, uuid);
+    if (last && last.ok) {
+      return last;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+  }
+  return last || { ok: false, reason: 'timeout' };
+}
+
 async function waitForAssignedTier(page, expectedTier, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -397,6 +412,15 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config, st
     return { ok: false, stage: `${stagePrefix}-peer`, state: peerState, page };
   }
 
+  const probeInstall = await waitForInfoProbe(
+    page,
+    peerState.uuid,
+    Math.max(6000, Math.floor(config.timeoutMs / 3))
+  );
+  if (!probeInstall || !probeInstall.ok) {
+    return { ok: false, stage: `${stagePrefix}-probe-install`, state: probeInstall, page };
+  }
+
   const initPayload = {
     init: {
       role,
@@ -426,6 +450,15 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config, st
     return { ok: false, stage: `${stagePrefix}-send-init`, state: sendResult, page };
   }
 
+  const tierState = await waitForAssignedTier(
+    page,
+    expectedTier,
+    Math.max(6000, Math.floor(config.timeoutMs / 2))
+  );
+  if (!tierState.ok) {
+    return { ok: false, stage: `${stagePrefix}-assigned-tier`, state: tierState.state, page };
+  }
+
   const decode = await waitForDecodedVideo(page, config.timeoutMs, `${stagePrefix}-decode`);
   if (!decode.ok) {
     return { ok: false, stage: `${stagePrefix}-decode`, state: decode.state, page };
@@ -439,24 +472,43 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config, st
   }
 
   if (expectedTier === 'lq') {
-    if (Number(decoded.width) !== LQ_WIDTH || Number(decoded.height) !== LQ_HEIGHT) {
+    const resolutionDeadline = Date.now() + Math.max(4000, Math.floor(config.timeoutMs / 4));
+    let latestDecoded = decoded;
+    while (Date.now() < resolutionDeadline) {
+      if (Number(latestDecoded.width) === LQ_WIDTH && Number(latestDecoded.height) === LQ_HEIGHT) {
+        break;
+      }
+      await wait(250);
+      const nextState = await collectState(page);
+      const nextVideos = nextState && Array.isArray(nextState.videos) ? nextState.videos : [];
+      latestDecoded = nextVideos.find((video) =>
+        video && Number(video.width) > 0 && Number(video.height) > 0 && Number(video.currentTime) > 0) || latestDecoded;
+    }
+    if (Number(latestDecoded.width) !== LQ_WIDTH || Number(latestDecoded.height) !== LQ_HEIGHT) {
       return {
         ok: false,
         stage: `${stagePrefix}-lq-resolution`,
-        state: { width: decoded.width, height: decoded.height, decoded: decode.state },
+        state: { width: latestDecoded.width, height: latestDecoded.height, decoded: decode.state, tier: tierState.state },
         page
       };
     }
+    decoded.width = latestDecoded.width;
+    decoded.height = latestDecoded.height;
   } else if (Number(decoded.width) <= LQ_WIDTH && Number(decoded.height) <= LQ_HEIGHT) {
     return {
       ok: false,
       stage: `${stagePrefix}-hq-dimensions`,
-      state: { width: decoded.width, height: decoded.height, decoded: decode.state },
+      state: { width: decoded.width, height: decoded.height, decoded: decode.state, tier: tierState.state },
       page
     };
   }
 
-  return { ok: true, page, decodedDimensions: { width: decoded.width, height: decoded.height } };
+  return {
+    ok: true,
+    page,
+    decodedDimensions: { width: decoded.width, height: decoded.height },
+    tierState: tierState.state
+  };
 }
 
 async function openRoleViewerWithRetry(context, viewerUrl, role, expectedTier, config, stagePrefix, attempts) {

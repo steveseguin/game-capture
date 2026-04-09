@@ -20,6 +20,7 @@ enum class StreamTier {
 
 struct PeerRouteState {
     bool roomMode = false;
+    bool roomModeLqEnabled = true;
     bool initReceived = false;
     bool roleValid = false;
     PeerRole role = PeerRole::Unknown;
@@ -29,7 +30,7 @@ struct PeerRouteState {
 
 PeerRole parsePeerRole(const std::string &value);
 const char *peerRoleName(PeerRole role);
-StreamTier assignStreamTier(bool roomMode, bool roleValid, PeerRole role);
+StreamTier assignStreamTier(bool roomMode, bool roomModeLqEnabled, bool roleValid, PeerRole role);
 const char *streamTierName(StreamTier tier);
 bool canSendVideo(const PeerRouteState &state);
 bool canSendAudio(const PeerRouteState &state);

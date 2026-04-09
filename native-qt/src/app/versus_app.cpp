@@ -138,9 +138,10 @@ webrtc::PeerConfig::VideoCodec toPeerVideoCodec(video::VideoCodec codec) {
             return webrtc::PeerConfig::VideoCodec::H265;
         case video::VideoCodec::AV1:
             return webrtc::PeerConfig::VideoCodec::AV1;
+        case video::VideoCodec::VP9:
+            return webrtc::PeerConfig::VideoCodec::VP9;
         case video::VideoCodec::H264:
         case video::VideoCodec::VP8:
-        case video::VideoCodec::VP9:
         default:
             return webrtc::PeerConfig::VideoCodec::H264;
     }
@@ -270,6 +271,22 @@ bool VersusApp::startCapture(const std::string &windowId) {
     spdlog::info("[App] Video encoder active: {} (hardware={})",
                  videoEncoder_.activeEncoderName(), videoEncoder_.isHardwareEncoderActive());
 
+    // VP9 alpha: initialize a separate encoder instance for the alpha (gray) track.
+    videoEncoderAlpha_.shutdown();
+    if (config.codec == video::VideoCodec::VP9 && config.enableAlpha) {
+        video::EncoderConfig alphaConfig = config;
+        alphaConfig.enableAlpha = true;
+        alphaConfig.bitrate = std::max(500, config.bitrate / 4);
+        alphaConfig.minBitrate = std::max(250, alphaConfig.bitrate / 2);
+        alphaConfig.maxBitrate = std::max(alphaConfig.bitrate + 1000, (alphaConfig.bitrate * 3) / 2);
+        alphaConfig.preferredHardware = video::HardwareEncoder::None;
+        if (!videoEncoderAlpha_.initialize(alphaConfig)) {
+            spdlog::warn("[App] VP9 alpha encoder init failed; streaming without alpha channel");
+        } else {
+            spdlog::info("[App] VP9 alpha encoder active: {} kbps", alphaConfig.bitrate);
+        }
+    }
+
     audio::AudioEncoderConfig audioConfig;
     audioConfig.sampleRate = 48000;
     audioConfig.channels = 2;
@@ -321,6 +338,7 @@ void VersusApp::stopCapture() {
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         videoEncoder_.shutdown();
+        videoEncoderAlpha_.shutdown();
         shutdownLqEncoderLocked();
     }
     audioCapture_.StopCapture();
@@ -386,6 +404,7 @@ bool VersusApp::goLive(const StartOptions &options) {
     password_ = options.password;
     salt_ = options.salt.empty() ? "vdo.ninja" : options.salt;
     maxViewers_.store(std::max(0, options.maxViewers), std::memory_order_relaxed);
+    roomModeLqEnabled_.store(options.roomModeLqEnabled, std::memory_order_relaxed);
     remoteControlEnabled_.store(options.remoteControlEnabled, std::memory_order_relaxed);
     remoteControlToken_ = options.remoteControlToken;
     roomCodecWarningEmitted_ = false;
@@ -674,13 +693,10 @@ void VersusApp::setupSignalingCallbacks() {
         peerConfig.iceServers = resolvedIceServers_;
         peerConfig.iceMode = iceMode_;
         peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
+        peerConfig.enableAlphaTrack = (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha);
         peerConfig.videoWidth = std::max(1, videoConfig_.width);
         peerConfig.videoHeight = std::max(1, videoConfig_.height);
         peerConfig.videoFps = std::max(1, videoConfig_.frameRate);
-        if (videoConfig_.codec == video::VideoCodec::VP9 || videoConfig_.codec == video::VideoCodec::VP8) {
-            spdlog::warn("[App] Requested codec {} is not supported in the current WebRTC publisher path; using H.264",
-                         videoCodecName(videoConfig_.codec));
-        }
         if (!peer->client->initialize(peerConfig)) {
             spdlog::error("[WebRTC] Failed to initialize peer session {}:{}", uuid, resolvedSession);
             return;
@@ -732,20 +748,14 @@ void VersusApp::setupSignalingCallbacks() {
                 }
 
                 auto &sessionState = it->second;
-                if (!sessionState->answerReceived) {
+                if (!sessionState->offerDispatched) {
                     sessionState->pendingCandidates.push_back({candidate, mid, mlineIndex});
-                    if (relayCandidate) {
-                        sessionState->candidateType = "relay";
-                    }
                     return;
                 }
 
                 shouldSend = true;
                 uuidLocal = sessionState->uuid;
                 sessionLocal = sessionState->session;
-                if (relayCandidate) {
-                    sessionState->candidateType = "relay";
-                }
                 typeLocal = sessionState->candidateType;
             }
 
@@ -852,24 +862,13 @@ void VersusApp::setupSignalingCallbacks() {
         std::shared_ptr<PeerSession> peer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            auto it = peerSessions_.find(makePeerKey(answer.uuid, answer.session));
-            if (it == peerSessions_.end() || !it->second) {
-                for (auto &entry : peerSessions_) {
-                    if (entry.second && entry.second->uuid == answer.uuid) {
-                        it = peerSessions_.find(entry.first);
-                        break;
-                    }
-                }
-            }
-
-            if (it == peerSessions_.end() || !it->second) {
+            peer = findPeerSessionForSignalLocked(answer.uuid, answer.session);
+            if (!peer) {
                 spdlog::warn("[Signaling] No matching peer for answer uuid={} session={}",
                              answer.uuid,
                              answer.session);
                 return;
             }
-
-            peer = it->second;
         }
 
         applyPeerAnswer(peer, answer.sdp, "signaling-wss");
@@ -883,17 +882,7 @@ void VersusApp::setupSignalingCallbacks() {
         std::shared_ptr<PeerSession> peer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            auto it = peerSessions_.find(makePeerKey(cand.uuid, cand.session));
-            if (it != peerSessions_.end()) {
-                peer = it->second;
-            } else {
-                for (auto &entry : peerSessions_) {
-                    if (entry.second && entry.second->uuid == cand.uuid) {
-                        peer = entry.second;
-                        break;
-                    }
-                }
-            }
+            peer = findPeerSessionForSignalLocked(cand.uuid, cand.session);
         }
 
         if (!peer || !peer->client) {
@@ -1060,7 +1049,11 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
 
     if (peer->roomMode) {
         const bool initReady = roleValid;
-        const StreamTier tier = assignStreamTier(true, roleValid, role);
+        const StreamTier tier = assignStreamTier(
+            true,
+            roomModeLqEnabled_.load(std::memory_order_relaxed),
+            roleValid,
+            role);
         peer->initReceived.store(initReady, std::memory_order_relaxed);
         peer->assignedTier.store(tier, std::memory_order_relaxed);
         if (initReady) {
@@ -1116,10 +1109,15 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
         }
 
         if (peer->roomMode) {
-            // Room viewers that never send control metadata fall back to viewer/LQ after the grace window.
-            spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/lq",
+            const StreamTier fallbackTier = assignStreamTier(
+                true,
+                roomModeLqEnabled_.load(std::memory_order_relaxed),
+                true,
+                PeerRole::Viewer);
+            spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/{}",
                          peer->uuid,
-                         peer->session);
+                         peer->session,
+                         streamTierName(fallbackTier));
         } else {
             // Direct viewers that never send control metadata fall back to viewer/HQ after the grace window.
             spdlog::info("[App] Implicit direct init fallback {}:{} -> viewer/hq",
@@ -1188,7 +1186,11 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     const bool audioEnabled = peer->audioEnabled.load(std::memory_order_relaxed);
     StreamTier assignedTier = peer->assignedTier.load(std::memory_order_relaxed);
     if (assignedTier == StreamTier::None) {
-        assignedTier = assignStreamTier(peer->roomMode, roleValid, peerRole);
+        assignedTier = assignStreamTier(
+            peer->roomMode,
+            roomModeLqEnabled_.load(std::memory_order_relaxed),
+            roleValid,
+            peerRole);
     }
 
     int hqWidth = 0;
@@ -1263,6 +1265,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
                 }
                 const PeerRouteState route{
                     entry.second->roomMode,
+                    roomModeLqEnabled_.load(std::memory_order_relaxed),
                     entry.second->initReceived.load(std::memory_order_relaxed),
                     entry.second->roleValid.load(std::memory_order_relaxed),
                     entry.second->role.load(std::memory_order_relaxed),
@@ -1271,7 +1274,11 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
                 if (!canSendVideo(route)) {
                     continue;
                 }
-                const StreamTier tier = assignStreamTier(route.roomMode, route.roleValid, route.role);
+                const StreamTier tier = assignStreamTier(
+                    route.roomMode,
+                    route.roomModeLqEnabled,
+                    route.roleValid,
+                    route.role);
                 if (tier == StreamTier::HQ) {
                     hqPeers++;
                 } else if (tier == StreamTier::LQ) {
@@ -1344,7 +1351,12 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         PeerRole role = PeerRole::Unknown;
         bool roleValid = false;
         const bool hasRoleString = init.contains("role") && init["role"].is_string();
-        const bool sceneRequested = init.contains("scene") && jsonBoolLike(init["scene"], false);
+        // Stock VDO.Ninja room scene links advertise the scene slot id (often "0"),
+        // not a boolean role flag. Treat any present non-false scene field as a scene request.
+        const bool sceneRequested =
+            init.contains("scene") &&
+            !init["scene"].is_null() &&
+            !(init["scene"].is_boolean() && !init["scene"].get<bool>());
         const bool directorRequested = init.contains("director") && jsonBoolLike(init["director"], false);
         const bool guestRequested = init.contains("guest") && jsonBoolLike(init["guest"], false);
         const bool viewerRequested = init.contains("viewer") && jsonBoolLike(init["viewer"], false);
@@ -1370,6 +1382,26 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         if (!roleValid && viewerRequested) {
             role = PeerRole::Viewer;
             roleValid = true;
+        }
+
+        const bool hasExplicitMediaSignal = init.contains("video") || init.contains("audio");
+        const bool invalidExplicitRoleSignal = hasExplicitRoleSignal && !roleValid;
+        if (invalidExplicitRoleSignal) {
+            spdlog::warn("[App] Ignoring invalid peer init role {}:{}",
+                         peer->uuid,
+                         peer->session);
+
+            nlohmann::json ack;
+            ack["ack"] = "init";
+            ack["ok"] = false;
+            ack["error"] = "invalid_role";
+            ack["assigned_role"] = peerRoleName(peer->role.load(std::memory_order_relaxed));
+            ack["assigned_tier"] = streamTierName(peer->assignedTier.load(std::memory_order_relaxed));
+            ack["video"] = peer->videoEnabled.load(std::memory_order_relaxed);
+            ack["audio"] = peer->audioEnabled.load(std::memory_order_relaxed);
+            peer->client->sendDataMessage(ack.dump());
+            sendPeerDataInfo(peer, true);
+            return;
         }
 
         bool videoEnabled = true;
@@ -1400,7 +1432,6 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             }
         }
 
-        const bool hasExplicitMediaSignal = init.contains("video") || init.contains("audio");
         if (!hasExplicitRoleSignal && peer->initReceived.load(std::memory_order_relaxed)) {
             role = peer->role.load(std::memory_order_relaxed);
             roleValid = peer->roleValid.load(std::memory_order_relaxed);
@@ -1567,6 +1598,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             auto &peer = entry.second;
             const PeerRouteState route{
                 peer->roomMode,
+                roomModeLqEnabled_.load(std::memory_order_relaxed),
                 peer->initReceived.load(std::memory_order_relaxed),
                 peer->roleValid.load(std::memory_order_relaxed),
                 peer->role.load(std::memory_order_relaxed),
@@ -1576,7 +1608,11 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 continue;
             }
 
-            const StreamTier tier = assignStreamTier(route.roomMode, route.roleValid, route.role);
+            const StreamTier tier = assignStreamTier(
+                route.roomMode,
+                route.roomModeLqEnabled,
+                route.roleValid,
+                route.role);
             peer->assignedTier.store(tier, std::memory_order_relaxed);
             if (tier == StreamTier::HQ) {
                 hqPeers.push_back(peer);
@@ -1849,6 +1885,49 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 if (packet.isKeyframe) {
                     sentKeyframe = true;
                     peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
+                }
+            }
+        }
+    }
+
+    // VP9 alpha: encode the alpha (gray) plane and send on alpha tracks of HQ peers.
+    if (haveHqPacket && videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha) {
+        if (frame.format == video::CapturedFrame::Format::BGRA &&
+            frame.width > 0 && frame.height > 0 &&
+            frame.data.size() >= static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4) {
+
+            const size_t numPixels = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
+            if (alphaGrayBuffer_.size() != numPixels) {
+                alphaGrayBuffer_.resize(numPixels);
+            }
+            // Extract alpha byte from each BGRA pixel (offset +3).
+            const uint8_t *src = frame.data.data();
+            for (size_t i = 0; i < numPixels; ++i) {
+                alphaGrayBuffer_[i] = src[i * 4 + 3];
+            }
+
+            video::CapturedFrame alphaFrame;
+            alphaFrame.format = video::CapturedFrame::Format::Gray;
+            alphaFrame.width = frame.width;
+            alphaFrame.height = frame.height;
+            alphaFrame.stride = frame.width;
+            alphaFrame.timestamp = frame.timestamp;
+            alphaFrame.data = alphaGrayBuffer_;
+
+            video::EncodedPacket alphaPacket;
+            if (videoEncoderAlpha_.encode(alphaFrame, alphaPacket)) {
+                webrtc::EncodedVideoPacket alphaVPacket;
+                alphaVPacket.data = alphaPacket.data;
+                alphaVPacket.pts = alphaPacket.pts;
+                alphaVPacket.isKeyframe = alphaPacket.isKeyframe;
+                for (const auto &peer : hqPeers) {
+                    if (!peer || !peer->client) {
+                        continue;
+                    }
+                    if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !alphaVPacket.isKeyframe) {
+                        continue;
+                    }
+                    peer->client->sendAlphaVideo(alphaVPacket);
                 }
             }
         }
@@ -2156,6 +2235,7 @@ bool VersusApp::hasAnyActiveVideoTrack() const {
         }
         const PeerRouteState route{
             entry.second->roomMode,
+            roomModeLqEnabled_.load(std::memory_order_relaxed),
             entry.second->initReceived.load(std::memory_order_relaxed),
             entry.second->roleValid.load(std::memory_order_relaxed),
             entry.second->role.load(std::memory_order_relaxed),
@@ -2176,6 +2256,7 @@ bool VersusApp::hasAnyActiveAudioTrack() const {
         }
         const PeerRouteState route{
             entry.second->roomMode,
+            roomModeLqEnabled_.load(std::memory_order_relaxed),
             entry.second->initReceived.load(std::memory_order_relaxed),
             entry.second->roleValid.load(std::memory_order_relaxed),
             entry.second->role.load(std::memory_order_relaxed),
@@ -2199,6 +2280,7 @@ void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket 
             }
             const PeerRouteState route{
                 entry.second->roomMode,
+                roomModeLqEnabled_.load(std::memory_order_relaxed),
                 entry.second->initReceived.load(std::memory_order_relaxed),
                 entry.second->roleValid.load(std::memory_order_relaxed),
                 entry.second->role.load(std::memory_order_relaxed),
@@ -2297,6 +2379,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
             return false;
         }
         it->second->answerReceived = false;
+        it->second->offerDispatched = false;
         it->second->pendingCandidates.clear();
         it->second->renegotiationQueued.store(false, std::memory_order_relaxed);
         it->second->candidateType = "local";
@@ -2322,9 +2405,43 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
     offer.session = peer->session;
     offer.streamId = peer->streamId;
     offer.sdp = offerSdp;
+    std::vector<PendingCandidate> bufferedCandidates;
+    std::string candidateType = "local";
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        signaling_.sendOffer(offer);
+        if (!signaling_.sendOffer(offer)) {
+            spdlog::error("[Signaling] Failed to send offer for {}:{} (reason={})",
+                          peer->uuid,
+                          peer->session,
+                          reason ? reason : "unspecified");
+            return false;
+        }
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+            return false;
+        }
+        it->second->offerDispatched = true;
+        bufferedCandidates = it->second->pendingCandidates;
+        it->second->pendingCandidates.clear();
+        candidateType = it->second->candidateType;
+    }
+
+    for (const auto &pending : bufferedCandidates) {
+        signaling::SignalCandidate cand;
+        cand.uuid = peer->uuid;
+        cand.candidate = pending.candidate;
+        cand.mid = pending.mid;
+        cand.mlineIndex = pending.mlineIndex;
+        cand.session = peer->session;
+        cand.type = candidateType;
+        {
+            std::lock_guard<std::mutex> lock(signalingOpsMutex_);
+            signaling_.sendCandidate(cand);
+        }
     }
     return true;
 }
@@ -2423,6 +2540,35 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
 
 std::string VersusApp::makePeerKey(const std::string &uuid, const std::string &session) const {
     return uuid + "|" + session;
+}
+
+std::shared_ptr<VersusApp::PeerSession> VersusApp::findPeerSessionForSignalLocked(const std::string &uuid,
+                                                                                   const std::string &session) const {
+    if (uuid.empty()) {
+        return nullptr;
+    }
+
+    if (!session.empty()) {
+        const auto it = peerSessions_.find(makePeerKey(uuid, session));
+        if (it != peerSessions_.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+
+    std::shared_ptr<PeerSession> matchedPeer;
+    for (const auto &entry : peerSessions_) {
+        if (!entry.second || entry.second->uuid != uuid) {
+            continue;
+        }
+        if (matchedPeer) {
+            spdlog::warn("[Signaling] Ambiguous peer lookup for uuid={} with empty session; ignoring message", uuid);
+            return nullptr;
+        }
+        matchedPeer = entry.second;
+    }
+
+    return matchedPeer;
 }
 
 void VersusApp::removePeerSession(const std::string &uuid, const std::string &session) {

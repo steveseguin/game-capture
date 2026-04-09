@@ -59,6 +59,9 @@ class MainWindow : public QMainWindow {
     void refreshWindowList();
     void refreshSelectedWindowPreview();
     void syncCodecUiState();
+    void loadPersistedSettings();
+    void savePersistedSettings();
+    void connectPersistedSettingSignals();
     int selectedBitrateKbps() const;
     void updateTrayLiveIndicator(bool live);
     void setConfigControlsEnabled(bool enabled);
@@ -79,6 +82,8 @@ class MainWindow : public QMainWindow {
     QComboBox *bitrateSelect_ = nullptr;
     QSpinBox *customBitrateSpin_ = nullptr;
     QSpinBox *viewerLimitSpin_ = nullptr;
+    QCheckBox *roomModeLqCheck_ = nullptr;
+    QComboBox *iceModeSelect_ = nullptr;
     QCheckBox *remoteControlCheck_ = nullptr;
     QLineEdit *remoteControlTokenInput_ = nullptr;
     QComboBox *encoderSelect_ = nullptr;
@@ -121,6 +126,7 @@ class MainWindow : public QMainWindow {
     bool reconnectNoticeActive_ = false;
     bool quitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
+    bool loadingPersistedSettings_ = false;
     quint64 stopOpId_ = 0;
     QString selectedWindowId_;
 };

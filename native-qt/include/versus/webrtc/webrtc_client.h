@@ -30,9 +30,11 @@ struct PeerConfig {
     enum class VideoCodec {
         H264,
         H265,
-        AV1
+        AV1,
+        VP9
     };
     VideoCodec videoCodec = VideoCodec::H264;
+    bool enableAlphaTrack = false;
     int videoWidth = 1920;
     int videoHeight = 1080;
     int videoFps = 60;
@@ -79,10 +81,12 @@ class WebRtcClient {
     MediaPlanChange ensureMediaTracks(bool enableVideo, bool enableAudio);
 
     bool sendVideo(const EncodedVideoPacket &packet);
+    bool sendAlphaVideo(const EncodedVideoPacket &packet);
     bool sendAudio(const EncodedAudioPacket &packet);
     bool sendDataMessage(const std::string &message);
     bool isDataChannelOpen() const;
     bool hasActiveVideoTrack() const;
+    bool hasActiveAlphaVideoTrack() const;
     bool hasActiveAudioTrack() const;
     bool hasConfiguredVideoTrack() const;
     bool hasConfiguredAudioTrack() const;

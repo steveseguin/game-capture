@@ -429,6 +429,21 @@ async function installInfoProbe(page, uuid) {
   }, uuid);
 }
 
+async function waitForInfoProbe(page, uuid, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    // eslint-disable-next-line no-await-in-loop
+    last = await installInfoProbe(page, uuid);
+    if (last && last.ok) {
+      return last;
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+  }
+  return last || { ok: false, reason: 'timeout' };
+}
+
 async function waitForInfoField(page, fieldName, expectedValue, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -457,6 +472,42 @@ async function waitForInfoField(page, fieldName, expectedValue, timeoutMs) {
     await wait(250);
   }
   return { ok: false, stage: 'info-field', state: last };
+}
+
+async function waitForExpectedDimensions(page, expectedTier, timeoutMs, initialState = null) {
+  const deadline = Date.now() + timeoutMs;
+  let lastState = initialState;
+  let decoded = pickDecodedVideo(lastState);
+
+  while (Date.now() < deadline) {
+    if (!decoded || !lastState || !lastState.hasDecodedVideo) {
+      // eslint-disable-next-line no-await-in-loop
+      lastState = await collectState(page);
+      decoded = pickDecodedVideo(lastState) || decoded;
+    }
+
+    if (decoded) {
+      const dims = {
+        width: Number(decoded.width) || 0,
+        height: Number(decoded.height) || 0
+      };
+      if (expectedTier === 'lq') {
+        if (dims.width === LQ_WIDTH && dims.height === LQ_HEIGHT) {
+          return { ok: true, state: lastState, decoded };
+        }
+      } else if (!(dims.width <= LQ_WIDTH && dims.height <= LQ_HEIGHT)) {
+        return { ok: true, state: lastState, decoded };
+      }
+    }
+
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+    // eslint-disable-next-line no-await-in-loop
+    lastState = await collectState(page);
+    decoded = pickDecodedVideo(lastState) || decoded;
+  }
+
+  return { ok: false, state: lastState, decoded };
 }
 
 async function installControlAckProbe(page, uuid) {
@@ -577,6 +628,13 @@ async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, 
     const peerState = await waitForSessionPeer(page, Math.max(10000, Math.floor(config.timeoutMs / 2)));
     assertOk(peerState && peerState.ready, `${tag}: session peer unavailable`, peerState);
 
+    const probeInstall = await waitForInfoProbe(
+      page,
+      peerState.uuid,
+      Math.max(6000, Math.floor(config.timeoutMs / 3))
+    );
+    assertOk(probeInstall && probeInstall.ok, `${tag}: info probe unavailable`, probeInstall);
+
     const initResult = await sendInitMessage(
       page,
       room,
@@ -588,32 +646,38 @@ async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, 
     );
     assertOk(initResult && initResult.ok, `${tag}: init send failed`, initResult);
 
+    const assignedTier = await waitForInfoField(
+      page,
+      'assigned_tier',
+      expectedTier,
+      Math.max(6000, Math.floor(config.timeoutMs / 2))
+    );
+    assertOk(assignedTier.ok, `${tag}: assigned tier mismatch`, assignedTier.state || assignedTier);
+
     const decodeResult = await waitForDecodedVideo(page, config.timeoutMs, `${tag}-decode`);
     assertOk(decodeResult.ok, `${tag}: decode failed`, decodeResult.state || decodeResult);
 
-    const decoded = pickDecodedVideo(decodeResult.state);
-    assertOk(decoded, `${tag}: missing decoded metadata`, decodeResult.state);
+    const dimsResult = await waitForExpectedDimensions(
+      page,
+      expectedTier,
+      Math.max(4000, Math.floor(config.timeoutMs / 4)),
+      decodeResult.state
+    );
+    assertOk(
+      dimsResult.ok,
+      `${tag}: expected ${expectedTier.toUpperCase()} dimensions`,
+      dimsResult.decoded || dimsResult.state
+    );
 
+    const decoded = dimsResult.decoded || pickDecodedVideo(decodeResult.state);
+    assertOk(decoded, `${tag}: missing decoded metadata`, decodeResult.state);
     const dims = { width: Number(decoded.width) || 0, height: Number(decoded.height) || 0 };
-    if (expectedTier === 'lq') {
-      assertOk(
-        dims.width === LQ_WIDTH && dims.height === LQ_HEIGHT,
-        `${tag}: expected LQ dimensions`,
-        dims
-      );
-    } else if (expectedTier === 'hq') {
-      assertOk(
-        !(dims.width <= LQ_WIDTH && dims.height <= LQ_HEIGHT),
-        `${tag}: expected HQ dimensions`,
-        dims
-      );
-    }
 
     return {
       page,
       peerUuid: peerState.uuid,
       dimensions: dims,
-      decodeState: decodeResult.state
+      decodeState: dimsResult.state || decodeResult.state
     };
   } catch (err) {
     await page.close().catch(() => {});
@@ -916,7 +980,19 @@ async function caseReconnectControlMedia(input) {
     guestPostResult.state || guestPostResult
   );
 
-  const guestDecoded = pickDecodedVideo(guestPostResult.state);
+  const guestDims = await waitForExpectedDimensions(
+    guest.page,
+    'lq',
+    Math.max(4000, Math.floor(config.timeoutMs / 4)),
+    guestPostResult.state
+  );
+  assertOk(
+    guestDims.ok,
+    'reconnect-control-media: guest dimensions changed from LQ after control',
+    guestDims.decoded || guestDims.state
+  );
+
+  const guestDecoded = guestDims.decoded || pickDecodedVideo(guestPostResult.state);
   assertOk(
     guestDecoded && Number(guestDecoded.width) === LQ_WIDTH && Number(guestDecoded.height) === LQ_HEIGHT,
     'reconnect-control-media: guest dimensions changed from LQ after control',

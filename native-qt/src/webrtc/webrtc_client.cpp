@@ -1,4 +1,5 @@
 #include "versus/webrtc/webrtc_client.h"
+#include "vp9_rtp_packetizer.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -26,6 +27,7 @@ namespace versus::webrtc {
 namespace {
 
 constexpr uint8_t kVideoPayloadType = 96;
+constexpr uint8_t kAlphaVideoPayloadType = 97;
 constexpr uint8_t kAudioPayloadType = 111;
 constexpr uint32_t kVideoClockRate = rtc::RtpPacketizer::VideoClockRate;
 constexpr uint32_t kAudioClockRate = rtc::OpusRtpPacketizer::DefaultClockRate;
@@ -63,10 +65,13 @@ struct WebRtcClient::Impl {
     rtc::Configuration config;
     std::shared_ptr<rtc::PeerConnection> pc;
     std::shared_ptr<rtc::Track> videoTrack;
+    std::shared_ptr<rtc::Track> alphaVideoTrack;
     std::shared_ptr<rtc::Track> audioTrack;
     std::shared_ptr<rtc::RtpPacketizer> videoPacketizer;
+    std::shared_ptr<rtc::RtpPacketizer> alphaVideoPacketizer;
     std::shared_ptr<rtc::RtpPacketizer> audioPacketizer;
     std::shared_ptr<rtc::RtpPacketizationConfig> videoRtpConfig;
+    std::shared_ptr<rtc::RtpPacketizationConfig> alphaVideoRtpConfig;
     std::shared_ptr<rtc::RtpPacketizationConfig> audioRtpConfig;
     std::string localDescription;
     IceCandidateCallback iceCallback;
@@ -82,13 +87,16 @@ struct WebRtcClient::Impl {
     std::atomic<bool> sentFirstKeyframe{false};
     std::atomic<bool> firstVideoPacketLogged{false};
     std::atomic<bool> videoTrackOpen{false};
+    std::atomic<bool> alphaVideoTrackOpen{false};
     std::atomic<bool> audioTrackOpen{false};
     std::atomic<bool> dataChannelOpen{false};
     std::atomic<uint64_t> videoPacketsSent{0};
     std::atomic<uint64_t> videoBytesSent{0};
     std::chrono::steady_clock::time_point trackOpenedTime;
     uint32_t videoSsrc = 2222222;
+    uint32_t alphaVideoSsrc = 4444444;
     uint32_t audioSsrc = 3333333;
+    bool enableAlphaTrack = false;
     PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
     int configuredVideoWidth = 1920;
     int configuredVideoHeight = 1080;
@@ -97,12 +105,16 @@ struct WebRtcClient::Impl {
 
     void resetMediaState() {
         videoTrack.reset();
+        alphaVideoTrack.reset();
         audioTrack.reset();
         videoPacketizer.reset();
+        alphaVideoPacketizer.reset();
         audioPacketizer.reset();
         videoRtpConfig.reset();
+        alphaVideoRtpConfig.reset();
         audioRtpConfig.reset();
         videoTrackOpen.store(false);
+        alphaVideoTrackOpen.store(false);
         audioTrackOpen.store(false);
         sentFirstKeyframe.store(false);
         firstVideoPacketLogged.store(false);
@@ -233,6 +245,10 @@ struct WebRtcClient::Impl {
                 spdlog::info("[WebRTC] Configuring video codec: AV1");
                 video.addAV1Codec(kVideoPayloadType);
                 break;
+            case PeerConfig::VideoCodec::VP9:
+                spdlog::info("[WebRTC] Configuring video codec: VP9 (primary, PT={})", kVideoPayloadType);
+                video.addVP9Codec(kVideoPayloadType);
+                break;
             case PeerConfig::VideoCodec::H264:
             default:
                 // Choose H.264 level based on configured publish target to avoid advertising 3.1 for 1080p60.
@@ -277,6 +293,9 @@ struct WebRtcClient::Impl {
                 videoPacketizer = std::make_shared<rtc::AV1RtpPacketizer>(
                     rtc::AV1RtpPacketizer::Packetization::TemporalUnit, videoRtpConfig);
                 break;
+            case PeerConfig::VideoCodec::VP9:
+                videoPacketizer = std::make_shared<Vp9RtpPacketizer>(videoRtpConfig);
+                break;
             case PeerConfig::VideoCodec::H264:
             default:
                 videoPacketizer =
@@ -299,6 +318,49 @@ struct WebRtcClient::Impl {
             videoTrackOpen.store(true);
             trackOpenedTime = std::chrono::steady_clock::now();
             spdlog::info("[WebRTC] Video track already open after addTrack");
+        }
+        return true;
+    }
+
+    // Alpha track must be added AFTER the primary video track so it occupies m-line 1 in SDP.
+    // The OBS VDO.Ninja plugin identifies the alpha track by SDP m-line position (not mid name).
+    bool ensureAlphaVideoTrack() {
+        if (!pc || videoCodec != PeerConfig::VideoCodec::VP9) {
+            return false;
+        }
+        if (alphaVideoTrack) {
+            return true;
+        }
+
+        spdlog::info("[WebRTC] Adding VP9 alpha video track (PT={})", kAlphaVideoPayloadType);
+        rtc::Description::Video alpha("video", rtc::Description::Direction::SendOnly);
+        alpha.addVP9Codec(kAlphaVideoPayloadType);
+        alpha.addSSRC(alphaVideoSsrc, "gamecapture-alpha");
+        alphaVideoTrack = pc->addTrack(alpha);
+        if (!alphaVideoTrack) {
+            spdlog::error("[WebRTC] Failed to add VP9 alpha video track");
+            return false;
+        }
+
+        alphaVideoTrack->onOpen([this]() {
+            spdlog::info("[WebRTC] Alpha video track opened");
+            alphaVideoTrackOpen.store(true);
+        });
+        alphaVideoTrack->onClosed([this]() {
+            spdlog::info("[WebRTC] Alpha video track closed");
+            alphaVideoTrackOpen.store(false);
+        });
+
+        alphaVideoRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
+            alphaVideoSsrc, "gamecapture-alpha", kAlphaVideoPayloadType, kVideoClockRate);
+        alphaVideoPacketizer = std::make_shared<Vp9RtpPacketizer>(alphaVideoRtpConfig);
+        auto alphaReporter = std::make_shared<rtc::RtcpSrReporter>(alphaVideoRtpConfig);
+        alphaVideoPacketizer->addToChain(alphaReporter);
+        alphaVideoTrack->setMediaHandler(alphaVideoPacketizer);
+
+        if (alphaVideoTrack->isOpen()) {
+            alphaVideoTrackOpen.store(true);
+            spdlog::info("[WebRTC] Alpha video track already open after addTrack");
         }
         return true;
     }
@@ -356,6 +418,7 @@ WebRtcClient::~WebRtcClient() { shutdown(); }
 
 bool WebRtcClient::initialize(const PeerConfig &config) {
     impl_->videoCodec = config.videoCodec;
+    impl_->enableAlphaTrack = config.enableAlphaTrack;
     impl_->configuredVideoWidth = std::max(1, config.videoWidth);
     impl_->configuredVideoHeight = std::max(1, config.videoHeight);
     impl_->configuredVideoFps = std::max(1, config.videoFps);
@@ -555,26 +618,44 @@ std::string WebRtcClient::createOffer() {
     if (!impl_->pc) {
         return {};
     }
-    impl_->localDescription.clear();
+    {
+        std::lock_guard<std::mutex> lock(impl_->descMutex);
+        impl_->localDescription.clear();
+    }
     impl_->gatheringComplete.store(false);
 
-    spdlog::info("[WebRTC] Creating offer, waiting for ICE gathering...");
+    spdlog::info("[WebRTC] Creating offer with trickle ICE enabled...");
     impl_->pc->setLocalDescription(rtc::Description::Type::Offer);
 
-    // Wait for ICE gathering to complete (up to 10 seconds)
+    auto hasLocalDescription = [this]() {
+        if (impl_->pc && impl_->pc->localDescription()) {
+            return true;
+        }
+        std::lock_guard<std::mutex> lock(impl_->descMutex);
+        return !impl_->localDescription.empty();
+    };
+
+    // Wait only for the initial local description so we can send the SDP promptly and trickle candidates.
     auto start = std::chrono::steady_clock::now();
-    while (!impl_->gatheringComplete.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(10)) {
-            spdlog::warn("[WebRTC] ICE gathering timeout, using partial candidates");
+    while (!hasLocalDescription()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(2)) {
+            spdlog::warn("[WebRTC] Timed out waiting for initial local description; proceeding with current SDP state");
             break;
         }
     }
 
-    // Get the final local description with all ICE candidates
+    // Return whatever SDP is currently available; remaining ICE candidates will trickle separately.
     auto desc = impl_->pc->localDescription();
+    std::string sdp;
     if (desc) {
-        std::string sdp = std::string(*desc);
+        sdp = std::string(*desc);
+    } else {
+        std::lock_guard<std::mutex> lock(impl_->descMutex);
+        sdp = impl_->localDescription;
+    }
+
+    if (!sdp.empty()) {
         sdp = filterSessionDescriptionForMode(sdp, impl_->iceMode);
         spdlog::info("[WebRTC] Offer created with {} bytes, gathering complete={}",
                      sdp.size(), impl_->gatheringComplete.load());
@@ -584,6 +665,11 @@ std::string WebRtcClient::createOffer() {
         spdlog::info("[WebRTC] === SDP OFFER END ===");
         return sdp;
     }
+
+    std::lock_guard<std::mutex> lock(impl_->descMutex);
+    if (!impl_->localDescription.empty()) {
+        return filterSessionDescriptionForMode(impl_->localDescription, impl_->iceMode);
+    }
     return impl_->localDescription;
 }
 
@@ -591,11 +677,23 @@ std::string WebRtcClient::createAnswer(const std::string &offer) {
     if (!impl_->pc) {
         return {};
     }
-    impl_->localDescription.clear();
+    {
+        std::lock_guard<std::mutex> lock(impl_->descMutex);
+        impl_->localDescription.clear();
+    }
     impl_->pc->setRemoteDescription(rtc::Description(offer, rtc::Description::Type::Offer));
     impl_->pc->setLocalDescription(rtc::Description::Type::Answer);
+
+    auto hasLocalDescription = [this]() {
+        if (impl_->pc && impl_->pc->localDescription()) {
+            return true;
+        }
+        std::lock_guard<std::mutex> lock(impl_->descMutex);
+        return !impl_->localDescription.empty();
+    };
+
     auto start = std::chrono::steady_clock::now();
-    while (impl_->localDescription.empty()) {
+    while (!hasLocalDescription()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (std::chrono::steady_clock::now() - start > std::chrono::seconds(5)) {
             break;
@@ -640,6 +738,10 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAud
     if (enableVideo && !impl_->videoTrack && impl_->ensureVideoTrack()) {
         change.changed = true;
         change.videoAdded = true;
+        // Alpha track MUST be added after primary (SDP m-line ordering determines role in OBS plugin)
+        if (impl_->enableAlphaTrack) {
+            impl_->ensureAlphaVideoTrack();
+        }
     }
     if (enableAudio && !impl_->audioTrack && impl_->ensureAudioTrack()) {
         change.changed = true;
@@ -693,6 +795,20 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
     return true;
 }
 
+bool WebRtcClient::sendAlphaVideo(const EncodedVideoPacket &packet) {
+    if (!impl_->alphaVideoTrack || !impl_->alphaVideoTrack->isOpen() || !impl_->alphaVideoRtpConfig) {
+        return false;
+    }
+    if (packet.data.empty()) {
+        return false;
+    }
+    uint32_t rtpTimestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
+    impl_->alphaVideoRtpConfig->timestamp = rtpTimestamp;
+    rtc::binary binaryPayload = toBinary(packet.data);
+    impl_->alphaVideoTrack->send(binaryPayload);
+    return true;
+}
+
 bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet) {
     if (!impl_->audioTrack || !impl_->audioTrack->isOpen() || !impl_->audioRtpConfig) {
         return false;
@@ -734,6 +850,16 @@ bool WebRtcClient::hasActiveVideoTrack() const {
     }
     const bool open = impl_->videoTrack->isOpen();
     impl_->videoTrackOpen.store(open);
+    return open;
+}
+
+bool WebRtcClient::hasActiveAlphaVideoTrack() const {
+    if (!impl_->alphaVideoTrack) {
+        impl_->alphaVideoTrackOpen.store(false);
+        return false;
+    }
+    const bool open = impl_->alphaVideoTrack->isOpen();
+    impl_->alphaVideoTrackOpen.store(open);
     return open;
 }
 

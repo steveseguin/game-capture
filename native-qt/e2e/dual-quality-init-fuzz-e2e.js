@@ -575,6 +575,8 @@ async function main() {
     { name: 'inline-unknown-role', type: 'obj', payload: { role: 'bogus-inline', room: true, video: true, audio: true } },
     { name: 'repeat-viewer', type: 'obj', payload: makeInit('viewer', true, true, 'viewer') },
     { name: 'repeat-scene', type: 'obj', payload: makeInit('scene', true, true, 'scene') },
+    { name: 'post-scene-unknown-role', type: 'obj', payload: makeInit('bogus-role', true, true, 'post-scene-unknown-role') },
+    { name: 'post-scene-inline-unknown-role', type: 'obj', payload: { role: 'bogus-inline-after-scene', room: true, video: true, audio: true } },
     { name: 'repeat-guest-no-audio', type: 'obj', payload: makeInit('guest', true, false, 'guest-muted') },
     { name: 'repeat-scene-no-video', type: 'obj', payload: makeInit('scene', false, true, 'scene-no-video') },
     { name: 'final-scene', type: 'obj', payload: makeInit('scene', true, true, 'scene-final') }
@@ -649,6 +651,15 @@ async function main() {
     if (invalidTierRecord) {
       failure = { stage: 'invalid-tier-state', state: invalidTierRecord };
       return;
+    }
+
+    const firstReadyIndex = infoRecords.findIndex((record) => record.roomInitReceived);
+    if (firstReadyIndex >= 0) {
+      const regressedRecord = infoRecords.slice(firstReadyIndex + 1).find((record) => !record.roomInitReceived);
+      if (regressedRecord) {
+        failure = { stage: 'room-init-regressed', state: regressedRecord };
+        return;
+      }
     }
 
     const sawHq = infoRecords.some((record) => String(record.assignedTier || '').toLowerCase() === 'hq');
