@@ -7,6 +7,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <sstream>
 
 #include <spdlog/spdlog.h>
@@ -33,6 +34,15 @@ std::string resolveLogFilePath() {
 #else
     return "game-capture-debug.log";
 #endif
+}
+
+[[noreturn]] void forceExitProcess(int exitCode) {
+    // Force-quit must bypass QApplication teardown because Qt destroys the
+    // global QThreadPool on shutdown and waits for active QtConcurrent jobs.
+    if (auto logger = spdlog::default_logger()) {
+        logger->flush();
+    }
+    std::_Exit(exitCode);
 }
 
 }  // namespace
@@ -178,7 +188,9 @@ int main(int argc, char *argv[]) {
 
     QApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/icons/vdoninja.ico"));
-    versus::app::VersusApp core;
+    app.setProperty("force_exit_without_shutdown", false);
+    auto coreHolder = std::make_unique<versus::app::VersusApp>();
+    auto &core = *coreHolder;
     core.initialize();
     core.onRuntimeEvent([headless](const std::string &message, bool fatal) {
         if (message.empty()) {
@@ -374,6 +386,9 @@ int main(int argc, char *argv[]) {
         });
 
         const int result = app.exec();
+        if (app.property("force_exit_without_shutdown").toBool()) {
+            forceExitProcess(result);
+        }
         core.shutdown();
         return result;
     }
@@ -382,6 +397,9 @@ int main(int argc, char *argv[]) {
     versus::ui::MainWindow window(&core);
     window.show();
     const int result = app.exec();
+    if (app.property("force_exit_without_shutdown").toBool()) {
+        forceExitProcess(result);
+    }
     core.shutdown();
     return result;
 }

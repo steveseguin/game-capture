@@ -83,6 +83,7 @@ struct WebRtcClient::Impl {
     std::mutex descMutex;
     std::mutex dataChannelMutex;
     std::atomic<ConnectionState> state{ConnectionState::Disconnected};
+    std::atomic<bool> suppressCallbacks{false};
     std::atomic<bool> gatheringComplete{false};
     std::atomic<bool> sentFirstKeyframe{false};
     std::atomic<bool> firstVideoPacketLogged{false};
@@ -148,7 +149,7 @@ struct WebRtcClient::Impl {
                 dataChannelOpen.store(true);
             }
             spdlog::info("[WebRTC] DataChannel open: {}", opened->label());
-            if (dataChannelStateCallback) {
+            if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
                 dataChannelStateCallback(true);
             }
         });
@@ -166,7 +167,7 @@ struct WebRtcClient::Impl {
             } else {
                 spdlog::info("[WebRTC] DataChannel closed");
             }
-            if (dataChannelStateCallback) {
+            if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
                 dataChannelStateCallback(false);
             }
         });
@@ -188,7 +189,7 @@ struct WebRtcClient::Impl {
                 }
             }
 
-            if (!dataMessageCallback) {
+            if (suppressCallbacks.load(std::memory_order_relaxed) || !dataMessageCallback) {
                 return;
             }
 
@@ -220,7 +221,7 @@ struct WebRtcClient::Impl {
         if (oldChannel) {
             oldChannel->close();
         }
-        if (dataChannelStateCallback) {
+        if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
             dataChannelStateCallback(false);
         }
     }
@@ -306,7 +307,7 @@ struct WebRtcClient::Impl {
         auto videoNack = std::make_shared<rtc::RtcpNackResponder>();
         auto videoPli = std::make_shared<rtc::PliHandler>([this]() {
             spdlog::info("[WebRTC] Received PLI/FIR - keyframe requested by receiver");
-            if (keyframeCallback) {
+            if (!suppressCallbacks.load(std::memory_order_relaxed) && keyframeCallback) {
                 keyframeCallback();
             }
         });
@@ -442,6 +443,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     // unless this is forced up front, which breaks late addTrack renegotiation.
     rtcConfig.forceMediaTransport = true;
     impl_->config = rtcConfig;
+    impl_->suppressCallbacks.store(false, std::memory_order_relaxed);
 
     impl_->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
 
@@ -466,7 +468,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         }
         spdlog::info("[WebRTC] PeerConnection state: {}", stateStr);
         impl_->state.store(mapped);
-        if (impl_->stateCallback) {
+        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->stateCallback) {
             impl_->stateCallback(mapped);
         }
     });
@@ -478,7 +480,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
                          candidate.candidate());
             return;
         }
-        if (impl_->iceCallback) {
+        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->iceCallback) {
             impl_->iceCallback(candidate.candidate(), candidate.mid(), 0);
         }
     });
@@ -512,6 +514,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
 }
 
 void WebRtcClient::shutdown() {
+    impl_->suppressCallbacks.store(true, std::memory_order_relaxed);
     impl_->clearDataChannel();
     if (impl_->pc) {
         impl_->pc->close();
@@ -522,6 +525,7 @@ void WebRtcClient::shutdown() {
 
 void WebRtcClient::resetPeerConnection() {
     spdlog::info("[WebRTC] Resetting PeerConnection for new viewer");
+    impl_->suppressCallbacks.store(false, std::memory_order_relaxed);
 
     // Close old connection
     impl_->clearDataChannel();
@@ -557,7 +561,7 @@ void WebRtcClient::resetPeerConnection() {
         }
         spdlog::info("[WebRTC] PeerConnection state: {}", stateStr);
         impl_->state.store(mapped);
-        if (impl_->stateCallback) {
+        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->stateCallback) {
             impl_->stateCallback(mapped);
         }
     });
@@ -569,7 +573,7 @@ void WebRtcClient::resetPeerConnection() {
                          candidate.candidate());
             return;
         }
-        if (impl_->iceCallback) {
+        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->iceCallback) {
             impl_->iceCallback(candidate.candidate(), candidate.mid(), 0);
         }
     });
@@ -707,6 +711,10 @@ void WebRtcClient::addRemoteCandidate(const std::string &candidate, const std::s
         return;
     }
     impl_->pc->addRemoteCandidate(rtc::Candidate(candidate, mid));
+}
+
+void WebRtcClient::prepareForShutdown() {
+    impl_->suppressCallbacks.store(true, std::memory_order_relaxed);
 }
 
 void WebRtcClient::setIceCandidateCallback(IceCandidateCallback cb) {

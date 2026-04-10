@@ -73,6 +73,7 @@ class WebRtcClient {
     std::string createAnswer(const std::string &offer);
     void addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex);
 
+    void prepareForShutdown();
     void setIceCandidateCallback(IceCandidateCallback cb);
     void setStateCallback(StateCallback cb);
     void setKeyframeRequestCallback(KeyframeRequestCallback cb);

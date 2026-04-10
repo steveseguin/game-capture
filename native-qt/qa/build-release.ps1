@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.34",
+    [string]$Version = "0.2.35",
     [switch]$SkipVirusTotal = $false
 )
 

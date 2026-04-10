@@ -233,14 +233,12 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
     stopWatchdogTimer_->setSingleShot(true);
     stopWatchdogTimer_->setInterval(12000);
     connect(stopWatchdogTimer_, &QTimer::timeout, this, [this]() {
-        if (!stopInProgress_) {
+        const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
+        if (!stopPending) {
             return;
         }
-        stopInProgress_ = false;
-        updateStatus("Stop is taking longer than expected. Try STOP again or Quit from tray.", "error");
-        if (goLiveButton_) {
-            goLiveButton_->setEnabled(true);
-        }
+        forceQuitEnabled_ = true;
+        updateStatus("Stop is taking longer than expected. Choose Quit to force close the app.", "error");
         updateGoLiveButton();
     });
 
@@ -367,6 +365,45 @@ MainWindow::~MainWindow() {
     if (core_) {
         core_->onRuntimeEvent(nullptr);
     }
+    if (!forceQuitRequested_ && startFuture_.isValid()) {
+        startFuture_.waitForFinished();
+    }
+    if (!forceQuitRequested_ && stopFuture_.isValid()) {
+        stopFuture_.waitForFinished();
+    }
+}
+
+bool MainWindow::hasPendingAsyncOperation() const {
+    const bool startPending = startFuture_.isValid() && !startFuture_.isFinished();
+    const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
+    return startPending || stopPending;
+}
+
+void MainWindow::maybeQuitAfterPendingOperations() {
+    if (!quitRequested_ || !quitAfterPendingOps_ || hasPendingAsyncOperation()) {
+        return;
+    }
+
+    quitAfterPendingOps_ = false;
+    QMetaObject::invokeMethod(qApp, []() { QApplication::quit(); }, Qt::QueuedConnection);
+}
+
+void MainWindow::requestQuit() {
+    quitRequested_ = true;
+    if (hasPendingAsyncOperation()) {
+        if (forceQuitEnabled_ || quitAfterPendingOps_) {
+            forceQuitRequested_ = true;
+            qApp->setProperty("force_exit_without_shutdown", true);
+            qApp->quit();
+            return;
+        }
+        quitAfterPendingOps_ = true;
+        updateStatus("Waiting for the current stream operation to finish. Choose Quit again to force close.", "connecting");
+        return;
+    }
+
+    quitAfterPendingOps_ = false;
+    qApp->quit();
 }
 
 void MainWindow::loadPersistedSettings() {
@@ -569,8 +606,7 @@ void MainWindow::setupMenuBar() {
     fileMenu->addSeparator();
     auto *quitAction = fileMenu->addAction("Quit");
     connect(quitAction, &QAction::triggered, this, [this]() {
-        quitRequested_ = true;
-        qApp->quit();
+        requestQuit();
     });
 
     auto *viewMenu = menuBar()->addMenu("&View");
@@ -1024,8 +1060,7 @@ void MainWindow::setupTrayIcon() {
 
     auto *quitAction = trayMenu_->addAction("Quit");
     connect(quitAction, &QAction::triggered, this, [this]() {
-        quitRequested_ = true;
-        qApp->quit();
+        requestQuit();
     });
 
     trayIcon_->setContextMenu(trayMenu_);
@@ -1225,12 +1260,15 @@ void MainWindow::onGoLiveClicked() {
         return;
     }
 
-    if (startInProgress_ || stopInProgress_) {
+    const bool startPending = startFuture_.isValid() && !startFuture_.isFinished();
+    const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
+    if (startInProgress_ || stopInProgress_ || startPending || stopPending) {
         return;
     }
 
     if (isLive_) {
         stopInProgress_ = true;
+        forceQuitEnabled_ = false;
         const quint64 stopOpId = ++stopOpId_;
         reconnectNoticeActive_ = false;
         updateStatus("Stopping...", "connecting");
@@ -1244,7 +1282,7 @@ void MainWindow::onGoLiveClicked() {
 
         QPointer<MainWindow> self(this);
         auto *core = core_;
-        QtConcurrent::run([self, core, stopOpId]() {
+        stopFuture_ = QtConcurrent::run([self, core, stopOpId]() {
             core->stopLive();
             core->stopCapture();
 
@@ -1264,6 +1302,7 @@ void MainWindow::onGoLiveClicked() {
 
                 self->isLive_ = false;
                 self->stopInProgress_ = false;
+                self->forceQuitEnabled_ = false;
                 if (self->statsTimer_) {
                     self->statsTimer_->stop();
                 }
@@ -1322,6 +1361,7 @@ void MainWindow::onGoLiveClicked() {
                     self->goLiveButton_->setEnabled(!self->selectedWindowId_.isEmpty());
                 }
                 self->updateGoLiveButton();
+                self->maybeQuitAfterPendingOperations();
             }, Qt::QueuedConnection);
         });
     } else {
@@ -1419,6 +1459,7 @@ void MainWindow::onGoLiveClicked() {
 
         reconnectNoticeActive_ = false;
         startInProgress_ = true;
+        forceQuitEnabled_ = false;
         const quint64 startOpId = ++startOpId_;
         updateStatus("Starting...", "connecting");
         setConfigControlsEnabled(false);
@@ -1432,7 +1473,7 @@ void MainWindow::onGoLiveClicked() {
 
         QPointer<MainWindow> self(this);
         auto *core = core_;
-        QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode]() {
+        startFuture_ = QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode]() {
             bool started = false;
             QString failureStatus;
 
@@ -1460,6 +1501,7 @@ void MainWindow::onGoLiveClicked() {
                 }
 
                 self->startInProgress_ = false;
+                self->forceQuitEnabled_ = false;
                 if (!started) {
                     self->isLive_ = false;
                     self->updateStatus(failureStatus.isEmpty() ? "Failed to start stream" : failureStatus, "error");
@@ -1472,6 +1514,7 @@ void MainWindow::onGoLiveClicked() {
                     }
                     self->refreshSelectedWindowPreview();
                     self->updateGoLiveButton();
+                    self->maybeQuitAfterPendingOperations();
                     return;
                 }
 
@@ -1566,6 +1609,7 @@ void MainWindow::onGoLiveClicked() {
                     self->windowListWidget_->setAutoRefreshEnabled(false);
                 }
                 self->updateGoLiveButton();
+                self->maybeQuitAfterPendingOperations();
             }, Qt::QueuedConnection);
         });
     }
@@ -1964,6 +2008,19 @@ void MainWindow::closeEvent(QCloseEvent *event) {
                 3000);
         }
         return;
+    }
+
+    if (hasPendingAsyncOperation() && !forceQuitRequested_) {
+        quitRequested_ = true;
+        if (forceQuitEnabled_ || quitAfterPendingOps_) {
+            forceQuitRequested_ = true;
+            qApp->setProperty("force_exit_without_shutdown", true);
+        } else {
+            quitAfterPendingOps_ = true;
+            event->ignore();
+            updateStatus("Waiting for the current stream operation to finish. Close again to force quit.", "connecting");
+            return;
+        }
     }
 
     QMainWindow::closeEvent(event);

@@ -160,6 +160,7 @@ bool VersusApp::initialize() {
 void VersusApp::shutdown() {
     stopLive();
     stopCapture();
+    waitForPendingPeerShutdowns();
 }
 
 std::vector<versus::video::WindowInfo> VersusApp::listWindows() {
@@ -724,7 +725,7 @@ void VersusApp::setupSignalingCallbacks() {
                              peerPtr->uuid,
                              peerPtr->session,
                              state == webrtc::ConnectionState::Failed ? "failed" : "disconnected");
-                removePeerSession(peerPtr->uuid, peerPtr->session);
+                removePeerSession(peerPtr);
             }
         });
 
@@ -822,6 +823,12 @@ void VersusApp::setupSignalingCallbacks() {
             auto peerPtr = weakPeer.lock();
             if (!peerPtr) {
                 return;
+            }
+            peerPtr->dataChannelOpen.store(true, std::memory_order_relaxed);
+            if (!peerPtr->initReceived.load(std::memory_order_relaxed) &&
+                peerPtr->initDeadlineMs.load(std::memory_order_relaxed) <= 0) {
+                const int64_t graceMs = peerPtr->roomMode ? kRoomInitGracePeriodMs : kDirectInitGracePeriodMs;
+                peerPtr->initDeadlineMs.store(steadyNowMs() + graceMs, std::memory_order_relaxed);
             }
             handlePeerDataMessage(peerPtr, message);
         });
@@ -1108,9 +1115,13 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
             continue;
         }
         peer->initDeadlineMs.store(0, std::memory_order_relaxed);
-        if (!peer->dataChannelOpen.load(std::memory_order_relaxed)) {
+        const bool dataChannelOpen =
+            peer->dataChannelOpen.load(std::memory_order_relaxed) ||
+            (peer->client && peer->client->isDataChannelOpen());
+        if (!dataChannelOpen) {
             continue;
         }
+        peer->dataChannelOpen.store(true, std::memory_order_relaxed);
 
         if (peer->roomMode) {
             const StreamTier fallbackTier = assignStreamTier(
@@ -2467,7 +2478,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                       peer->uuid,
                       peer->session,
                       reason ? reason : "unspecified");
-        removePeerSession(peer->uuid, peer->session);
+        removePeerSession(peer);
         return false;
     }
 
@@ -2569,9 +2580,13 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
     if (!peer || !peer->client) {
         return;
     }
-    if (!peer->dataChannelOpen.load(std::memory_order_relaxed)) {
+    const bool dataChannelOpen =
+        peer->dataChannelOpen.load(std::memory_order_relaxed) ||
+        peer->client->isDataChannelOpen();
+    if (!dataChannelOpen) {
         return;
     }
+    peer->dataChannelOpen.store(true, std::memory_order_relaxed);
 
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
     const bool wantVideo = initReceived && peer->videoEnabled.load(std::memory_order_relaxed);
@@ -2642,21 +2657,25 @@ std::shared_ptr<VersusApp::PeerSession> VersusApp::findPeerSessionForSignalLocke
     return matchedPeer;
 }
 
-void VersusApp::removePeerSession(const std::string &uuid, const std::string &session) {
-    std::shared_ptr<PeerSession> peer;
+void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer) {
+        return;
+    }
+
+    std::shared_ptr<PeerSession> removedPeer;
     bool hasRemainingPeers = true;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(uuid, session));
-        if (it == peerSessions_.end()) {
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
             return;
         }
-        peer = it->second;
+        removedPeer = it->second;
         peerSessions_.erase(it);
         hasRemainingPeers = !peerSessions_.empty();
     }
 
-    shutdownPeerClientAsync(peer);
+    shutdownPeerClientAsync(removedPeer);
     if (!hasRemainingPeers) {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         shutdownLqEncoderLocked();
@@ -2668,7 +2687,9 @@ void VersusApp::shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer
         return;
     }
 
-    std::thread([peer]() {
+    reapCompletedPeerShutdowns();
+    peer->client->prepareForShutdown();
+    auto shutdownFuture = std::async(std::launch::async, [peer]() {
         try {
             if (peer->client) {
                 peer->client->shutdown();
@@ -2678,7 +2699,45 @@ void VersusApp::shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer
         } catch (...) {
             spdlog::warn("[WebRTC] Peer shutdown threw unknown exception");
         }
-    }).detach();
+    });
+    std::lock_guard<std::mutex> lock(peerShutdownTasksMutex_);
+    peerShutdownFutures_.push_back(std::move(shutdownFuture));
+}
+
+void VersusApp::reapCompletedPeerShutdowns() {
+    std::lock_guard<std::mutex> lock(peerShutdownTasksMutex_);
+    auto it = peerShutdownFutures_.begin();
+    while (it != peerShutdownFutures_.end()) {
+        if (!it->valid()) {
+            it = peerShutdownFutures_.erase(it);
+            continue;
+        }
+        if (it->wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+            ++it;
+            continue;
+        }
+        it->wait();
+        it = peerShutdownFutures_.erase(it);
+    }
+}
+
+void VersusApp::waitForPendingPeerShutdowns() {
+    for (;;) {
+        std::vector<std::future<void>> pending;
+        {
+            std::lock_guard<std::mutex> lock(peerShutdownTasksMutex_);
+            if (peerShutdownFutures_.empty()) {
+                return;
+            }
+            pending.swap(peerShutdownFutures_);
+        }
+
+        for (auto &future : pending) {
+            if (future.valid()) {
+                future.wait();
+            }
+        }
+    }
 }
 
 void VersusApp::clearPeerSessions() {

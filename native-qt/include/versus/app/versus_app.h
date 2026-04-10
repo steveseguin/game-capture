@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <future>
 #include <functional>
 #include <mutex>
 #include <memory>
@@ -102,7 +103,9 @@ class VersusApp {
     std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
                                                                 const std::string &session) const;
     void shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer);
-    void removePeerSession(const std::string &uuid, const std::string &session);
+    void reapCompletedPeerShutdowns();
+    void waitForPendingPeerShutdowns();
+    void removePeerSession(const std::shared_ptr<PeerSession> &peer);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
 
@@ -144,6 +147,7 @@ class VersusApp {
     std::condition_variable encodeFrameCV_;
     bool encodeFrameReady_ = false;
     mutable std::mutex peerSessionsMutex_;
+    std::mutex peerShutdownTasksMutex_;
     mutable std::mutex signalingOpsMutex_;
     mutable std::mutex runtimeEventMutex_;
     RuntimeEventCallback runtimeEventCallback_;
@@ -180,6 +184,7 @@ class VersusApp {
         std::unique_ptr<versus::webrtc::WebRtcClient> client;
     };
     std::unordered_map<std::string, std::shared_ptr<PeerSession>> peerSessions_;
+    std::vector<std::future<void>> peerShutdownFutures_;
     versus::video::EncoderConfig videoConfig_{};
     std::mutex videoSendMutex_;
     std::mutex latestVideoFrameMutex_;

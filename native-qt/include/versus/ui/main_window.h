@@ -12,6 +12,7 @@
 #include <QMenu>
 #include <QTimer>
 #include <QCloseEvent>
+#include <QFuture>
 #include <QIcon>
 
 #include "versus/app/versus_app.h"
@@ -59,7 +60,10 @@ class MainWindow : public QMainWindow {
     void refreshWindowList();
     void refreshSelectedWindowPreview();
     void syncCodecUiState();
+    bool hasPendingAsyncOperation() const;
     void loadPersistedSettings();
+    void maybeQuitAfterPendingOperations();
+    void requestQuit();
     void savePersistedSettings();
     void connectPersistedSettingSignals();
     int selectedBitrateKbps() const;
@@ -126,10 +130,15 @@ class MainWindow : public QMainWindow {
     bool stopInProgress_ = false;
     bool reconnectNoticeActive_ = false;
     bool quitRequested_ = false;
+    bool quitAfterPendingOps_ = false;
+    bool forceQuitEnabled_ = false;
+    bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
     bool loadingPersistedSettings_ = false;
     quint64 startOpId_ = 0;
     quint64 stopOpId_ = 0;
+    QFuture<void> startFuture_;
+    QFuture<void> stopFuture_;
     QString selectedWindowId_;
 };
 
