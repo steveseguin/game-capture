@@ -7,6 +7,7 @@
 #include <array>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <condition_variable>
 #include <cstdlib>
 #include <cstdio>
@@ -133,33 +134,81 @@ void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
         return;
     }
 
-    thread_local std::vector<int> xMap;
-    thread_local std::vector<int> yMap;
-    xMap.resize(static_cast<size_t>(dstW));
-    yMap.resize(static_cast<size_t>(dstH));
+    // Downscaling gameplay/text with nearest-neighbor produces visible aliasing.
+    // Keep the cover crop semantics, but resample with bilinear filtering.
+    thread_local std::vector<int> x0Map;
+    thread_local std::vector<int> x1Map;
+    thread_local std::vector<int> y0Map;
+    thread_local std::vector<int> y1Map;
+    thread_local std::vector<uint16_t> xWeightMap;
+    thread_local std::vector<uint16_t> yWeightMap;
 
-    for (int x = 0; x < dstW; ++x) {
-        int srcX = cover.x + static_cast<int>((static_cast<int64_t>(x) * cover.width) / dstW);
-        const int maxX = cover.x + cover.width - 1;
-        xMap[static_cast<size_t>(x)] = std::min(srcX, maxX);
-    }
+    x0Map.resize(static_cast<size_t>(dstW));
+    x1Map.resize(static_cast<size_t>(dstW));
+    xWeightMap.resize(static_cast<size_t>(dstW));
+    y0Map.resize(static_cast<size_t>(dstH));
+    y1Map.resize(static_cast<size_t>(dstH));
+    yWeightMap.resize(static_cast<size_t>(dstH));
+
+    const auto buildAxisMap = [](int coverOffset,
+                                 int coverExtent,
+                                 int dstExtent,
+                                 std::vector<int> &lowMap,
+                                 std::vector<int> &highMap,
+                                 std::vector<uint16_t> &weightMap) {
+        const double scale = static_cast<double>(coverExtent) / std::max(1, dstExtent);
+        const int minCoord = coverOffset;
+        const int maxCoord = coverOffset + coverExtent - 1;
+
+        for (int i = 0; i < dstExtent; ++i) {
+            double srcPos = coverOffset + ((static_cast<double>(i) + 0.5) * scale) - 0.5;
+            int low = static_cast<int>(std::floor(srcPos));
+            double frac = srcPos - low;
+
+            if (low < minCoord) {
+                low = minCoord;
+                frac = 0.0;
+            } else if (low >= maxCoord) {
+                low = maxCoord;
+                frac = 0.0;
+            }
+
+            const int high = std::min(low + 1, maxCoord);
+            const int weight = std::clamp(static_cast<int>(std::lround(frac * 256.0)), 0, 256);
+            lowMap[static_cast<size_t>(i)] = low;
+            highMap[static_cast<size_t>(i)] = high;
+            weightMap[static_cast<size_t>(i)] = static_cast<uint16_t>(weight);
+        }
+    };
+
+    buildAxisMap(cover.x, cover.width, dstW, x0Map, x1Map, xWeightMap);
+    buildAxisMap(cover.y, cover.height, dstH, y0Map, y1Map, yWeightMap);
 
     for (int y = 0; y < dstH; ++y) {
-        int srcY = cover.y + static_cast<int>((static_cast<int64_t>(y) * cover.height) / dstH);
-        const int maxY = cover.y + cover.height - 1;
-        yMap[static_cast<size_t>(y)] = std::min(srcY, maxY);
-    }
-
-    for (int y = 0; y < dstH; ++y) {
-        const uint8_t *srcRow = src + static_cast<size_t>(yMap[static_cast<size_t>(y)]) * srcStride;
+        const int srcY0 = y0Map[static_cast<size_t>(y)];
+        const int srcY1 = y1Map[static_cast<size_t>(y)];
+        const int wy = yWeightMap[static_cast<size_t>(y)];
+        const int invWy = 256 - wy;
+        const uint8_t *srcRow0 = src + static_cast<size_t>(srcY0) * srcStride;
+        const uint8_t *srcRow1 = src + static_cast<size_t>(srcY1) * srcStride;
         uint8_t *dstRow = dst + static_cast<size_t>(y) * dstStride;
+
         for (int x = 0; x < dstW; ++x) {
-            const uint8_t *srcPixel = srcRow + static_cast<size_t>(xMap[static_cast<size_t>(x)]) * 4;
+            const int srcX0 = x0Map[static_cast<size_t>(x)];
+            const int srcX1 = x1Map[static_cast<size_t>(x)];
+            const int wx = xWeightMap[static_cast<size_t>(x)];
+            const int invWx = 256 - wx;
+            const uint8_t *p00 = srcRow0 + static_cast<size_t>(srcX0) * 4;
+            const uint8_t *p01 = srcRow0 + static_cast<size_t>(srcX1) * 4;
+            const uint8_t *p10 = srcRow1 + static_cast<size_t>(srcX0) * 4;
+            const uint8_t *p11 = srcRow1 + static_cast<size_t>(srcX1) * 4;
             uint8_t *dstPixel = dstRow + static_cast<size_t>(x) * 4;
-            dstPixel[0] = srcPixel[0];
-            dstPixel[1] = srcPixel[1];
-            dstPixel[2] = srcPixel[2];
-            dstPixel[3] = srcPixel[3];
+
+            for (int c = 0; c < 4; ++c) {
+                const int top = p00[c] * invWx + p01[c] * wx;
+                const int bottom = p10[c] * invWx + p11[c] * wx;
+                dstPixel[c] = static_cast<uint8_t>((top * invWy + bottom * wy + 32768) >> 16);
+            }
         }
     }
 }
@@ -2967,10 +3016,20 @@ class VideoEncoder::Impl {
             const uint8_t* srcRow = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
             uint8_t* uvRow = uvPlane + static_cast<size_t>(y / 2) * dstW;
             for (int x = 0; x + 1 < dstW; x += 2) {
-                const uint8_t* pixel = srcRow + static_cast<size_t>(x) * 4;
-                const int b = pixel[0];
-                const int g = pixel[1];
-                const int r = pixel[2];
+                const uint8_t* row0 = srcRow;
+                const uint8_t* row1 = conversionScratchBgra_.data() +
+                    static_cast<size_t>(std::min(y + 1, dstH - 1)) * dstW * 4;
+                const uint8_t* p00 = row0 + static_cast<size_t>(x) * 4;
+                const uint8_t* p01 = row0 + static_cast<size_t>(std::min(x + 1, dstW - 1)) * 4;
+                const uint8_t* p10 = row1 + static_cast<size_t>(x) * 4;
+                const uint8_t* p11 = row1 + static_cast<size_t>(std::min(x + 1, dstW - 1)) * 4;
+
+                const int b = (static_cast<int>(p00[0]) + static_cast<int>(p01[0]) +
+                               static_cast<int>(p10[0]) + static_cast<int>(p11[0]) + 2) / 4;
+                const int g = (static_cast<int>(p00[1]) + static_cast<int>(p01[1]) +
+                               static_cast<int>(p10[1]) + static_cast<int>(p11[1]) + 2) / 4;
+                const int r = (static_cast<int>(p00[2]) + static_cast<int>(p01[2]) +
+                               static_cast<int>(p10[2]) + static_cast<int>(p11[2]) + 2) / 4;
                 const int u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                 const int v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
                 uvRow[x] = static_cast<uint8_t>(std::clamp(u, 0, 255));
@@ -3008,14 +3067,23 @@ class VideoEncoder::Impl {
         }
 
         for (int y = 0; y + 1 < dstH; y += 2) {
-            const uint8_t *srcRow = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
+            const uint8_t *srcRow0 = conversionScratchBgra_.data() + static_cast<size_t>(y) * dstW * 4;
+            const uint8_t *srcRow1 = conversionScratchBgra_.data() +
+                static_cast<size_t>(std::min(y + 1, dstH - 1)) * dstW * 4;
             uint8_t *uRow = uPlane + static_cast<size_t>(y / 2) * (dstW / 2);
             uint8_t *vRow = vPlane + static_cast<size_t>(y / 2) * (dstW / 2);
             for (int x = 0; x + 1 < dstW; x += 2) {
-                const uint8_t *pixel = srcRow + static_cast<size_t>(x) * 4;
-                const int b = pixel[0];
-                const int g = pixel[1];
-                const int r = pixel[2];
+                const uint8_t *p00 = srcRow0 + static_cast<size_t>(x) * 4;
+                const uint8_t *p01 = srcRow0 + static_cast<size_t>(std::min(x + 1, dstW - 1)) * 4;
+                const uint8_t *p10 = srcRow1 + static_cast<size_t>(x) * 4;
+                const uint8_t *p11 = srcRow1 + static_cast<size_t>(std::min(x + 1, dstW - 1)) * 4;
+
+                const int b = (static_cast<int>(p00[0]) + static_cast<int>(p01[0]) +
+                               static_cast<int>(p10[0]) + static_cast<int>(p11[0]) + 2) / 4;
+                const int g = (static_cast<int>(p00[1]) + static_cast<int>(p01[1]) +
+                               static_cast<int>(p10[1]) + static_cast<int>(p11[1]) + 2) / 4;
+                const int r = (static_cast<int>(p00[2]) + static_cast<int>(p01[2]) +
+                               static_cast<int>(p10[2]) + static_cast<int>(p11[2]) + 2) / 4;
 
                 const int u = ((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128;
                 const int v = ((112 * r - 94 * g - 18 * b + 128) >> 8) + 128;
