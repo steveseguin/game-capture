@@ -264,12 +264,17 @@ bool VersusApp::startCapture(const std::string &windowId) {
         config.frameRate = 60;
         config.bitrate = 12000;
     }
-    if (!videoEncoder_.initialize(config)) {
+    video::EncoderConfig primaryConfig = config;
+    if (primaryConfig.codec == video::VideoCodec::VP9) {
+        // Dual-track VP9 alpha uses a separate grayscale encoder for transparency.
+        primaryConfig.enableAlpha = false;
+    }
+    if (!videoEncoder_.initialize(primaryConfig)) {
         windowCapture_.stopCapture();
         return false;
     }
-    activeHqWidth_ = std::max(2, config.width & ~1);
-    activeHqHeight_ = std::max(2, config.height & ~1);
+    activeHqWidth_ = std::max(2, primaryConfig.width & ~1);
+    activeHqHeight_ = std::max(2, primaryConfig.height & ~1);
     hqAspectLocked_ = false;
     spdlog::info("[App] Video encoder active: {} (hardware={})",
                  videoEncoder_.activeEncoderName(), videoEncoder_.isHardwareEncoderActive());
@@ -699,6 +704,9 @@ void VersusApp::setupSignalingCallbacks() {
         peerConfig.iceMode = iceMode_;
         peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
         peerConfig.enableAlphaTrack = (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha);
+        peerConfig.enableDataChannel = !peer->roomMode && peerConfig.videoCodec != webrtc::PeerConfig::VideoCodec::VP9
+            ? true
+            : peer->roomMode;
         peerConfig.videoWidth = std::max(1, videoConfig_.width);
         peerConfig.videoHeight = std::max(1, videoConfig_.height);
         peerConfig.videoFps = std::max(1, videoConfig_.frameRate);
@@ -850,6 +858,23 @@ void VersusApp::setupSignalingCallbacks() {
                 peerPtr->initDeadlineMs.store(0, std::memory_order_relaxed);
             }
         });
+
+        if (!peer->roomMode) {
+            applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
+            const auto initialMediaPlan = peer->client->ensureMediaTracks(true, true);
+            if (initialMediaPlan.videoAdded) {
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            }
+            if (initialMediaPlan.changed) {
+                spdlog::info("[App] Direct viewer {}:{} will receive media in initial offer (videoAdded={} audioAdded={})",
+                             peer->uuid,
+                             peer->session,
+                             initialMediaPlan.videoAdded,
+                             initialMediaPlan.audioAdded);
+            }
+        }
 
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
@@ -1961,17 +1986,22 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     // VP9 alpha: encode the alpha (gray) plane and send on alpha tracks of HQ peers.
     if (haveHqPacket && videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha) {
         if (frame.format == video::CapturedFrame::Format::BGRA &&
-            frame.width > 0 && frame.height > 0 &&
-            frame.data.size() >= static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height) * 4) {
+            frame.width > 0 && frame.height > 0 && frame.stride >= frame.width * 4 &&
+            frame.data.size() >= static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height)) {
 
             const size_t numPixels = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
             if (alphaGrayBuffer_.size() != numPixels) {
                 alphaGrayBuffer_.resize(numPixels);
             }
-            // Extract alpha byte from each BGRA pixel (offset +3).
+            // Extract alpha byte from each BGRA pixel using the captured row stride.
             const uint8_t *src = frame.data.data();
-            for (size_t i = 0; i < numPixels; ++i) {
-                alphaGrayBuffer_[i] = src[i * 4 + 3];
+            for (int y = 0; y < frame.height; ++y) {
+                const size_t srcRow = static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
+                const size_t dstRow = static_cast<size_t>(y) * static_cast<size_t>(frame.width);
+                for (int x = 0; x < frame.width; ++x) {
+                    alphaGrayBuffer_[dstRow + static_cast<size_t>(x)] =
+                        src[srcRow + static_cast<size_t>(x) * 4 + 3];
+                }
             }
 
             video::CapturedFrame alphaFrame;

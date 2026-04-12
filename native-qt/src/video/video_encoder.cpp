@@ -1324,7 +1324,7 @@ class VideoEncoder::Impl {
             args.push_back("0");
         } else if (encoderName == "libvpx-vp9") {
             // Real-time low-latency VP9 settings.
-            // -g 1: all-keyframes for sync-safe streaming (already set above).
+            // Use all-keyframes so viewers can recover without relying on RTCP PLI handling.
             // -minrate = bitrate: force CBR (VP9 VBR by default).
             args.push_back("-deadline");
             args.push_back("realtime");
@@ -1337,6 +1337,8 @@ class VideoEncoder::Impl {
             args.push_back("-tile-columns");
             args.push_back("2");
             args.push_back("-g");
+            args.push_back("1");
+            args.push_back("-keyint_min");
             args.push_back("1");
             args.push_back("-minrate");
             args.push_back(std::to_string(bitrate) + "k");
@@ -1357,9 +1359,10 @@ class VideoEncoder::Impl {
             args.push_back("-pix_fmt");
             args.push_back("yuv420p");
             if (config_.enableAlpha) {
-                // Alpha encoder: full color range so Y=0→transparent, Y=255→opaque without scaling.
+                // Alpha encoder: full color range so Y=0 maps to transparent and Y=255 to opaque.
+                // FFmpeg expects the CLI token "pc" here rather than "full".
                 args.push_back("-color_range");
-                args.push_back("full");
+                args.push_back("pc");
             } else {
                 // Primary encoder: standard broadcast colorspace metadata.
                 args.push_back("-colorspace");
@@ -1502,11 +1505,13 @@ class VideoEncoder::Impl {
             return false;
         }
 
+        const char *loggedInputPixelFormat =
+            externalInputIsGray_ ? "gray" : (externalInputIsNv12_ ? "nv12" : "bgra");
         spdlog::info("[FFmpegEncoder] Started FFmpeg pipeline: {} codec={} encoder={} input={}",
                      externalFfmpegPath_.string(),
                      videoCodecName(config_.codec),
                      encoderName,
-                     externalInputIsNv12_ ? "nv12" : "bgra");
+                     loggedInputPixelFormat);
         return true;
     }
 
@@ -1566,6 +1571,7 @@ class VideoEncoder::Impl {
         externalFfmpegArgs_.clear();
         externalFramesSubmitted_ = 0;
         externalPacketCount_ = 0;
+        externalPendingOutputPts_.clear();
         externalFirstPacketLogged_ = false;
         externalForceKeyframeRequested_ = false;
         externalIvfHeaderParsed_ = false;
@@ -1599,6 +1605,7 @@ class VideoEncoder::Impl {
             externalWriterFailed_ = false;
             externalReaderFailed_ = false;
             externalInputQueue_.clear();
+            externalPendingOutputPts_.clear();
             externalOutputBuffer_.clear();
             externalPendingInputBytes_ = 0;
             externalFramesWritten_ = 0;
@@ -1751,7 +1758,7 @@ class VideoEncoder::Impl {
         }
     }
 
-    bool enqueueExternalInputFrame(std::vector<uint8_t> frame) {
+    bool enqueueExternalInputFrame(std::vector<uint8_t> frame, int64_t timestamp) {
         constexpr size_t kMaxQueuedFrames = 3;
         constexpr size_t kMaxQueuedBytes = 64 * 1024 * 1024;
 
@@ -1788,6 +1795,7 @@ class VideoEncoder::Impl {
 
         externalPendingInputBytes_ += frame.size();
         externalInputQueue_.push_back(std::move(frame));
+        externalPendingOutputPts_.push_back(timestamp);
         externalIoCv_.notify_all();
         return true;
     }
@@ -2002,7 +2010,13 @@ class VideoEncoder::Impl {
             }
 
             output.data = std::move(candidate);
-            const int64_t pts = (externalPacketCount_ * 10000000LL) / std::max(1, config_.frameRate);
+            int64_t pts = 0;
+            if (!externalPendingOutputPts_.empty()) {
+                pts = externalPendingOutputPts_.front();
+                externalPendingOutputPts_.pop_front();
+            } else {
+                pts = (externalPacketCount_ * 10000000LL) / std::max(1, config_.frameRate);
+            }
             output.pts = pts;
             output.dts = pts;
             output.codec = config_.codec;
@@ -2057,7 +2071,12 @@ class VideoEncoder::Impl {
                            externalOutputBuffer_.begin() + 12 + frameSize);
         externalOutputBuffer_.erase(externalOutputBuffer_.begin(),
                                     externalOutputBuffer_.begin() + 12 + frameSize);
-        output.pts = (externalPacketCount_ * 10000000LL) / std::max(1, config_.frameRate);
+        if (!externalPendingOutputPts_.empty()) {
+            output.pts = externalPendingOutputPts_.front();
+            externalPendingOutputPts_.pop_front();
+        } else {
+            output.pts = (externalPacketCount_ * 10000000LL) / std::max(1, config_.frameRate);
+        }
         output.dts = output.pts;
         output.codec = config_.codec;
         output.isKeyframe = true;
@@ -2102,7 +2121,7 @@ class VideoEncoder::Impl {
             return false;
         }
 
-        if (!enqueueExternalInputFrame(std::move(externalInputBuffer_))) {
+        if (!enqueueExternalInputFrame(std::move(externalInputBuffer_), input.timestamp)) {
             spdlog::warn("[FFmpegEncoder] Failed to queue frame for FFmpeg pipeline; restarting");
             restartExternalFfmpegNvenc();
             return false;
@@ -2550,10 +2569,16 @@ class VideoEncoder::Impl {
         CapturedFrame probeFrame;
         probeFrame.width = std::max(1, config_.width);
         probeFrame.height = std::max(1, config_.height);
-        probeFrame.stride = probeFrame.width * 4;
         probeFrame.timestamp = 0;
-        probeFrame.format = CapturedFrame::Format::BGRA;
-        probeFrame.data.assign(static_cast<size_t>(probeFrame.stride) * probeFrame.height, 0);
+        if (externalInputIsGray_) {
+            probeFrame.stride = probeFrame.width;
+            probeFrame.format = CapturedFrame::Format::Gray;
+            probeFrame.data.assign(static_cast<size_t>(probeFrame.stride) * static_cast<size_t>(probeFrame.height), 0xFF);
+        } else {
+            probeFrame.stride = probeFrame.width * 4;
+            probeFrame.format = CapturedFrame::Format::BGRA;
+            probeFrame.data.assign(static_cast<size_t>(probeFrame.stride) * static_cast<size_t>(probeFrame.height), 0);
+        }
 
         EncodedPacket probePacket;
         constexpr int kMaxProbeFrames = 18;
@@ -3136,6 +3161,7 @@ class VideoEncoder::Impl {
     std::mutex externalIoMutex_;
     std::condition_variable externalIoCv_;
     std::deque<std::vector<uint8_t>> externalInputQueue_;
+    std::deque<int64_t> externalPendingOutputPts_;
     std::thread externalWriterThread_;
     std::thread externalReaderThread_;
     bool externalIoStopRequested_ = false;

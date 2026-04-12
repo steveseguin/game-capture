@@ -12,7 +12,7 @@
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/stdout_sinks.h>
 
 #include "versus/app/versus_app.h"
 #include "versus/ui/main_window.h"
@@ -170,17 +170,17 @@ int main(int argc, char *argv[]) {
 
     // Set up logging - console for headless, file otherwise
     try {
+        const std::string logPath = resolveLogFilePath();
+        std::vector<spdlog::sink_ptr> sinks;
+        sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath, true));
         if (headless) {
-            auto console_logger = spdlog::stdout_color_mt("game-capture");
-            spdlog::set_default_logger(console_logger);
-        } else {
-            const std::string logPath = resolveLogFilePath();
-            auto file_logger = spdlog::basic_logger_mt("game-capture", logPath, true);
-            spdlog::set_default_logger(file_logger);
-            spdlog::info("Logging to {}", logPath);
+            sinks.push_back(std::make_shared<spdlog::sinks::stdout_sink_mt>());
         }
+        auto logger = std::make_shared<spdlog::logger>("game-capture", sinks.begin(), sinks.end());
+        spdlog::set_default_logger(logger);
         spdlog::set_level(spdlog::level::debug);
         spdlog::flush_on(spdlog::level::debug);
+        spdlog::info("Logging to {}", logPath);
         spdlog::info("Game Capture app starting (headless={})", headless);
     } catch (...) {
         // Fall back to default logger

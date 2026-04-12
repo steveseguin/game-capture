@@ -35,6 +35,7 @@ struct PeerConfig {
     };
     VideoCodec videoCodec = VideoCodec::H264;
     bool enableAlphaTrack = false;
+    bool enableDataChannel = true;
     int videoWidth = 1920;
     int videoHeight = 1080;
     int videoFps = 60;

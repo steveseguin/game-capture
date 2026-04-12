@@ -1,5 +1,4 @@
 #include "versus/webrtc/webrtc_client.h"
-#include "vp9_rtp_packetizer.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -31,6 +30,7 @@ constexpr uint8_t kAlphaVideoPayloadType = 97;
 constexpr uint8_t kAudioPayloadType = 111;
 constexpr uint32_t kVideoClockRate = rtc::RtpPacketizer::VideoClockRate;
 constexpr uint32_t kAudioClockRate = rtc::OpusRtpPacketizer::DefaultClockRate;
+constexpr size_t kMaxVp9RtpPayload = 1150;
 
 rtc::binary toBinary(const std::vector<uint8_t> &data) {
     rtc::binary out;
@@ -39,6 +39,68 @@ rtc::binary toBinary(const std::vector<uint8_t> &data) {
         out.push_back(static_cast<rtc::byte>(byte));
     }
     return out;
+}
+
+bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
+                     uint16_t &sequenceNumber,
+                     uint32_t timestamp,
+                     uint32_t ssrc,
+                     uint8_t payloadType,
+                     const std::vector<uint8_t> &vp9Frame) {
+    if (!track || vp9Frame.empty()) {
+        return false;
+    }
+
+    size_t offset = 0;
+    bool first = true;
+
+    try {
+        while (offset < vp9Frame.size()) {
+            const size_t remaining = vp9Frame.size() - offset;
+            const bool last = remaining <= kMaxVp9RtpPayload;
+            const size_t chunkLength = last ? remaining : kMaxVp9RtpPayload;
+
+            rtc::binary packet(12 + 1 + chunkLength);
+            auto *payload = reinterpret_cast<uint8_t *>(packet.data());
+
+            payload[0] = 0x80;
+            payload[1] = static_cast<uint8_t>(last ? (0x80 | payloadType) : payloadType);
+            payload[2] = static_cast<uint8_t>((sequenceNumber >> 8) & 0xFF);
+            payload[3] = static_cast<uint8_t>(sequenceNumber & 0xFF);
+            ++sequenceNumber;
+            payload[4] = static_cast<uint8_t>((timestamp >> 24) & 0xFF);
+            payload[5] = static_cast<uint8_t>((timestamp >> 16) & 0xFF);
+            payload[6] = static_cast<uint8_t>((timestamp >> 8) & 0xFF);
+            payload[7] = static_cast<uint8_t>(timestamp & 0xFF);
+            payload[8] = static_cast<uint8_t>((ssrc >> 24) & 0xFF);
+            payload[9] = static_cast<uint8_t>((ssrc >> 16) & 0xFF);
+            payload[10] = static_cast<uint8_t>((ssrc >> 8) & 0xFF);
+            payload[11] = static_cast<uint8_t>(ssrc & 0xFF);
+
+            uint8_t descriptor = 0;
+            if (first) {
+                descriptor |= 0x08;
+            }
+            if (last) {
+                descriptor |= 0x04;
+            }
+            payload[12] = descriptor;
+
+            std::memcpy(payload + 13, vp9Frame.data() + offset, chunkLength);
+            track->send(packet);
+
+            offset += chunkLength;
+            first = false;
+        }
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to send VP9 RTP packet: {}", e.what());
+        return false;
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to send VP9 RTP packet");
+        return false;
+    }
+
+    return true;
 }
 
 std::string selectH264ProfileLevelId(int width, int height, int fps) {
@@ -86,18 +148,18 @@ struct WebRtcClient::Impl {
     std::atomic<bool> suppressCallbacks{false};
     std::atomic<bool> gatheringComplete{false};
     std::atomic<bool> sentFirstKeyframe{false};
-    std::atomic<bool> firstVideoPacketLogged{false};
     std::atomic<bool> videoTrackOpen{false};
     std::atomic<bool> alphaVideoTrackOpen{false};
     std::atomic<bool> audioTrackOpen{false};
     std::atomic<bool> dataChannelOpen{false};
-    std::atomic<uint64_t> videoPacketsSent{0};
-    std::atomic<uint64_t> videoBytesSent{0};
     std::chrono::steady_clock::time_point trackOpenedTime;
     uint32_t videoSsrc = 2222222;
     uint32_t alphaVideoSsrc = 4444444;
     uint32_t audioSsrc = 3333333;
+    uint16_t videoSequenceNumber = 0;
+    uint16_t alphaVideoSequenceNumber = 0;
     bool enableAlphaTrack = false;
+    bool enableDataChannel = true;
     PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
     int configuredVideoWidth = 1920;
     int configuredVideoHeight = 1080;
@@ -118,9 +180,6 @@ struct WebRtcClient::Impl {
         alphaVideoTrackOpen.store(false);
         audioTrackOpen.store(false);
         sentFirstKeyframe.store(false);
-        firstVideoPacketLogged.store(false);
-        videoPacketsSent.store(0);
-        videoBytesSent.store(0);
     }
 
     void bindDataChannel(const std::shared_ptr<rtc::DataChannel> &channel, const char *origin) {
@@ -295,7 +354,7 @@ struct WebRtcClient::Impl {
                     rtc::AV1RtpPacketizer::Packetization::TemporalUnit, videoRtpConfig);
                 break;
             case PeerConfig::VideoCodec::VP9:
-                videoPacketizer = std::make_shared<Vp9RtpPacketizer>(videoRtpConfig);
+                videoPacketizer.reset();
                 break;
             case PeerConfig::VideoCodec::H264:
             default:
@@ -303,18 +362,22 @@ struct WebRtcClient::Impl {
                     std::make_shared<rtc::H264RtpPacketizer>(rtc::NalUnit::Separator::StartSequence, videoRtpConfig);
                 break;
         }
-        auto videoReporter = std::make_shared<rtc::RtcpSrReporter>(videoRtpConfig);
-        auto videoNack = std::make_shared<rtc::RtcpNackResponder>();
-        auto videoPli = std::make_shared<rtc::PliHandler>([this]() {
-            spdlog::info("[WebRTC] Received PLI/FIR - keyframe requested by receiver");
-            if (!suppressCallbacks.load(std::memory_order_relaxed) && keyframeCallback) {
-                keyframeCallback();
-            }
-        });
-        videoPacketizer->addToChain(videoReporter);
-        videoPacketizer->addToChain(videoNack);
-        videoPacketizer->addToChain(videoPli);
-        videoTrack->setMediaHandler(videoPacketizer);
+        if (videoCodec == PeerConfig::VideoCodec::VP9) {
+            spdlog::info("[WebRTC] Using explicit RTP packetization for VP9 primary video");
+        } else {
+            auto videoReporter = std::make_shared<rtc::RtcpSrReporter>(videoRtpConfig);
+            auto videoNack = std::make_shared<rtc::RtcpNackResponder>();
+            auto videoPli = std::make_shared<rtc::PliHandler>([this]() {
+                spdlog::info("[WebRTC] Received PLI/FIR - keyframe requested by receiver");
+                if (!suppressCallbacks.load(std::memory_order_relaxed) && keyframeCallback) {
+                    keyframeCallback();
+                }
+            });
+            videoPacketizer->addToChain(videoReporter);
+            videoPacketizer->addToChain(videoNack);
+            videoPacketizer->addToChain(videoPli);
+            videoTrack->setMediaHandler(videoPacketizer);
+        }
         if (videoTrack->isOpen()) {
             videoTrackOpen.store(true);
             trackOpenedTime = std::chrono::steady_clock::now();
@@ -334,7 +397,7 @@ struct WebRtcClient::Impl {
         }
 
         spdlog::info("[WebRTC] Adding VP9 alpha video track (PT={})", kAlphaVideoPayloadType);
-        rtc::Description::Video alpha("video", rtc::Description::Direction::SendOnly);
+        rtc::Description::Video alpha("video-alpha", rtc::Description::Direction::SendOnly);
         alpha.addVP9Codec(kAlphaVideoPayloadType);
         alpha.addSSRC(alphaVideoSsrc, "gamecapture-alpha");
         alphaVideoTrack = pc->addTrack(alpha);
@@ -354,10 +417,8 @@ struct WebRtcClient::Impl {
 
         alphaVideoRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
             alphaVideoSsrc, "gamecapture-alpha", kAlphaVideoPayloadType, kVideoClockRate);
-        alphaVideoPacketizer = std::make_shared<Vp9RtpPacketizer>(alphaVideoRtpConfig);
-        auto alphaReporter = std::make_shared<rtc::RtcpSrReporter>(alphaVideoRtpConfig);
-        alphaVideoPacketizer->addToChain(alphaReporter);
-        alphaVideoTrack->setMediaHandler(alphaVideoPacketizer);
+        alphaVideoPacketizer.reset();
+        spdlog::info("[WebRTC] Using explicit RTP packetization for VP9 alpha video");
 
         if (alphaVideoTrack->isOpen()) {
             alphaVideoTrackOpen.store(true);
@@ -420,6 +481,7 @@ WebRtcClient::~WebRtcClient() { shutdown(); }
 bool WebRtcClient::initialize(const PeerConfig &config) {
     impl_->videoCodec = config.videoCodec;
     impl_->enableAlphaTrack = config.enableAlphaTrack;
+    impl_->enableDataChannel = config.enableDataChannel;
     impl_->configuredVideoWidth = std::max(1, config.videoWidth);
     impl_->configuredVideoHeight = std::max(1, config.videoHeight);
     impl_->configuredVideoFps = std::max(1, config.videoFps);
@@ -509,7 +571,13 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         impl_->bindDataChannel(channel, "remote");
     });
 
-    impl_->setupBootstrapTransport();
+    if (impl_->enableDataChannel) {
+        impl_->setupBootstrapTransport();
+    } else {
+        impl_->resetMediaState();
+        impl_->dataChannelOpen.store(false);
+        impl_->clearDataChannel();
+    }
     return true;
 }
 
@@ -596,7 +664,13 @@ void WebRtcClient::resetPeerConnection() {
         impl_->bindDataChannel(channel, "remote");
     });
 
-    impl_->setupBootstrapTransport();
+    if (impl_->enableDataChannel) {
+        impl_->setupBootstrapTransport();
+    } else {
+        impl_->resetMediaState();
+        impl_->dataChannelOpen.store(false);
+        impl_->clearDataChannel();
+    }
     spdlog::info("[WebRTC] PeerConnection reset complete");
 }
 
@@ -765,7 +839,7 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAud
 }
 
 bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
-    if (!impl_->videoTrack || !impl_->videoTrack->isOpen() || !impl_->videoRtpConfig) {
+    if (!impl_->videoTrack || !impl_->videoTrack->isOpen()) {
         return false;
     }
     if (packet.data.empty()) {
@@ -783,37 +857,41 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
     // MF timestamps: 100ns units, so PTS / 10000 = ms, * 90 = RTP ticks
     // Or: PTS * 90 / 10000 = PTS * 9 / 1000
     uint32_t rtpTimestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
-    impl_->videoRtpConfig->timestamp = rtpTimestamp;
-
-    if (!impl_->firstVideoPacketLogged.exchange(true)) {
-        spdlog::info("[WebRTC] First video packet sent: pts={}, rtpTimestamp={}, isKeyframe={}, size={}",
-                     packet.pts, rtpTimestamp, packet.isKeyframe, packet.data.size());
+    bool sent = false;
+    if (impl_->videoCodec == PeerConfig::VideoCodec::VP9) {
+        sent = sendVp9FrameRtp(
+            impl_->videoTrack, impl_->videoSequenceNumber, rtpTimestamp, impl_->videoSsrc, kVideoPayloadType, packet.data);
+    } else {
+        if (!impl_->videoRtpConfig) {
+            return false;
+        }
+        impl_->videoRtpConfig->timestamp = rtpTimestamp;
+        rtc::binary binaryPayload = toBinary(packet.data);
+        impl_->videoTrack->send(binaryPayload);
+        sent = true;
     }
-
-    // Send raw H264 data to the track - the media handler chain will packetize it
-    rtc::binary binaryPayload = toBinary(packet.data);
-    impl_->videoTrack->send(binaryPayload);
-
-    const uint64_t packetsSent = impl_->videoPacketsSent.fetch_add(1) + 1;
-    const uint64_t bytesSent = impl_->videoBytesSent.fetch_add(packet.data.size()) + packet.data.size();
-    if (packetsSent % 300 == 0) {
-        spdlog::info("[WebRTC] Video send heartbeat: packets={} bytes={} lastPts={} keyframe={}",
-                     packetsSent, bytesSent, packet.pts, packet.isKeyframe);
+    if (!sent) {
+        return false;
     }
     return true;
 }
 
 bool WebRtcClient::sendAlphaVideo(const EncodedVideoPacket &packet) {
-    if (!impl_->alphaVideoTrack || !impl_->alphaVideoTrack->isOpen() || !impl_->alphaVideoRtpConfig) {
+    if (!impl_->alphaVideoTrack || !impl_->alphaVideoTrack->isOpen()) {
         return false;
     }
     if (packet.data.empty()) {
         return false;
     }
     uint32_t rtpTimestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
-    impl_->alphaVideoRtpConfig->timestamp = rtpTimestamp;
-    rtc::binary binaryPayload = toBinary(packet.data);
-    impl_->alphaVideoTrack->send(binaryPayload);
+    if (!sendVp9FrameRtp(impl_->alphaVideoTrack,
+                         impl_->alphaVideoSequenceNumber,
+                         rtpTimestamp,
+                         impl_->alphaVideoSsrc,
+                         kAlphaVideoPayloadType,
+                         packet.data)) {
+        return false;
+    }
     return true;
 }
 
