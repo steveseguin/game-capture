@@ -704,9 +704,12 @@ void VersusApp::setupSignalingCallbacks() {
         peerConfig.iceMode = iceMode_;
         peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
         peerConfig.enableAlphaTrack = (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha);
-        peerConfig.enableDataChannel = !peer->roomMode && peerConfig.videoCodec != webrtc::PeerConfig::VideoCodec::VP9
-            ? true
-            : peer->roomMode;
+        // Always negotiate VDO.Ninja's sendChannel so both sides can exchange
+        // the standard info handshake, even for direct VP9/alpha viewers.
+        peerConfig.enableDataChannel = true;
+        peerConfig.initialVideo = !peer->roomMode;
+        peerConfig.initialAudio = !peer->roomMode;
+        peerConfig.initialAlpha = false;
         peerConfig.videoWidth = std::max(1, videoConfig_.width);
         peerConfig.videoHeight = std::max(1, videoConfig_.height);
         peerConfig.videoFps = std::max(1, videoConfig_.frameRate);
@@ -861,19 +864,9 @@ void VersusApp::setupSignalingCallbacks() {
 
         if (!peer->roomMode) {
             applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
-            const auto initialMediaPlan = peer->client->ensureMediaTracks(true, true);
-            if (initialMediaPlan.videoAdded) {
-                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
-                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
-            }
-            if (initialMediaPlan.changed) {
-                spdlog::info("[App] Direct viewer {}:{} will receive media in initial offer (videoAdded={} audioAdded={})",
-                             peer->uuid,
-                             peer->session,
-                             initialMediaPlan.videoAdded,
-                             initialMediaPlan.audioAdded);
-            }
+            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         }
 
         {
@@ -1148,6 +1141,13 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
         }
         peer->dataChannelOpen.store(true, std::memory_order_relaxed);
 
+        if (!peer->roomMode && peer->sawPeerInfoMessage.load(std::memory_order_relaxed)) {
+            // A real info heartbeat is already in flight for this direct peer.
+            // Let that path own initialization/capability negotiation instead
+            // of racing it with the timeout fallback.
+            continue;
+        }
+
         if (peer->roomMode) {
             const StreamTier fallbackTier = assignStreamTier(
                 true,
@@ -1290,6 +1290,10 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     if (!peer->systemBrowser.empty()) {
         info["system_browser"] = peer->systemBrowser;
     }
+    if (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha) {
+        info["alpha_send"] = "vp9-dualtrack-v1";
+        info["alpha_active"] = peer->alphaAllowed.load(std::memory_order_relaxed);
+    }
     msg["info"] = info;
 
     if (includeMiniStats) {
@@ -1367,6 +1371,86 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         return defaultValue;
     };
 
+    const nlohmann::json *infoPtr = nullptr;
+    if (msg.contains("info") && msg["info"].is_object()) {
+        infoPtr = &msg["info"];
+    }
+    if (infoPtr) {
+        peer->sawPeerInfoMessage.store(true, std::memory_order_relaxed);
+        const auto &info = *infoPtr;
+        if (info.contains("label") && info["label"].is_string()) {
+            peer->peerLabel = info["label"].get<std::string>();
+        }
+        if (info.contains("system") && info["system"].is_object()) {
+            const auto &system = info["system"];
+            if (system.contains("app") && system["app"].is_string()) {
+                peer->systemApp = system["app"].get<std::string>();
+            }
+            if (system.contains("version") && system["version"].is_string()) {
+                peer->systemVersion = system["version"].get<std::string>();
+            }
+            if (system.contains("platform") && system["platform"].is_string()) {
+                peer->systemPlatform = system["platform"].get<std::string>();
+            }
+            if (system.contains("browser") && system["browser"].is_string()) {
+                peer->systemBrowser = system["browser"].get<std::string>();
+            }
+        }
+        if (info.contains("system_app") && info["system_app"].is_string()) {
+            peer->systemApp = info["system_app"].get<std::string>();
+        }
+        if (info.contains("system_version") && info["system_version"].is_string()) {
+            peer->systemVersion = info["system_version"].get<std::string>();
+        } else if (peer->systemVersion.empty() && info.contains("version") && info["version"].is_string()) {
+            peer->systemVersion = info["version"].get<std::string>();
+        }
+        if (info.contains("system_platform") && info["system_platform"].is_string()) {
+            peer->systemPlatform = info["system_platform"].get<std::string>();
+        } else if (info.contains("platform") && info["platform"].is_string()) {
+            peer->systemPlatform = info["platform"].get<std::string>();
+        }
+        if (info.contains("system_browser") && info["system_browser"].is_string()) {
+            peer->systemBrowser = info["system_browser"].get<std::string>();
+        } else if (info.contains("Browser") && info["Browser"].is_string()) {
+            peer->systemBrowser = info["Browser"].get<std::string>();
+        } else if (info.contains("browser") && info["browser"].is_string()) {
+            peer->systemBrowser = info["browser"].get<std::string>();
+        }
+
+        bool alphaFieldPresent = false;
+        std::string alphaReceiveMode;
+        if (info.contains("alpha_receive")) {
+            alphaFieldPresent = true;
+            if (info["alpha_receive"].is_string()) {
+                alphaReceiveMode = info["alpha_receive"].get<std::string>();
+            } else if (jsonBoolLike(info["alpha_receive"], false)) {
+                alphaReceiveMode = "vp9-dualtrack-v1";
+            }
+        } else if (info.contains("alphaReceive")) {
+            alphaFieldPresent = true;
+            if (info["alphaReceive"].is_string()) {
+                alphaReceiveMode = info["alphaReceive"].get<std::string>();
+            } else if (jsonBoolLike(info["alphaReceive"], false)) {
+                alphaReceiveMode = "vp9-dualtrack-v1";
+            }
+        }
+        const bool alphaAllowed = alphaFieldPresent && alphaReceiveMode == "vp9-dualtrack-v1";
+        const bool previousAlphaAllowed = peer->alphaAllowed.load(std::memory_order_relaxed);
+        peer->alphaAllowed.store(alphaAllowed, std::memory_order_relaxed);
+        peer->alphaReceiveMode = alphaAllowed ? alphaReceiveMode : "";
+        if (previousAlphaAllowed != alphaAllowed) {
+            spdlog::info("[App] Peer info {}:{} alphaReceive={} mode={}",
+                         peer->uuid,
+                         peer->session,
+                         alphaAllowed,
+                         alphaAllowed ? alphaReceiveMode : "none");
+            if (peer->initReceived.load(std::memory_order_relaxed)) {
+                applyPeerMediaPlan(peer, "peer-alpha-capability");
+                sendPeerDataInfo(peer, true);
+            }
+        }
+    }
+
     if (msg.contains("ping")) {
         nlohmann::json pong;
         pong["pong"] = msg["ping"];
@@ -1383,6 +1467,10 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("init") && msg["init"].is_object()) {
         initPtr = &msg["init"];
     } else if (hasInlineInitFields) {
+        initPtr = &msg;
+    } else if (!peer->roomMode && infoPtr) {
+        // For direct viewers, receiving the standard VDO.Ninja info handshake is
+        // enough to classify the peer as a viewer and negotiate media.
         initPtr = &msg;
     }
 
@@ -1402,6 +1490,11 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         const bool viewerRequested = init.contains("viewer") && jsonBoolLike(init["viewer"], false);
         const bool hasExplicitRoleSignal =
             hasRoleString || sceneRequested || directorRequested || guestRequested || viewerRequested;
+
+        if (!peer->roomMode && !hasExplicitRoleSignal) {
+            role = PeerRole::Viewer;
+            roleValid = true;
+        }
 
         if (hasRoleString) {
             role = parsePeerRole(init["role"].get<std::string>());
@@ -1471,6 +1564,14 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                 peer->systemBrowser = system["browser"].get<std::string>();
             }
         }
+        if (init.contains("platform") && init["platform"].is_string()) {
+            peer->systemPlatform = init["platform"].get<std::string>();
+        }
+        if (init.contains("Browser") && init["Browser"].is_string()) {
+            peer->systemBrowser = init["Browser"].get<std::string>();
+        } else if (init.contains("browser") && init["browser"].is_string()) {
+            peer->systemBrowser = init["browser"].get<std::string>();
+        }
 
         if (!hasExplicitRoleSignal && peer->initReceived.load(std::memory_order_relaxed)) {
             role = peer->role.load(std::memory_order_relaxed);
@@ -1482,6 +1583,15 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             peer->roomMode &&
             peer->initReceived.load(std::memory_order_relaxed)) {
             sendPeerDataInfo(peer, true);
+            return;
+        }
+        if (!hasExplicitRoleSignal &&
+            !hasExplicitMediaSignal &&
+            !peer->roomMode &&
+            peer->initReceived.load(std::memory_order_relaxed)) {
+            // Direct viewers often send a later info heartbeat after we have
+            // already promoted them through the grace-window fallback. Treat
+            // that as metadata/capability refresh only, not a second init.
             return;
         }
 
@@ -2020,6 +2130,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 alphaVPacket.isKeyframe = alphaPacket.isKeyframe;
                 for (const auto &peer : hqPeers) {
                     if (!peer || !peer->client) {
+                        continue;
+                    }
+                    if (!peer->alphaAllowed.load(std::memory_order_relaxed)) {
                         continue;
                     }
                     if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !alphaVPacket.isKeyframe) {
@@ -2610,6 +2723,7 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
     if (!peer || !peer->client) {
         return;
     }
+    std::lock_guard<std::mutex> mediaPlanLock(peer->mediaPlanMutex);
     const bool dataChannelOpen =
         peer->dataChannelOpen.load(std::memory_order_relaxed) ||
         peer->client->isDataChannelOpen();
@@ -2621,6 +2735,10 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
     const bool wantVideo = initReceived && peer->videoEnabled.load(std::memory_order_relaxed);
     const bool wantAudio = initReceived && peer->audioEnabled.load(std::memory_order_relaxed);
+    const bool wantAlpha = wantVideo &&
+        videoConfig_.codec == video::VideoCodec::VP9 &&
+        videoConfig_.enableAlpha &&
+        peer->alphaAllowed.load(std::memory_order_relaxed);
 
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
@@ -2638,7 +2756,7 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
         }
     }
 
-    const auto change = peer->client->ensureMediaTracks(wantVideo, wantAudio);
+    const auto change = peer->client->ensureMediaTracks(wantVideo, wantAudio, wantAlpha);
     if (!change.changed) {
         return;
     }

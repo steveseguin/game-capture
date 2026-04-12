@@ -177,9 +177,13 @@ class VersusApp {
         std::string systemVersion;
         std::string systemPlatform;
         std::string systemBrowser;
+        std::string alphaReceiveMode;
+        std::atomic<bool> alphaAllowed{false};
+        std::atomic<bool> sawPeerInfoMessage{false};
         std::atomic<bool> waitingForKeyframe{true};
         std::atomic<bool> dataChannelOpen{false};
         std::atomic<bool> renegotiationQueued{false};
+        std::mutex mediaPlanMutex;
         std::vector<PendingCandidate> pendingCandidates;
         std::unique_ptr<versus::webrtc::WebRtcClient> client;
     };

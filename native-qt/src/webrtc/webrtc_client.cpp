@@ -469,7 +469,7 @@ struct WebRtcClient::Impl {
     }
 
     void setupBootstrapTransport() {
-        resetMediaState();
+        clearDataChannel();
         dataChannelOpen.store(false);
         bindDataChannel(pc->createDataChannel("sendChannel"), "local");
     }
@@ -508,6 +508,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     impl_->suppressCallbacks.store(false, std::memory_order_relaxed);
 
     impl_->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
+    impl_->resetMediaState();
 
     impl_->pc->onStateChange([this](rtc::PeerConnection::State state) {
         const char* stateStr = "unknown";
@@ -572,6 +573,15 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     });
 
     if (impl_->enableDataChannel) {
+        if (config.initialVideo && !impl_->ensureVideoTrack()) {
+            return false;
+        }
+        if (config.initialVideo && config.initialAlpha && impl_->enableAlphaTrack && !impl_->ensureAlphaVideoTrack()) {
+            return false;
+        }
+        if (config.initialAudio && !impl_->ensureAudioTrack()) {
+            return false;
+        }
         impl_->setupBootstrapTransport();
     } else {
         impl_->resetMediaState();
@@ -705,17 +715,14 @@ std::string WebRtcClient::createOffer() {
     spdlog::info("[WebRTC] Creating offer with trickle ICE enabled...");
     impl_->pc->setLocalDescription(rtc::Description::Type::Offer);
 
-    auto hasLocalDescription = [this]() {
-        if (impl_->pc && impl_->pc->localDescription()) {
-            return true;
-        }
+    auto hasFreshLocalDescription = [this]() {
         std::lock_guard<std::mutex> lock(impl_->descMutex);
         return !impl_->localDescription.empty();
     };
 
     // Wait only for the initial local description so we can send the SDP promptly and trickle candidates.
     auto start = std::chrono::steady_clock::now();
-    while (!hasLocalDescription()) {
+    while (!hasFreshLocalDescription()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (std::chrono::steady_clock::now() - start > std::chrono::seconds(2)) {
             spdlog::warn("[WebRTC] Timed out waiting for initial local description; proceeding with current SDP state");
@@ -724,13 +731,16 @@ std::string WebRtcClient::createOffer() {
     }
 
     // Return whatever SDP is currently available; remaining ICE candidates will trickle separately.
-    auto desc = impl_->pc->localDescription();
     std::string sdp;
-    if (desc) {
-        sdp = std::string(*desc);
-    } else {
+    {
         std::lock_guard<std::mutex> lock(impl_->descMutex);
         sdp = impl_->localDescription;
+    }
+    if (sdp.empty()) {
+        auto desc = impl_->pc->localDescription();
+        if (desc) {
+            sdp = std::string(*desc);
+        }
     }
 
     if (!sdp.empty()) {
@@ -762,16 +772,13 @@ std::string WebRtcClient::createAnswer(const std::string &offer) {
     impl_->pc->setRemoteDescription(rtc::Description(offer, rtc::Description::Type::Offer));
     impl_->pc->setLocalDescription(rtc::Description::Type::Answer);
 
-    auto hasLocalDescription = [this]() {
-        if (impl_->pc && impl_->pc->localDescription()) {
-            return true;
-        }
+    auto hasFreshLocalDescription = [this]() {
         std::lock_guard<std::mutex> lock(impl_->descMutex);
         return !impl_->localDescription.empty();
     };
 
     auto start = std::chrono::steady_clock::now();
-    while (!hasLocalDescription()) {
+    while (!hasFreshLocalDescription()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (std::chrono::steady_clock::now() - start > std::chrono::seconds(5)) {
             break;
@@ -811,7 +818,7 @@ void WebRtcClient::setDataChannelStateCallback(DataChannelStateCallback cb) {
     impl_->dataChannelStateCallback = std::move(cb);
 }
 
-MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAudio) {
+MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAudio, bool enableAlpha) {
     MediaPlanChange change;
     if (!impl_->pc) {
         return change;
@@ -820,10 +827,11 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAud
     if (enableVideo && !impl_->videoTrack && impl_->ensureVideoTrack()) {
         change.changed = true;
         change.videoAdded = true;
-        // Alpha track MUST be added after primary (SDP m-line ordering determines role in OBS plugin)
-        if (impl_->enableAlphaTrack) {
-            impl_->ensureAlphaVideoTrack();
-        }
+    }
+    // Alpha track MUST be added after primary (SDP m-line ordering determines role in OBS plugin)
+    if (enableVideo && enableAlpha && impl_->enableAlphaTrack && !impl_->alphaVideoTrack && impl_->ensureAlphaVideoTrack()) {
+        change.changed = true;
+        change.alphaAdded = true;
     }
     if (enableAudio && !impl_->audioTrack && impl_->ensureAudioTrack()) {
         change.changed = true;
@@ -831,8 +839,9 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAud
     }
 
     if (change.changed) {
-        spdlog::info("[WebRTC] Applied media plan: videoAdded={} audioAdded={}",
+        spdlog::info("[WebRTC] Applied media plan: videoAdded={} alphaAdded={} audioAdded={}",
                      change.videoAdded,
+                     change.alphaAdded,
                      change.audioAdded);
     }
     return change;
