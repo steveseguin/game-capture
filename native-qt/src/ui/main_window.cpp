@@ -80,6 +80,43 @@ bool codecSupportsAlphaWorkflow(versus::video::VideoCodec codec) {
     return codec == versus::video::VideoCodec::AV1 || codec == versus::video::VideoCodec::VP9;
 }
 
+QString codecTooltipFor(versus::video::VideoCodec codec) {
+    if (codec == versus::video::VideoCodec::H265) {
+        return "H.265 is experimental and may not decode in Chromium-based viewers.";
+    }
+    if (codec == versus::video::VideoCodec::AV1) {
+        return "AV1 publish is experimental. Alpha-preserving AV1 paths vary by viewer; the current OBS VDO.Ninja "
+               "transparency workflow uses VP9 instead.";
+    }
+    if (codec == versus::video::VideoCodec::VP9) {
+        return "VP9 publish is experimental. Compatible OBS VDO.Ninja native receivers can upgrade this stream to "
+               "transparency; browser viewers stay standard color video.";
+    }
+    return QString();
+}
+
+QString alphaWorkflowTextFor(versus::video::VideoCodec codec) {
+    if (codec == versus::video::VideoCodec::VP9) {
+        return "Enable OBS alpha workflow (preview)";
+    }
+    if (codec == versus::video::VideoCodec::AV1) {
+        return "Enable alpha-preserving encode (experimental)";
+    }
+    return "Enable alpha workflow (experimental)";
+}
+
+QString alphaWorkflowTooltipFor(versus::video::VideoCodec codec) {
+    if (codec == versus::video::VideoCodec::VP9) {
+        return "Compatible OBS VDO.Ninja native receivers can upgrade this stream to dual-track VP9 transparency. "
+               "Browser viewers still receive standard color video.";
+    }
+    if (codec == versus::video::VideoCodec::AV1) {
+        return "AV1 alpha is experimental and viewer support varies. For the current OBS VDO.Ninja transparency "
+               "workflow, use VP9 with alpha enabled.";
+    }
+    return "Alpha workflow is only available with codecs that preserve alpha data.";
+}
+
 versus::webrtc::IceMode iceModeFromUiValue(const QString &value) {
     if (value == "host-only") {
         return versus::webrtc::IceMode::HostOnly;
@@ -837,10 +874,10 @@ void MainWindow::setupUI() {
     codecSelect_->addItem("H.264 (Compatibility)", QVariant("h264"));
     codecSelect_->addItem("H.265 / HEVC (Experimental)", QVariant("h265"));
     codecSelect_->addItem("AV1 (Experimental)", QVariant("av1"));
-    codecSelect_->addItem("VP9 + Alpha (Preview)", QVariant("vp9"));
+    codecSelect_->addItem("VP9 (OBS Alpha Preview)", QVariant("vp9"));
     advancedForm->addRow("Video Codec", codecSelect_);
 
-    alphaWorkflowCheck_ = new QCheckBox("Enable alpha-transparency workflow (experimental)", this);
+    alphaWorkflowCheck_ = new QCheckBox("Enable alpha workflow (experimental)", this);
     alphaWorkflowCheck_->setObjectName("alphaWorkflowCheck");
     alphaWorkflowCheck_->setChecked(false);
     alphaWorkflowCheck_->setEnabled(false);
@@ -1828,16 +1865,12 @@ void MainWindow::syncCodecUiState() {
             alphaWorkflowCheck_->setChecked(false);
         }
         alphaWorkflowCheck_->setEnabled(supportsAlpha);
+        alphaWorkflowCheck_->setText(alphaWorkflowTextFor(selectedCodec));
+        alphaWorkflowCheck_->setToolTip(alphaWorkflowTooltipFor(selectedCodec));
     }
 
     if (codecSelect_) {
-        if (selectedCodec == versus::video::VideoCodec::H265) {
-            codecSelect_->setToolTip("H.265 is experimental and may not decode in Chromium-based viewers.");
-        } else if (selectedCodec == versus::video::VideoCodec::VP9) {
-            codecSelect_->setToolTip("VP9 publish is experimental and mainly intended for alpha/transparency workflows.");
-        } else {
-            codecSelect_->setToolTip(QString());
-        }
+        codecSelect_->setToolTip(codecTooltipFor(selectedCodec));
     }
 }
 

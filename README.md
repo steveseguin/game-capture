@@ -22,6 +22,14 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
 Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
 
+## Alpha Workflow
+
+- For transparent playback in OBS, choose `VP9 (OBS Alpha Preview)` and enable the alpha workflow.
+- Compatible OBS VDO.Ninja native receivers automatically upgrade that stream to dual-track VP9 transparency.
+- Browser viewers remain compatible, but they stay standard color video; they do not composite the alpha track into transparency.
+- If you need the broadest viewer compatibility, leave alpha disabled.
+- AV1 alpha-preserving encode remains experimental and is not the current OBS transparency path.
+
 Web landing/download page:
 - `docs/gamecapture.html`
 

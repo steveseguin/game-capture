@@ -47,6 +47,7 @@ private slots:
     void testShareLinkButtonsExist();
     void testFfmpegAdvancedControls();
     void testCodecControls();
+    void testAlphaWorkflowMessaging();
 
 private:
     versus::ui::MainWindow *window_ = nullptr;
@@ -491,6 +492,30 @@ void TestMainWindow::testCodecControls() {
     QVERIFY(av1Index >= 0);
     codecCombo->setCurrentIndex(av1Index);
     QVERIFY(alphaCheck->isEnabled());
+}
+
+void TestMainWindow::testAlphaWorkflowMessaging() {
+    auto *codecCombo = window_->findChild<QComboBox*>("codecSelect");
+    auto *alphaCheck = window_->findChild<QCheckBox*>("alphaWorkflowCheck");
+    QVERIFY(codecCombo != nullptr);
+    QVERIFY(alphaCheck != nullptr);
+
+    const int vp9Index = codecCombo->findData("vp9");
+    QVERIFY(vp9Index >= 0);
+    QVERIFY(codecCombo->itemText(vp9Index).contains("OBS Alpha"));
+
+    codecCombo->setCurrentIndex(vp9Index);
+    QVERIFY(alphaCheck->isEnabled());
+    QVERIFY(alphaCheck->text().contains("OBS alpha"));
+    QVERIFY(alphaCheck->toolTip().contains("OBS VDO.Ninja native receivers"));
+    QVERIFY(alphaCheck->toolTip().contains("Browser viewers", Qt::CaseInsensitive));
+    QVERIFY(codecCombo->toolTip().contains("transparency", Qt::CaseInsensitive));
+
+    const int av1Index = codecCombo->findData("av1");
+    QVERIFY(av1Index >= 0);
+    codecCombo->setCurrentIndex(av1Index);
+    QVERIFY(alphaCheck->text().contains("alpha-preserving"));
+    QVERIFY(alphaCheck->toolTip().contains("use VP9"));
 }
 
 QTEST_MAIN(TestMainWindow)
