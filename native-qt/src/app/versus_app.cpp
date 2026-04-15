@@ -1434,19 +1434,21 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                 alphaReceiveMode = "vp9-dualtrack-v1";
             }
         }
-        const bool alphaAllowed = alphaFieldPresent && alphaReceiveMode == "vp9-dualtrack-v1";
-        const bool previousAlphaAllowed = peer->alphaAllowed.load(std::memory_order_relaxed);
-        peer->alphaAllowed.store(alphaAllowed, std::memory_order_relaxed);
-        peer->alphaReceiveMode = alphaAllowed ? alphaReceiveMode : "";
-        if (previousAlphaAllowed != alphaAllowed) {
-            spdlog::info("[App] Peer info {}:{} alphaReceive={} mode={}",
-                         peer->uuid,
-                         peer->session,
-                         alphaAllowed,
-                         alphaAllowed ? alphaReceiveMode : "none");
-            if (peer->initReceived.load(std::memory_order_relaxed)) {
-                applyPeerMediaPlan(peer, "peer-alpha-capability");
-                sendPeerDataInfo(peer, true);
+        if (alphaFieldPresent) {
+            const bool alphaAllowed = alphaReceiveMode == "vp9-dualtrack-v1";
+            const bool previousAlphaAllowed = peer->alphaAllowed.load(std::memory_order_relaxed);
+            peer->alphaAllowed.store(alphaAllowed, std::memory_order_relaxed);
+            peer->alphaReceiveMode = alphaAllowed ? alphaReceiveMode : "";
+            if (previousAlphaAllowed != alphaAllowed) {
+                spdlog::info("[App] Peer info {}:{} alphaReceive={} mode={}",
+                             peer->uuid,
+                             peer->session,
+                             alphaAllowed,
+                             alphaAllowed ? alphaReceiveMode : "none");
+                if (peer->initReceived.load(std::memory_order_relaxed)) {
+                    applyPeerMediaPlan(peer, "peer-alpha-capability");
+                    sendPeerDataInfo(peer, true);
+                }
             }
         }
     }

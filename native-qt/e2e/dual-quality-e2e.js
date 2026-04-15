@@ -255,6 +255,19 @@ async function waitForDecodedVideo(page, timeoutMs, stageLabel) {
   return { ok: false, stage: stageLabel, state: lastState };
 }
 
+async function waitForHeldDecodedVideo(page, recoveryTimeoutMs, stageLabel) {
+  const state = await collectState(page);
+  if (state.hasDecodedVideo) {
+    return { ok: true, state };
+  }
+
+  const recovered = await waitForDecodedVideo(page, recoveryTimeoutMs, `${stageLabel}-recover`);
+  if (recovered.ok) {
+    return recovered;
+  }
+  return { ok: false, stage: stageLabel, state };
+}
+
 async function waitForSessionPeer(page, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -613,6 +626,36 @@ async function openRoleViewer(context, viewerUrl, role, expectedTier, config) {
   };
 }
 
+async function openRoleViewerWithRetry(context, viewerUrl, role, expectedTier, config, attempts) {
+  const maxAttempts = Math.max(1, attempts || 1);
+  let lastResult = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await openRoleViewer(context, viewerUrl, role, expectedTier, config);
+    if (result.ok) {
+      if (attempt > 1) {
+        console.log(`[DUAL-QUALITY] ${role} viewer recovered on attempt ${attempt}`);
+      }
+      return result;
+    }
+
+    lastResult = result;
+    if (result.page) {
+      // eslint-disable-next-line no-await-in-loop
+      await result.page.close().catch(() => {});
+    }
+    if (attempt < maxAttempts) {
+      console.warn(
+        `[DUAL-QUALITY] ${role} viewer attempt ${attempt} failed at ${result.stage || 'unknown'}; retrying`
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await wait(1200);
+    }
+  }
+
+  return lastResult || { ok: false, stage: `${role}-retry-exhausted`, state: {} };
+}
+
 async function captureScreenshots(entries, screenshotDir, streamId, isFailure) {
   fs.mkdirSync(screenshotDir, { recursive: true });
   const out = [];
@@ -712,7 +755,7 @@ async function main() {
   let screenshots = [];
 
   try {
-    sceneResult = await openRoleViewer(context, viewerUrl, config.sceneRole, 'hq', config);
+    sceneResult = await openRoleViewerWithRetry(context, viewerUrl, config.sceneRole, 'hq', config, 3);
     sceneResult.role = 'scene';
     opened.push(sceneResult);
     if (!sceneResult.ok) {
@@ -721,7 +764,7 @@ async function main() {
     }
     console.log('[DUAL-QUALITY] Scene viewer validated (HQ)');
 
-    guestResult = await openRoleViewer(context, viewerUrl, config.guestRole, 'lq', config);
+    guestResult = await openRoleViewerWithRetry(context, viewerUrl, config.guestRole, 'lq', config, 3);
     guestResult.role = 'guest';
     opened.push(guestResult);
     if (!guestResult.ok) {
@@ -732,14 +775,15 @@ async function main() {
 
     await wait(config.holdMs);
 
-    const sceneHold = await collectState(sceneResult.page);
-    const guestHold = await collectState(guestResult.page);
-    if (!sceneHold.hasDecodedVideo) {
-      failure = { stage: 'scene-hold', state: sceneHold };
+    const holdRecoveryMs = Math.max(6000, Math.floor(config.timeoutMs / 4));
+    const sceneHold = await waitForHeldDecodedVideo(sceneResult.page, holdRecoveryMs, 'scene-hold');
+    const guestHold = await waitForHeldDecodedVideo(guestResult.page, holdRecoveryMs, 'guest-hold');
+    if (!sceneHold.ok) {
+      failure = { stage: sceneHold.stage, state: sceneHold.state };
       return;
     }
-    if (!guestHold.hasDecodedVideo) {
-      failure = { stage: 'guest-hold', state: guestHold };
+    if (!guestHold.ok) {
+      failure = { stage: guestHold.stage, state: guestHold.state };
       return;
     }
 
