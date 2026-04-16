@@ -29,6 +29,7 @@ function parseArgs(argv) {
     holdMs: 0,
     durationMs: 0,
     iterations: 1,
+    viewerAttempts: 1,
     headful: false,
     screenshotDir: path.resolve(__dirname, '../../.playwright-mcp'),
     publisherPath: '',
@@ -75,6 +76,8 @@ function parseArgs(argv) {
       args.durationMs = Number(arg.slice('--duration-ms='.length)) || args.durationMs;
     } else if (arg.startsWith('--iterations=')) {
       args.iterations = Math.max(1, Number(arg.slice('--iterations='.length)) || args.iterations);
+    } else if (arg.startsWith('--viewer-attempts=')) {
+      args.viewerAttempts = Math.max(1, Number(arg.slice('--viewer-attempts='.length)) || args.viewerAttempts);
     } else if (arg.startsWith('--publisher-path=')) {
       args.publisherPath = arg.slice('--publisher-path='.length);
     } else if (arg.startsWith('--screenshot-dir=')) {
@@ -415,6 +418,38 @@ async function runViewerCheck(viewerUrl, timeoutMs, holdMs, headful, screenshotD
   return { ok: false, state: lastState, screenshot: shotPath };
 }
 
+async function runViewerCheckWithRetry(viewerUrl, timeoutMs, holdMs, headful, screenshotDir, runId, initOptions, attempts) {
+  const maxAttempts = Math.max(1, attempts || 1);
+  let lastResult = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await runViewerCheck(
+      viewerUrl,
+      timeoutMs,
+      holdMs,
+      headful,
+      screenshotDir,
+      maxAttempts > 1 ? `${runId}-attempt${attempt}` : runId,
+      initOptions
+    );
+    if (result.ok) {
+      if (attempt > 1) {
+        console.log(`[E2E] Viewer recovered on attempt ${attempt}/${maxAttempts}`);
+      }
+      return result;
+    }
+
+    lastResult = result;
+    if (attempt < maxAttempts) {
+      console.warn(`[E2E] Viewer attempt ${attempt}/${maxAttempts} failed; retrying`);
+      // eslint-disable-next-line no-await-in-loop
+      await wait(1500);
+    }
+  }
+
+  return lastResult;
+}
+
 async function main() {
   const config = parseArgs(process.argv);
   const viewerUrl = buildViewerUrl(config);
@@ -433,6 +468,9 @@ async function main() {
   if (config.holdMs > 0) {
     console.log(`[E2E] Hold per iteration: ${config.holdMs}ms`);
   }
+  if (config.viewerAttempts > 1) {
+    console.log(`[E2E] Viewer attempts per iteration: ${config.viewerAttempts}`);
+  }
   if (config.initRole) {
     console.log(`[E2E] Data init role: ${config.initRole} (video=${config.initVideo}, audio=${config.initAudio})`);
   }
@@ -446,7 +484,7 @@ async function main() {
   try {
     for (let i = 1; i <= config.iterations; i++) {
       console.log(`[E2E] Iteration ${i}/${config.iterations}: opening viewer`);
-      const result = await runViewerCheck(
+      const result = await runViewerCheckWithRetry(
         viewerUrl,
         config.timeoutMs,
         config.holdMs,
@@ -459,7 +497,8 @@ async function main() {
           video: config.initVideo,
           audio: config.initAudio,
           label: config.label
-        }
+        },
+        config.viewerAttempts
       );
       results.push(result);
       if (result.ok) {

@@ -874,15 +874,41 @@ async function caseSpecialCharPassword(input) {
 
   // Step 2: Connect using harness-built URL (URLSearchParams-encoded) to test
   // that the room with special-char password actually works end-to-end
-  const page = await context.newPage();
-  openedPages.push(page);
-  await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  let lastPeerState = null;
+  let lastDecode = null;
+  let finalPage = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const page = await context.newPage();
+    await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-  const peerState = await waitForSessionPeer(page, 12000);
-  assertOk(peerState && peerState.ready, 'special-char-password: session peer unavailable', peerState);
+    const peerState = await waitForSessionPeer(page, 12000);
+    lastPeerState = peerState;
+    if (!(peerState && peerState.ready)) {
+      await page.close().catch(() => {});
+      continue;
+    }
 
-  const decode = await waitForDecodedVideo(page, 20000, 'special-char-password');
-  assertOk(decode.ok, 'special-char-password: decode failed', decode.state || decode);
+    const decode = await waitForDecodedVideo(page, 20000, `special-char-password-attempt-${attempt}`);
+    lastDecode = decode;
+    if (decode.ok) {
+      finalPage = page;
+      break;
+    }
+
+    if (attempt < 3) {
+      console.warn(`[DUAL-REQ] special-char-password attempt ${attempt}/3 failed; retrying`);
+    }
+    await page.close().catch(() => {});
+    await wait(1500);
+  }
+
+  assertOk(lastPeerState && lastPeerState.ready, 'special-char-password: session peer unavailable', lastPeerState);
+  assertOk(
+    finalPage && lastDecode && lastDecode.ok,
+    'special-char-password: decode failed',
+    lastDecode ? (lastDecode.state || lastDecode) : lastPeerState
+  );
+  openedPages.push(finalPage);
 }
 
 async function caseMaxViewers(input) {

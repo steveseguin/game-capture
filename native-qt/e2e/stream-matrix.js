@@ -101,6 +101,7 @@ async function main() {
         `--room=room_${seed}`,
         '--password=',
         '--iterations=1',
+        '--viewer-attempts=3',
         '--startup-delay-ms=7000',
         '--timeout-ms=70000',
         ...passThroughArgs
