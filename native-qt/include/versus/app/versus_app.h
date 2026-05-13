@@ -228,6 +228,7 @@ class VersusApp {
         std::atomic<bool> sawPeerInfoMessage{false};
         std::atomic<bool> waitingForKeyframe{true};
         std::atomic<bool> dataChannelOpen{false};
+        std::atomic<int64_t> disconnectedSinceMs{0};
         std::atomic<bool> statsContinuous{false};
         std::atomic<int> requestedVideoBitrateKbps{-1};
         std::atomic<int> requestedAudioBitrateKbps{-1};

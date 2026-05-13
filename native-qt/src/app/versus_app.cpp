@@ -22,6 +22,7 @@ constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kRoomInitGracePeriodMs = 1500;
 constexpr int64_t kDirectInitGracePeriodMs = 1000;
+constexpr int64_t kDisconnectedPeerPruneMs = 10000;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
 constexpr int kHardwareFailSampleWindow = 300;
 constexpr double kHardwareFailRatioThreshold = 0.35;
@@ -930,6 +931,7 @@ void VersusApp::setupSignalingCallbacks() {
                 return;
             }
             if (state == webrtc::ConnectionState::Connected) {
+                peerPtr->disconnectedSinceMs.store(0, std::memory_order_relaxed);
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                 peerPtr->waitingForKeyframe.store(true, std::memory_order_relaxed);
@@ -937,12 +939,19 @@ void VersusApp::setupSignalingCallbacks() {
                 return;
             }
             if (state == webrtc::ConnectionState::Disconnected) {
+                int64_t expected = 0;
+                peerPtr->disconnectedSinceMs.compare_exchange_strong(
+                    expected,
+                    steadyNowMs(),
+                    std::memory_order_relaxed,
+                    std::memory_order_relaxed);
                 spdlog::warn("[WebRTC] Peer connection disconnected {}:{}; keeping session for ICE recovery",
                              peerPtr->uuid,
                              peerPtr->session);
                 return;
             }
             if (state == webrtc::ConnectionState::Closed) {
+                peerPtr->disconnectedSinceMs.store(0, std::memory_order_relaxed);
                 spdlog::info("[WebRTC] Peer connection closed {}:{}; removing session",
                              peerPtr->uuid,
                              peerPtr->session);
@@ -1069,6 +1078,7 @@ void VersusApp::setupSignalingCallbacks() {
             }
             peerPtr->dataChannelOpen.store(open, std::memory_order_relaxed);
             if (open) {
+                peerPtr->disconnectedSinceMs.store(0, std::memory_order_relaxed);
                 if (!peerPtr->initReceived.load(std::memory_order_relaxed)) {
                     const int64_t graceMs = peerPtr->roomMode ? kRoomInitGracePeriodMs : kDirectInitGracePeriodMs;
                     peerPtr->initDeadlineMs.store(steadyNowMs() + graceMs, std::memory_order_relaxed);
@@ -1077,6 +1087,12 @@ void VersusApp::setupSignalingCallbacks() {
                 applyPeerMediaPlan(peerPtr, "datachannel-open");
             } else {
                 peerPtr->initDeadlineMs.store(0, std::memory_order_relaxed);
+                int64_t expected = 0;
+                peerPtr->disconnectedSinceMs.compare_exchange_strong(
+                    expected,
+                    steadyNowMs(),
+                    std::memory_order_relaxed,
+                    std::memory_order_relaxed);
             }
         });
 
@@ -1338,11 +1354,20 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
 
 void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
     std::vector<std::shared_ptr<PeerSession>> expired;
+    std::vector<std::shared_ptr<PeerSession>> disconnected;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
         for (const auto &entry : peerSessions_) {
             const auto &peer = entry.second;
-            if (!peer || peer->initReceived.load(std::memory_order_relaxed)) {
+            if (!peer) {
+                continue;
+            }
+            const int64_t disconnectedSinceMs = peer->disconnectedSinceMs.load(std::memory_order_relaxed);
+            if (disconnectedSinceMs > 0 && (nowMs - disconnectedSinceMs) >= kDisconnectedPeerPruneMs) {
+                disconnected.push_back(peer);
+                continue;
+            }
+            if (peer->initReceived.load(std::memory_order_relaxed)) {
                 continue;
             }
             const int64_t deadlineMs = peer->initDeadlineMs.load(std::memory_order_relaxed);
@@ -1351,6 +1376,18 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
             }
             expired.push_back(peer);
         }
+    }
+
+    for (const auto &peer : disconnected) {
+        const int64_t disconnectedSinceMs = peer->disconnectedSinceMs.load(std::memory_order_relaxed);
+        if (disconnectedSinceMs <= 0 || (nowMs - disconnectedSinceMs) < kDisconnectedPeerPruneMs) {
+            continue;
+        }
+        spdlog::info("[WebRTC] Pruning stale disconnected peer {}:{} after {}ms",
+                     peer->uuid,
+                     peer->session,
+                     nowMs - disconnectedSinceMs);
+        removePeerSession(peer);
     }
 
     for (const auto &peer : expired) {
