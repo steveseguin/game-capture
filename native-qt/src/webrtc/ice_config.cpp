@@ -442,8 +442,17 @@ ResolvedIceConfig resolveIceConfig(IceMode mode, int fetchTimeoutMs) {
         resolved.servers = defaultStunServers();
     }
 
-    if (mode == IceMode::HostOnly) {
-        spdlog::info("[ICE] Mode={} fetchedTurnList=0 fallbackTurns=0 servers=", iceModeName(mode));
+    if (mode == IceMode::HostOnly || mode == IceMode::StunOnly) {
+        std::ostringstream summary;
+        summary << "[ICE] Mode=" << iceModeName(mode)
+                << " fetchedTurnList=0 fallbackTurns=0 servers=";
+        for (size_t i = 0; i < resolved.servers.size(); ++i) {
+            if (i != 0) {
+                summary << ", ";
+            }
+            summary << resolved.servers[i].url;
+        }
+        spdlog::info("{}", summary.str());
         return resolved;
     }
 
@@ -489,15 +498,22 @@ bool candidateLooksServerReflexive(const std::string &candidate) {
     return toLowerCopy(candidate).find(" typ srflx") != std::string::npos;
 }
 
+bool candidateLooksHost(const std::string &candidate) {
+    return toLowerCopy(candidate).find(" typ host") != std::string::npos;
+}
+
 bool candidateAllowedForMode(const std::string &candidate, IceMode mode) {
     switch (mode) {
         case IceMode::All:
             return true;
         case IceMode::HostOnly:
-            return toLowerCopy(candidate).find(" typ host") != std::string::npos;
+            return candidateLooksHost(candidate);
         case IceMode::Relay:
             return candidateLooksRelay(candidate);
         case IceMode::StunOnly: {
+            if (candidateLooksHost(candidate)) {
+                return true;
+            }
             if (!candidateLooksServerReflexive(candidate)) {
                 return false;
             }

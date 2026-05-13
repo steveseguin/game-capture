@@ -39,6 +39,7 @@ private slots:
     void testRemoteControlControls();
     void testResolutionOptions();
     void testIceModeOptions();
+    void testAudioSourceOptions();
     void testRoomModeQualityToggle();
     void testBitrateOptions();
     void testCustomBitrateControl();
@@ -269,8 +270,17 @@ void TestMainWindow::testIceModeOptions() {
     auto *iceModeCombo = window_->findChild<QComboBox*>("iceModeSelect");
     QVERIFY(iceModeCombo != nullptr);
     QCOMPARE(iceModeCombo->count(), 4);
-    QCOMPARE(iceModeCombo->currentData().toString(), QString("all"));
+    QCOMPARE(iceModeCombo->currentData().toString(), QString("stun-only"));
+    QVERIFY(iceModeCombo->findData("all") >= 0);
     QVERIFY(iceModeCombo->findData("relay") >= 0);
+}
+
+void TestMainWindow::testAudioSourceOptions() {
+    auto *audioSourceCombo = window_->findChild<QComboBox*>("audioSourceSelect");
+    QVERIFY(audioSourceCombo != nullptr);
+    QCOMPARE(audioSourceCombo->currentData().toString(), QString("selected-window"));
+    QVERIFY(audioSourceCombo->findData("communications-output") >= 0);
+    QVERIFY(audioSourceCombo->findData("default-microphone") >= 0);
 }
 
 void TestMainWindow::testRoomModeQualityToggle() {

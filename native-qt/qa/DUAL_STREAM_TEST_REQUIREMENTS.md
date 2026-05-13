@@ -128,7 +128,7 @@ Add one release gate entry:
 - `DS-REQ-004`: PASS
 - Evidence:
   - Unit media flag checks in `DualStreamPolicyTest`.
-  - `reconnect_control_media` case validates `peer_audio_enabled` toggle false->true with active stream.
+  - `reconnect_control_media` case validates VDO-compatible audio init acknowledgements false->true with active stream.
 
 - `DS-REQ-005`: PASS
 - Evidence: `room_max_viewers` case in `npm run e2e:dual-quality-requirements`.
@@ -151,7 +151,7 @@ Add one release gate entry:
 - Evidence: `reconnect_control_media` case applies runtime resolution/bitrate control while HQ+LQ viewers remain stable.
 
 - `DS-REQ-011`: PASS
-- Evidence: `reconnect_control_media` case validates audio flag drop/recovery (`peer_audio_enabled` false->true) without stream loss.
+- Evidence: `reconnect_control_media` case validates audio flag drop/recovery through init acknowledgements without stream loss.
 
 - `DS-REQ-012`: PASS
 - Evidence: `npm run e2e:collision` (included by release-readiness gate).

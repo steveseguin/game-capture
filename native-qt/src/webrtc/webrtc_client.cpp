@@ -523,6 +523,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
             mapped = ConnectionState::Failed;
             stateStr = "failed";
         } else if (state == rtc::PeerConnection::State::Closed) {
+            mapped = ConnectionState::Closed;
             stateStr = "closed";
         } else if (state == rtc::PeerConnection::State::Disconnected) {
             stateStr = "disconnected";
@@ -631,6 +632,7 @@ void WebRtcClient::resetPeerConnection() {
             mapped = ConnectionState::Failed;
             stateStr = "failed";
         } else if (state == rtc::PeerConnection::State::Closed) {
+            mapped = ConnectionState::Closed;
             stateStr = "closed";
         } else if (state == rtc::PeerConnection::State::Disconnected) {
             stateStr = "disconnected";

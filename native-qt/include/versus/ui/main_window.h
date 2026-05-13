@@ -93,6 +93,7 @@ class MainWindow : public QMainWindow {
     QComboBox *encoderSelect_ = nullptr;
     QComboBox *codecSelect_ = nullptr;
     QCheckBox *alphaWorkflowCheck_ = nullptr;
+    QComboBox *audioSourceSelect_ = nullptr;
     QLineEdit *ffmpegPathInput_ = nullptr;
     QLineEdit *ffmpegOptionsInput_ = nullptr;
     QLabel *statusLabel_ = nullptr;

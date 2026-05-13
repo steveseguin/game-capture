@@ -446,8 +446,8 @@ async function collectProbeSummary(page) {
         assignedTier: String(entry.message.info.assigned_tier || '').toLowerCase(),
         assignedRole: String(entry.message.info.assigned_role || '').toLowerCase(),
         roomInitReceived: Boolean(entry.message.info.room_init_received),
-        peerVideoEnabled: Boolean(entry.message.info.peer_video_enabled),
-        peerAudioEnabled: Boolean(entry.message.info.peer_audio_enabled)
+        requestedVideoBitrateKbps: Number(entry.message.info.requested_video_bitrate_kbps || 0),
+        requestedAudioBitrateKbps: Number(entry.message.info.requested_audio_bitrate_kbps || 0)
       }));
     const ackCount = records.filter((entry) => entry && entry.message && entry.message.ack === 'init').length;
     return {
@@ -496,10 +496,14 @@ function writeReport(config, startedAt, finishedAt, rows, summary, failure, publ
   );
 
   if (summary && summary.infoRecords.length) {
-    lines.push('', '| Assigned tier | Assigned role | room_init_received | video | audio |', '|---|---|:---:|:---:|:---:|');
+    lines.push(
+      '',
+      '| Assigned tier | Assigned role | room_init_received | requested video kbps | requested audio kbps |',
+      '|---|---|:---:|---:|---:|'
+    );
     for (const record of summary.infoRecords.slice(-20)) {
       lines.push(
-        `| ${record.assignedTier || '(empty)'} | ${record.assignedRole || '(empty)'} | ${record.roomInitReceived ? 'yes' : 'no'} | ${record.peerVideoEnabled ? 'yes' : 'no'} | ${record.peerAudioEnabled ? 'yes' : 'no'} |`
+        `| ${record.assignedTier || '(empty)'} | ${record.assignedRole || '(empty)'} | ${record.roomInitReceived ? 'yes' : 'no'} | ${record.requestedVideoBitrateKbps} | ${record.requestedAudioBitrateKbps} |`
       );
     }
   }
@@ -599,6 +603,33 @@ async function main() {
     const probeInstall = await installInfoProbe(page, peer.uuid);
     if (!probeInstall.ok) {
       failure = { stage: 'install-probe', state: probeInstall };
+      return;
+    }
+
+    const baselineInit = await sendWithRetry(
+      page,
+      'obj',
+      makeInit('scene', true, true, 'scene-baseline'),
+      Math.max(5000, Math.floor(config.timeoutMs / 3))
+    );
+    rows.push({
+      name: 'baseline-scene',
+      type: 'obj',
+      sent: Boolean(baselineInit && baselineInit.ok),
+      publisherAlive: publisher.proc.exitCode === null
+    });
+    if (!baselineInit || !baselineInit.ok) {
+      failure = { stage: 'send-baseline-scene', state: baselineInit };
+      return;
+    }
+
+    const baselineDecode = await waitForDecodedVideo(
+      page,
+      Math.max(12000, Math.floor(config.timeoutMs / 2)),
+      'baseline-scene-decode'
+    );
+    if (!baselineDecode.ok) {
+      failure = { stage: baselineDecode.stage || 'baseline-scene-decode', state: baselineDecode.state };
       return;
     }
 

@@ -61,7 +61,9 @@ int main(int argc, char *argv[]) {
     std::string ffmpegPathArg;
     std::string ffmpegOptionsArg;
     std::string windowFilterArg;
-    versus::webrtc::IceMode iceMode = versus::webrtc::IceMode::All;
+    versus::app::AudioSourceMode audioSourceMode = versus::app::AudioSourceMode::SelectedWindow;
+    std::string audioSourceArg = "selected-window";
+    versus::webrtc::IceMode iceMode = versus::webrtc::IceMode::StunOnly;
     int width = 0;
     int height = 0;
     int fps = 0;
@@ -112,6 +114,31 @@ int main(int argc, char *argv[]) {
             }
         } else if (arg.find("--window=") == 0) {
             windowFilterArg = arg.substr(9);
+        } else if (arg.find("--audio-source=") == 0) {
+            audioSourceArg = arg.substr(15);
+            std::string normalized = audioSourceArg;
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (normalized == "selected" || normalized == "selected-window" || normalized == "window" ||
+                normalized == "app" || normalized == "process") {
+                audioSourceMode = versus::app::AudioSourceMode::SelectedWindow;
+            } else if (normalized == "default-output" || normalized == "output" || normalized == "system" ||
+                       normalized == "system-output") {
+                audioSourceMode = versus::app::AudioSourceMode::DefaultOutput;
+            } else if (normalized == "communications-output" || normalized == "communication-output" ||
+                       normalized == "communications" || normalized == "voip") {
+                audioSourceMode = versus::app::AudioSourceMode::CommunicationsOutput;
+            } else if (normalized == "default-microphone" || normalized == "microphone" || normalized == "mic" ||
+                       normalized == "input" || normalized == "default-input") {
+                audioSourceMode = versus::app::AudioSourceMode::DefaultMicrophone;
+            } else if (normalized == "none" || normalized == "off" || normalized == "disabled") {
+                audioSourceMode = versus::app::AudioSourceMode::None;
+            } else {
+                spdlog::warn("[Main] Unknown --audio-source value '{}'; expected selected-window|default-output|communications-output|default-microphone|none", audioSourceArg);
+                audioSourceArg = "selected-window";
+                audioSourceMode = versus::app::AudioSourceMode::SelectedWindow;
+            }
         } else if (arg.find("--resolution=") == 0) {
             const std::string resolution = arg.substr(13);
             const auto xPos = resolution.find('x');
@@ -302,10 +329,11 @@ int main(int argc, char *argv[]) {
                      encoderOverride.enableAlpha);
         core.setVideoConfig(encoderOverride);
     }
+    core.setAudioSourceMode(audioSourceMode);
 
     if (headless) {
         // Headless mode - auto-configure and start streaming
-        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={}",
+        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} audioSource={}",
                      streamId,
                      room.empty() ? "(none)" : room,
                      password,
@@ -313,7 +341,8 @@ int main(int argc, char *argv[]) {
                      durationMs,
                      maxViewers,
                      remoteControlEnabled,
-                     versus::webrtc::iceModeName(iceMode));
+                     versus::webrtc::iceModeName(iceMode),
+                     audioSourceArg);
 
         // Configure
         versus::app::StartOptions options;

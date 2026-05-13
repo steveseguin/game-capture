@@ -48,7 +48,8 @@ enum class ConnectionState {
     Disconnected,
     Connecting,
     Connected,
-    Failed
+    Failed,
+    Closed
 };
 
 struct MediaPlanChange {

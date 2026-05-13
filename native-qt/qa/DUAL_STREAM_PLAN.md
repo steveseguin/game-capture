@@ -102,8 +102,8 @@ Publisher info response additions:
   "info": {
     "assigned_role": "scene|director|guest|viewer|unknown",
     "assigned_tier": "hq|lq|none",
-    "peer_video_enabled": true,
-    "peer_audio_enabled": true,
+    "requested_video_bitrate_kbps": 0,
+    "requested_audio_bitrate_kbps": 0,
     "room_init": true
   }
 }

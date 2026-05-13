@@ -111,6 +111,56 @@ bool jsonBoolLike(const nlohmann::json &value, bool defaultValue) {
     return defaultValue;
 }
 
+bool jsonToggleBool(const nlohmann::json &value, bool currentValue, bool defaultValue) {
+    if (value.is_string()) {
+        const std::string lower = toLowerCopy(value.get<std::string>());
+        if (lower == "toggle") {
+            return !currentValue;
+        }
+    }
+    return jsonBoolLike(value, defaultValue);
+}
+
+int jsonIntLike(const nlohmann::json &value, int defaultValue = 0) {
+    if (value.is_number_integer()) {
+        return value.get<int>();
+    }
+    if (value.is_number_float()) {
+        return static_cast<int>(std::round(value.get<double>()));
+    }
+    if (value.is_string()) {
+        try {
+            return std::stoi(value.get<std::string>());
+        } catch (...) {
+            return defaultValue;
+        }
+    }
+    return defaultValue;
+}
+
+bool parseResolutionString(const std::string &value, int &width, int &height) {
+    const auto xPos = value.find('x');
+    if (xPos == std::string::npos) {
+        return false;
+    }
+    try {
+        width = std::stoi(value.substr(0, xPos));
+        height = std::stoi(value.substr(xPos + 1));
+        return width > 0 && height > 0;
+    } catch (...) {
+        width = 0;
+        height = 0;
+        return false;
+    }
+}
+
+std::string resolutionLabel(int width, int height) {
+    if (width <= 0 || height <= 0) {
+        return {};
+    }
+    return std::to_string(width) + " x " + std::to_string(height);
+}
+
 const char *videoCodecName(video::VideoCodec codec) {
     switch (codec) {
         case video::VideoCodec::H264:
@@ -126,6 +176,71 @@ const char *videoCodecName(video::VideoCodec codec) {
         default:
             return "Unknown";
     }
+}
+
+const char *audioSourceModeName(AudioSourceMode mode) {
+    switch (mode) {
+        case AudioSourceMode::SelectedWindow:
+            return "selected-window";
+        case AudioSourceMode::DefaultOutput:
+            return "default-output";
+        case AudioSourceMode::CommunicationsOutput:
+            return "communications-output";
+        case AudioSourceMode::DefaultMicrophone:
+            return "default-microphone";
+        case AudioSourceMode::None:
+        default:
+            return "none";
+    }
+}
+
+std::vector<float> normalizeAudioForOpus(const audio::StreamChunk &chunk) {
+    constexpr uint32_t kOpusSampleRate = 48000;
+    constexpr uint32_t kOpusChannels = 2;
+
+    const uint32_t inputChannels = std::max<uint32_t>(1, chunk.channels);
+    const uint32_t inputSampleRate = std::max<uint32_t>(1, chunk.sampleRate);
+    const size_t inputFrames = chunk.samples.size() / inputChannels;
+    if (inputFrames == 0) {
+        return {};
+    }
+
+    std::vector<float> stereo;
+    stereo.resize(inputFrames * kOpusChannels);
+    for (size_t frame = 0; frame < inputFrames; ++frame) {
+        const size_t src = frame * inputChannels;
+        const float left = chunk.samples[src];
+        const float right = inputChannels > 1 ? chunk.samples[src + 1] : left;
+        stereo[(frame * kOpusChannels)] = left;
+        stereo[(frame * kOpusChannels) + 1] = right;
+    }
+
+    if (inputSampleRate == kOpusSampleRate) {
+        return stereo;
+    }
+
+    const size_t outputFrames = std::max<size_t>(
+        1,
+        static_cast<size_t>(std::ceil(
+            (static_cast<double>(inputFrames) * static_cast<double>(kOpusSampleRate)) /
+            static_cast<double>(inputSampleRate))));
+    std::vector<float> resampled;
+    resampled.resize(outputFrames * kOpusChannels);
+
+    const double step = static_cast<double>(inputSampleRate) / static_cast<double>(kOpusSampleRate);
+    for (size_t frame = 0; frame < outputFrames; ++frame) {
+        const double srcPos = static_cast<double>(frame) * step;
+        const size_t srcFrame = std::min<size_t>(static_cast<size_t>(srcPos), inputFrames - 1);
+        const size_t nextFrame = std::min<size_t>(srcFrame + 1, inputFrames - 1);
+        const float mix = static_cast<float>(srcPos - static_cast<double>(srcFrame));
+        for (size_t ch = 0; ch < kOpusChannels; ++ch) {
+            const float a = stereo[(srcFrame * kOpusChannels) + ch];
+            const float b = stereo[(nextFrame * kOpusChannels) + ch];
+            resampled[(frame * kOpusChannels) + ch] = a + ((b - a) * mix);
+        }
+    }
+
+    return resampled;
 }
 
 std::string publisherVersionTag() {
@@ -175,6 +290,13 @@ bool VersusApp::startCapture(const std::string &windowId) {
     audioPts100ns_.store(0);
     audioLevelRms_.store(0.0f);
     audioPeak_.store(0.0f);
+    videoBytesSent_.store(0, std::memory_order_relaxed);
+    audioBytesSent_.store(0, std::memory_order_relaxed);
+    videoFramesSent_.store(0, std::memory_order_relaxed);
+    audioPacketsSent_.store(0, std::memory_order_relaxed);
+    metricsStartMs_.store(steadyNowMs(), std::memory_order_relaxed);
+    lastSentWidth_.store(0, std::memory_order_relaxed);
+    lastSentHeight_.store(0, std::memory_order_relaxed);
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
     lastVideoSendMs_.store(0);
@@ -208,54 +330,17 @@ bool VersusApp::startCapture(const std::string &windowId) {
         return false;
     }
 
+    uint32_t selectedWindowProcessId = 0;
     if (!selectedWindowId_.empty()) {
         auto windows = windowCapture_.getWindows();
         for (const auto &info : windows) {
-            if (info.id != selectedWindowId_) {
-                continue;
+            if (info.id == selectedWindowId_) {
+                selectedWindowProcessId = info.processId;
+                break;
             }
-
-            audioCapture_.StartStreamCapture(info.processId, [this](versus::audio::StreamChunk &&chunk) {
-                if (!live_) {
-                    return;
-                }
-
-                float peak = 0.0f;
-                double sumSquares = 0.0;
-                for (float sample : chunk.samples) {
-                    const float absSample = std::abs(sample);
-                    peak = std::max(peak, absSample);
-                    sumSquares += static_cast<double>(sample) * static_cast<double>(sample);
-                }
-                const float rms = chunk.samples.empty()
-                    ? 0.0f
-                    : static_cast<float>(std::sqrt(sumSquares / static_cast<double>(chunk.samples.size())));
-                const float prevRms = audioLevelRms_.load(std::memory_order_relaxed);
-                const float smoothedRms = (prevRms * 0.75f) + (rms * 0.25f);
-                audioLevelRms_.store(std::clamp(smoothedRms, 0.0f, 1.0f), std::memory_order_relaxed);
-
-                const float prevPeak = audioPeak_.load(std::memory_order_relaxed);
-                const float decayedPeak = std::max(peak, prevPeak * 0.90f);
-                audioPeak_.store(std::clamp(decayedPeak, 0.0f, 1.0f), std::memory_order_relaxed);
-
-                const uint32_t channels = std::max<uint32_t>(1, chunk.channels);
-                const uint32_t sampleRate = std::max<uint32_t>(1, chunk.sampleRate);
-                const size_t frames = chunk.samples.size() / channels;
-                const int64_t chunkDuration100ns =
-                    static_cast<int64_t>(frames) * 10000000LL / static_cast<int64_t>(sampleRate);
-                const int64_t pts = audioPts100ns_.fetch_add(chunkDuration100ns);
-                if (!hasAnyActiveAudioTrack()) {
-                    return;
-                }
-
-                opusEncoder_.encode(chunk.samples,
-                                    static_cast<int>(sampleRate),
-                                    static_cast<int>(channels),
-                                    pts);
-            });
-            break;
         }
     }
+    startAudioCapture(selectedWindowProcessId);
 
     video::EncoderConfig config = videoConfig_;
     if (config.width == 0 || config.height == 0) {
@@ -385,6 +470,10 @@ void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
         activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
         hqAspectLocked_ = false;
     }
+}
+
+void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
+    audioSourceMode_ = mode;
 }
 
 bool VersusApp::goLive(const StartOptions &options) {
@@ -532,17 +621,17 @@ void VersusApp::stopLive() {
 
     stopRequested_.store(true);
     reconnecting_.store(false);
+    live_ = false;
+    videoTrackActive_.store(false);
+    pendingGlobalKeyframe_.store(false);
+    stopSignalingRecoveryThread();
+    stopVideoMaintenanceThread();
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
         signaling_.unpublish();
         signaling_.disconnect();
     }
-    stopSignalingRecoveryThread();
-    stopVideoMaintenanceThread();
     clearPeerSessions();
-    videoTrackActive_.store(false);
-    pendingGlobalKeyframe_.store(false);
-    live_ = false;
 }
 
 std::string VersusApp::getShareLink() const {
@@ -584,6 +673,122 @@ float VersusApp::getAudioLevelRms() const {
 
 float VersusApp::getAudioPeak() const {
     return audioPeak_.load(std::memory_order_relaxed);
+}
+
+StreamMetrics VersusApp::getStreamMetrics() const {
+    StreamMetrics metrics;
+
+    const int64_t startedMs = metricsStartMs_.load(std::memory_order_relaxed);
+    const int64_t elapsedMs = startedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - startedMs) : 1;
+    metrics.videoBitrateKbps = (static_cast<double>(videoBytesSent_.load(std::memory_order_relaxed)) * 8.0) /
+                               static_cast<double>(elapsedMs);
+    metrics.audioBitrateKbps = (static_cast<double>(audioBytesSent_.load(std::memory_order_relaxed)) * 8.0) /
+                               static_cast<double>(elapsedMs);
+    metrics.frameRate = (static_cast<double>(videoFramesSent_.load(std::memory_order_relaxed)) * 1000.0) /
+                        static_cast<double>(elapsedMs);
+    metrics.width = lastSentWidth_.load(std::memory_order_relaxed);
+    metrics.height = lastSentHeight_.load(std::memory_order_relaxed);
+    if (metrics.width <= 0 || metrics.height <= 0) {
+        metrics.width = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+        metrics.height = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+    }
+    metrics.codec = getVideoCodecName();
+    metrics.encoder = getVideoEncoderName();
+
+    const PeerCounts counts = collectPeerCounts();
+    metrics.peerCount = counts.total;
+    metrics.hqPeerCount = counts.hq;
+    metrics.lqPeerCount = counts.lq;
+    metrics.activeVideoPeers = counts.activeVideo;
+    metrics.activeAudioPeers = counts.activeAudio;
+    return metrics;
+}
+
+void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
+    const auto callback = [this](versus::audio::StreamChunk &&chunk) {
+        handleAudioChunk(std::move(chunk));
+    };
+
+    audio::CaptureResult result;
+    switch (audioSourceMode_) {
+        case AudioSourceMode::DefaultOutput:
+            result = audioCapture_.StartDefaultEndpointStreamCapture(
+                audio::DefaultAudioEndpoint::MultimediaOutput, callback);
+            break;
+        case AudioSourceMode::CommunicationsOutput:
+            result = audioCapture_.StartDefaultEndpointStreamCapture(
+                audio::DefaultAudioEndpoint::CommunicationsOutput, callback);
+            break;
+        case AudioSourceMode::DefaultMicrophone:
+            result = audioCapture_.StartDefaultEndpointStreamCapture(
+                audio::DefaultAudioEndpoint::MultimediaInput, callback);
+            break;
+        case AudioSourceMode::None:
+            spdlog::info("[Audio] Audio capture disabled by user setting");
+            return;
+        case AudioSourceMode::SelectedWindow:
+        default:
+            if (selectedWindowProcessId == 0) {
+                spdlog::warn("[Audio] Selected-window audio requested but no process id was available");
+                return;
+            }
+            result = audioCapture_.StartStreamCapture(selectedWindowProcessId, callback);
+            break;
+    }
+
+    if (result.success) {
+        spdlog::info("[Audio] Capture source={} sampleRate={} channels={} processLoopback={}",
+                     audioSourceModeName(audioSourceMode_),
+                     result.sampleRate,
+                     result.channels,
+                     result.usingProcessLoopback);
+    } else {
+        spdlog::warn("[Audio] Capture source={} failed: {}",
+                     audioSourceModeName(audioSourceMode_),
+                     result.error.empty() ? "unknown error" : result.error);
+    }
+}
+
+void VersusApp::handleAudioChunk(versus::audio::StreamChunk &&chunk) {
+    if (!live_) {
+        return;
+    }
+
+    std::vector<float> normalizedSamples = normalizeAudioForOpus(chunk);
+    if (normalizedSamples.empty()) {
+        return;
+    }
+
+    float peak = 0.0f;
+    double sumSquares = 0.0;
+    for (float sample : normalizedSamples) {
+        const float absSample = std::abs(sample);
+        peak = std::max(peak, absSample);
+        sumSquares += static_cast<double>(sample) * static_cast<double>(sample);
+    }
+    const float rms = static_cast<float>(std::sqrt(sumSquares / static_cast<double>(normalizedSamples.size())));
+    const float prevRms = audioLevelRms_.load(std::memory_order_relaxed);
+    const float smoothedRms = (prevRms * 0.75f) + (rms * 0.25f);
+    audioLevelRms_.store(std::clamp(smoothedRms, 0.0f, 1.0f), std::memory_order_relaxed);
+
+    const float prevPeak = audioPeak_.load(std::memory_order_relaxed);
+    const float decayedPeak = std::max(peak, prevPeak * 0.90f);
+    audioPeak_.store(std::clamp(decayedPeak, 0.0f, 1.0f), std::memory_order_relaxed);
+
+    constexpr uint32_t kOpusSampleRate = 48000;
+    constexpr uint32_t kOpusChannels = 2;
+    const size_t frames = normalizedSamples.size() / kOpusChannels;
+    const int64_t chunkDuration100ns =
+        static_cast<int64_t>(frames) * 10000000LL / static_cast<int64_t>(kOpusSampleRate);
+    const int64_t pts = audioPts100ns_.fetch_add(chunkDuration100ns);
+    if (!hasAnyActiveAudioTrack()) {
+        return;
+    }
+
+    opusEncoder_.encode(normalizedSamples,
+                        static_cast<int>(kOpusSampleRate),
+                        static_cast<int>(kOpusChannels),
+                        pts);
 }
 
 void VersusApp::setupCallbacks() {
@@ -731,11 +936,24 @@ void VersusApp::setupSignalingCallbacks() {
                 spdlog::info("[WebRTC] Peer connected {}:{}", peerPtr->uuid, peerPtr->session);
                 return;
             }
-            if (state == webrtc::ConnectionState::Disconnected || state == webrtc::ConnectionState::Failed) {
+            if (state == webrtc::ConnectionState::Disconnected) {
+                spdlog::warn("[WebRTC] Peer connection disconnected {}:{}; keeping session for ICE recovery",
+                             peerPtr->uuid,
+                             peerPtr->session);
+                return;
+            }
+            if (state == webrtc::ConnectionState::Closed) {
+                spdlog::info("[WebRTC] Peer connection closed {}:{}; removing session",
+                             peerPtr->uuid,
+                             peerPtr->session);
+                removePeerSession(peerPtr);
+                return;
+            }
+            if (state == webrtc::ConnectionState::Failed) {
                 spdlog::warn("[WebRTC] Peer connection degraded {}:{} state={}",
                              peerPtr->uuid,
                              peerPtr->session,
-                             state == webrtc::ConnectionState::Failed ? "failed" : "disconnected");
+                             "failed");
                 removePeerSession(peerPtr);
             }
         });
@@ -925,7 +1143,14 @@ void VersusApp::setupSignalingCallbacks() {
     });
 }
 
-bool VersusApp::isControlMessageAuthorized(const std::string &token) const {
+bool VersusApp::isControlMessageAuthorized(const std::shared_ptr<PeerSession> &peer, const std::string &token) const {
+    if (peer &&
+        peer->roomMode &&
+        peer->roleValid.load(std::memory_order_relaxed) &&
+        peer->role.load(std::memory_order_relaxed) == PeerRole::Director) {
+        return true;
+    }
+
     if (!remoteControlEnabled_.load(std::memory_order_relaxed)) {
         return false;
     }
@@ -1241,11 +1466,23 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         hqHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
     }
 
-    const bool peerWantsLq = assignedTier == StreamTier::LQ;
-    const int effectiveBitrate = peerWantsLq ? kLqBitrateKbps : videoConfig_.bitrate;
+    const int requestedVideoBitrate = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
+    const bool peerWantsLq =
+        assignedTier == StreamTier::LQ ||
+        (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps);
+    const int effectiveBitrate =
+        requestedVideoBitrate > 0 ? requestedVideoBitrate : (peerWantsLq ? kLqBitrateKbps : videoConfig_.bitrate);
     const int effectiveWidth = peerWantsLq ? kLqWidth : hqWidth;
     const int effectiveHeight = peerWantsLq ? kLqHeight : hqHeight;
     const int effectiveFps = peerWantsLq ? kLqFps : videoConfig_.frameRate;
+    const int64_t metricsStartedMs = metricsStartMs_.load(std::memory_order_relaxed);
+    const int64_t elapsedMs = metricsStartedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - metricsStartedMs) : 1;
+    const double aggregateVideoKbps =
+        (static_cast<double>(videoBytesSent_.load(std::memory_order_relaxed)) * 8.0) / static_cast<double>(elapsedMs);
+    const double aggregateAudioKbps =
+        (static_cast<double>(audioBytesSent_.load(std::memory_order_relaxed)) * 8.0) / static_cast<double>(elapsedMs);
+    const double sentFps =
+        (static_cast<double>(videoFramesSent_.load(std::memory_order_relaxed)) * 1000.0) / static_cast<double>(elapsedMs);
 
     nlohmann::json msg;
     nlohmann::json info;
@@ -1273,8 +1510,16 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     info["room_init_received"] = initReceived;
     info["assigned_role"] = peerRoleName(peerRole);
     info["assigned_tier"] = streamTierName(assignedTier);
-    info["peer_video_enabled"] = videoEnabled;
-    info["peer_audio_enabled"] = audioEnabled;
+    info["requested_video_bitrate_kbps"] = requestedVideoBitrate;
+    info["requested_audio_bitrate_kbps"] = peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed);
+    info["audio_source"] = audioSourceModeName(audioSourceMode_);
+    info["resolution"] = resolutionLabel(effectiveWidth, effectiveHeight);
+    info["video_bitrate_kbps"] = aggregateVideoKbps;
+    info["audio_bitrate_kbps"] = aggregateAudioKbps;
+    info["nacks_per_second"] = 0;
+    info["sent_fps"] = sentFps;
+    info["video_bytes_sent"] = videoBytesSent_.load(std::memory_order_relaxed);
+    info["audio_bytes_sent"] = audioBytesSent_.load(std::memory_order_relaxed);
     if (!peer->peerLabel.empty()) {
         info["peer_label"] = peer->peerLabel;
     }
@@ -1294,47 +1539,85 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         info["alpha_send"] = "vp9-dualtrack-v1";
         info["alpha_active"] = peer->alphaAllowed.load(std::memory_order_relaxed);
     }
-    msg["info"] = info;
-
     if (includeMiniStats) {
-        int peerCount = 0;
-        int hqPeers = 0;
-        int lqPeers = 0;
-        {
-            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            peerCount = static_cast<int>(peerSessions_.size());
-            for (const auto &entry : peerSessions_) {
-                if (!entry.second || !entry.second->client) {
-                    continue;
-                }
-                const PeerRouteState route{
-                    entry.second->roomMode,
-                    roomModeLqEnabled_.load(std::memory_order_relaxed),
-                    entry.second->initReceived.load(std::memory_order_relaxed),
-                    entry.second->roleValid.load(std::memory_order_relaxed),
-                    entry.second->role.load(std::memory_order_relaxed),
-                    entry.second->videoEnabled.load(std::memory_order_relaxed),
-                    entry.second->audioEnabled.load(std::memory_order_relaxed)};
-                if (!canSendVideo(route)) {
-                    continue;
-                }
-                const StreamTier tier = assignStreamTier(
-                    route.roomMode,
-                    route.roomModeLqEnabled,
-                    route.roleValid,
-                    route.role);
-                if (tier == StreamTier::HQ) {
-                    hqPeers++;
-                } else if (tier == StreamTier::LQ) {
-                    lqPeers++;
-                }
-            }
-        }
+        const PeerCounts counts = collectPeerCounts();
+        const int roomOnlyTier =
+            roomModeLqEnabled_.load(std::memory_order_relaxed) &&
+                    counts.roomGuests > 0 &&
+                    counts.roomScenes == 0 &&
+                    counts.roomNonGuestViewers == 0
+                ? 2
+                : 0;
+        info["room_only_tier"] = roomOnlyTier;
         nlohmann::json miniInfo;
-        miniInfo["out"] = {{"c", peerCount}, {"hq_peers", hqPeers}, {"lq_peers", lqPeers}};
+        miniInfo["out"] = {
+            {"c", counts.total},
+            {"peers", counts.total},
+            {"hq_peers", counts.hq},
+            {"lq_peers", counts.lq},
+            {"active_video", counts.activeVideo},
+            {"active_audio", counts.activeAudio},
+            {"kbps", aggregateVideoKbps + aggregateAudioKbps},
+            {"video_kbps", aggregateVideoKbps},
+            {"audio_kbps", aggregateAudioKbps},
+            {"fps", sentFps},
+            {"width", effectiveWidth},
+            {"height", effectiveHeight},
+            {"codec", peerWantsLq ? "H.264" : videoCodecName(videoConfig_.codec)}};
+        miniInfo["rot"] = roomOnlyTier;
         msg["miniInfo"] = miniInfo;
+        msg["stats"] = miniInfo["out"];
     }
 
+    msg["info"] = info;
+    peer->client->sendDataMessage(msg.dump());
+}
+
+void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer || !peer->client || !peer->client->isDataChannelOpen()) {
+        return;
+    }
+
+    int width = lastSentWidth_.load(std::memory_order_relaxed);
+    int height = lastSentHeight_.load(std::memory_order_relaxed);
+    if (width <= 0 || height <= 0) {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        width = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+        height = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+    }
+
+    const int64_t metricsStartedMs = metricsStartMs_.load(std::memory_order_relaxed);
+    const int64_t elapsedMs = metricsStartedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - metricsStartedMs) : 1;
+    const double aggregateVideoKbps =
+        (static_cast<double>(videoBytesSent_.load(std::memory_order_relaxed)) * 8.0) / static_cast<double>(elapsedMs);
+    const double aggregateAudioKbps =
+        (static_cast<double>(audioBytesSent_.load(std::memory_order_relaxed)) * 8.0) / static_cast<double>(elapsedMs);
+    const PeerCounts counts = collectPeerCounts();
+    const int roomOnlyTier =
+        roomModeLqEnabled_.load(std::memory_order_relaxed) &&
+                counts.roomGuests > 0 &&
+                counts.roomScenes == 0 &&
+                counts.roomNonGuestViewers == 0
+            ? 2
+            : 0;
+
+    nlohmann::json stats;
+    stats["label"] = startOptions_.label.empty() ? "Game Capture" : startOptions_.label;
+    stats["video_bitrate_kbps"] = aggregateVideoKbps;
+    stats["audio_bitrate_kbps"] = aggregateAudioKbps;
+    stats["available_outgoing_bitrate_kbps"] = videoConfig_.bitrate;
+    stats["nacks_per_second"] = 0;
+    stats["resolution"] = resolutionLabel(width, height);
+    stats["video_encoder"] = getVideoEncoderName();
+    stats["video_codec"] = getVideoCodecName();
+    stats["room_only_tier"] = roomOnlyTier;
+    stats["peers"] = counts.total;
+    stats["active_video"] = counts.activeVideo;
+    stats["active_audio"] = counts.activeAudio;
+
+    const std::string key = streamId_.empty() ? std::string("game-capture") : streamId_;
+    nlohmann::json msg;
+    msg["remoteStats"][key] = stats;
     peer->client->sendDataMessage(msg.dump());
 }
 
@@ -1358,18 +1641,25 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         if (!msg.contains(key)) {
             return defaultValue;
         }
-        if (msg[key].is_number_integer()) {
-            return msg[key].get<int>();
-        }
-        if (msg[key].is_string()) {
-            try {
-                return std::stoi(msg[key].get<std::string>());
-            } catch (...) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
+        return jsonIntLike(msg[key], defaultValue);
     };
+    auto parseRateLimitValue = [](const nlohmann::json &value, int defaultValue = -1) {
+        if (value.is_boolean()) {
+            return value.get<bool>() ? defaultValue : -1;
+        }
+        return jsonIntLike(value, defaultValue);
+    };
+
+    std::string action;
+    const nlohmann::json *actionValue = nullptr;
+    if (msg.contains("action") && msg["action"].is_string()) {
+        action = toLowerCopy(msg["action"].get<std::string>());
+        if (msg.contains("value")) {
+            actionValue = &msg["value"];
+        }
+    }
+    const bool actionIsVideo = action == "video" || action == "camera";
+    const bool actionIsAudio = action == "audio" || action == "mic";
 
     const nlohmann::json *infoPtr = nullptr;
     if (msg.contains("info") && msg["info"].is_object()) {
@@ -1464,12 +1754,26 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         msg.contains("scene") ||
         msg.contains("director") ||
         msg.contains("guest") ||
-        msg.contains("viewer");
+        msg.contains("viewer") ||
+        msg.contains("video") ||
+        msg.contains("audio") ||
+        actionIsVideo ||
+        actionIsAudio;
     const nlohmann::json *initPtr = nullptr;
+    const bool infoHasInitFields = infoPtr &&
+        (infoPtr->contains("role") ||
+         infoPtr->contains("scene") ||
+         infoPtr->contains("director") ||
+         infoPtr->contains("guest") ||
+         infoPtr->contains("viewer") ||
+         infoPtr->contains("video") ||
+         infoPtr->contains("audio"));
     if (msg.contains("init") && msg["init"].is_object()) {
         initPtr = &msg["init"];
     } else if (hasInlineInitFields) {
         initPtr = &msg;
+    } else if (infoHasInitFields) {
+        initPtr = infoPtr;
     } else if (!peer->roomMode && infoPtr) {
         // For direct viewers, receiving the standard VDO.Ninja info handshake is
         // enough to classify the peer as a viewer and negotiate media.
@@ -1519,7 +1823,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             roleValid = true;
         }
 
-        const bool hasExplicitMediaSignal = init.contains("video") || init.contains("audio");
+        const bool hasExplicitMediaSignal = init.contains("video") || init.contains("audio") || actionIsVideo || actionIsAudio;
         const bool invalidExplicitRoleSignal = hasExplicitRoleSignal && !roleValid;
         if (invalidExplicitRoleSignal) {
             spdlog::warn("[App] Ignoring invalid peer init role {}:{}",
@@ -1539,13 +1843,23 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             return;
         }
 
-        bool videoEnabled = true;
-        bool audioEnabled = true;
+        const bool currentVideoEnabled = peer->videoEnabled.load(std::memory_order_relaxed);
+        const bool currentAudioEnabled = peer->audioEnabled.load(std::memory_order_relaxed);
+        bool videoEnabled = peer->initReceived.load(std::memory_order_relaxed) ? currentVideoEnabled : true;
+        bool audioEnabled = peer->initReceived.load(std::memory_order_relaxed) ? currentAudioEnabled : true;
         if (init.contains("video")) {
-            videoEnabled = jsonBoolLike(init["video"], true);
+            videoEnabled = jsonToggleBool(init["video"], currentVideoEnabled, videoEnabled);
         }
         if (init.contains("audio")) {
-            audioEnabled = jsonBoolLike(init["audio"], true);
+            audioEnabled = jsonToggleBool(init["audio"], currentAudioEnabled, audioEnabled);
+        }
+        if (actionIsVideo) {
+            videoEnabled = actionValue ? jsonToggleBool(*actionValue, currentVideoEnabled, !currentVideoEnabled)
+                                       : !currentVideoEnabled;
+        }
+        if (actionIsAudio) {
+            audioEnabled = actionValue ? jsonToggleBool(*actionValue, currentAudioEnabled, !currentAudioEnabled)
+                                       : !currentAudioEnabled;
         }
 
         if (init.contains("label") && init["label"].is_string()) {
@@ -1618,65 +1932,145 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         applyPeerMediaPlan(peer, hasExplicitRoleSignal ? "peer-init" : "peer-media-update");
     }
 
-    const bool requestKeyframe = msg.contains("keyframe") ? jsonBoolLike(msg["keyframe"], false) : false;
+    const bool requestKeyframe = (msg.contains("keyframe") ? jsonBoolLike(msg["keyframe"], false) : false) ||
+                                 action == "forcekeyframe";
     if (requestKeyframe) {
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
     }
 
-    const int requestedBitrate = parseIntValue("targetBitrate", 0);
+    bool directorMediaStateChanged = false;
+    bool directorMediaStateAuthorized = true;
+    if (msg.contains("remoteVideoMuted") || msg.contains("volume")) {
+        directorMediaStateAuthorized = isControlMessageAuthorized(peer, "");
+    }
+    if (msg.contains("remoteVideoMuted")) {
+        if (!directorMediaStateAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized remoteVideoMuted from {}", peer->uuid);
+            nlohmann::json rejected;
+            rejected["rejected"] = "remoteVideoMuted";
+            peer->client->sendDataMessage(rejected.dump());
+        } else {
+            const bool muted = jsonBoolLike(msg["remoteVideoMuted"], false);
+            peer->videoEnabled.store(!muted, std::memory_order_relaxed);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            nlohmann::json confirm;
+            confirm["videoMuted"] = muted;
+            peer->client->sendDataMessage(confirm.dump());
+            directorMediaStateChanged = true;
+        }
+    }
+    if (msg.contains("volume")) {
+        if (!directorMediaStateAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized volume control from {}", peer->uuid);
+            nlohmann::json rejected;
+            rejected["rejected"] = "volume";
+            peer->client->sendDataMessage(rejected.dump());
+        } else {
+            const int volume = jsonIntLike(msg["volume"], 100);
+            const bool muted = volume <= 0;
+            peer->audioEnabled.store(!muted, std::memory_order_relaxed);
+            nlohmann::json confirm;
+            confirm["muteState"] = muted;
+            peer->client->sendDataMessage(confirm.dump());
+            directorMediaStateChanged = true;
+        }
+    }
+    if (directorMediaStateChanged) {
+        if (peer->initReceived.load(std::memory_order_relaxed)) {
+            applyPeerMediaPlan(peer, "director-media-control");
+        }
+        sendPeerDataInfo(peer, true);
+    }
+
+    bool peerMediaRateChanged = false;
+    if (msg.contains("bitrate")) {
+        const int requestedPeerBitrate = parseRateLimitValue(msg["bitrate"], -1);
+        peer->requestedVideoBitrateKbps.store(requestedPeerBitrate, std::memory_order_relaxed);
+        peerMediaRateChanged = true;
+        if (requestedPeerBitrate == 0) {
+            peer->videoEnabled.store(false, std::memory_order_relaxed);
+        } else if (requestedPeerBitrate > 0 || requestedPeerBitrate < 0) {
+            peer->videoEnabled.store(true, std::memory_order_relaxed);
+        }
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+    }
+    if (msg.contains("audioBitrate") || msg.contains("targetAudioBitrate")) {
+        const nlohmann::json &audioValue = msg.contains("audioBitrate") ? msg["audioBitrate"] : msg["targetAudioBitrate"];
+        const int requestedAudioBitrate = parseRateLimitValue(audioValue, -1);
+        peer->requestedAudioBitrateKbps.store(requestedAudioBitrate, std::memory_order_relaxed);
+        peerMediaRateChanged = true;
+        if (requestedAudioBitrate == 0) {
+            peer->audioEnabled.store(false, std::memory_order_relaxed);
+        } else if (requestedAudioBitrate > 0 || requestedAudioBitrate < 0) {
+            peer->audioEnabled.store(true, std::memory_order_relaxed);
+        }
+    }
+    if (peerMediaRateChanged) {
+        nlohmann::json ack;
+        ack["ack"] = "rateLimit";
+        ack["ok"] = true;
+        ack["bitrate"] = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
+        ack["audioBitrate"] = peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed);
+        peer->client->sendDataMessage(ack.dump());
+        if (peer->initReceived.load(std::memory_order_relaxed)) {
+            applyPeerMediaPlan(peer, "peer-rate-limit");
+            sendPeerDataInfo(peer, true);
+        }
+    }
+
+    int requestedBitrate = parseIntValue("targetBitrate", 0);
     int requestedWidth = 0;
     int requestedHeight = 0;
     int requestedFps = 0;
+    if (action == "bitrate" && actionValue) {
+        requestedBitrate = jsonIntLike(*actionValue, 0);
+    }
     if (msg.contains("requestResolution") && msg["requestResolution"].is_object()) {
         const auto &resolution = msg["requestResolution"];
         if (resolution.contains("w")) {
-            if (resolution["w"].is_number_integer()) {
-                requestedWidth = resolution["w"].get<int>();
-            } else if (resolution["w"].is_string()) {
-                try {
-                    requestedWidth = std::stoi(resolution["w"].get<std::string>());
-                } catch (...) {
-                    requestedWidth = 0;
-                }
-            }
+            requestedWidth = jsonIntLike(resolution["w"], 0);
         }
         if (resolution.contains("h")) {
-            if (resolution["h"].is_number_integer()) {
-                requestedHeight = resolution["h"].get<int>();
-            } else if (resolution["h"].is_string()) {
-                try {
-                    requestedHeight = std::stoi(resolution["h"].get<std::string>());
-                } catch (...) {
-                    requestedHeight = 0;
-                }
-            }
+            requestedHeight = jsonIntLike(resolution["h"], 0);
         }
         if (resolution.contains("f")) {
-            if (resolution["f"].is_number_integer()) {
-                requestedFps = resolution["f"].get<int>();
-            } else if (resolution["f"].is_string()) {
-                try {
-                    requestedFps = std::stoi(resolution["f"].get<std::string>());
-                } catch (...) {
-                    requestedFps = 0;
-                }
-            }
+            requestedFps = jsonIntLike(resolution["f"], 0);
         } else if (resolution.contains("fps")) {
-            if (resolution["fps"].is_number_integer()) {
-                requestedFps = resolution["fps"].get<int>();
-            } else if (resolution["fps"].is_string()) {
-                try {
-                    requestedFps = std::stoi(resolution["fps"].get<std::string>());
-                } catch (...) {
-                    requestedFps = 0;
-                }
+            requestedFps = jsonIntLike(resolution["fps"], 0);
+        }
+    } else if (msg.contains("requestResolution") && msg["requestResolution"].is_string()) {
+        parseResolutionString(msg["requestResolution"].get<std::string>(), requestedWidth, requestedHeight);
+    }
+    if (action == "requestresolution" && actionValue) {
+        if (actionValue->is_string()) {
+            parseResolutionString(actionValue->get<std::string>(), requestedWidth, requestedHeight);
+        } else if (actionValue->is_object()) {
+            if (actionValue->contains("w")) {
+                requestedWidth = jsonIntLike((*actionValue)["w"], requestedWidth);
+            }
+            if (actionValue->contains("h")) {
+                requestedHeight = jsonIntLike((*actionValue)["h"], requestedHeight);
+            }
+            if (actionValue->contains("f")) {
+                requestedFps = jsonIntLike((*actionValue)["f"], requestedFps);
+            } else if (actionValue->contains("fps")) {
+                requestedFps = jsonIntLike((*actionValue)["fps"], requestedFps);
             }
         }
+    }
+    if ((action == "setwidth" || action == "width") && actionValue) {
+        requestedWidth = jsonIntLike(*actionValue, requestedWidth);
+    }
+    if ((action == "setheight" || action == "height") && actionValue) {
+        requestedHeight = jsonIntLike(*actionValue, requestedHeight);
     }
 
     const bool hasControlRequest =
         requestedBitrate > 0 ||
-        (requestedWidth > 0 && requestedHeight > 0) ||
+        requestedWidth > 0 ||
+        requestedHeight > 0 ||
         requestedFps > 0;
 
     if (hasControlRequest) {
@@ -1703,7 +2097,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             ack["requestResolution"] = {{"w", requestedWidth}, {"h", requestedHeight}, {"f", requestedFps}};
         }
 
-        if (!isControlMessageAuthorized(token)) {
+        if (!isControlMessageAuthorized(peer, token)) {
             spdlog::warn("[App] Rejected unauthorized data-channel control message from {}", peer->uuid);
             ack["ok"] = false;
             ack["error"] = "unauthorized";
@@ -1721,8 +2115,58 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
     }
 
-    if (msg.value("requestStats", false) || msg.value("getStats", false)) {
+    if (msg.contains("requestStatsContinuous")) {
+        const bool enabled = jsonBoolLike(msg["requestStatsContinuous"], false);
+        peer->statsContinuous.store(enabled, std::memory_order_relaxed);
+        if (enabled) {
+            sendPeerDataInfo(peer, true);
+            sendPeerRemoteStats(peer);
+        }
+    }
+
+    const bool statsRequested = msg.value("requestStats", false) ||
+                                msg.value("getStats", false) ||
+                                action == "requeststats" ||
+                                action == "getstats" ||
+                                action == "getdetails";
+    if (statsRequested) {
         sendPeerDataInfo(peer, true);
+        sendPeerRemoteStats(peer);
+        nlohmann::json response = nlohmann::json::object();
+        if (msg.contains("id")) {
+            response["id"] = msg["id"];
+        }
+        if (msg.contains("callbackID")) {
+            response["callbackID"] = msg["callbackID"];
+        }
+        if (msg.contains("requestID")) {
+            response["requestID"] = msg["requestID"];
+        }
+        if (!response.empty()) {
+            const int64_t metricsStartedMs = metricsStartMs_.load(std::memory_order_relaxed);
+            const int64_t elapsedMs = metricsStartedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - metricsStartedMs) : 1;
+            const double aggregateVideoKbps =
+                (static_cast<double>(videoBytesSent_.load(std::memory_order_relaxed)) * 8.0) /
+                static_cast<double>(elapsedMs);
+            const double aggregateAudioKbps =
+                (static_cast<double>(audioBytesSent_.load(std::memory_order_relaxed)) * 8.0) /
+                static_cast<double>(elapsedMs);
+            const PeerCounts counts = collectPeerCounts();
+            response["ok"] = true;
+            response["action"] = action.empty() ? "getStats" : action;
+            response["stats"] = {
+                {"peers", counts.total},
+                {"hq_peers", counts.hq},
+                {"lq_peers", counts.lq},
+                {"active_video", counts.activeVideo},
+                {"active_audio", counts.activeAudio},
+                {"video_kbps", aggregateVideoKbps},
+                {"audio_kbps", aggregateAudioKbps},
+                {"width", lastSentWidth_.load(std::memory_order_relaxed)},
+                {"height", lastSentHeight_.load(std::memory_order_relaxed)},
+                {"codec", videoCodecName(videoConfig_.codec)}};
+            peer->client->sendDataMessage(response.dump());
+        }
     }
 }
 
@@ -1760,13 +2204,19 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 continue;
             }
 
+            const int requestedVideoBitrate = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
+            if (requestedVideoBitrate == 0) {
+                continue;
+            }
             const StreamTier tier = assignStreamTier(
                 route.roomMode,
                 route.roomModeLqEnabled,
                 route.roleValid,
                 route.role);
             peer->assignedTier.store(tier, std::memory_order_relaxed);
-            if (tier == StreamTier::HQ) {
+            if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
+                lqPeers.push_back(peer);
+            } else if (tier == StreamTier::HQ) {
                 hqPeers.push_back(peer);
             } else if (tier == StreamTier::LQ) {
                 lqPeers.push_back(peer);
@@ -2072,6 +2522,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
     bool sentAny = false;
     bool sentKeyframe = false;
+    uint64_t videoBytesSentThisCall = 0;
+    int sentWidth = 0;
+    int sentHeight = 0;
 
     if (haveHqPacket) {
         webrtc::EncodedVideoPacket packet;
@@ -2087,6 +2540,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             }
             if (peer->client->sendVideo(packet)) {
                 sentAny = true;
+                videoBytesSentThisCall += packet.data.size();
+                sentWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+                sentHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
                 if (packet.isKeyframe) {
                     sentKeyframe = true;
                     peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
@@ -2160,6 +2616,11 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             }
             if (peer->client->sendVideo(packet)) {
                 sentAny = true;
+                videoBytesSentThisCall += packet.data.size();
+                if (sentWidth <= 0 || sentHeight <= 0) {
+                    sentWidth = kLqWidth;
+                    sentHeight = kLqHeight;
+                }
                 if (packet.isKeyframe) {
                     sentKeyframe = true;
                     peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
@@ -2169,6 +2630,12 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     }
 
     if (sentAny) {
+        videoBytesSent_.fetch_add(videoBytesSentThisCall, std::memory_order_relaxed);
+        videoFramesSent_.fetch_add(1, std::memory_order_relaxed);
+        if (sentWidth > 0 && sentHeight > 0) {
+            lastSentWidth_.store(sentWidth, std::memory_order_relaxed);
+            lastSentHeight_.store(sentHeight, std::memory_order_relaxed);
+        }
         lastVideoSendMs_.store(nowMs, std::memory_order_relaxed);
         if (sentKeyframe) {
             lastKeyframeSendMs_.store(nowMs, std::memory_order_relaxed);
@@ -2349,7 +2816,11 @@ void VersusApp::startVideoMaintenanceThread() {
                     }
                 }
                 for (const auto &peer : peers) {
-                    sendPeerDataInfo(peer, false);
+                    const bool continuousStats = peer->statsContinuous.load(std::memory_order_relaxed);
+                    sendPeerDataInfo(peer, continuousStats);
+                    if (continuousStats) {
+                        sendPeerRemoteStats(peer);
+                    }
                 }
                 lastInfoBroadcastMs = nowMs;
             }
@@ -2496,6 +2967,53 @@ bool VersusApp::hasAnyActiveAudioTrack() const {
     return false;
 }
 
+VersusApp::PeerCounts VersusApp::collectPeerCounts() const {
+    PeerCounts counts;
+    std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+    counts.total = static_cast<int>(peerSessions_.size());
+    for (const auto &entry : peerSessions_) {
+        if (!entry.second || !entry.second->client) {
+            continue;
+        }
+        const PeerRouteState route{
+            entry.second->roomMode,
+            roomModeLqEnabled_.load(std::memory_order_relaxed),
+            entry.second->initReceived.load(std::memory_order_relaxed),
+            entry.second->roleValid.load(std::memory_order_relaxed),
+            entry.second->role.load(std::memory_order_relaxed),
+            entry.second->videoEnabled.load(std::memory_order_relaxed),
+            entry.second->audioEnabled.load(std::memory_order_relaxed)};
+
+        if (route.roomMode && route.initReceived && route.roleValid) {
+            if (route.role == PeerRole::Guest) {
+                counts.roomGuests++;
+            } else if (route.role == PeerRole::Scene) {
+                counts.roomScenes++;
+            } else {
+                counts.roomNonGuestViewers++;
+            }
+        }
+
+        if (entry.second->client->hasActiveVideoTrack() && canSendVideo(route)) {
+            counts.activeVideo++;
+            const StreamTier tier = assignStreamTier(
+                route.roomMode,
+                route.roomModeLqEnabled,
+                route.roleValid,
+                route.role);
+            if (tier == StreamTier::HQ) {
+                counts.hq++;
+            } else if (tier == StreamTier::LQ) {
+                counts.lq++;
+            }
+        }
+        if (entry.second->client->hasActiveAudioTrack() && canSendAudio(route)) {
+            counts.activeAudio++;
+        }
+    }
+    return counts;
+}
+
 void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet) {
     std::vector<std::shared_ptr<PeerSession>> peers;
     {
@@ -2520,11 +3038,20 @@ void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket 
         }
     }
 
+    uint64_t bytesSent = 0;
+    int packetsSent = 0;
     for (const auto &peer : peers) {
         if (!peer || !peer->client) {
             continue;
         }
-        peer->client->sendAudio(packet);
+        if (peer->client->sendAudio(packet)) {
+            bytesSent += packet.data.size();
+            packetsSent++;
+        }
+    }
+    if (bytesSent > 0) {
+        audioBytesSent_.fetch_add(bytesSent, std::memory_order_relaxed);
+        audioPacketsSent_.fetch_add(static_cast<uint64_t>(packetsSent), std::memory_order_relaxed);
     }
 }
 

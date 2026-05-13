@@ -24,6 +24,7 @@ function parseArgs(argv) {
     bitrateKbps: 4000,
     requestResolution: '',
     remoteToken: 'control-token',
+    viewerBaseUrl: 'https://vdo.ninja/',
     publisherPath: '',
     videoEncoder: '',
     ffmpegPath: '',
@@ -61,6 +62,8 @@ function parseArgs(argv) {
       args.requestResolution = arg.slice('--request-resolution='.length).trim();
     } else if (arg.startsWith('--remote-token=')) {
       args.remoteToken = arg.slice('--remote-token='.length);
+    } else if (arg.startsWith('--viewer-base-url=')) {
+      args.viewerBaseUrl = arg.slice('--viewer-base-url='.length);
     } else if (arg.startsWith('--publisher-path=')) {
       args.publisherPath = arg.slice('--publisher-path='.length);
     } else if (arg.startsWith('--video-encoder=')) {
@@ -138,7 +141,7 @@ function buildViewerUrl(config) {
   if (config.password) {
     query.set('password', config.password);
   }
-  return `https://vdo.ninja/?${query.toString()}`;
+  return `${config.viewerBaseUrl}?${query.toString()}`;
 }
 
 function spawnPublisher(config) {
@@ -324,9 +327,12 @@ async function installControlAckProbe(page, uuid) {
     }
 
     const rpc = sessionObj.rpcs[peerUuid];
-    const probe = window.__gameCaptureControlProbe || { acks: [] };
+    const probe = window.__gameCaptureControlProbe || { acks: [], messages: [] };
     if (!Array.isArray(probe.acks)) {
       probe.acks = [];
+    }
+    if (!Array.isArray(probe.messages)) {
+      probe.messages = [];
     }
     window.__gameCaptureControlProbe = probe;
 
@@ -340,6 +346,14 @@ async function installControlAckProbe(page, uuid) {
       }
       try {
         const parsed = JSON.parse(payload);
+        probe.messages.push({
+          ts: Date.now(),
+          channel: channelName,
+          message: parsed
+        });
+        if (probe.messages.length > 100) {
+          probe.messages.shift();
+        }
         if (parsed && parsed.ack === 'control') {
           probe.acks.push({
             ts: Date.now(),
@@ -421,6 +435,76 @@ async function waitForControlAck(page, timeoutMs, expectedBitrate) {
   }
 
   return { ok: false, stage: 'control-ack', state: lastState };
+}
+
+async function waitForRateLimitAck(page, timeoutMs, expectedVideoBitrate, expectedAudioBitrate) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate(({ videoBitrate, audioBitrate }) => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const success = messages.find((entry) => {
+        const msg = entry && entry.message;
+        if (!msg || msg.ack !== 'rateLimit' || !(msg.ok === true || msg.ok === 'true' || msg.ok === 1)) {
+          return false;
+        }
+        return Number(msg.bitrate) === Number(videoBitrate) &&
+          Number(msg.audioBitrate) === Number(audioBitrate);
+      }) || null;
+      return {
+        messageCount: messages.length,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        success
+      };
+    }, { videoBitrate: expectedVideoBitrate, audioBitrate: expectedAudioBitrate });
+
+    if (lastState && lastState.success) {
+      return { ok: true, state: lastState };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'rate-limit-ack', state: lastState };
+}
+
+async function waitForRemoteStats(page, timeoutMs) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate(() => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const success = messages.find((entry) => {
+        const msg = entry && entry.message;
+        if (!msg || !msg.remoteStats || !Object.keys(msg.remoteStats).length) {
+          return false;
+        }
+        return Object.values(msg.remoteStats).some((stats) => {
+          if (!stats || typeof stats !== 'object') {
+            return false;
+          }
+          const bitrate = Number(stats.video_bitrate_kbps);
+          const resolution = String(stats.resolution || '');
+          const encoder = String(stats.video_encoder || '');
+          return Number.isFinite(bitrate) &&
+            bitrate >= 0 &&
+            /\d+\s*x\s*\d+/i.test(resolution) &&
+            encoder.length > 0;
+        });
+      }) || null;
+      return {
+        messageCount: messages.length,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        success
+      };
+    });
+
+    if (lastState && lastState.success) {
+      return { ok: true, state: lastState };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'remote-stats', state: lastState };
 }
 
 async function main() {
@@ -531,6 +615,38 @@ async function main() {
       return;
     }
     console.log(`[CONTROL] Control ack PASS (${JSON.stringify(ackResult.state.success.message)})`);
+
+    const rateLimitVideoKbps = 500;
+    const rateLimitAudioKbps = 16;
+    const rateLimitSend = await sendControlMessage(page, { bitrate: rateLimitVideoKbps, audioBitrate: rateLimitAudioKbps });
+    if (!rateLimitSend.ok) {
+      failure = { stage: 'send-rate-limit', state: rateLimitSend };
+      return;
+    }
+    const rateLimitAck = await waitForRateLimitAck(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      rateLimitVideoKbps,
+      rateLimitAudioKbps
+    );
+    if (!rateLimitAck.ok) {
+      failure = rateLimitAck;
+      return;
+    }
+    console.log(`[CONTROL] VDO rate-limit ack PASS (${JSON.stringify(rateLimitAck.state.success.message)})`);
+
+    const statsSend = await sendControlMessage(page, { requestStatsContinuous: true });
+    if (!statsSend.ok) {
+      failure = { stage: 'send-continuous-stats', state: statsSend };
+      return;
+    }
+    const remoteStats = await waitForRemoteStats(page, Math.max(5000, Math.floor(config.timeoutMs / 3)));
+    if (!remoteStats.ok) {
+      failure = remoteStats;
+      return;
+    }
+    console.log('[CONTROL] VDO requestStatsContinuous remoteStats PASS');
+    await sendControlMessage(page, { requestStatsContinuous: false });
 
     await wait(config.holdMs);
     result = await waitForDecodedVideo(page, config.timeoutMs, 'post-control-video');

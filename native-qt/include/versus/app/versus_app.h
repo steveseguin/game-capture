@@ -22,18 +22,41 @@
 
 namespace versus::app {
 
+enum class AudioSourceMode {
+    SelectedWindow,
+    DefaultOutput,
+    CommunicationsOutput,
+    DefaultMicrophone,
+    None
+};
+
+struct StreamMetrics {
+    double videoBitrateKbps = 0.0;
+    double audioBitrateKbps = 0.0;
+    double frameRate = 0.0;
+    int width = 0;
+    int height = 0;
+    std::string codec;
+    std::string encoder;
+    int peerCount = 0;
+    int hqPeerCount = 0;
+    int lqPeerCount = 0;
+    int activeVideoPeers = 0;
+    int activeAudioPeers = 0;
+};
+
 struct StartOptions {
     std::string room;
     std::string password;
     std::string label;
     std::string streamId;
-    std::string server = "wss://wss.vdo.ninja";
+    std::string server = "wss://wss.vdo.ninja:443";
     std::string salt = "vdo.ninja";
     int maxViewers = 10;
     bool roomModeLqEnabled = true;
     bool remoteControlEnabled = false;
     std::string remoteControlToken;
-    webrtc::IceMode iceMode = webrtc::IceMode::All;
+    webrtc::IceMode iceMode = webrtc::IceMode::StunOnly;
 };
 
 class VersusApp {
@@ -55,11 +78,13 @@ class VersusApp {
     void stopLive();
 
     void setVideoConfig(const versus::video::EncoderConfig &config);
+    void setAudioSourceMode(AudioSourceMode mode);
     std::string getVideoEncoderName() const;
     std::string getVideoCodecName() const;
     bool isHardwareVideoEncoder() const;
     float getAudioLevelRms() const;
     float getAudioPeak() const;
+    StreamMetrics getStreamMetrics() const;
 
     bool isLive() const { return live_; }
 
@@ -68,7 +93,19 @@ class VersusApp {
 
   private:
     struct PeerSession;
+    struct PeerCounts {
+        int total = 0;
+        int hq = 0;
+        int lq = 0;
+        int activeVideo = 0;
+        int activeAudio = 0;
+        int roomGuests = 0;
+        int roomScenes = 0;
+        int roomNonGuestViewers = 0;
+    };
     void setupCallbacks();
+    void startAudioCapture(uint32_t selectedWindowProcessId);
+    void handleAudioChunk(versus::audio::StreamChunk &&chunk);
     void setupSignalingCallbacks();
     void startSignalingRecovery();
     void stopSignalingRecoveryThread();
@@ -83,6 +120,7 @@ class VersusApp {
     void handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message);
     bool tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message);
     void sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool includeMiniStats);
+    void sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer);
     bool sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason);
     void applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source);
     void applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, const char *reason);
@@ -95,7 +133,7 @@ class VersusApp {
     void pruneTimedOutPeerInits(int64_t nowMs);
     bool ensureLqEncoderInitializedLocked();
     void shutdownLqEncoderLocked();
-    bool isControlMessageAuthorized(const std::string &token) const;
+    bool isControlMessageAuthorized(const std::shared_ptr<PeerSession> &peer, const std::string &token) const;
     bool encodeAndSendVideoFrame(const versus::video::CapturedFrame &frame, bool forceKeyframe);
     bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
     bool getCachedVideoFrame(versus::video::CapturedFrame &frame);
@@ -108,6 +146,7 @@ class VersusApp {
     void removePeerSession(const std::shared_ptr<PeerSession> &peer);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
+    PeerCounts collectPeerCounts() const;
 
     bool live_ = false;
     bool capturing_ = false;
@@ -127,6 +166,13 @@ class VersusApp {
     std::atomic<int64_t> audioPts100ns_{0};
     std::atomic<float> audioLevelRms_{0.0f};
     std::atomic<float> audioPeak_{0.0f};
+    std::atomic<uint64_t> videoBytesSent_{0};
+    std::atomic<uint64_t> audioBytesSent_{0};
+    std::atomic<uint64_t> videoFramesSent_{0};
+    std::atomic<uint64_t> audioPacketsSent_{0};
+    std::atomic<int64_t> metricsStartMs_{0};
+    std::atomic<int> lastSentWidth_{0};
+    std::atomic<int> lastSentHeight_{0};
     std::atomic<int> maxViewers_{10};
     std::atomic<bool> roomModeLqEnabled_{true};
     std::atomic<bool> remoteControlEnabled_{false};
@@ -137,7 +183,7 @@ class VersusApp {
     std::atomic<int64_t> lastCpuWarningMs_{0};
     std::atomic<int> softwareOverloadSamples_{0};
     std::vector<versus::webrtc::IceServerConfig> resolvedIceServers_;
-    versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::All;
+    versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::StunOnly;
     std::thread signalingRecoveryThread_;
     std::thread videoMaintenanceThread_;
     std::atomic<bool> videoMaintenanceRunning_{false};
@@ -182,6 +228,9 @@ class VersusApp {
         std::atomic<bool> sawPeerInfoMessage{false};
         std::atomic<bool> waitingForKeyframe{true};
         std::atomic<bool> dataChannelOpen{false};
+        std::atomic<bool> statsContinuous{false};
+        std::atomic<int> requestedVideoBitrateKbps{-1};
+        std::atomic<int> requestedAudioBitrateKbps{-1};
         std::atomic<bool> renegotiationQueued{false};
         std::mutex mediaPlanMutex;
         std::vector<PendingCandidate> pendingCandidates;
@@ -210,6 +259,7 @@ class VersusApp {
     int64_t softwareExternalFailWindowStartMs_ = 0;
     std::atomic<bool> lqEncoderInitialized_{false};
     bool roomCodecWarningEmitted_ = false;
+    AudioSourceMode audioSourceMode_ = AudioSourceMode::SelectedWindow;
 
     versus::video::WindowCapture windowCapture_;
     versus::video::VideoEncoder videoEncoder_;

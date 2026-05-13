@@ -281,6 +281,29 @@ CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t processId, Str
     return result;
 }
 
+CaptureResult WindowAudioCaptureCore::StartDefaultEndpointCapture(DefaultAudioEndpoint endpoint) {
+    StopCapture();
+    return StartDefaultEndpoint(endpoint);
+}
+
+CaptureResult WindowAudioCaptureCore::StartDefaultEndpointStreamCapture(DefaultAudioEndpoint endpoint, StreamCallback callback) {
+    StopCapture();
+
+    {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        streamCallback_ = std::move(callback);
+    }
+    streaming_.store(true);
+
+    CaptureResult result = StartDefaultEndpoint(endpoint);
+    if (!result.success) {
+        std::lock_guard<std::mutex> lock(callbackMutex_);
+        streamCallback_ = nullptr;
+        streaming_.store(false);
+    }
+    return result;
+}
+
 void WindowAudioCaptureCore::StopCapture() {
     std::thread threadToJoin;
     {
@@ -502,6 +525,155 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
     return result;
 }
 
+CaptureResult WindowAudioCaptureCore::StartDefaultEndpoint(DefaultAudioEndpoint endpoint) {
+    CaptureResult result;
+
+    const bool inputEndpoint = endpoint == DefaultAudioEndpoint::MultimediaInput ||
+                               endpoint == DefaultAudioEndpoint::CommunicationsInput;
+    const bool communicationsRole = endpoint == DefaultAudioEndpoint::CommunicationsOutput ||
+                                    endpoint == DefaultAudioEndpoint::CommunicationsInput;
+
+    usingProcessLoopback_.store(false);
+    sampleRate_ = kDefaultSampleRate;
+    channels_ = kDefaultChannelCount;
+    bitsPerSample_ = 32;
+    isFloatFormat_ = true;
+    maxBufferSamples_ = static_cast<size_t>(kDefaultSampleRate) * kDefaultChannelCount * 15;
+
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                  IID_PPV_ARGS(&enumerator));
+    if (FAILED(hr)) {
+        result.error = "Failed to create audio device enumerator";
+        return result;
+    }
+
+    ComPtr<IMMDevice> device;
+    hr = enumerator->GetDefaultAudioEndpoint(inputEndpoint ? eCapture : eRender,
+                                             communicationsRole ? eCommunications : eMultimedia,
+                                             &device);
+    if (FAILED(hr) || !device) {
+        result.error = inputEndpoint ? "Default input device unavailable" : "Default output device unavailable";
+        return result;
+    }
+
+    ComPtr<IAudioClient> client;
+    hr = device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                          reinterpret_cast<void **>(client.GetAddressOf()));
+    if (FAILED(hr) || !client) {
+        result.error = "Default audio endpoint activation failed";
+        return result;
+    }
+
+    WAVEFORMATEX *mixFormatRaw = nullptr;
+    hr = client->GetMixFormat(&mixFormatRaw);
+    std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> mixFormat(nullptr, CoTaskMemFree);
+    WAVEFORMATEXTENSIBLE fallbackFormat = {};
+    WAVEFORMATEX *format = nullptr;
+
+    if (FAILED(hr) || !mixFormatRaw) {
+        fallbackFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
+        fallbackFormat.Format.nChannels = kDefaultChannelCount;
+        fallbackFormat.Format.nSamplesPerSec = kDefaultSampleRate;
+        fallbackFormat.Format.wBitsPerSample = 32;
+        fallbackFormat.Format.nBlockAlign = (fallbackFormat.Format.nChannels * fallbackFormat.Format.wBitsPerSample) / 8;
+        fallbackFormat.Format.nAvgBytesPerSec = fallbackFormat.Format.nSamplesPerSec * fallbackFormat.Format.nBlockAlign;
+        fallbackFormat.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
+        fallbackFormat.Samples.wValidBitsPerSample = fallbackFormat.Format.wBitsPerSample;
+        fallbackFormat.dwChannelMask = KSAUDIO_SPEAKER_STEREO;
+        fallbackFormat.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
+        format = reinterpret_cast<WAVEFORMATEX *>(&fallbackFormat);
+        sampleRate_ = fallbackFormat.Format.nSamplesPerSec;
+        channels_ = fallbackFormat.Format.nChannels;
+        bitsPerSample_ = fallbackFormat.Format.wBitsPerSample;
+        isFloatFormat_ = true;
+        hr = S_OK;
+    } else {
+        mixFormat.reset(mixFormatRaw);
+        format = mixFormat.get();
+        sampleRate_ = format->nSamplesPerSec;
+        channels_ = format->nChannels;
+        bitsPerSample_ = format->wBitsPerSample;
+        isFloatFormat_ = (format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT);
+
+        if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
+            auto *ext = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(format);
+            bitsPerSample_ = ext->Format.wBitsPerSample;
+            sampleRate_ = ext->Format.nSamplesPerSec;
+            channels_ = ext->Format.nChannels;
+            if (IsEqualGUID(ext->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT)) {
+                isFloatFormat_ = true;
+            } else if (IsEqualGUID(ext->SubFormat, KSDATAFORMAT_SUBTYPE_PCM)) {
+                isFloatFormat_ = false;
+            }
+        }
+    }
+
+    if (!format) {
+        result.error = "GetMixFormat failed";
+        return result;
+    }
+
+    maxBufferSamples_ = std::max<size_t>(maxBufferSamples_, static_cast<size_t>(sampleRate_) * channels_ * 4);
+
+    DWORD streamFlags = AUDCLNT_STREAMFLAGS_EVENTCALLBACK;
+    if (!inputEndpoint) {
+        streamFlags |= AUDCLNT_STREAMFLAGS_LOOPBACK;
+    }
+
+    hr = client->Initialize(
+        AUDCLNT_SHAREMODE_SHARED,
+        streamFlags,
+        kDefaultBufferDuration,
+        0,
+        format,
+        nullptr);
+    if (FAILED(hr)) {
+        result.error = "IAudioClient::Initialize failed";
+        return result;
+    }
+
+    sampleReadyEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    stopEvent_ = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!sampleReadyEvent_ || !stopEvent_) {
+        result.error = "Failed to create wait events";
+        return result;
+    }
+
+    hr = client->SetEventHandle(static_cast<HANDLE>(sampleReadyEvent_));
+    if (FAILED(hr)) {
+        result.error = "SetEventHandle failed";
+        return result;
+    }
+
+    hr = client->GetService(IID_PPV_ARGS(reinterpret_cast<IAudioCaptureClient **>(&captureClient_)));
+    if (FAILED(hr)) {
+        result.error = "GetService(IAudioCaptureClient) failed";
+        return result;
+    }
+
+    UINT32 bufferFrames = 0;
+    if (SUCCEEDED(client->GetBufferSize(&bufferFrames)) && bufferFrames > 0) {
+        maxBufferSamples_ = std::max<size_t>(maxBufferSamples_, static_cast<size_t>(bufferFrames) * channels_ * 4);
+    }
+
+    hr = client->Start();
+    if (FAILED(hr)) {
+        result.error = "IAudioClient::Start failed";
+        return result;
+    }
+
+    audioClient_ = client.Detach();
+    capturing_.store(true);
+    captureThread_ = std::thread([this]() { CaptureLoop(); });
+
+    result.success = true;
+    result.sampleRate = sampleRate_;
+    result.channels = channels_;
+    result.usingProcessLoopback = false;
+    return result;
+}
+
 void WindowAudioCaptureCore::CaptureLoop() {
     HANDLE waitHandles[2] = {static_cast<HANDLE>(sampleReadyEvent_), static_cast<HANDLE>(stopEvent_)};
 
@@ -629,6 +801,14 @@ CaptureResult WindowAudioCaptureCore::StartCapture(uint32_t) {
 }
 
 CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t, StreamCallback) {
+    return {false, false, 0, 0, "Audio capture is only supported on Windows"};
+}
+
+CaptureResult WindowAudioCaptureCore::StartDefaultEndpointCapture(DefaultAudioEndpoint) {
+    return {false, false, 0, 0, "Audio capture is only supported on Windows"};
+}
+
+CaptureResult WindowAudioCaptureCore::StartDefaultEndpointStreamCapture(DefaultAudioEndpoint, StreamCallback) {
     return {false, false, 0, 0, "Audio capture is only supported on Windows"};
 }
 

@@ -127,7 +127,23 @@ versus::webrtc::IceMode iceModeFromUiValue(const QString &value) {
     if (value == "stun-only") {
         return versus::webrtc::IceMode::StunOnly;
     }
-    return versus::webrtc::IceMode::All;
+    return versus::webrtc::IceMode::StunOnly;
+}
+
+versus::app::AudioSourceMode audioSourceModeFromUiValue(const QString &value) {
+    if (value == "default-output") {
+        return versus::app::AudioSourceMode::DefaultOutput;
+    }
+    if (value == "communications-output") {
+        return versus::app::AudioSourceMode::CommunicationsOutput;
+    }
+    if (value == "default-microphone") {
+        return versus::app::AudioSourceMode::DefaultMicrophone;
+    }
+    if (value == "none") {
+        return versus::app::AudioSourceMode::None;
+    }
+    return versus::app::AudioSourceMode::SelectedWindow;
 }
 
 QSettings makeUiSettings() {
@@ -489,9 +505,10 @@ void MainWindow::loadPersistedSettings() {
     restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
     restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 12000));
-    restoreComboByData(iceModeSelect_, settings.value("network/iceMode", "all"));
+    restoreComboByData(iceModeSelect_, settings.value("network/iceMode", "stun-only"));
     restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
     restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
+    restoreComboByData(audioSourceSelect_, settings.value("audio/source", "selected-window"));
 
     if (remoteControlCheck_) {
         remoteControlCheck_->setChecked(settings.value("control/enabled", false).toBool());
@@ -534,7 +551,8 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/alphaWorkflow", alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false);
     settings.setValue("video/ffmpegPath", ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString());
     settings.setValue("video/ffmpegOptions", ffmpegOptionsInput_ ? ffmpegOptionsInput_->text() : QString());
-    settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
+    settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
+    settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
     settings.setValue("control/enabled", remoteControlCheck_ ? remoteControlCheck_->isChecked() : false);
     settings.setValue("control/token", remoteControlTokenInput_ ? remoteControlTokenInput_->text().trimmed() : QString());
     settings.sync();
@@ -580,6 +598,9 @@ void MainWindow::connectPersistedSettingSignals() {
     }
     if (iceModeSelect_) {
         connect(iceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (audioSourceSelect_) {
+        connect(audioSourceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
     if (remoteControlCheck_) {
         connect(remoteControlCheck_, &QCheckBox::toggled, this, saveNow);
@@ -833,13 +854,24 @@ void MainWindow::setupUI() {
 
     iceModeSelect_ = new QComboBox(this);
     iceModeSelect_->setObjectName("iceModeSelect");
-    iceModeSelect_->addItem("Auto (Recommended)", QVariant("all"));
+    iceModeSelect_->addItem("Direct STUN (Recommended)", QVariant("stun-only"));
+    iceModeSelect_->addItem("Auto with TURN fallback", QVariant("all"));
     iceModeSelect_->addItem("Relay Only", QVariant("relay"));
-    iceModeSelect_->addItem("Direct STUN Only", QVariant("stun-only"));
     iceModeSelect_->addItem("Host Only (LAN)", QVariant("host-only"));
     iceModeSelect_->setToolTip(
-        "Auto tries direct UDP first and uses TURN when available. Relay Only is slower but often works better on restrictive networks.");
+        "Direct STUN avoids slower TURN relays. Use Auto or Relay Only only when restrictive networks block direct UDP.");
     advancedForm->addRow("ICE Mode", iceModeSelect_);
+
+    audioSourceSelect_ = new QComboBox(this);
+    audioSourceSelect_->setObjectName("audioSourceSelect");
+    audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
+    audioSourceSelect_->addItem("Default output mix", QVariant("default-output"));
+    audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
+    audioSourceSelect_->addItem("Default microphone/input", QVariant("default-microphone"));
+    audioSourceSelect_->addItem("No audio", QVariant("none"));
+    audioSourceSelect_->setToolTip(
+        "Use Communications output for VOIP-style games, or Default microphone/input when voice chat is captured through an input device.");
+    advancedForm->addRow("Audio Source", audioSourceSelect_);
 
     remoteControlCheck_ = new QCheckBox("Enable director control via data channel", this);
     remoteControlCheck_->setObjectName("remoteControlCheck");
@@ -1427,6 +1459,9 @@ void MainWindow::onGoLiveClicked() {
 
         const QString encoderMode = encoderSelect_->currentData().toString();
         const QString codecValue = codecSelect_ ? codecSelect_->currentData().toString() : QString("h264");
+        const QString audioSourceValue = audioSourceSelect_
+            ? audioSourceSelect_->currentData().toString()
+            : QString("selected-window");
         const std::string selectedWindowId = selectedWindowId_.toStdString();
         if (encoderMode == "nvenc") {
             config.preferredHardware = versus::video::HardwareEncoder::NVENC;
@@ -1478,7 +1513,7 @@ void MainWindow::onGoLiveClicked() {
         options.maxViewers = viewerLimitSpin_ ? viewerLimitSpin_->value() : 10;
         options.roomModeLqEnabled = roomModeLqCheck_ ? roomModeLqCheck_->isChecked() : true;
         options.iceMode = iceModeFromUiValue(
-            iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
+            iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
         options.remoteControlEnabled = remoteControlCheck_ ? remoteControlCheck_->isChecked() : false;
         options.remoteControlToken = remoteControlTokenInput_
             ? remoteControlTokenInput_->text().trimmed().toStdString()
@@ -1510,12 +1545,13 @@ void MainWindow::onGoLiveClicked() {
 
         QPointer<MainWindow> self(this);
         auto *core = core_;
-        startFuture_ = QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode]() {
+        startFuture_ = QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode, audioSourceValue]() {
             bool started = false;
             QString failureStatus;
 
             core->setSelectedWindow(selectedWindowId);
             core->setVideoConfig(config);
+            core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
 
             if (!core->startCapture(selectedWindowId)) {
                 failureStatus = "Failed to start capture";
@@ -1769,21 +1805,19 @@ void MainWindow::onTrayIconActivated(QSystemTrayIcon::ActivationReason reason) {
 void MainWindow::onStatsTimer() {
     if (core_ && isLive_) {
         StreamStats stats;
-        stats.videoBitrate = selectedBitrateKbps();
-        stats.audioBitrate = 192;
-        stats.frameRate = fpsSelect_->currentData().toInt();
+        const auto metrics = core_->getStreamMetrics();
+        stats.videoBitrate = metrics.videoBitrateKbps > 0.0 ? metrics.videoBitrateKbps : selectedBitrateKbps();
+        stats.audioBitrate = metrics.audioBitrateKbps > 0.0 ? metrics.audioBitrateKbps : 0.0;
+        stats.frameRate = metrics.frameRate > 0.0 ? metrics.frameRate : fpsSelect_->currentData().toInt();
+        stats.width = metrics.width;
+        stats.height = metrics.height;
 
-        const QString resolutionText = resolutionSelect_->currentData().toString();
-        const QStringList parts = resolutionText.split('x');
-        stats.width = parts.size() > 0 ? parts[0].toInt() : 1920;
-        stats.height = parts.size() > 1 ? parts[1].toInt() : 1080;
-
-        std::string activeCodec = core_->getVideoCodecName();
+        std::string activeCodec = metrics.codec;
         if (activeCodec.empty()) {
             activeCodec = "H.264";
         }
         stats.codec = activeCodec;
-        std::string encoderName = core_->getVideoEncoderName();
+        std::string encoderName = metrics.encoder;
         if (encoderName.empty()) {
             stats.encoder = core_->isHardwareVideoEncoder() ? "Hardware" : "Software";
         } else {
@@ -1933,6 +1967,9 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     }
     if (iceModeSelect_) {
         iceModeSelect_->setEnabled(enabled);
+    }
+    if (audioSourceSelect_) {
+        audioSourceSelect_->setEnabled(enabled);
     }
     if (remoteControlCheck_) {
         remoteControlCheck_->setEnabled(enabled);

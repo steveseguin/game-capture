@@ -41,6 +41,13 @@ struct StreamChunk {
     uint32_t channels = 2;
 };
 
+enum class DefaultAudioEndpoint {
+    MultimediaOutput,
+    CommunicationsOutput,
+    MultimediaInput,
+    CommunicationsInput
+};
+
 class WindowAudioCaptureCore {
   public:
     using StreamCallback = std::function<void(StreamChunk &&)>;
@@ -53,6 +60,8 @@ class WindowAudioCaptureCore {
 
     CaptureResult StartCapture(uint32_t processId);
     CaptureResult StartStreamCapture(uint32_t processId, StreamCallback callback);
+    CaptureResult StartDefaultEndpointCapture(DefaultAudioEndpoint endpoint);
+    CaptureResult StartDefaultEndpointStreamCapture(DefaultAudioEndpoint endpoint, StreamCallback callback);
     void StopCapture();
 
     std::vector<float> DrainAudioBuffer();
@@ -60,6 +69,7 @@ class WindowAudioCaptureCore {
 
   private:
     CaptureResult StartProcessLoopback(uint32_t processId);
+    CaptureResult StartDefaultEndpoint(DefaultAudioEndpoint endpoint);
     void CaptureLoop();
     void AppendSamples(const float *samples, size_t count);
 

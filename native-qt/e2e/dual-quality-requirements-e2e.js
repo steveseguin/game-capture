@@ -474,6 +474,32 @@ async function waitForInfoField(page, fieldName, expectedValue, timeoutMs) {
   return { ok: false, stage: 'info-field', state: last };
 }
 
+async function waitForInitAck(page, expected, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate((expectedValues) => {
+      const probe = window.__gameCaptureInfoProbe || { records: [] };
+      const records = Array.isArray(probe.records) ? probe.records : [];
+      const matches = records
+        .filter((entry) => entry && entry.message && entry.message.ack === 'init')
+        .map((entry) => entry.message)
+        .filter((message) => Object.entries(expectedValues).every(([key, value]) => message[key] === value));
+      return {
+        total: records.length,
+        initAckCount: records.filter((entry) => entry && entry.message && entry.message.ack === 'init').length,
+        latest: records.length ? records[records.length - 1].message : null,
+        match: matches.length ? matches[matches.length - 1] : null
+      };
+    }, expected);
+    if (last && last.match) {
+      return { ok: true, state: last };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'init-ack', state: last };
+}
+
 async function waitForExpectedDimensions(page, expectedTier, timeoutMs, initialState = null) {
   const deadline = Date.now() + timeoutMs;
   let lastState = initialState;
@@ -969,8 +995,8 @@ async function caseReconnectControlMedia(input) {
   );
   assertOk(muteGuest.ok, 'reconnect-control-media: failed to send guest audio=false init', muteGuest);
 
-  const mutedInfo = await waitForInfoField(guest.page, 'peer_audio_enabled', false, 8000);
-  assertOk(mutedInfo.ok, 'reconnect-control-media: missing peer_audio_enabled=false info', mutedInfo.state || mutedInfo);
+  const mutedAck = await waitForInitAck(guest.page, { audio: false }, 8000);
+  assertOk(mutedAck.ok, 'reconnect-control-media: missing audio=false init ack', mutedAck.state || mutedAck);
 
   const unmuteGuest = await sendInitMessage(
     guest.page,
@@ -983,8 +1009,8 @@ async function caseReconnectControlMedia(input) {
   );
   assertOk(unmuteGuest.ok, 'reconnect-control-media: failed to send guest audio=true init', unmuteGuest);
 
-  const unmutedInfo = await waitForInfoField(guest.page, 'peer_audio_enabled', true, 8000);
-  assertOk(unmutedInfo.ok, 'reconnect-control-media: missing peer_audio_enabled=true info', unmutedInfo.state || unmutedInfo);
+  const unmutedAck = await waitForInitAck(guest.page, { audio: true }, 8000);
+  assertOk(unmutedAck.ok, 'reconnect-control-media: missing audio=true init ack', unmutedAck.state || unmutedAck);
 
   const controlProbe = await installControlAckProbe(scene.page, scene.peerUuid);
   assertOk(controlProbe.ok, 'reconnect-control-media: failed to install control ack probe', controlProbe);
