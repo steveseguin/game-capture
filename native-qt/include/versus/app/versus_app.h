@@ -3,6 +3,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <future>
 #include <functional>
 #include <mutex>
@@ -70,6 +71,7 @@ class VersusApp {
     void shutdown();
 
     std::vector<versus::video::WindowInfo> listWindows();
+    std::vector<versus::audio::AudioDeviceInfo> listAudioInputDevices();
     bool startCapture(const std::string &windowId);
     void stopCapture();
     void setSelectedWindow(const std::string &windowId);
@@ -79,6 +81,8 @@ class VersusApp {
 
     void setVideoConfig(const versus::video::EncoderConfig &config);
     void setAudioSourceMode(AudioSourceMode mode);
+    void setIncludeMicrophone(bool enabled);
+    void setMicrophoneDeviceId(const std::string &deviceId);
     std::string getVideoEncoderName() const;
     std::string getVideoCodecName() const;
     bool isHardwareVideoEncoder() const;
@@ -105,7 +109,9 @@ class VersusApp {
     };
     void setupCallbacks();
     void startAudioCapture(uint32_t selectedWindowProcessId);
-    void handleAudioChunk(versus::audio::StreamChunk &&chunk);
+    void handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk);
+    void handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk);
+    void mixAdditionalAudioInto(std::vector<float> &samples, uint32_t sampleRate, uint32_t channels);
     void setupSignalingCallbacks();
     void startSignalingRecovery();
     void stopSignalingRecoveryThread();
@@ -195,7 +201,9 @@ class VersusApp {
     mutable std::mutex peerSessionsMutex_;
     std::mutex peerShutdownTasksMutex_;
     mutable std::mutex signalingOpsMutex_;
+    mutable std::mutex iceConfigMutex_;
     mutable std::mutex runtimeEventMutex_;
+    std::mutex additionalAudioMutex_;
     RuntimeEventCallback runtimeEventCallback_;
     struct PendingCandidate {
         std::string candidate;
@@ -261,6 +269,12 @@ class VersusApp {
     std::atomic<bool> lqEncoderInitialized_{false};
     bool roomCodecWarningEmitted_ = false;
     AudioSourceMode audioSourceMode_ = AudioSourceMode::SelectedWindow;
+    bool includeMicrophone_ = false;
+    std::string microphoneDeviceId_;
+    std::string activeMicrophoneSourceName_ = "default-microphone";
+    std::deque<float> additionalAudioBuffer_;
+    uint32_t additionalAudioSampleRate_ = 0;
+    uint32_t additionalAudioChannels_ = 0;
 
     versus::video::WindowCapture windowCapture_;
     versus::video::VideoEncoder videoEncoder_;
@@ -268,6 +282,7 @@ class VersusApp {
     versus::video::VideoEncoder videoEncoderAlpha_;
     std::vector<uint8_t> alphaGrayBuffer_;
     versus::audio::WindowAudioCaptureCore audioCapture_;
+    versus::audio::WindowAudioCaptureCore microphoneAudioCapture_;
     versus::audio::OpusEncoder opusEncoder_;
     versus::signaling::VdoSignaling signaling_;
 };

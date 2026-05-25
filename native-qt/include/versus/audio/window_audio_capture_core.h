@@ -20,6 +20,14 @@ struct AudioSessionInfo {
     bool isSystemSounds = false;
 };
 
+struct AudioDeviceInfo {
+    std::string id;
+    std::string name;
+    uint32_t sampleRate = 0;
+    uint32_t channels = 0;
+    bool isDefault = false;
+};
+
 struct WindowInfo {
     uint64_t id = 0;
     uint32_t processId = 0;
@@ -57,11 +65,13 @@ class WindowAudioCaptureCore {
 
     std::vector<WindowInfo> GetWindowList();
     std::vector<AudioSessionInfo> GetAudioSessions();
+    std::vector<AudioDeviceInfo> GetInputDevices();
 
     CaptureResult StartCapture(uint32_t processId);
     CaptureResult StartStreamCapture(uint32_t processId, StreamCallback callback);
     CaptureResult StartDefaultEndpointCapture(DefaultAudioEndpoint endpoint);
     CaptureResult StartDefaultEndpointStreamCapture(DefaultAudioEndpoint endpoint, StreamCallback callback);
+    CaptureResult StartInputDeviceStreamCapture(const std::string &deviceId, StreamCallback callback);
     void StopCapture();
 
     std::vector<float> DrainAudioBuffer();
@@ -70,6 +80,7 @@ class WindowAudioCaptureCore {
   private:
     CaptureResult StartProcessLoopback(uint32_t processId);
     CaptureResult StartDefaultEndpoint(DefaultAudioEndpoint endpoint);
+    CaptureResult StartInputDevice(const std::string &deviceId);
     void CaptureLoop();
     void AppendSamples(const float *samples, size_t count);
 

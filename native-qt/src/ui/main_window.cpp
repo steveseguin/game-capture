@@ -160,6 +160,19 @@ void restoreComboByData(QComboBox *combo, const QVariant &data) {
     }
 }
 
+QString audioDeviceLabel(const versus::audio::AudioDeviceInfo &device) {
+    QString label = QString::fromStdString(device.name.empty() ? std::string("Microphone/input device") : device.name);
+    if (device.isDefault) {
+        label += " (Default)";
+    }
+    if (device.sampleRate > 0 && device.channels > 0) {
+        label += QString(" - %1 kHz, %2 ch")
+            .arg(device.sampleRate / 1000.0, 0, 'f', device.sampleRate % 1000 == 0 ? 0 : 1)
+            .arg(device.channels);
+    }
+    return label;
+}
+
 QIcon makeTrayLiveIcon(const QIcon &baseIcon, bool live) {
     if (baseIcon.isNull() || !live) {
         return baseIcon;
@@ -501,6 +514,9 @@ void MainWindow::loadPersistedSettings() {
     if (ffmpegOptionsInput_) {
         ffmpegOptionsInput_->setText(settings.value("video/ffmpegOptions").toString());
     }
+    if (includeMicrophoneCheck_) {
+        includeMicrophoneCheck_->setChecked(settings.value("audio/includeMicrophone", false).toBool());
+    }
 
     restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
@@ -509,6 +525,7 @@ void MainWindow::loadPersistedSettings() {
     restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
     restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
     restoreComboByData(audioSourceSelect_, settings.value("audio/source", "selected-window"));
+    refreshMicrophoneDevices(settings.value("audio/microphoneDeviceId").toString());
 
     if (remoteControlCheck_) {
         remoteControlCheck_->setChecked(settings.value("control/enabled", false).toBool());
@@ -553,6 +570,8 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/ffmpegOptions", ffmpegOptionsInput_ ? ffmpegOptionsInput_->text() : QString());
     settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
     settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
+    settings.setValue("audio/includeMicrophone", includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false);
+    settings.setValue("audio/microphoneDeviceId", microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentData().toString() : QString());
     settings.setValue("control/enabled", remoteControlCheck_ ? remoteControlCheck_->isChecked() : false);
     settings.setValue("control/token", remoteControlTokenInput_ ? remoteControlTokenInput_->text().trimmed() : QString());
     settings.sync();
@@ -601,6 +620,12 @@ void MainWindow::connectPersistedSettingSignals() {
     }
     if (audioSourceSelect_) {
         connect(audioSourceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (includeMicrophoneCheck_) {
+        connect(includeMicrophoneCheck_, &QCheckBox::toggled, this, saveNow);
+    }
+    if (microphoneDeviceSelect_) {
+        connect(microphoneDeviceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
     if (remoteControlCheck_) {
         connect(remoteControlCheck_, &QCheckBox::toggled, this, saveNow);
@@ -872,6 +897,20 @@ void MainWindow::setupUI() {
     audioSourceSelect_->setToolTip(
         "Use Communications output for VOIP-style games, or Default microphone/input when voice chat is captured through an input device.");
     advancedForm->addRow("Audio Source", audioSourceSelect_);
+
+    includeMicrophoneCheck_ = new QCheckBox("Also add microphone/input", this);
+    includeMicrophoneCheck_->setObjectName("includeMicrophoneCheck");
+    includeMicrophoneCheck_->setChecked(false);
+    includeMicrophoneCheck_->setToolTip(
+        "Mixes the selected microphone/input into the selected audio source so game/app audio and the on-screen player's mic are sent together.");
+    advancedForm->addRow("Additional Audio", includeMicrophoneCheck_);
+
+    microphoneDeviceSelect_ = new QComboBox(this);
+    microphoneDeviceSelect_->setObjectName("microphoneDeviceSelect");
+    microphoneDeviceSelect_->setToolTip(
+        "Choose a microphone/input to mix in. If the selected device is unavailable, capture falls back to the Windows default input.");
+    refreshMicrophoneDevices();
+    advancedForm->addRow("Microphone", microphoneDeviceSelect_);
 
     remoteControlCheck_ = new QCheckBox("Enable director control via data channel", this);
     remoteControlCheck_->setObjectName("remoteControlCheck");
@@ -1310,6 +1349,7 @@ void MainWindow::onRefreshWindows() {
         windowListWidget_->requestThumbnailRefresh();
     }
     refreshWindowList();
+    refreshMicrophoneDevices();
     refreshSelectedWindowPreview();
 }
 
@@ -1322,6 +1362,44 @@ void MainWindow::refreshWindowList() {
         auto windows = core_->listWindows();
         windowListWidget_->setWindowList(windows);
     }
+}
+
+void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
+    if (!microphoneDeviceSelect_) {
+        return;
+    }
+
+    const QString preferred = preferredDeviceId.isNull()
+        ? microphoneDeviceSelect_->currentData().toString()
+        : preferredDeviceId;
+    QSignalBlocker blocker(microphoneDeviceSelect_);
+    microphoneDeviceSelect_->clear();
+    microphoneDeviceSelect_->addItem("Windows default microphone/input", QVariant(QString()));
+    microphoneDeviceSelect_->setItemData(
+        0,
+        "Uses the current Windows default input device at the moment capture starts.",
+        Qt::ToolTipRole);
+
+    if (core_) {
+        const auto devices = core_->listAudioInputDevices();
+        for (const auto &device : devices) {
+            const int index = microphoneDeviceSelect_->count();
+            microphoneDeviceSelect_->addItem(audioDeviceLabel(device), QVariant(QString::fromStdString(device.id)));
+            QString tooltip = QString::fromStdString(device.name);
+            if (device.sampleRate > 0 && device.channels > 0) {
+                tooltip += QString("\nNative format: %1 Hz, %2 channel(s).")
+                    .arg(device.sampleRate)
+                    .arg(device.channels);
+                if (device.sampleRate != 48000 || device.channels != 2) {
+                    tooltip += "\nGame Capture will convert this input to 48 kHz stereo for WebRTC.";
+                }
+            }
+            microphoneDeviceSelect_->setItemData(index, tooltip, Qt::ToolTipRole);
+        }
+    }
+
+    const int preferredIndex = preferred.isEmpty() ? 0 : microphoneDeviceSelect_->findData(preferred);
+    microphoneDeviceSelect_->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
 }
 
 void MainWindow::onGoLiveClicked() {
@@ -1462,6 +1540,10 @@ void MainWindow::onGoLiveClicked() {
         const QString audioSourceValue = audioSourceSelect_
             ? audioSourceSelect_->currentData().toString()
             : QString("selected-window");
+        const bool includeMicrophone = includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false;
+        const QString microphoneDeviceId = microphoneDeviceSelect_
+            ? microphoneDeviceSelect_->currentData().toString()
+            : QString();
         const std::string selectedWindowId = selectedWindowId_.toStdString();
         if (encoderMode == "nvenc") {
             config.preferredHardware = versus::video::HardwareEncoder::NVENC;
@@ -1545,13 +1627,15 @@ void MainWindow::onGoLiveClicked() {
 
         QPointer<MainWindow> self(this);
         auto *core = core_;
-        startFuture_ = QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode, audioSourceValue]() {
+        startFuture_ = QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode, audioSourceValue, includeMicrophone, microphoneDeviceId]() {
             bool started = false;
             QString failureStatus;
 
             core->setSelectedWindow(selectedWindowId);
             core->setVideoConfig(config);
             core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
+            core->setIncludeMicrophone(includeMicrophone);
+            core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
 
             if (!core->startCapture(selectedWindowId)) {
                 failureStatus = "Failed to start capture";
@@ -1970,6 +2054,12 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     }
     if (audioSourceSelect_) {
         audioSourceSelect_->setEnabled(enabled);
+    }
+    if (includeMicrophoneCheck_) {
+        includeMicrophoneCheck_->setEnabled(enabled);
+    }
+    if (microphoneDeviceSelect_) {
+        microphoneDeviceSelect_->setEnabled(enabled);
     }
     if (remoteControlCheck_) {
         remoteControlCheck_->setEnabled(enabled);

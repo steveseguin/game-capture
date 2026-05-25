@@ -466,6 +466,13 @@ struct VdoSignaling::Impl {
             return;
         }
 
+        if (msg.value("iceRestartRequest", false)) {
+            if (onOfferRequest) {
+                onOfferRequest(msg.value("UUID", ""), msg.value("session", ""), msg.value("streamID", ""));
+            }
+            return;
+        }
+
         ParsedSignalMessage parsed;
         if (parseSignalPayloadJson(msg, password, salt, encryptionDisabled, parsed)) {
             if (parsed.hasOffer && onOffer) {

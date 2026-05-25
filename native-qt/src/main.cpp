@@ -73,6 +73,8 @@ int main(int argc, char *argv[]) {
     bool remoteControlEnabled = false;
     std::string remoteControlToken;
     bool alphaWorkflowEnabled = false;
+    bool includeMicrophone = false;
+    std::string microphoneDeviceId;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -190,6 +192,14 @@ int main(int argc, char *argv[]) {
             remoteControlEnabled = true;
         } else if (arg.find("--remote-token=") == 0) {
             remoteControlToken = arg.substr(15);
+        } else if (arg == "--include-microphone" || arg == "--include-mic") {
+            includeMicrophone = true;
+        } else if (arg.find("--microphone-device=") == 0) {
+            microphoneDeviceId = arg.substr(20);
+            includeMicrophone = true;
+        } else if (arg.find("--mic-device=") == 0) {
+            microphoneDeviceId = arg.substr(13);
+            includeMicrophone = true;
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
         }
@@ -330,10 +340,12 @@ int main(int argc, char *argv[]) {
         core.setVideoConfig(encoderOverride);
     }
     core.setAudioSourceMode(audioSourceMode);
+    core.setIncludeMicrophone(includeMicrophone);
+    core.setMicrophoneDeviceId(microphoneDeviceId);
 
     if (headless) {
         // Headless mode - auto-configure and start streaming
-        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} audioSource={}",
+        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} audioSource={} includeMicrophone={} microphoneDevice={}",
                      streamId,
                      room.empty() ? "(none)" : room,
                      password,
@@ -342,7 +354,9 @@ int main(int argc, char *argv[]) {
                      maxViewers,
                      remoteControlEnabled,
                      versus::webrtc::iceModeName(iceMode),
-                     audioSourceArg);
+                     audioSourceArg,
+                     includeMicrophone,
+                     microphoneDeviceId.empty() ? "(default)" : "(selected)");
 
         // Configure
         versus::app::StartOptions options;

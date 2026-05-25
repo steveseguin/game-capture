@@ -210,8 +210,29 @@ std::vector<float> normalizeAudioForOpus(const audio::StreamChunk &chunk) {
     stereo.resize(inputFrames * kOpusChannels);
     for (size_t frame = 0; frame < inputFrames; ++frame) {
         const size_t src = frame * inputChannels;
-        const float left = chunk.samples[src];
-        const float right = inputChannels > 1 ? chunk.samples[src + 1] : left;
+        float left = 0.0f;
+        float right = 0.0f;
+        if (inputChannels == 1) {
+            left = chunk.samples[src];
+            right = left;
+        } else if (inputChannels == 2) {
+            left = chunk.samples[src];
+            right = chunk.samples[src + 1];
+        } else {
+            uint32_t leftCount = 0;
+            uint32_t rightCount = 0;
+            for (uint32_t ch = 0; ch < inputChannels; ++ch) {
+                if ((ch % 2) == 0) {
+                    left += chunk.samples[src + ch];
+                    leftCount++;
+                } else {
+                    right += chunk.samples[src + ch];
+                    rightCount++;
+                }
+            }
+            left /= static_cast<float>(std::max<uint32_t>(1, leftCount));
+            right /= static_cast<float>(std::max<uint32_t>(1, rightCount));
+        }
         stereo[(frame * kOpusChannels)] = left;
         stereo[(frame * kOpusChannels) + 1] = right;
     }
@@ -281,6 +302,10 @@ void VersusApp::shutdown() {
 
 std::vector<versus::video::WindowInfo> VersusApp::listWindows() {
     return windowCapture_.getWindows();
+}
+
+std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioInputDevices() {
+    return audioCapture_.GetInputDevices();
 }
 
 bool VersusApp::startCapture(const std::string &windowId) {
@@ -436,6 +461,13 @@ void VersusApp::stopCapture() {
         shutdownLqEncoderLocked();
     }
     audioCapture_.StopCapture();
+    microphoneAudioCapture_.StopCapture();
+    {
+        std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+        additionalAudioBuffer_.clear();
+        additionalAudioSampleRate_ = 0;
+        additionalAudioChannels_ = 0;
+    }
     opusEncoder_.shutdown();
     audioLevelRms_.store(0.0f, std::memory_order_relaxed);
     audioPeak_.store(0.0f, std::memory_order_relaxed);
@@ -477,6 +509,14 @@ void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
     audioSourceMode_ = mode;
 }
 
+void VersusApp::setIncludeMicrophone(bool enabled) {
+    includeMicrophone_ = enabled;
+}
+
+void VersusApp::setMicrophoneDeviceId(const std::string &deviceId) {
+    microphoneDeviceId_ = deviceId;
+}
+
 bool VersusApp::goLive(const StartOptions &options) {
     if (live_) {
         return true;
@@ -510,11 +550,13 @@ bool VersusApp::goLive(const StartOptions &options) {
     remoteControlEnabled_.store(options.remoteControlEnabled, std::memory_order_relaxed);
     remoteControlToken_ = options.remoteControlToken;
     roomCodecWarningEmitted_ = false;
-    iceMode_ = options.iceMode;
-
-    const auto resolvedIce = webrtc::resolveIceConfig(iceMode_);
-    resolvedIceServers_ = resolvedIce.servers;
-    if (iceMode_ == webrtc::IceMode::Relay && !resolvedIce.hasTurnServers()) {
+    const auto resolvedIce = webrtc::resolveIceConfig(options.iceMode);
+    {
+        std::lock_guard<std::mutex> lock(iceConfigMutex_);
+        iceMode_ = options.iceMode;
+        resolvedIceServers_ = resolvedIce.servers;
+    }
+    if (options.iceMode == webrtc::IceMode::Relay && !resolvedIce.hasTurnServers()) {
         emitRuntimeEvent("Relay-only ICE mode was requested, but no TURN servers were available.", true);
         return false;
     }
@@ -706,34 +748,126 @@ StreamMetrics VersusApp::getStreamMetrics() const {
 }
 
 void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
-    const auto callback = [this](versus::audio::StreamChunk &&chunk) {
-        handleAudioChunk(std::move(chunk));
+    {
+        std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+        additionalAudioBuffer_.clear();
+        additionalAudioSampleRate_ = 0;
+        additionalAudioChannels_ = 0;
+    }
+    activeMicrophoneSourceName_ = microphoneDeviceId_.empty() ? "default-microphone" : "selected-microphone";
+
+    const auto primaryCallback = [this](versus::audio::StreamChunk &&chunk) {
+        handlePrimaryAudioChunk(std::move(chunk));
+    };
+    const auto additionalCallback = [this](versus::audio::StreamChunk &&chunk) {
+        handleAdditionalAudioChunk(std::move(chunk));
+    };
+
+    const auto warnIfConverted = [this](const std::string &source, const audio::CaptureResult &capture) {
+        if (!capture.success) {
+            return;
+        }
+        if (capture.sampleRate != 48000 || capture.channels != 2) {
+            const std::string message =
+                "Audio source " + source + " is " + std::to_string(capture.sampleRate) + " Hz/" +
+                std::to_string(capture.channels) + " channel(s); converting to 48 kHz stereo for WebRTC.";
+            spdlog::warn("[Audio] {}", message);
+            if (capture.sampleRate > 96000 || capture.channels > 2) {
+                emitRuntimeEvent(message, false);
+            }
+        }
+    };
+
+    const auto resolveMicrophoneLabel = [this]() {
+        if (microphoneDeviceId_.empty()) {
+            return std::string("default-microphone");
+        }
+        const auto devices = microphoneAudioCapture_.GetInputDevices();
+        for (const auto &device : devices) {
+            if (device.id == microphoneDeviceId_) {
+                return device.name.empty() ? std::string("selected-microphone") : device.name;
+            }
+        }
+        return std::string("selected-microphone");
+    };
+
+    const auto startMicrophone = [&](const audio::WindowAudioCaptureCore::StreamCallback &callback,
+                                     const char *role) {
+        const std::string requestedLabel = resolveMicrophoneLabel();
+        audio::CaptureResult micResult;
+        if (!microphoneDeviceId_.empty()) {
+            micResult = microphoneAudioCapture_.StartInputDeviceStreamCapture(microphoneDeviceId_, callback);
+            if (!micResult.success) {
+                spdlog::warn("[Audio] {} microphone capture device='{}' failed: {}; falling back to default input",
+                             role,
+                             requestedLabel,
+                             micResult.error.empty() ? "unknown error" : micResult.error);
+                emitRuntimeEvent("Selected microphone/input was unavailable; using Windows default microphone/input.", false);
+                activeMicrophoneSourceName_ = "default-microphone";
+                micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
+                    audio::DefaultAudioEndpoint::MultimediaInput, callback);
+            } else {
+                activeMicrophoneSourceName_ = requestedLabel;
+            }
+        } else {
+            micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
+                audio::DefaultAudioEndpoint::MultimediaInput, callback);
+            activeMicrophoneSourceName_ = "default-microphone";
+        }
+
+        if (micResult.success) {
+            spdlog::info("[Audio] {} microphone capture source={} sampleRate={} channels={} processLoopback={}",
+                         role,
+                         activeMicrophoneSourceName_,
+                         micResult.sampleRate,
+                         micResult.channels,
+                         micResult.usingProcessLoopback);
+            warnIfConverted(activeMicrophoneSourceName_, micResult);
+            return true;
+        }
+
+        spdlog::warn("[Audio] {} microphone capture failed: {}",
+                     role,
+                     micResult.error.empty() ? "unknown error" : micResult.error);
+        activeMicrophoneSourceName_ = "none";
+        return false;
+    };
+    const auto startMicrophoneAsPrimary = [&]() {
+        return startMicrophone(primaryCallback, "Primary");
     };
 
     audio::CaptureResult result;
     switch (audioSourceMode_) {
         case AudioSourceMode::DefaultOutput:
             result = audioCapture_.StartDefaultEndpointStreamCapture(
-                audio::DefaultAudioEndpoint::MultimediaOutput, callback);
+                audio::DefaultAudioEndpoint::MultimediaOutput, primaryCallback);
             break;
         case AudioSourceMode::CommunicationsOutput:
             result = audioCapture_.StartDefaultEndpointStreamCapture(
-                audio::DefaultAudioEndpoint::CommunicationsOutput, callback);
+                audio::DefaultAudioEndpoint::CommunicationsOutput, primaryCallback);
             break;
         case AudioSourceMode::DefaultMicrophone:
             result = audioCapture_.StartDefaultEndpointStreamCapture(
-                audio::DefaultAudioEndpoint::MultimediaInput, callback);
+                audio::DefaultAudioEndpoint::MultimediaInput, primaryCallback);
             break;
         case AudioSourceMode::None:
-            spdlog::info("[Audio] Audio capture disabled by user setting");
+            if (!includeMicrophone_) {
+                spdlog::info("[Audio] Audio capture disabled by user setting");
+                return;
+            }
+            startMicrophoneAsPrimary();
             return;
         case AudioSourceMode::SelectedWindow:
         default:
             if (selectedWindowProcessId == 0) {
                 spdlog::warn("[Audio] Selected-window audio requested but no process id was available");
+                if (includeMicrophone_) {
+                    spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
+                    startMicrophoneAsPrimary();
+                }
                 return;
             }
-            result = audioCapture_.StartStreamCapture(selectedWindowProcessId, callback);
+            result = audioCapture_.StartStreamCapture(selectedWindowProcessId, primaryCallback);
             break;
     }
 
@@ -743,14 +877,24 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                      result.sampleRate,
                      result.channels,
                      result.usingProcessLoopback);
+        warnIfConverted(audioSourceModeName(audioSourceMode_), result);
     } else {
         spdlog::warn("[Audio] Capture source={} failed: {}",
                      audioSourceModeName(audioSourceMode_),
                      result.error.empty() ? "unknown error" : result.error);
+        if (includeMicrophone_ && audioSourceMode_ != AudioSourceMode::DefaultMicrophone) {
+            spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
+            startMicrophoneAsPrimary();
+        }
+        return;
+    }
+
+    if (includeMicrophone_ && audioSourceMode_ != AudioSourceMode::DefaultMicrophone) {
+        startMicrophone(additionalCallback, "Additional");
     }
 }
 
-void VersusApp::handleAudioChunk(versus::audio::StreamChunk &&chunk) {
+void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
     if (!live_) {
         return;
     }
@@ -759,6 +903,46 @@ void VersusApp::handleAudioChunk(versus::audio::StreamChunk &&chunk) {
     if (normalizedSamples.empty()) {
         return;
     }
+
+    std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+    additionalAudioSampleRate_ = 48000;
+    additionalAudioChannels_ = 2;
+    for (float sample : normalizedSamples) {
+        additionalAudioBuffer_.push_back(sample);
+    }
+    constexpr size_t kMaxAdditionalAudioSamples = 48000 * 2 / 4;
+    while (additionalAudioBuffer_.size() > kMaxAdditionalAudioSamples) {
+        additionalAudioBuffer_.pop_front();
+    }
+}
+
+void VersusApp::mixAdditionalAudioInto(std::vector<float> &samples, uint32_t sampleRate, uint32_t channels) {
+    if (samples.empty() || sampleRate != 48000 || channels != 2) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+    if (additionalAudioBuffer_.empty() || additionalAudioSampleRate_ != 48000 || additionalAudioChannels_ != 2) {
+        return;
+    }
+
+    const size_t mixCount = std::min(samples.size(), additionalAudioBuffer_.size());
+    for (size_t i = 0; i < mixCount; ++i) {
+        samples[i] = std::clamp(samples[i] + additionalAudioBuffer_.front(), -1.0f, 1.0f);
+        additionalAudioBuffer_.pop_front();
+    }
+}
+
+void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
+    if (!live_) {
+        return;
+    }
+
+    std::vector<float> normalizedSamples = normalizeAudioForOpus(chunk);
+    if (normalizedSamples.empty()) {
+        return;
+    }
+    mixAdditionalAudioInto(normalizedSamples, 48000, 2);
 
     float peak = 0.0f;
     double sumSquares = 0.0;
@@ -859,9 +1043,13 @@ void VersusApp::setupSignalingCallbacks() {
 
         std::string resolvedSession = session;
         if (resolvedSession.empty()) {
-            auto now = std::chrono::system_clock::now().time_since_epoch().count();
-            resolvedSession = "session_" + std::to_string(now);
-            spdlog::info("[Signaling] Generated session ID: {}", resolvedSession);
+            std::shared_ptr<PeerSession> existingPeer;
+            {
+                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+                existingPeer = findPeerSessionForSignalLocked(uuid, "");
+            }
+            resolvedSession = existingPeer && !existingPeer->session.empty() ? existingPeer->session : "default";
+            spdlog::info("[Signaling] Using stable default session ID for uuid={}: {}", uuid, resolvedSession);
         }
         const std::string resolvedStreamId = streamId_.empty() ? streamId : streamId_;
         const std::string key = makePeerKey(uuid, resolvedSession);
@@ -906,8 +1094,11 @@ void VersusApp::setupSignalingCallbacks() {
         peer->client = std::make_unique<webrtc::WebRtcClient>();
 
         webrtc::PeerConfig peerConfig;
-        peerConfig.iceServers = resolvedIceServers_;
-        peerConfig.iceMode = iceMode_;
+        {
+            std::lock_guard<std::mutex> lock(iceConfigMutex_);
+            peerConfig.iceServers = resolvedIceServers_;
+            peerConfig.iceMode = iceMode_;
+        }
         peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
         peerConfig.enableAlphaTrack = (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha);
         // Always negotiate VDO.Ninja's sendChannel so both sides can exchange
@@ -963,6 +1154,25 @@ void VersusApp::setupSignalingCallbacks() {
                              peerPtr->uuid,
                              peerPtr->session,
                              "failed");
+                bool shouldTryTurnFallback = false;
+                {
+                    std::lock_guard<std::mutex> lock(iceConfigMutex_);
+                    shouldTryTurnFallback = iceMode_ == webrtc::IceMode::StunOnly;
+                }
+                if (shouldTryTurnFallback && !stopRequested_.load(std::memory_order_relaxed)) {
+                    const auto fallbackIce = webrtc::resolveIceConfig(webrtc::IceMode::All, 1000);
+                    if (fallbackIce.hasTurnServers()) {
+                        {
+                            std::lock_guard<std::mutex> lock(iceConfigMutex_);
+                            resolvedIceServers_ = fallbackIce.servers;
+                            iceMode_ = webrtc::IceMode::All;
+                            startOptions_.iceMode = webrtc::IceMode::All;
+                        }
+                        emitRuntimeEvent(
+                            "Direct STUN connection failed; retrying new room connections with TURN fallback.",
+                            false);
+                    }
+                }
                 removePeerSession(peerPtr);
             }
         });
@@ -1550,6 +1760,12 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     info["requested_video_bitrate_kbps"] = requestedVideoBitrate;
     info["requested_audio_bitrate_kbps"] = peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed);
     info["audio_source"] = audioSourceModeName(audioSourceMode_);
+    const bool additionalMicrophoneActive =
+        includeMicrophone_ &&
+        audioSourceMode_ != AudioSourceMode::DefaultMicrophone &&
+        activeMicrophoneSourceName_ != "none";
+    info["include_microphone"] = additionalMicrophoneActive;
+    info["additional_audio_source"] = additionalMicrophoneActive ? activeMicrophoneSourceName_ : "none";
     info["resolution"] = resolutionLabel(effectiveWidth, effectiveHeight);
     info["video_bitrate_kbps"] = aggregateVideoKbps;
     info["audio_bitrate_kbps"] = aggregateAudioKbps;

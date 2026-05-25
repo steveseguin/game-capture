@@ -42,6 +42,8 @@ function parseArgs(argv) {
     server: 'wss://wss.vdo.ninja:443',
     salt: 'vdo.ninja',
     audioSource: 'selected-window',
+    includeMicrophone: false,
+    microphoneDeviceId: '',
     startupDelayMs: 7000,
     timeoutMs: 90000,
     disconnectTimeoutMs: 45000,
@@ -80,6 +82,14 @@ function parseArgs(argv) {
       args.salt = arg.slice('--salt='.length);
     } else if (arg.startsWith('--audio-source=')) {
       args.audioSource = normalizeAudioSource(arg.slice('--audio-source='.length) || args.audioSource);
+    } else if (arg === '--include-microphone' || arg === '--include-mic') {
+      args.includeMicrophone = true;
+    } else if (arg.startsWith('--microphone-device=')) {
+      args.microphoneDeviceId = arg.slice('--microphone-device='.length);
+      args.includeMicrophone = true;
+    } else if (arg.startsWith('--mic-device=')) {
+      args.microphoneDeviceId = arg.slice('--mic-device='.length);
+      args.includeMicrophone = true;
     } else if (arg.startsWith('--startup-delay-ms=')) {
       args.startupDelayMs = Number(arg.slice('--startup-delay-ms='.length)) || args.startupDelayMs;
     } else if (arg.startsWith('--timeout-ms=')) {
@@ -188,6 +198,12 @@ function spawnPublisher(config) {
     '--remote-control',
     '--remote-token=control-token'
   ];
+  if (config.includeMicrophone) {
+    args.push('--include-microphone');
+  }
+  if (config.microphoneDeviceId) {
+    args.push(`--microphone-device=${config.microphoneDeviceId}`);
+  }
 
   const env = { ...process.env };
   const qtPluginPath = detectQtPluginPath();
@@ -738,6 +754,8 @@ async function run() {
     streamId: config.streamId,
     room: config.room,
     audioSource: config.audioSource,
+    includeMicrophone: config.includeMicrophone,
+    microphoneDeviceId: config.microphoneDeviceId ? '(selected)' : '',
     stopLifecycleOnly: config.stopLifecycleOnly,
     checks: []
   };
@@ -803,6 +821,15 @@ async function run() {
       `(info) => String(info.audio_source || '') === '${config.audioSource}'`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
+
+    if (config.includeMicrophone) {
+      await check('director-additional-microphone-info', () => waitForStatsInfo(
+        page,
+        uuid,
+        `(info) => info.include_microphone === true && String(info.additional_audio_source || '') !== 'none'`,
+        Math.max(10000, Math.floor(config.timeoutMs / 3))
+      ));
+    }
 
     if (config.stopLifecycleOnly) {
       const publisherExit = await waitForProcessExit(

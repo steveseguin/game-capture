@@ -58,6 +58,7 @@ class MainWindow : public QMainWindow {
     void updateStatus(const QString &text, const QString &statusClass);
     void updateGoLiveButton();
     void refreshWindowList();
+    void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
     void refreshSelectedWindowPreview();
     void syncCodecUiState();
     bool hasPendingAsyncOperation() const;
@@ -94,6 +95,8 @@ class MainWindow : public QMainWindow {
     QComboBox *codecSelect_ = nullptr;
     QCheckBox *alphaWorkflowCheck_ = nullptr;
     QComboBox *audioSourceSelect_ = nullptr;
+    QCheckBox *includeMicrophoneCheck_ = nullptr;
+    QComboBox *microphoneDeviceSelect_ = nullptr;
     QLineEdit *ffmpegPathInput_ = nullptr;
     QLineEdit *ffmpegOptionsInput_ = nullptr;
     QLabel *statusLabel_ = nullptr;

@@ -281,6 +281,14 @@ void TestMainWindow::testAudioSourceOptions() {
     QCOMPARE(audioSourceCombo->currentData().toString(), QString("selected-window"));
     QVERIFY(audioSourceCombo->findData("communications-output") >= 0);
     QVERIFY(audioSourceCombo->findData("default-microphone") >= 0);
+
+    auto *includeMicCheck = window_->findChild<QCheckBox*>("includeMicrophoneCheck");
+    QVERIFY(includeMicCheck != nullptr);
+    QVERIFY(!includeMicCheck->isChecked());
+    auto *microphoneCombo = window_->findChild<QComboBox*>("microphoneDeviceSelect");
+    QVERIFY(microphoneCombo != nullptr);
+    QVERIFY(microphoneCombo->count() >= 1);
+    QCOMPARE(microphoneCombo->itemData(0).toString(), QString());
 }
 
 void TestMainWindow::testRoomModeQualityToggle() {
