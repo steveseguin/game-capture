@@ -9,6 +9,7 @@ class TestOpusEncoder : public QObject {
 
   private slots:
     void testPtsIsMonotonicIn100nsUnits();
+    void testRemainderCarriesIntoNextEncodeCall();
     void testFormatMismatchRejected();
 };
 
@@ -36,6 +37,38 @@ void TestOpusEncoder::testPtsIsMonotonicIn100nsUnits() {
     QCOMPARE(packetPts[2], static_cast<int64_t>(1200000));
     QCOMPARE(packetPts[1] - packetPts[0], static_cast<int64_t>(100000));
     QCOMPARE(packetPts[2] - packetPts[1], static_cast<int64_t>(100000));
+}
+
+void TestOpusEncoder::testRemainderCarriesIntoNextEncodeCall() {
+    versus::audio::OpusEncoder encoder;
+    versus::audio::AudioEncoderConfig config;
+    config.sampleRate = 48000;
+    config.channels = 2;
+    config.bitrate = 128;
+
+    QVERIFY(encoder.initialize(config));
+
+    std::vector<int64_t> packetPts;
+    encoder.setPacketCallback([&packetPts](const versus::audio::EncodedAudioPacket &packet) {
+        packetPts.push_back(packet.pts);
+    });
+
+    // 5 ms + 5 ms must produce one 10 ms Opus packet, not drop the first half.
+    std::vector<float> fiveMs(240 * 2, 0.1f);
+    QVERIFY(encoder.encode(fiveMs, 48000, 2, 500000));
+    QCOMPARE(static_cast<int>(packetPts.size()), 0);
+    QVERIFY(encoder.encode(fiveMs, 48000, 2, 550000));
+    QCOMPARE(static_cast<int>(packetPts.size()), 1);
+    QCOMPARE(packetPts[0], static_cast<int64_t>(500000));
+
+    // A 15 ms chunk emits one frame and carries 5 ms into the next call.
+    std::vector<float> fifteenMs(720 * 2, 0.1f);
+    QVERIFY(encoder.encode(fifteenMs, 48000, 2, 600000));
+    QCOMPARE(static_cast<int>(packetPts.size()), 2);
+    QCOMPARE(packetPts[1], static_cast<int64_t>(600000));
+    QVERIFY(encoder.encode(fiveMs, 48000, 2, 750000));
+    QCOMPARE(static_cast<int>(packetPts.size()), 3);
+    QCOMPARE(packetPts[2], static_cast<int64_t>(700000));
 }
 
 void TestOpusEncoder::testFormatMismatchRejected() {

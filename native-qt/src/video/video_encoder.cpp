@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cmath>
@@ -18,6 +19,7 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #ifdef VERSUS_HAS_FFMPEG
@@ -249,8 +251,8 @@ class VideoEncoder::Impl {
             av_packet_free(&packet_);
         }
         initialized_ = false;
-        activeEncoderName_.clear();
-        activeCodec_ = VideoCodec::H264;
+        setActiveEncoderName("");
+        activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
     }
 
     bool encode(const CapturedFrame &input, EncodedPacket &output) {
@@ -287,12 +289,20 @@ class VideoEncoder::Impl {
     }
 
     void requestKeyframe() { forceKeyframe_ = true; }
-    std::string activeEncoderName() const { return activeEncoderName_; }
-    VideoCodec activeCodec() const { return activeCodec_; }
-    std::string activeCodecName() const { return videoCodecName(activeCodec_); }
-    bool isHardwareEncoder() const { return useHardware_; }
+    std::string activeEncoderName() const {
+        std::lock_guard<std::mutex> lock(activeEncoderNameMutex_);
+        return activeEncoderName_;
+    }
+    VideoCodec activeCodec() const { return activeCodec_.load(std::memory_order_relaxed); }
+    std::string activeCodecName() const { return videoCodecName(activeCodec()); }
+    bool isHardwareEncoder() const { return useHardware_.load(std::memory_order_relaxed); }
 
   private:
+    void setActiveEncoderName(std::string name) {
+        std::lock_guard<std::mutex> lock(activeEncoderNameMutex_);
+        activeEncoderName_ = std::move(name);
+    }
+
     bool tryInitEncoder(HardwareEncoder hardware) {
         const char *encoderName = "h264_nvenc";
         AVHWDeviceType hwType = AV_HWDEVICE_TYPE_CUDA;
@@ -308,7 +318,7 @@ class VideoEncoder::Impl {
             encoderName = (config_.codec == VideoCodec::H265) ? "hevc_amf" : "h264_amf";
             hwType = AV_HWDEVICE_TYPE_D3D11VA;
         }
-        activeEncoderName_ = encoderName;
+        setActiveEncoderName(encoderName);
 
         const AVCodec *codec = avcodec_find_encoder_by_name(encoderName);
         if (!codec) {
@@ -371,7 +381,7 @@ class VideoEncoder::Impl {
 
         packet_ = av_packet_alloc();
         initialized_ = true;
-        activeCodec_ = config_.codec;
+        activeCodec_.store(config_.codec, std::memory_order_relaxed);
         return true;
     }
 
@@ -439,14 +449,15 @@ class VideoEncoder::Impl {
     AVFrame *hwFrame_ = nullptr;
     AVPacket *packet_ = nullptr;
     bool initialized_ = false;
-    bool useHardware_ = false;
+    std::atomic<bool> useHardware_{false};
     bool forceKeyframe_ = false;
     int64_t frameCount_ = 0;
     int lastWidth_ = 0;
     int lastHeight_ = 0;
     std::vector<uint8_t> aspectFitInputBuffer_;
+    mutable std::mutex activeEncoderNameMutex_;
     std::string activeEncoderName_;
-    VideoCodec activeCodec_ = VideoCodec::H264;
+    std::atomic<VideoCodec> activeCodec_{VideoCodec::H264};
 };
 
 #else
@@ -457,25 +468,28 @@ using Microsoft::WRL::ComPtr;
 
 class VideoEncoder::Impl {
   public:
-    std::string activeEncoderName() const { return activeEncoderName_; }
-    VideoCodec activeCodec() const { return activeCodec_; }
-    std::string activeCodecName() const { return videoCodecName(activeCodec_); }
-    bool isHardwareEncoder() const { return usingHardware_; }
+    std::string activeEncoderName() const {
+        std::lock_guard<std::mutex> lock(activeEncoderNameMutex_);
+        return activeEncoderName_;
+    }
+    VideoCodec activeCodec() const { return activeCodec_.load(std::memory_order_relaxed); }
+    std::string activeCodecName() const { return videoCodecName(activeCodec()); }
+    bool isHardwareEncoder() const { return usingHardware_.load(std::memory_order_relaxed); }
 
     bool initialize(const EncoderConfig &config) {
         config_ = config;
         spdlog::info("[VideoEncoder] Initializing MF encoder {}x{} @{}kbps", config.width, config.height, config.bitrate);
         frameCount_ = 0;
         lastInputTimestamp_ = 0;
-        activeCodec_ = VideoCodec::H264;
+        activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
 
         const bool requireExternalFfmpeg =
             config_.forceFfmpegNvenc || config_.codec != VideoCodec::H264;
         if (requireExternalFfmpeg && initializeExternalFfmpegNvenc()) {
             initialized_ = true;
             usingHardware_ = externalUsingHardware_;
-            activeEncoderName_ = externalEncoderName_;
-            activeCodec_ = config_.codec;
+            setActiveEncoderName(externalEncoderName_);
+            activeCodec_.store(config_.codec, std::memory_order_relaxed);
             if (!runWarmupProbe()) {
                 bool recovered = false;
                 if (config_.codec != VideoCodec::H264 &&
@@ -487,8 +501,8 @@ class VideoEncoder::Impl {
                     if (initializeExternalFfmpegNvenc()) {
                         initialized_ = true;
                         usingHardware_ = externalUsingHardware_;
-                        activeEncoderName_ = externalEncoderName_;
-                        activeCodec_ = config_.codec;
+                        setActiveEncoderName(externalEncoderName_);
+                        activeCodec_.store(config_.codec, std::memory_order_relaxed);
                         recovered = runWarmupProbe();
                     }
                 }
@@ -497,8 +511,8 @@ class VideoEncoder::Impl {
                     shutdownExternalFfmpegNvenc();
                     initialized_ = false;
                     usingHardware_ = false;
-                    activeEncoderName_.clear();
-                    activeCodec_ = VideoCodec::H264;
+                    setActiveEncoderName("");
+                    activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
                 } else {
                     frameCount_ = 0;
                 }
@@ -509,8 +523,8 @@ class VideoEncoder::Impl {
         if (initialized_) {
             spdlog::info("[VideoEncoder] Using {} encoder: {} codec={}",
                          usingHardware_ ? "hardware" : "software",
-                         activeEncoderName_,
-                         videoCodecName(activeCodec_));
+                         activeEncoderName(),
+                         videoCodecName(activeCodec()));
             return true;
         }
         if (requireExternalFfmpeg) {
@@ -555,7 +569,7 @@ class VideoEncoder::Impl {
                 continue;
             }
 
-            activeEncoderName_ = candidate.name;
+            setActiveEncoderName(candidate.name);
             usingHardware_ = candidate.hardware;
             if (configureTransform()) {
                 initialized_ = true;
@@ -568,16 +582,16 @@ class VideoEncoder::Impl {
 
                 if (!config_.forceFfmpegNvenc &&
                     config_.preferredHardware == HardwareEncoder::NVENC &&
-                    !matchesPreferredHardware(activeEncoderName_, HardwareEncoder::NVENC)) {
+                    !matchesPreferredHardware(activeEncoderName(), HardwareEncoder::NVENC)) {
                     spdlog::warn(
                         "[VideoEncoder] Requested NVENC but active encoder is '{}'; continuing with Media Foundation path",
-                        activeEncoderName_);
+                        activeEncoderName());
                 }
 
                 frameCount_ = 0;
-                activeCodec_ = VideoCodec::H264;
+                activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
                 spdlog::info("[VideoEncoder] Using {} encoder: {}",
-                             usingHardware_ ? "hardware" : "software", activeEncoderName_);
+                             usingHardware_ ? "hardware" : "software", activeEncoderName());
                 return true;
             }
 
@@ -589,9 +603,9 @@ class VideoEncoder::Impl {
         spdlog::error("[VideoEncoder] Failed to initialize any encoder candidate (last hr=0x{:08x})",
                       static_cast<unsigned>(lastHr));
         resetCurrentTransform();
-        activeEncoderName_.clear();
+        setActiveEncoderName("");
         usingHardware_ = false;
-        activeCodec_ = VideoCodec::H264;
+        activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
         shutdownMf();
         releaseCom();
         return false;
@@ -604,8 +618,8 @@ class VideoEncoder::Impl {
         releaseCom();
         initialized_ = false;
         usingHardware_ = false;
-        activeEncoderName_.clear();
-        activeCodec_ = VideoCodec::H264;
+        setActiveEncoderName("");
+        activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
         frameCount_ = 0;
         lastInputTimestamp_ = 0;
         inputSubtype_ = MFVideoFormat_NV12;
@@ -778,7 +792,7 @@ class VideoEncoder::Impl {
                     }
                 }
             }
-            packet.codec = activeCodec_;
+            packet.codec = activeCodec();
 
             encodedBuffer->Unlock();
             if (outputDataBuffer.pEvents) {
@@ -2039,6 +2053,46 @@ class VideoEncoder::Impl {
                (static_cast<uint32_t>(data[3]) << 24);
     }
 
+    // AV1 temporal units only carry a sequence-header OBU (type 1) on keyframes,
+    // so its presence is a reliable random-access indicator for live encodes.
+    static bool av1PacketContainsSequenceHeader(const std::vector<uint8_t> &packet) {
+        size_t pos = 0;
+        while (pos < packet.size()) {
+            const uint8_t header = packet[pos];
+            if ((header & 0x80) != 0) {  // forbidden bit
+                return false;
+            }
+            const uint8_t obuType = (header >> 3) & 0x0F;
+            const bool hasExtension = (header & 0x04) != 0;
+            const bool hasSizeField = (header & 0x02) != 0;
+            if (obuType == 1) {
+                return true;
+            }
+            pos += 1 + (hasExtension ? 1 : 0);
+            if (!hasSizeField) {
+                // Last OBU in the temporal unit extends to the end of the packet.
+                return false;
+            }
+            uint64_t obuSize = 0;
+            int shift = 0;
+            bool sizeParsed = false;
+            while (pos < packet.size() && shift < 56) {
+                const uint8_t byte = packet[pos++];
+                obuSize |= static_cast<uint64_t>(byte & 0x7F) << shift;
+                if ((byte & 0x80) == 0) {
+                    sizeParsed = true;
+                    break;
+                }
+                shift += 7;
+            }
+            if (!sizeParsed || obuSize > packet.size() - pos) {
+                return false;
+            }
+            pos += static_cast<size_t>(obuSize);
+        }
+        return false;
+    }
+
     bool popExternalIvfPacket(EncodedPacket &output) {
         if (!externalIvfHeaderParsed_) {
             if (externalOutputBuffer_.size() < 32) {
@@ -2079,7 +2133,11 @@ class VideoEncoder::Impl {
         }
         output.dts = output.pts;
         output.codec = config_.codec;
-        output.isKeyframe = true;
+        // VP9 runs with -g 1 (all keyframes). AV1 uses GOP-based keyframes, so
+        // flag only frames carrying a sequence header; otherwise new viewers are
+        // fed delta frames they cannot decode.
+        output.isKeyframe = (config_.codec != VideoCodec::AV1) ||
+                            av1PacketContainsSequenceHeader(output.data);
         externalPacketCount_++;
 
         if (!externalFirstPacketLogged_) {
@@ -2179,6 +2237,11 @@ class VideoEncoder::Impl {
     }
 
   private:
+    void setActiveEncoderName(std::string name) {
+        std::lock_guard<std::mutex> lock(activeEncoderNameMutex_);
+        activeEncoderName_ = std::move(name);
+    }
+
     struct EncoderCandidate {
         ComPtr<IMFActivate> activate;
         std::string name;
@@ -2249,7 +2312,7 @@ class VideoEncoder::Impl {
         if (!usingHardware_) {
             return false;
         }
-        const std::string encoderLower = toLowerCopy(activeEncoderName_);
+        const std::string encoderLower = toLowerCopy(activeEncoderName());
         const bool intelLike = encoderLower.find("intel") != std::string::npos ||
                                encoderLower.find("quick sync") != std::string::npos ||
                                encoderLower.find("qsv") != std::string::npos;
@@ -2644,11 +2707,12 @@ class VideoEncoder::Impl {
         }
 
         hr = attrs->SetUINT32(MF_TRANSFORM_ASYNC_UNLOCK, TRUE);
+        const std::string encoderName = activeEncoderName();
         if (SUCCEEDED(hr)) {
-            spdlog::info("[VideoEncoder] Enabled async unlock for '{}'", activeEncoderName_);
+            spdlog::info("[VideoEncoder] Enabled async unlock for '{}'", encoderName);
         } else {
             spdlog::warn("[VideoEncoder] Failed to unlock async transform '{}' hr=0x{:08x}",
-                         activeEncoderName_,
+                         encoderName,
                          static_cast<unsigned>(hr));
         }
     }
@@ -2732,11 +2796,12 @@ class VideoEncoder::Impl {
         const HRESULT hr = transform_->ProcessMessage(
             MFT_MESSAGE_SET_D3D_MANAGER,
             reinterpret_cast<ULONG_PTR>(dxgiDeviceManager_.Get()));
+        const std::string encoderName = activeEncoderName();
         if (SUCCEEDED(hr)) {
-            spdlog::info("[VideoEncoder] Attached DXGI manager to '{}'", activeEncoderName_);
+            spdlog::info("[VideoEncoder] Attached DXGI manager to '{}'", encoderName);
         } else {
             spdlog::warn("[VideoEncoder] Failed to attach DXGI manager to '{}' hr=0x{:08x}",
-                         activeEncoderName_,
+                         encoderName,
                          static_cast<unsigned>(hr));
         }
     }
@@ -2765,11 +2830,12 @@ class VideoEncoder::Impl {
         // Some hardware MFTs can stall or underfeed in async mode under real-time churn.
         // Keep Intel/QSV in synchronous mode, but allow NVIDIA MFTs to remain async to
         // avoid E_UNEXPECTED ProcessOutput timing violations.
-        const std::string encoderLower = toLowerCopy(activeEncoderName_);
+        const std::string encoderName = activeEncoderName();
+        const std::string encoderLower = toLowerCopy(encoderName);
         if (encoderLower.find("quick sync") != std::string::npos ||
             encoderLower.find("intel") != std::string::npos ||
             encoderLower.find("qsv") != std::string::npos) {
-            spdlog::info("[VideoEncoder] Forcing synchronous MFT mode for '{}'", activeEncoderName_);
+            spdlog::info("[VideoEncoder] Forcing synchronous MFT mode for '{}'", encoderName);
             return;
         }
 
@@ -2781,7 +2847,7 @@ class VideoEncoder::Impl {
         }
 
         asyncMft_ = true;
-        spdlog::info("[VideoEncoder] Async MFT mode enabled for '{}'", activeEncoderName_);
+        spdlog::info("[VideoEncoder] Async MFT mode enabled for '{}'", encoderName);
     }
 
     void pumpAsyncEvents() {
@@ -2917,6 +2983,61 @@ class VideoEncoder::Impl {
         }
     }
 
+    static bool encoderNameLooksDx12Hardware(const std::string &encoderName) {
+        const std::string lower = toLowerCopy(encoderName);
+        return lower.find("avc dx") != std::string::npos;
+    }
+
+    static bool encoderNameLooksGenericHardware(const std::string &encoderName) {
+        const std::string lower = toLowerCopy(encoderName);
+        return lower == "h264 encoder mft" ||
+               lower.find("hardware h264 encoder") != std::string::npos;
+    }
+
+    static bool encoderNameLooksWrongVendor(const std::string &encoderName, HardwareEncoder preferred) {
+        const std::string lower = toLowerCopy(encoderName);
+        const bool nvidia = lower.find("nvidia") != std::string::npos ||
+                            lower.find("nvenc") != std::string::npos ||
+                            lower.find("geforce") != std::string::npos;
+        const bool intel = lower.find("intel") != std::string::npos ||
+                           lower.find("quick sync") != std::string::npos ||
+                           lower.find("qsv") != std::string::npos;
+        const bool amd = lower.find("amd") != std::string::npos ||
+                         lower.find("radeon") != std::string::npos ||
+                         lower.find("amf") != std::string::npos;
+
+        switch (preferred) {
+            case HardwareEncoder::NVENC:
+                return intel || amd;
+            case HardwareEncoder::QuickSync:
+                return nvidia || amd;
+            case HardwareEncoder::AMF:
+                return nvidia || intel;
+            case HardwareEncoder::None:
+            default:
+                return false;
+        }
+    }
+
+    static int hardwarePreferenceScore(const EncoderCandidate &candidate, HardwareEncoder preferred) {
+        if (preferred == HardwareEncoder::None) {
+            return 0;
+        }
+        if (matchesPreferredHardware(candidate.name, preferred)) {
+            return 0;
+        }
+        if (encoderNameLooksDx12Hardware(candidate.name)) {
+            return 1;
+        }
+        if (encoderNameLooksGenericHardware(candidate.name)) {
+            return 2;
+        }
+        if (encoderNameLooksWrongVendor(candidate.name, preferred)) {
+            return 4;
+        }
+        return 3;
+    }
+
     static std::vector<EncoderCandidate> enumerateEncoders(DWORD flags, bool hardware,
                                                            const MFT_REGISTER_TYPE_INFO *inputType,
                                                            const MFT_REGISTER_TYPE_INFO *outputType) {
@@ -2994,13 +3115,14 @@ class VideoEncoder::Impl {
             appendMatching(softwareEncoders, [](const EncoderCandidate &) { return true; });
             appendMatching(hardwareEncoders, [](const EncoderCandidate &) { return true; });
         } else {
-            // Try preferred hardware first, then any other hardware, then software fallback.
-            appendMatching(hardwareEncoders, [&](const EncoderCandidate &candidate) {
-                return matchesPreferredHardware(candidate.name, preferred);
-            });
-            appendMatching(hardwareEncoders, [&](const EncoderCandidate &candidate) {
-                return !matchesPreferredHardware(candidate.name, preferred);
-            });
+            // Try explicit matches first. If the driver exposes only a generic
+            // hardware MFT name, prefer that before a known wrong-vendor MFT.
+            std::stable_sort(hardwareEncoders.begin(), hardwareEncoders.end(),
+                             [&](const EncoderCandidate &left, const EncoderCandidate &right) {
+                                 return hardwarePreferenceScore(left, preferred) <
+                                        hardwarePreferenceScore(right, preferred);
+                             });
+            appendMatching(hardwareEncoders, [](const EncoderCandidate &) { return true; });
             appendMatching(softwareEncoders, [](const EncoderCandidate &) { return true; });
         }
 
@@ -3137,7 +3259,7 @@ class VideoEncoder::Impl {
     bool asyncMft_ = false;
     bool mfStarted_ = false;
     bool initialized_ = false;
-    bool usingHardware_ = false;
+    std::atomic<bool> usingHardware_{false};
     bool streamStarted_ = false;
     bool usingExternalFfmpeg_ = false;
     bool externalForceKeyframeRequested_ = false;
@@ -3174,8 +3296,9 @@ class VideoEncoder::Impl {
     HANDLE externalProcess_ = nullptr;
     HANDLE externalThread_ = nullptr;
     std::string externalEncoderName_;
+    mutable std::mutex activeEncoderNameMutex_;
     std::string activeEncoderName_;
-    VideoCodec activeCodec_ = VideoCodec::H264;
+    std::atomic<VideoCodec> activeCodec_{VideoCodec::H264};
 };
 
 #else

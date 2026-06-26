@@ -17,6 +17,8 @@
     [switch]$SkipDualStream = $false,
     [switch]$CheckHardwareEncoders = $true,
     [switch]$EnforceHardwareEncoders = $false,
+    [string]$CaptureWindowFilter = "",
+    [switch]$DisableE2eCaptureSource = $false,
     [int]$BitrateRetries = 1,
     [int]$HardwareRetries = 1
 )
@@ -83,6 +85,40 @@ function Resolve-PublisherExecutable([string]$RepoRoot, [string]$BuildDir, [stri
     return ""
 }
 
+function Quote-ProcessArgument([string]$Value) {
+    return '"' + ($Value -replace '"', '\"') + '"'
+}
+
+function Start-E2eCaptureSource([string]$Title) {
+    $sourceScript = Join-Path $PSScriptRoot "e2e-capture-source.ps1"
+    if (-not (Test-Path $sourceScript)) {
+        throw "Capture source script not found: $sourceScript"
+    }
+
+    $argText = "-NoProfile -ExecutionPolicy Bypass -STA -File $(Quote-ProcessArgument $sourceScript) -Title $(Quote-ProcessArgument $Title)"
+    $proc = Start-Process -FilePath "powershell.exe" -ArgumentList $argText -PassThru -WindowStyle Normal
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 250
+        $current = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+        if (-not $current) {
+            throw "E2E capture source exited before its window became available."
+        }
+        if ($current.MainWindowTitle -like "*$Title*") {
+            return $proc
+        }
+    }
+
+    Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+    throw "Timed out waiting for E2E capture source window: $Title"
+}
+
+function Stop-E2eCaptureSource($Process) {
+    if ($Process) {
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+    }
+}
+
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $reportDir = Join-Path $PSScriptRoot "reports"
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
@@ -103,6 +139,24 @@ if ($IncludeSoak -and $SkipSoak) {
 # Soak is now part of the default release gate.
 $runSoak = $IncludeSoak -or (-not $SkipSoak)
 
+$captureSourceProcess = $null
+$captureWindowFilterEffective = $CaptureWindowFilter
+if (-not $captureWindowFilterEffective) {
+    $captureWindowFilterEffective = [Environment]::GetEnvironmentVariable("GAME_CAPTURE_WINDOW_FILTER", "Process")
+}
+if (-not $captureWindowFilterEffective -and -not $DisableE2eCaptureSource) {
+    $captureWindowFilterEffective = "Game Capture E2E Source $timestamp"
+    Write-Host "Starting E2E capture source: $captureWindowFilterEffective"
+    $captureSourceProcess = Start-E2eCaptureSource -Title $captureWindowFilterEffective
+    Register-EngineEvent -SourceIdentifier PowerShell.Exiting -MessageData $captureSourceProcess.Id -Action {
+        Stop-Process -Id ([int]$Event.MessageData) -Force -ErrorAction SilentlyContinue
+    } | Out-Null
+}
+if ($captureWindowFilterEffective) {
+    [Environment]::SetEnvironmentVariable("GAME_CAPTURE_WINDOW_FILTER", $captureWindowFilterEffective, "Process")
+    Write-Host "Using E2E capture window filter: $captureWindowFilterEffective"
+}
+
 $lines = @()
 $lines += "# Release Readiness Report"
 $lines += ""
@@ -120,6 +174,8 @@ $lines += "- Control token length: $($ControlToken.Length)"
 $lines += "- Dual-stream gate enabled: $(if ($SkipDualStream) { 'no (explicitly skipped)' } else { 'yes' })"
 $lines += "- Soak gate enabled: $(if ($runSoak) { 'yes' } else { 'no (explicitly skipped)' })"
 $lines += "- Dual soak hold-ms: $DualSoakHoldMs"
+$lines += "- Capture window filter: $(if ($captureWindowFilterEffective) { $captureWindowFilterEffective } else { '(default headless selection)' })"
+$lines += "- Managed capture source: $(if ($captureSourceProcess) { 'yes' } else { 'no' })"
 $lines += ""
 
 $ffmpegCliArg = ""
@@ -309,7 +365,7 @@ if ($CheckHardwareEncoders) {
         cmd /c "npm --prefix `"$repoRoot`" run e2e:bitrate -- --publisher-path=`"$publisherExe`" --video-encoder=nvenc --bitrates=12000 --require-hardware --expect-encoder-name=nvenc,nvidia --forbid-encoder-name=intel,qsv$ffmpegCliArg"
     }
     $hardwareQsvPass = Run-StepWithRetry "Hardware Smoke (QSV strict)" (1 + [Math]::Max(0, $HardwareRetries)) {
-        cmd /c "npm --prefix `"$repoRoot`" run e2e:bitrate -- --publisher-path=`"$publisherExe`" --video-encoder=qsv --bitrates=12000 --require-hardware --expect-encoder-name=intel,qsv,h264 encoder mft,avc dx12 --forbid-encoder-name=nvenc,nvidia$ffmpegCliArg"
+        cmd /c "npm --prefix `"$repoRoot`" run e2e:bitrate -- --publisher-path=`"$publisherExe`" --video-encoder=qsv --bitrates=12000 --require-hardware --expect-encoder-name=`"intel,qsv,h264 encoder mft,avc dx12`" --forbid-encoder-name=nvenc,nvidia$ffmpegCliArg"
     }
     if ($EnforceHardwareEncoders) {
         $allPass = $allPass -and $hardwareNvencPass -and $hardwareQsvPass
@@ -451,6 +507,8 @@ $lines += ""
 Set-Content -Path $reportPath -Value $lines -Encoding UTF8
 Write-Host ""
 Write-Host "Report written to: $reportPath"
+
+Stop-E2eCaptureSource $captureSourceProcess
 
 if (-not $allPass) {
     exit 1

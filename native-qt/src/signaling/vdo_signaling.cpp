@@ -273,7 +273,7 @@ bool parseSignalPayloadJson(const json &msg,
 
     if (msg.contains("description")) {
         std::string description;
-        if (msg["description"].is_string() && msg.contains("vector")) {
+        if (msg["description"].is_string() && msg.contains("vector") && msg["vector"].is_string()) {
             auto pass = effectivePassword(password, encryptionDisabled);
             std::string decrypted;
             if (!aesDecryptCbc(msg["description"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
@@ -313,7 +313,7 @@ bool parseSignalPayloadJson(const json &msg,
 
     if (msg.contains("candidate")) {
         std::string candidate;
-        if (msg["candidate"].is_string() && msg.contains("vector")) {
+        if (msg["candidate"].is_string() && msg.contains("vector") && msg["vector"].is_string()) {
             auto pass = effectivePassword(password, encryptionDisabled);
             std::string decrypted;
             if (!aesDecryptCbc(msg["candidate"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
@@ -345,7 +345,7 @@ bool parseSignalPayloadJson(const json &msg,
 
     if (msg.contains("candidates")) {
         std::string candidatePayload;
-        if (msg["candidates"].is_string() && msg.contains("vector")) {
+        if (msg["candidates"].is_string() && msg.contains("vector") && msg["vector"].is_string()) {
             auto pass = effectivePassword(password, encryptionDisabled);
             std::string decrypted;
             if (!aesDecryptCbc(msg["candidates"].get<std::string>(), msg["vector"].get<std::string>(), pass + salt, decrypted)) {
@@ -416,6 +416,18 @@ struct VdoSignaling::Impl {
             return;
         }
 
+        // Field type mismatches in server messages must not escape as
+        // exceptions on the websocket thread.
+        try {
+            dispatchMessage(msg, payload);
+        } catch (const std::exception &e) {
+            spdlog::warn("Signaling message dispatch error: {}", e.what());
+        } catch (...) {
+            spdlog::warn("Signaling message dispatch error");
+        }
+    }
+
+    void dispatchMessage(const json &msg, const std::string &payload) {
         // Debug: log incoming messages (truncate large payloads)
         std::string logPayload = payload.length() > 200 ? payload.substr(0, 200) + "..." : payload;
         spdlog::info("[Signaling] Received: {}", logPayload);

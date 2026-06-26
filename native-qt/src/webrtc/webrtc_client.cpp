@@ -878,8 +878,14 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
         }
         impl_->videoRtpConfig->timestamp = rtpTimestamp;
         rtc::binary binaryPayload = toBinary(packet.data);
-        impl_->videoTrack->send(binaryPayload);
-        sent = true;
+        try {
+            impl_->videoTrack->send(binaryPayload);
+            sent = true;
+        } catch (const std::exception &e) {
+            spdlog::warn("[WebRTC] Failed to send video packet: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[WebRTC] Failed to send video packet");
+        }
     }
     if (!sent) {
         return false;
@@ -919,7 +925,15 @@ bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet) {
 
     // Send raw Opus data to the track - the media handler chain will packetize it
     rtc::binary binaryPayload = toBinary(packet.data);
-    impl_->audioTrack->send(binaryPayload);
+    try {
+        impl_->audioTrack->send(binaryPayload);
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to send audio packet: {}", e.what());
+        return false;
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to send audio packet");
+        return false;
+    }
     return true;
 }
 
@@ -933,7 +947,15 @@ bool WebRtcClient::sendDataMessage(const std::string &message) {
     if (!channel || !channel->isOpen()) {
         return false;
     }
-    return channel->send(message);
+    try {
+        return channel->send(message);
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to send data message: {}", e.what());
+        return false;
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to send data message");
+        return false;
+    }
 }
 
 bool WebRtcClient::isDataChannelOpen() const {

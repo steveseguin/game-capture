@@ -86,9 +86,9 @@ void TestIceConfig::testFilterSessionDescriptionForStunOnly() {
         versus::webrtc::filterSessionDescriptionForMode(input, versus::webrtc::IceMode::StunOnly);
 
     QVERIFY(filtered.find(" typ relay") == std::string::npos);
-    QVERIFY(filtered.find(" typ host") != std::string::npos);
+    QVERIFY(filtered.find(" typ host") == std::string::npos);
     QVERIFY(filtered.find("99.246.137.16") != std::string::npos);
-    QVERIFY(filtered.find("c=IN IP4 10.0.0.9") != std::string::npos);
+    QVERIFY(filtered.find("c=IN IP4 99.246.137.16") != std::string::npos);
 }
 
 void TestIceConfig::testCandidateAllowedForMode() {
@@ -103,7 +103,7 @@ void TestIceConfig::testCandidateAllowedForMode() {
     QVERIFY(!versus::webrtc::candidateAllowedForMode(stunCandidate, versus::webrtc::IceMode::HostOnly));
     QVERIFY(!versus::webrtc::candidateAllowedForMode(relayCandidate, versus::webrtc::IceMode::HostOnly));
 
-    QVERIFY(versus::webrtc::candidateAllowedForMode(hostCandidate, versus::webrtc::IceMode::StunOnly));
+    QVERIFY(!versus::webrtc::candidateAllowedForMode(hostCandidate, versus::webrtc::IceMode::StunOnly));
     QVERIFY(versus::webrtc::candidateAllowedForMode(stunCandidate, versus::webrtc::IceMode::StunOnly));
     QVERIFY(!versus::webrtc::candidateAllowedForMode(relayCandidate, versus::webrtc::IceMode::StunOnly));
 

@@ -112,6 +112,7 @@ class VersusApp {
     void handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk);
     void handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk);
     void mixAdditionalAudioInto(std::vector<float> &samples, uint32_t sampleRate, uint32_t channels);
+    void encodeNormalizedAudio(std::vector<float> &normalizedSamples);
     void setupSignalingCallbacks();
     void startSignalingRecovery();
     void stopSignalingRecoveryThread();
@@ -154,14 +155,16 @@ class VersusApp {
     void emitRuntimeEvent(const std::string &message, bool fatal);
     PeerCounts collectPeerCounts() const;
 
-    bool live_ = false;
-    bool capturing_ = false;
+    std::atomic<bool> live_{false};
+    std::atomic<bool> capturing_{false};
     std::atomic<bool> stopRequested_{false};
     std::atomic<bool> reconnecting_{false};
     std::atomic<bool> videoTrackActive_{false};
     std::atomic<bool> pendingGlobalKeyframe_{false};
+    std::atomic<bool> captureBackendFailureNotified_{false};
     std::atomic<int64_t> lastVideoSendMs_{0};
     std::atomic<int64_t> lastKeyframeSendMs_{0};
+    std::atomic<int64_t> lastPrimaryAudioChunkMs_{0};
     StartOptions startOptions_;
     std::string streamId_;
     std::string room_;
@@ -204,6 +207,7 @@ class VersusApp {
     mutable std::mutex iceConfigMutex_;
     mutable std::mutex runtimeEventMutex_;
     std::mutex additionalAudioMutex_;
+    std::mutex audioEncodeMutex_;
     RuntimeEventCallback runtimeEventCallback_;
     struct PendingCandidate {
         std::string candidate;

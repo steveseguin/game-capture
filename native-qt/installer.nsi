@@ -6,7 +6,7 @@
 ; General
 Name "Game Capture"
 !ifndef VERSION
-!define VERSION "0.2.39"
+!define VERSION "0.2.40"
 !endif
 !ifndef BUILD_BIN_DIR
 !define BUILD_BIN_DIR "build\bin"
@@ -14,6 +14,7 @@ Name "Game Capture"
 !ifndef OUTFILE
 !define OUTFILE "dist\game-capture-setup.exe"
 !endif
+!define FIREWALL_RULE_UDP "Game Capture WebRTC UDP"
 OutFile "${OUTFILE}"
 InstallDir "$PROGRAMFILES64\Game Capture"
 InstallDirRegKey HKLM "Software\GameCapture" "InstallDir"
@@ -61,6 +62,18 @@ Function RemoveExistingInstall
 done:
 FunctionEnd
 
+Function AddFirewallRules
+    DetailPrint "Adding Windows Firewall rule for Game Capture WebRTC..."
+    ; Replace stale rules so upgrades keep the installed executable path current.
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE_UDP}"'
+    nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE_UDP}" dir=in action=allow program="$INSTDIR\game-capture.exe" protocol=UDP enable=yes profile=any'
+FunctionEnd
+
+Function un.RemoveFirewallRules
+    DetailPrint "Removing Windows Firewall rule for Game Capture WebRTC..."
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE_UDP}"'
+FunctionEnd
+
 ; Installer Section
 Section "Install"
     Call EnsureGameCaptureClosed
@@ -84,6 +97,8 @@ Section "Install"
     File /nonfatal "${BUILD_BIN_DIR}\*.dll"
     File /nonfatal "${BUILD_BIN_DIR}\vdoninja.ico"
     File /nonfatal "${BUILD_BIN_DIR}\RELEASE-NOTES.txt"
+
+    Call AddFirewallRules
 
     ; Qt plugins - platforms
     SetOutPath "$INSTDIR\platforms"
@@ -117,6 +132,7 @@ SectionEnd
 ; Uninstaller Section
 Section "Uninstall"
     Call un.EnsureGameCaptureClosed
+    Call un.RemoveFirewallRules
 
     ; Remove files
     Delete "$INSTDIR\*.*"

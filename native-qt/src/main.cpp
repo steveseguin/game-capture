@@ -223,6 +223,14 @@ int main(int argc, char *argv[]) {
         // Fall back to default logger
     }
 
+    if (windowFilterArg.empty()) {
+        const char *envWindowFilter = std::getenv("GAME_CAPTURE_WINDOW_FILTER");
+        if (envWindowFilter && *envWindowFilter) {
+            windowFilterArg = envWindowFilter;
+            spdlog::info("[Main] Using capture window filter from GAME_CAPTURE_WINDOW_FILTER");
+        }
+    }
+
     QApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/icons/vdoninja.ico"));
     app.setProperty("force_exit_without_shutdown", false);

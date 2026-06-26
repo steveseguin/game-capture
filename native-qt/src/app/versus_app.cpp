@@ -20,6 +20,7 @@ namespace {
 constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
+constexpr int64_t kPrimaryAudioActiveWindowMs = 250;
 constexpr int64_t kRoomInitGracePeriodMs = 1500;
 constexpr int64_t kDirectInitGracePeriodMs = 1000;
 constexpr int64_t kDisconnectedPeerPruneMs = 10000;
@@ -316,6 +317,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
     audioPts100ns_.store(0);
     audioLevelRms_.store(0.0f);
     audioPeak_.store(0.0f);
+    lastPrimaryAudioChunkMs_.store(0, std::memory_order_relaxed);
     videoBytesSent_.store(0, std::memory_order_relaxed);
     audioBytesSent_.store(0, std::memory_order_relaxed);
     videoFramesSent_.store(0, std::memory_order_relaxed);
@@ -325,6 +327,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
     lastSentHeight_.store(0, std::memory_order_relaxed);
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
+    captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
     activeHqWidth_ = 0;
@@ -425,7 +428,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
 
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >= 5) {
-            spdlog::info("[Frame] Received {} frames in last 5s, live={}", frameCount, live_);
+            spdlog::info("[Frame] Received {} frames in last 5s, live={}", frameCount, live_.load());
             frameCount = 0;
             lastLog = now;
         }
@@ -471,8 +474,10 @@ void VersusApp::stopCapture() {
     opusEncoder_.shutdown();
     audioLevelRms_.store(0.0f, std::memory_order_relaxed);
     audioPeak_.store(0.0f, std::memory_order_relaxed);
+    lastPrimaryAudioChunkMs_.store(0, std::memory_order_relaxed);
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
+    captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
     activeHqWidth_ = 0;
@@ -847,9 +852,8 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                 audio::DefaultAudioEndpoint::CommunicationsOutput, primaryCallback);
             break;
         case AudioSourceMode::DefaultMicrophone:
-            result = audioCapture_.StartDefaultEndpointStreamCapture(
-                audio::DefaultAudioEndpoint::MultimediaInput, primaryCallback);
-            break;
+            startMicrophoneAsPrimary();
+            return;
         case AudioSourceMode::None:
             if (!includeMicrophone_) {
                 spdlog::info("[Audio] Audio capture disabled by user setting");
@@ -904,15 +908,36 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
         return;
     }
 
-    std::lock_guard<std::mutex> lock(additionalAudioMutex_);
-    additionalAudioSampleRate_ = 48000;
-    additionalAudioChannels_ = 2;
-    for (float sample : normalizedSamples) {
-        additionalAudioBuffer_.push_back(sample);
+    std::vector<float> standaloneSamples;
+    const int64_t lastPrimaryMs = lastPrimaryAudioChunkMs_.load(std::memory_order_relaxed);
+    const int64_t nowMs = steadyNowMs();
+    const bool primaryAudioActive = lastPrimaryMs > 0 && (nowMs - lastPrimaryMs) <= kPrimaryAudioActiveWindowMs;
+
+    {
+        std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+        additionalAudioSampleRate_ = 48000;
+        additionalAudioChannels_ = 2;
+        for (float sample : normalizedSamples) {
+            additionalAudioBuffer_.push_back(sample);
+        }
+        constexpr size_t kMaxAdditionalAudioSamples = 48000 * 2 / 4;
+        while (additionalAudioBuffer_.size() > kMaxAdditionalAudioSamples) {
+            additionalAudioBuffer_.pop_front();
+        }
+
+        if (!primaryAudioActive) {
+            size_t take = std::min(normalizedSamples.size(), additionalAudioBuffer_.size());
+            take -= take % 2;
+            standaloneSamples.reserve(take);
+            for (size_t i = 0; i < take; ++i) {
+                standaloneSamples.push_back(additionalAudioBuffer_.front());
+                additionalAudioBuffer_.pop_front();
+            }
+        }
     }
-    constexpr size_t kMaxAdditionalAudioSamples = 48000 * 2 / 4;
-    while (additionalAudioBuffer_.size() > kMaxAdditionalAudioSamples) {
-        additionalAudioBuffer_.pop_front();
+
+    if (!standaloneSamples.empty()) {
+        encodeNormalizedAudio(standaloneSamples);
     }
 }
 
@@ -937,12 +962,25 @@ void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
     if (!live_) {
         return;
     }
+    lastPrimaryAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
 
     std::vector<float> normalizedSamples = normalizeAudioForOpus(chunk);
     if (normalizedSamples.empty()) {
         return;
     }
     mixAdditionalAudioInto(normalizedSamples, 48000, 2);
+
+    encodeNormalizedAudio(normalizedSamples);
+}
+
+void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples) {
+    if (!live_ || normalizedSamples.empty()) {
+        return;
+    }
+
+    // Primary (loopback) and additional (microphone) capture threads can both
+    // reach the shared Opus encoder; libopus encoder state is not thread-safe.
+    std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
 
     float peak = 0.0f;
     double sumSquares = 0.0;
@@ -1104,8 +1142,10 @@ void VersusApp::setupSignalingCallbacks() {
         // Always negotiate VDO.Ninja's sendChannel so both sides can exchange
         // the standard info handshake, even for direct VP9/alpha viewers.
         peerConfig.enableDataChannel = true;
-        peerConfig.initialVideo = !peer->roomMode;
-        peerConfig.initialAudio = !peer->roomMode;
+        // Include media m-lines in the first offer so VDO.Ninja room/slot mode
+        // does not need a second negotiation before it can attach the stream.
+        peerConfig.initialVideo = true;
+        peerConfig.initialAudio = true;
         peerConfig.initialAlpha = false;
         peerConfig.videoWidth = std::max(1, videoConfig_.width);
         peerConfig.videoHeight = std::max(1, videoConfig_.height);
@@ -1278,7 +1318,20 @@ void VersusApp::setupSignalingCallbacks() {
                 const int64_t graceMs = peerPtr->roomMode ? kRoomInitGracePeriodMs : kDirectInitGracePeriodMs;
                 peerPtr->initDeadlineMs.store(steadyNowMs() + graceMs, std::memory_order_relaxed);
             }
-            handlePeerDataMessage(peerPtr, message);
+            // Peer-supplied JSON can contain unexpected value types; never let a
+            // malformed message escape as an exception on the transport thread.
+            try {
+                handlePeerDataMessage(peerPtr, message);
+            } catch (const std::exception &e) {
+                spdlog::warn("[App] Failed to handle peer data message from {}:{}: {}",
+                             peerPtr->uuid,
+                             peerPtr->session,
+                             e.what());
+            } catch (...) {
+                spdlog::warn("[App] Failed to handle peer data message from {}:{}",
+                             peerPtr->uuid,
+                             peerPtr->session);
+            }
         });
 
         peer->client->setDataChannelStateCallback([this, weakPeer](bool open) {
@@ -2377,8 +2430,8 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
     }
 
-    const bool statsRequested = msg.value("requestStats", false) ||
-                                msg.value("getStats", false) ||
+    const bool statsRequested = (msg.contains("requestStats") && jsonBoolLike(msg["requestStats"], false)) ||
+                                (msg.contains("getStats") && jsonBoolLike(msg["getStats"], false)) ||
                                 action == "requeststats" ||
                                 action == "getstats" ||
                                 action == "getdetails";
@@ -3024,6 +3077,18 @@ void VersusApp::startVideoMaintenanceThread() {
     videoMaintenanceThread_ = std::thread([this]() {
         int64_t lastInfoBroadcastMs = 0;
         while (videoMaintenanceRunning_.load()) {
+            if (capturing_.load(std::memory_order_relaxed) && !windowCapture_.isCapturing()) {
+                videoTrackActive_.store(false, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(false, std::memory_order_relaxed);
+                if (!captureBackendFailureNotified_.exchange(true, std::memory_order_relaxed)) {
+                    const std::string message =
+                        "Window capture stopped. Select a valid window and start streaming again.";
+                    spdlog::warn("[App] {}", message);
+                    emitRuntimeEvent(message, true);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
             if (!live_ || !capturing_) {
                 videoTrackActive_.store(false, std::memory_order_relaxed);
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));

@@ -490,8 +490,14 @@ void WindowAudioCaptureCore::StopCapture() {
             CloseHandle(static_cast<HANDLE>(stopEvent_));
             stopEvent_ = nullptr;
         }
-        captureClient_ = nullptr;
-        audioClient_ = nullptr;
+        if (captureClient_) {
+            static_cast<IAudioCaptureClient *>(captureClient_)->Release();
+            captureClient_ = nullptr;
+        }
+        if (audioClient_) {
+            static_cast<IAudioClient *>(audioClient_)->Release();
+            audioClient_ = nullptr;
+        }
         audioBuffer_.clear();
         usingProcessLoopback_.store(false);
         sampleRate_ = kDefaultSampleRate;

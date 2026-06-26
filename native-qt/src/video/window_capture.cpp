@@ -1,6 +1,7 @@
 #include "versus/video/window_capture.h"
 
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <thread>
 
@@ -341,7 +342,7 @@ class WindowCapture::Impl {
 
     bool startCapture(HWND hwnd, int width, int height, int fps) {
         spdlog::info("[Capture::Impl] startCapture hwnd={} {}x{} @{}fps", (void*)hwnd, width, height, fps);
-        if (capturing_) {
+        if (capturing_.load(std::memory_order_acquire)) {
             spdlog::info("[Capture::Impl] Already capturing, stopping first");
             stopCapture();
         }
@@ -359,10 +360,12 @@ class WindowCapture::Impl {
     }
 
     void stopCapture() {
-        capturing_ = false;
+        capturing_.store(false, std::memory_order_release);
         if (captureThread_.joinable()) {
             captureThread_.join();
         }
+        outputDuplication_ = nullptr;
+        stagingTexture_ = nullptr;
         if (framePool_) {
             framePool_.Close();
             framePool_ = nullptr;
@@ -371,6 +374,15 @@ class WindowCapture::Impl {
             captureSession_.Close();
             captureSession_ = nullptr;
         }
+#ifdef VERSUS_USE_GRAPHICS_CAPTURE
+        if (captureItemClosedTokenSet_ && captureItem_) {
+            try {
+                captureItem_.Closed(captureItemClosedToken_);
+            } catch (...) {
+            }
+            captureItemClosedTokenSet_ = false;
+        }
+#endif
         captureItem_ = nullptr;
         graphicsDevice_ = nullptr;
         lastContentWidth_ = 0;
@@ -390,7 +402,7 @@ class WindowCapture::Impl {
         frameCallback_ = std::move(callback);
     }
 
-    bool isCapturing() const { return capturing_; }
+    bool isCapturing() const { return capturing_.load(std::memory_order_acquire); }
 
   private:
 #ifdef VERSUS_USE_GRAPHICS_CAPTURE
@@ -455,6 +467,11 @@ class WindowCapture::Impl {
             spdlog::info("[Capture::Impl] CreateForWindow succeeded");
 
             captureItem_ = itemUnk.as<winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
+            captureItemClosedToken_ = captureItem_.Closed([this](auto const &, auto const &) {
+                spdlog::warn("[Capture::Impl] Graphics capture item closed");
+                capturing_.store(false, std::memory_order_release);
+            });
+            captureItemClosedTokenSet_ = true;
 
             winrt::com_ptr<IDXGIDevice> dxgiDevice;
             device_->QueryInterface(dxgiDevice.put());
@@ -487,7 +504,7 @@ class WindowCapture::Impl {
             captureSession_.IsCursorCaptureEnabled(false);
             applyBorderlessCapturePreference();
             captureSession_.StartCapture();
-            capturing_ = true;
+            capturing_.store(true, std::memory_order_release);
             spdlog::info("[Capture::Impl] Graphics capture started successfully");
             return true;
         } catch (const winrt::hresult_error& e) {
@@ -504,23 +521,61 @@ class WindowCapture::Impl {
 
     bool startDesktopDuplication() {
         winrt::com_ptr<IDXGIDevice> dxgiDevice;
-        device_->QueryInterface(dxgiDevice.put());
-        winrt::com_ptr<IDXGIAdapter> adapter;
-        dxgiDevice->GetAdapter(adapter.put());
-        winrt::com_ptr<IDXGIOutput> output;
-        adapter->EnumOutputs(0, output.put());
-        winrt::com_ptr<IDXGIOutput1> output1;
-        output->QueryInterface(output1.put());
-        HRESULT hr = output1->DuplicateOutput(device_.get(), outputDuplication_.put());
-        if (FAILED(hr)) {
+        HRESULT hr = device_->QueryInterface(dxgiDevice.put());
+        if (FAILED(hr) || !dxgiDevice) {
+            spdlog::warn("[Capture::Impl] QueryInterface(IDXGIDevice) failed hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
             return false;
         }
-        capturing_ = true;
+        winrt::com_ptr<IDXGIAdapter> adapter;
+        hr = dxgiDevice->GetAdapter(adapter.put());
+        if (FAILED(hr) || !adapter) {
+            spdlog::warn("[Capture::Impl] IDXGIDevice::GetAdapter failed hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
+            return false;
+        }
+        winrt::com_ptr<IDXGIOutput> output;
+        hr = adapter->EnumOutputs(0, output.put());
+        if (FAILED(hr) || !output) {
+            spdlog::warn("[Capture::Impl] IDXGIAdapter::EnumOutputs failed hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
+            return false;
+        }
+        DXGI_OUTPUT_DESC outputDesc = {};
+        if (SUCCEEDED(output->GetDesc(&outputDesc))) {
+            desktopLeft_ = outputDesc.DesktopCoordinates.left;
+            desktopTop_ = outputDesc.DesktopCoordinates.top;
+            desktopRight_ = outputDesc.DesktopCoordinates.right;
+            desktopBottom_ = outputDesc.DesktopCoordinates.bottom;
+        } else {
+            desktopLeft_ = 0;
+            desktopTop_ = 0;
+            desktopRight_ = 0;
+            desktopBottom_ = 0;
+        }
+        winrt::com_ptr<IDXGIOutput1> output1;
+        hr = output->QueryInterface(output1.put());
+        if (FAILED(hr) || !output1) {
+            spdlog::warn("[Capture::Impl] QueryInterface(IDXGIOutput1) failed hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
+            return false;
+        }
+        outputDuplication_ = nullptr;
+        desktopCropWarningLogged_ = false;
+        hr = output1->DuplicateOutput(device_.get(), outputDuplication_.put());
+        if (FAILED(hr)) {
+            spdlog::warn("[Capture::Impl] DuplicateOutput failed hr=0x{:08x}", static_cast<unsigned int>(hr));
+            return false;
+        }
+        capturing_.store(true, std::memory_order_release);
         captureThread_ = std::thread([this]() { captureLoop(); });
         return true;
     }
 
     void onFrameArrived(winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const &sender) {
+        if (!capturing_.load(std::memory_order_acquire)) {
+            return;
+        }
         auto frame = sender.TryGetNextFrame();
         if (!frame) {
             return;
@@ -562,11 +617,11 @@ class WindowCapture::Impl {
         winrt::com_ptr<ID3D11Texture2D> texture;
         winrt::check_hresult(access->GetInterface(winrt::guid_of<ID3D11Texture2D>(), texture.put_void()));
         int64_t timestamp = frame.SystemRelativeTime().count();
-        processFrame(texture.get(), timestamp, contentWidth, contentHeight);
+        processFrame(texture.get(), timestamp, contentWidth, contentHeight, 0, 0);
     }
 
     void captureLoop() {
-        while (capturing_) {
+        while (capturing_.load(std::memory_order_acquire)) {
             winrt::com_ptr<IDXGIResource> resource;
             DXGI_OUTDUPL_FRAME_INFO frameInfo;
             HRESULT hr = outputDuplication_->AcquireNextFrame(100, &frameInfo, resource.put());
@@ -574,21 +629,70 @@ class WindowCapture::Impl {
                 continue;
             }
             if (FAILED(hr)) {
+                spdlog::warn("[Capture::Impl] Desktop duplication frame acquisition failed hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                capturing_.store(false, std::memory_order_release);
                 break;
             }
             winrt::com_ptr<ID3D11Texture2D> texture;
             resource->QueryInterface(texture.put());
             D3D11_TEXTURE2D_DESC desc;
             texture->GetDesc(&desc);
+            int sourceX = 0;
+            int sourceY = 0;
+            int contentWidth = static_cast<int>(desc.Width);
+            int contentHeight = static_cast<int>(desc.Height);
+            if (targetHwnd_) {
+                RECT windowRect = {};
+                if (!IsWindow(targetHwnd_) || !GetWindowRect(targetHwnd_, &windowRect)) {
+                    spdlog::warn("[Capture::Impl] Target window closed during desktop duplication capture");
+                    capturing_.store(false, std::memory_order_release);
+                    outputDuplication_->ReleaseFrame();
+                    break;
+                }
+
+                const LONG desktopLeft = desktopRight_ > desktopLeft_ ? desktopLeft_ : 0;
+                const LONG desktopTop = desktopBottom_ > desktopTop_ ? desktopTop_ : 0;
+                const LONG desktopRight = desktopRight_ > desktopLeft_ ? desktopRight_ : static_cast<LONG>(desc.Width);
+                const LONG desktopBottom = desktopBottom_ > desktopTop_ ? desktopBottom_ : static_cast<LONG>(desc.Height);
+                const LONG cropLeft = std::max(windowRect.left, desktopLeft);
+                const LONG cropTop = std::max(windowRect.top, desktopTop);
+                const LONG cropRight = std::min(windowRect.right, desktopRight);
+                const LONG cropBottom = std::min(windowRect.bottom, desktopBottom);
+                if (cropRight <= cropLeft || cropBottom <= cropTop) {
+                    if (!desktopCropWarningLogged_) {
+                        spdlog::warn("[Capture::Impl] Target window is outside duplicated output; waiting for it to return");
+                        desktopCropWarningLogged_ = true;
+                    }
+                    outputDuplication_->ReleaseFrame();
+                    continue;
+                }
+                desktopCropWarningLogged_ = false;
+                sourceX = static_cast<int>(cropLeft - desktopLeft);
+                sourceY = static_cast<int>(cropTop - desktopTop);
+                contentWidth = static_cast<int>(cropRight - cropLeft);
+                contentHeight = static_cast<int>(cropBottom - cropTop);
+            }
             processFrame(texture.get(),
                          frameInfo.LastPresentTime.QuadPart,
-                         static_cast<int>(desc.Width),
-                         static_cast<int>(desc.Height));
+                         contentWidth,
+                         contentHeight,
+                         sourceX,
+                         sourceY);
             outputDuplication_->ReleaseFrame();
         }
     }
 
-    void processFrame(ID3D11Texture2D *texture, int64_t timestamp, int contentWidth, int contentHeight) {
+    void processFrame(ID3D11Texture2D *texture,
+                      int64_t timestamp,
+                      int contentWidth,
+                      int contentHeight,
+                      int sourceX,
+                      int sourceY) {
+        if (!texture) {
+            return;
+        }
+        std::lock_guard<std::mutex> processLock(processFrameMutex_);
         D3D11_TEXTURE2D_DESC desc;
         texture->GetDesc(&desc);
 
@@ -611,15 +715,26 @@ class WindowCapture::Impl {
             return;
         }
 
+        const int maxSourceX = std::max(0, static_cast<int>(desc.Width) - 1);
+        const int maxSourceY = std::max(0, static_cast<int>(desc.Height) - 1);
+        sourceX = std::clamp(sourceX, 0, maxSourceX);
+        sourceY = std::clamp(sourceY, 0, maxSourceY);
+
         CapturedFrame frame;
-        frame.width = std::max(1, std::min<int>(contentWidth, static_cast<int>(desc.Width)));
-        frame.height = std::max(1, std::min<int>(contentHeight, static_cast<int>(desc.Height)));
-        frame.stride = mapped.RowPitch;
+        frame.width = std::max(1, std::min<int>(contentWidth, static_cast<int>(desc.Width) - sourceX));
+        frame.height = std::max(1, std::min<int>(contentHeight, static_cast<int>(desc.Height) - sourceY));
+        frame.stride = frame.width * 4;
         frame.timestamp = timestamp;
         frame.format = CapturedFrame::Format::BGRA;
-        size_t dataSize = static_cast<size_t>(mapped.RowPitch) * static_cast<size_t>(frame.height);
+        size_t dataSize = static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height);
         frame.data.resize(dataSize);
-        std::memcpy(frame.data.data(), mapped.pData, dataSize);
+        const auto *mappedBytes = static_cast<const uint8_t *>(mapped.pData);
+        for (int y = 0; y < frame.height; ++y) {
+            const uint8_t *srcRow = mappedBytes + static_cast<size_t>(sourceY + y) * mapped.RowPitch +
+                                    static_cast<size_t>(sourceX) * 4;
+            uint8_t *dstRow = frame.data.data() + static_cast<size_t>(y) * frame.stride;
+            std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
+        }
         context_->Unmap(stagingTexture_.get(), 0);
 
         {
@@ -639,6 +754,8 @@ class WindowCapture::Impl {
     bool useGraphicsCapture_ = false;
 #ifdef VERSUS_USE_GRAPHICS_CAPTURE
     bool borderlessAccessRequested_ = false;
+    winrt::event_token captureItemClosedToken_{};
+    bool captureItemClosedTokenSet_ = false;
 #endif
     winrt::Windows::Graphics::Capture::GraphicsCaptureItem captureItem_{nullptr};
     winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool framePool_{nullptr};
@@ -649,13 +766,19 @@ class WindowCapture::Impl {
     int targetWidth_ = 0;
     int targetHeight_ = 0;
     int targetFps_ = 60;
-    bool capturing_ = false;
+    std::atomic<bool> capturing_{false};
 
     UINT stagingWidth_ = 0;
     UINT stagingHeight_ = 0;
     int lastContentWidth_ = 0;
     int lastContentHeight_ = 0;
+    LONG desktopLeft_ = 0;
+    LONG desktopTop_ = 0;
+    LONG desktopRight_ = 0;
+    LONG desktopBottom_ = 0;
+    bool desktopCropWarningLogged_ = false;
 
+    std::mutex processFrameMutex_;
     std::mutex frameMutex_;
     CapturedFrame latestFrame_;
     FrameCallback frameCallback_;
@@ -708,9 +831,9 @@ bool WindowCapture::startCapture(const std::string &windowId, int width, int hei
         return false;
     }
     spdlog::info("[Capture] Window handle valid, calling impl->startCapture");
-    capturing_ = impl_->startCapture(hwnd, width, height, fps);
-    spdlog::info("[Capture] impl->startCapture returned {}", capturing_);
-    return capturing_;
+    capturing_.store(impl_->startCapture(hwnd, width, height, fps), std::memory_order_release);
+    spdlog::info("[Capture] impl->startCapture returned {}", capturing_.load(std::memory_order_acquire));
+    return capturing_.load(std::memory_order_acquire);
 #else
     return false;
 #endif
@@ -718,11 +841,11 @@ bool WindowCapture::startCapture(const std::string &windowId, int width, int hei
 
 void WindowCapture::stopCapture() {
     impl_->stopCapture();
-    capturing_ = false;
+    capturing_.store(false, std::memory_order_release);
 }
 
 bool WindowCapture::isCapturing() const {
-    return capturing_;
+    return impl_->isCapturing();
 }
 
 void WindowCapture::setFrameCallback(FrameCallback cb) {

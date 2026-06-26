@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -54,7 +55,7 @@ class WindowCapture {
     struct Impl;
     std::unique_ptr<Impl> impl_;
     FrameCallback frameCallback_;
-    bool capturing_ = false;
+    std::atomic<bool> capturing_{false};
 };
 
 }  // namespace versus::video

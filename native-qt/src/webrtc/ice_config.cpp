@@ -511,9 +511,6 @@ bool candidateAllowedForMode(const std::string &candidate, IceMode mode) {
         case IceMode::Relay:
             return candidateLooksRelay(candidate);
         case IceMode::StunOnly: {
-            if (candidateLooksHost(candidate)) {
-                return true;
-            }
             if (!candidateLooksServerReflexive(candidate)) {
                 return false;
             }

@@ -14,6 +14,10 @@ struct OpusEncoder::Impl {
     ::OpusEncoder *encoder = nullptr;
     int sampleRate = 48000;
     int channels = 2;
+    // Samples that did not fill a whole Opus frame yet, carried into the next
+    // encode call so arbitrarily-sized capture chunks do not drop audio.
+    std::vector<float> pendingSamples;
+    int64_t pendingPts = 0;
 };
 
 using OpusEncoderPtr = ::OpusEncoder;
@@ -36,6 +40,8 @@ bool OpusEncoder::initialize(const AudioEncoderConfig &config) {
     opus_encoder_ctl(impl_->encoder, OPUS_SET_VBR(0));
     impl_->sampleRate = config.sampleRate;
     impl_->channels = config.channels;
+    impl_->pendingSamples.clear();
+    impl_->pendingPts = 0;
     initialized_ = true;
     return true;
 }
@@ -44,6 +50,10 @@ void OpusEncoder::shutdown() {
     if (impl_ && impl_->encoder) {
         opus_encoder_destroy(impl_->encoder);
         impl_->encoder = nullptr;
+    }
+    if (impl_) {
+        impl_->pendingSamples.clear();
+        impl_->pendingPts = 0;
     }
     initialized_ = false;
 }
@@ -58,28 +68,39 @@ bool OpusEncoder::encode(const std::vector<float> &samples, int sampleRate, int 
         return false;
     }
 
-    int frameSize = sampleRate / 100; // 10ms
-    int totalSamples = static_cast<int>(samples.size()) / channels;
-    int offset = 0;
+    if (impl_->pendingSamples.empty()) {
+        impl_->pendingPts = pts;
+    }
+    impl_->pendingSamples.insert(impl_->pendingSamples.end(), samples.begin(), samples.end());
 
-    while (offset + frameSize <= totalSamples) {
-        const float *framePtr = samples.data() + offset * channels;
+    const int frameSize = sampleRate / 100;  // 10ms
+    const size_t frameSamples = static_cast<size_t>(frameSize) * static_cast<size_t>(channels);
+    size_t offset = 0;
+
+    while (impl_->pendingSamples.size() - offset >= frameSamples) {
+        const float *framePtr = impl_->pendingSamples.data() + offset;
         std::vector<uint8_t> encoded(4000);
         int bytes = opus_encode_float(impl_->encoder, framePtr, frameSize, encoded.data(), static_cast<int>(encoded.size()));
         if (bytes < 0) {
             spdlog::error("Opus encode error: {}", opus_strerror(bytes));
+            impl_->pendingSamples.clear();
             return false;
         }
         encoded.resize(bytes);
         EncodedAudioPacket packet;
         packet.data = std::move(encoded);
-        packet.pts = pts + static_cast<int64_t>(offset) * 10000000LL / static_cast<int64_t>(sampleRate);
+        packet.pts = impl_->pendingPts;
         packet.sampleRate = sampleRate;
         packet.channels = channels;
         packetCallback_(packet);
-        offset += frameSize;
+        offset += frameSamples;
+        impl_->pendingPts += static_cast<int64_t>(frameSize) * 10000000LL / static_cast<int64_t>(sampleRate);
     }
 
+    if (offset > 0) {
+        impl_->pendingSamples.erase(impl_->pendingSamples.begin(),
+                                    impl_->pendingSamples.begin() + static_cast<std::ptrdiff_t>(offset));
+    }
     return true;
 }
 
