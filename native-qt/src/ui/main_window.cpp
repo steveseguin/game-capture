@@ -2,9 +2,11 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QCursor>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QFontDatabase>
 #include <QFrame>
@@ -16,6 +18,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPointer>
+#include <QProcess>
 #include <QSettings>
 #include <QToolTip>
 #include <QScrollArea>
@@ -236,6 +239,87 @@ QString defaultLogFolderPath() {
     return QDir(localAppData).absolutePath();
 }
 
+#ifdef _WIN32
+struct FirewallRuleState {
+    bool present = false;
+    bool programMatchesCurrentExe = false;
+    QString programPath;
+    QString details;
+};
+
+QString normalizedAbsolutePath(const QString &path) {
+    const QFileInfo info(path);
+    const QString resolved = info.canonicalFilePath().isEmpty()
+        ? info.absoluteFilePath()
+        : info.canonicalFilePath();
+    return QDir::toNativeSeparators(resolved).toLower();
+}
+
+bool currentExecutableLooksInstalled(const QString &exePath) {
+    const QString normalizedExe = normalizedAbsolutePath(exePath);
+    const QStringList roots = {
+        qEnvironmentVariable("ProgramFiles"),
+        qEnvironmentVariable("ProgramFiles(x86)")
+    };
+
+    for (const QString &root : roots) {
+        if (root.isEmpty()) {
+            continue;
+        }
+        const QString installedRoot = normalizedAbsolutePath(QDir(root).filePath("Game Capture"));
+        if (!installedRoot.isEmpty() && normalizedExe.startsWith(installedRoot + "\\")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+FirewallRuleState queryFirewallRuleForCurrentExe() {
+    FirewallRuleState state;
+    const QString currentExe = normalizedAbsolutePath(QCoreApplication::applicationFilePath());
+
+    QProcess netsh;
+    netsh.start(
+        "netsh",
+        QStringList{
+            "advfirewall",
+            "firewall",
+            "show",
+            "rule",
+            "name=Game Capture WebRTC UDP",
+            "verbose"
+        });
+    if (!netsh.waitForFinished(2500)) {
+        netsh.kill();
+        netsh.waitForFinished(500);
+        state.details = "netsh timed out";
+        return state;
+    }
+
+    const QString output = QString::fromLocal8Bit(netsh.readAllStandardOutput()) +
+                           QString::fromLocal8Bit(netsh.readAllStandardError());
+    state.details = output.trimmed();
+    state.present = netsh.exitStatus() == QProcess::NormalExit && netsh.exitCode() == 0 &&
+                    output.contains("Rule Name:", Qt::CaseInsensitive);
+
+    const QStringList lines = output.split('\n');
+    for (QString line : lines) {
+        line = line.trimmed();
+        if (!line.startsWith("Program:", Qt::CaseInsensitive)) {
+            continue;
+        }
+        const int separator = line.indexOf(':');
+        if (separator >= 0) {
+            state.programPath = line.mid(separator + 1).trimmed();
+            state.programMatchesCurrentExe = normalizedAbsolutePath(state.programPath) == currentExe;
+        }
+        break;
+    }
+
+    return state;
+}
+#endif
+
 MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString &input) {
     ParsedStreamTarget parsed;
     const QString trimmed = input.trimmed();
@@ -283,6 +367,7 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
     loadPersistedSettings();
     connectPersistedSettingSignals();
     setupTrayIcon();
+    QTimer::singleShot(0, this, &MainWindow::showFirewallWarningIfNeeded);
 
     // Stats timer (update every second when live)
     statsTimer_ = new QTimer(this);
@@ -425,6 +510,44 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
             }, Qt::QueuedConnection);
         });
     }
+}
+
+void MainWindow::showFirewallWarningIfNeeded() {
+#ifndef _WIN32
+    return;
+#else
+    const QString currentExe = QCoreApplication::applicationFilePath();
+    const FirewallRuleState firewall = queryFirewallRuleForCurrentExe();
+    if (firewall.present && firewall.programMatchesCurrentExe) {
+        return;
+    }
+
+    QSettings settings = makeUiSettings();
+    const QString dismissedPath = settings.value("network/firewallWarningDismissedForPath").toString();
+    if (normalizedAbsolutePath(dismissedPath) == normalizedAbsolutePath(currentExe)) {
+        return;
+    }
+
+    const bool installedPath = currentExecutableLooksInstalled(currentExe);
+    const QString issue = firewall.present
+        ? QString("The existing Windows Firewall rule points to:\n%1").arg(firewall.programPath)
+        : QString("Windows Firewall does not have the Game Capture WebRTC UDP rule.");
+    const QString guidance = installedPath
+        ? "Re-run the Game Capture setup installer or add an inbound UDP allow rule for this executable."
+        : "Portable and ZIP copies cannot add this rule automatically. Use the Game Capture setup installer or add an inbound UDP allow rule for this executable.";
+
+    spdlog::warn("[UI] Windows Firewall rule is missing or does not match current executable: exe='{}' rulePresent={} ruleProgram='{}'",
+                 currentExe.toStdString(),
+                 firewall.present,
+                 firewall.programPath.toStdString());
+
+    settings.setValue("network/firewallWarningDismissedForPath", currentExe);
+    QMessageBox::warning(
+        this,
+        "Windows Firewall May Block Direct Connections",
+        QString("%1\n\n%2\n\nWithout this rule, WebRTC may fall back to relay servers or fail to connect directly.")
+            .arg(issue, guidance));
+#endif
 }
 
 MainWindow::~MainWindow() {

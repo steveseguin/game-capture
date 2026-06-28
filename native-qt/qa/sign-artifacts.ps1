@@ -3,6 +3,11 @@ param(
     [string]$Version = "",
     [string]$CodeSigningRepo = "C:\Users\Steve\code\code-signing",
     [string[]]$FilePaths = @(),
+    [string[]]$TimestampServers = @(
+        "http://timestamp.digicert.com",
+        "http://timestamp.sectigo.com",
+        "http://timestamp.globalsign.com/tsa/r6advanced1"
+    ),
     [switch]$FailOnError = $false
 )
 
@@ -46,11 +51,24 @@ function Resolve-CodeSigningPassword([string]$CodeSigningRepoPath) {
     return ($line -replace '^WIN_CSC_KEY_PASSWORD=', '').Trim()
 }
 
-function Sign-File([string]$signtoolPath, [string]$pfxPath, [string]$password, [string]$filePath) {
-    & $signtoolPath sign /fd SHA256 /td SHA256 /tr "http://timestamp.digicert.com" /f $pfxPath /p $password $filePath | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        throw "signtool failed for '$filePath' with exit code $LASTEXITCODE"
+function Sign-File([string]$signtoolPath, [string]$pfxPath, [string]$password, [string]$filePath, [string[]]$timestampServers) {
+    $attempts = if ($timestampServers -and $timestampServers.Count -gt 0) {
+        $timestampServers
+    } else {
+        @("http://timestamp.digicert.com")
     }
+
+    $errors = @()
+    foreach ($server in $attempts) {
+        Write-Host "  Signing $([System.IO.Path]::GetFileName($filePath)) with timestamp server: $server"
+        & $signtoolPath sign /fd SHA256 /td SHA256 /tr $server /f $pfxPath /p $password $filePath | Out-Host
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+        $errors += "$server exited $LASTEXITCODE"
+    }
+
+    throw "signtool failed for '$filePath' with timestamp attempts: $($errors -join '; ')"
 }
 
 function Test-SignatureAcceptable($signature) {
@@ -147,7 +165,7 @@ $failures = @()
 Write-Host "Code signing: signing $($allExes.Count) EXE artifact(s)..."
 foreach ($file in $allExes) {
     try {
-        Sign-File -signtoolPath $signtoolPath -pfxPath $pfxPath -password $password -filePath $file.FullName
+        Sign-File -signtoolPath $signtoolPath -pfxPath $pfxPath -password $password -filePath $file.FullName -timestampServers $TimestampServers
         $sig = Get-AuthenticodeSignature -FilePath $file.FullName
         if (-not (Test-SignatureAcceptable -signature $sig)) {
             throw "Signature check failed (status=$($sig.Status), message=$($sig.StatusMessage))"

@@ -63,6 +63,7 @@ class MainWindow : public QMainWindow {
     void syncCodecUiState();
     bool hasPendingAsyncOperation() const;
     void loadPersistedSettings();
+    void showFirewallWarningIfNeeded();
     void maybeQuitAfterPendingOperations();
     void requestQuit();
     void savePersistedSettings();
