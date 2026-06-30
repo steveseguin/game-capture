@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
+#include <initializer_list>
 #include <mutex>
 #include <queue>
 #include <random>
@@ -69,6 +70,81 @@ std::string sanitizeId(const std::string &value, size_t maxLen) {
         out.resize(maxLen);
     }
     return out;
+}
+
+bool jsonBoolLike(const json &value, bool defaultValue) {
+    if (value.is_boolean()) {
+        return value.get<bool>();
+    }
+    if (value.is_number_integer()) {
+        return value.get<int>() != 0;
+    }
+    if (value.is_number_float()) {
+        return value.get<double>() != 0.0;
+    }
+    if (value.is_string()) {
+        std::string lower = value.get<std::string>();
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+            return static_cast<char>(std::tolower(c));
+        });
+        if (lower == "true" || lower == "1" || lower == "yes" || lower == "on") {
+            return true;
+        }
+        if (lower == "false" || lower == "0" || lower == "no" || lower == "off") {
+            return false;
+        }
+    }
+    return defaultValue;
+}
+
+std::string asciiLower(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return value;
+}
+
+std::string jsonStringValue(const json &obj, std::initializer_list<const char *> keys) {
+    for (const char *key : keys) {
+        const auto it = obj.find(key);
+        if (it == obj.end()) {
+            continue;
+        }
+        if (it->is_string()) {
+            return it->get<std::string>();
+        }
+    }
+    return "";
+}
+
+void parseListingArray(const json &msg, ParsedSignalMessage &parsed) {
+    const json *list = nullptr;
+    if (const auto it = msg.find("list"); it != msg.end() && it->is_array()) {
+        list = &(*it);
+    } else if (const auto it = msg.find("listing"); it != msg.end() && it->is_array()) {
+        list = &(*it);
+    }
+
+    if (!list) {
+        return;
+    }
+
+    for (const auto &item : *list) {
+        PeerInfo info;
+        if (item.is_string()) {
+            info.streamId = item.get<std::string>();
+        } else if (item.is_object()) {
+            info.uuid = jsonStringValue(item, {"UUID", "uuid"});
+            info.streamId = jsonStringValue(item, {"streamID", "streamId", "whep", "whepUrl", "url", "URL"});
+            info.label = jsonStringValue(item, {"label", "name"});
+            if (const auto publisher = item.find("publisher"); publisher != item.end()) {
+                info.isPublisher = jsonBoolLike(*publisher, false);
+            }
+        }
+        if (!info.uuid.empty() || !info.streamId.empty() || !info.label.empty()) {
+            parsed.listing.push_back(info);
+        }
+    }
 }
 
 std::string generateUuid() {
@@ -271,6 +347,43 @@ bool parseSignalPayloadJson(const json &msg,
                             ParsedSignalMessage &parsed) {
     parsed = ParsedSignalMessage{};
 
+    const std::string request = jsonStringValue(msg, {"request"});
+    const std::string requestLower = asciiLower(request);
+    const std::string uuid = jsonStringValue(msg, {"UUID", "uuid", "from"});
+    const std::string session = jsonStringValue(msg, {"session", "Session"});
+    const std::string streamId = jsonStringValue(msg, {"streamID", "streamId", "whep", "whepUrl", "url", "URL"});
+    parsed.uuid = uuid;
+    parsed.session = session;
+    parsed.streamId = streamId;
+
+    if ((msg.contains("bye") && jsonBoolLike(msg["bye"], true)) || requestLower == "cleanup") {
+        parsed.hasPeerCleanup = true;
+        return true;
+    }
+
+    if (requestLower == "alert" || requestLower == "error" || msg.contains("alert")) {
+        parsed.hasAlert = true;
+        parsed.alertMessage = jsonStringValue(msg, {"message", "alert", "error"});
+        return true;
+    }
+
+    if (requestLower == "listing" || requestLower == "transferred" || msg.contains("listing") || msg.contains("list")) {
+        parsed.hasListing = true;
+        parseListingArray(msg, parsed);
+        return true;
+    }
+
+    const bool joinroomOfferCompat = requestLower == "joinroom" && !streamId.empty();
+    if (requestLower == "offersdp" || requestLower == "sendoffer" || requestLower == "play" || joinroomOfferCompat) {
+        parsed.hasOfferRequest = true;
+        return true;
+    }
+
+    if (msg.contains("iceRestartRequest") && jsonBoolLike(msg["iceRestartRequest"], true)) {
+        parsed.hasIceRestartRequest = true;
+        return true;
+    }
+
     if (msg.contains("description")) {
         std::string description;
         if (msg["description"].is_string() && msg.contains("vector") && msg["vector"].is_string()) {
@@ -300,12 +413,12 @@ bool parseSignalPayloadJson(const json &msg,
         const std::string type = descJson.value("type", "");
         if (type == "offer") {
             parsed.hasOffer = true;
-            parsed.offer = SignalOffer{msg.value("UUID", ""), sdp, msg.value("session", ""), msg.value("streamID", "")};
+            parsed.offer = SignalOffer{uuid, sdp, session, streamId};
             return !parsed.offer.sdp.empty();
         }
         if (type == "answer") {
             parsed.hasAnswer = true;
-            parsed.answer = SignalAnswer{msg.value("UUID", ""), sdp, msg.value("session", ""), msg.value("streamID", "")};
+            parsed.answer = SignalAnswer{uuid, sdp, session, streamId};
             return !parsed.answer.sdp.empty();
         }
         return false;
@@ -333,12 +446,12 @@ bool parseSignalPayloadJson(const json &msg,
         }
 
         SignalCandidate cand;
-        cand.uuid = msg.value("UUID", "");
+        cand.uuid = uuid;
         cand.candidate = candJson.value("candidate", "");
-        cand.mid = candJson.value("sdpMid", "");
+        cand.mid = jsonStringValue(candJson, {"sdpMid", "mid", "smid", "rmid"});
         cand.mlineIndex = candJson.value("sdpMLineIndex", 0);
-        cand.session = msg.value("session", "");
-        cand.type = msg.value("type", "");
+        cand.session = session;
+        cand.type = jsonStringValue(msg, {"type"});
         parsed.candidates.push_back(cand);
         return !parsed.candidates.empty();
     }
@@ -366,12 +479,12 @@ bool parseSignalPayloadJson(const json &msg,
 
         for (const auto &candItem : candArray) {
             SignalCandidate cand;
-            cand.uuid = msg.value("UUID", "");
+            cand.uuid = uuid;
             cand.candidate = candItem.value("candidate", "");
-            cand.mid = candItem.value("sdpMid", "");
+            cand.mid = jsonStringValue(candItem, {"sdpMid", "mid", "smid", "rmid"});
             cand.mlineIndex = candItem.value("sdpMLineIndex", 0);
-            cand.session = msg.value("session", "");
-            cand.type = msg.value("type", "");
+            cand.session = session;
+            cand.type = jsonStringValue(msg, {"type"});
             parsed.candidates.push_back(cand);
         }
         return !parsed.candidates.empty();
@@ -404,6 +517,8 @@ struct VdoSignaling::Impl {
     AnswerCallback onAnswer;
     CandidateCallback onCandidate;
     OfferRequestCallback onOfferRequest;
+    IceRestartRequestCallback onIceRestartRequest;
+    PeerCleanupCallback onPeerCleanup;
     ListingCallback onListing;
     std::map<std::string, PeerInfo> peers;
 
@@ -443,50 +558,39 @@ struct VdoSignaling::Impl {
             return;
         }
 
-        const std::string request = msg.value("request", "");
-        if (request == "alert") {
-            const std::string message = msg.value("message", "");
-            spdlog::warn("[Signaling] Alert: {}", message.empty() ? "(empty)" : message);
-            if (onAlert) {
-                onAlert(message);
-            }
-            return;
-        }
-
-        if (request == "listing") {
-            std::vector<PeerInfo> list;
-            if (msg.contains("list") && msg["list"].is_array()) {
-                for (const auto &item : msg["list"]) {
-                    PeerInfo info;
-                    info.uuid = item.value("UUID", "");
-                    info.streamId = item.value("streamID", "");
-                    info.label = item.value("label", "");
-                    info.isPublisher = item.value("publisher", false);
-                    list.push_back(info);
-                }
-            }
-            if (onListing) {
-                onListing(list);
-            }
-            return;
-        }
-
-        if (request == "offerSDP") {
-            if (onOfferRequest) {
-                onOfferRequest(msg.value("UUID", ""), msg.value("session", ""), msg.value("streamID", ""));
-            }
-            return;
-        }
-
-        if (msg.value("iceRestartRequest", false)) {
-            if (onOfferRequest) {
-                onOfferRequest(msg.value("UUID", ""), msg.value("session", ""), msg.value("streamID", ""));
-            }
-            return;
-        }
-
         ParsedSignalMessage parsed;
         if (parseSignalPayloadJson(msg, password, salt, encryptionDisabled, parsed)) {
+            if (parsed.hasPeerCleanup) {
+                if (onPeerCleanup) {
+                    onPeerCleanup(parsed.uuid, parsed.session);
+                }
+                return;
+            }
+            if (parsed.hasAlert) {
+                spdlog::warn("[Signaling] Alert: {}", parsed.alertMessage.empty() ? "(empty)" : parsed.alertMessage);
+                if (onAlert) {
+                    onAlert(parsed.alertMessage);
+                }
+                return;
+            }
+            if (parsed.hasListing) {
+                if (onListing) {
+                    onListing(parsed.listing);
+                }
+                return;
+            }
+            if (parsed.hasOfferRequest) {
+                if (onOfferRequest) {
+                    onOfferRequest(parsed.uuid, parsed.session, parsed.streamId);
+                }
+                return;
+            }
+            if (parsed.hasIceRestartRequest) {
+                if (onIceRestartRequest) {
+                    onIceRestartRequest(parsed.uuid, parsed.session, parsed.streamId);
+                }
+                return;
+            }
             if (parsed.hasOffer && onOffer) {
                 onOffer(parsed.offer);
             }
@@ -764,8 +868,7 @@ bool VdoSignaling::sendOffer(const SignalOffer &offer) {
             msg["description"] = desc;
         }
     }
-    impl_->sendMessage(msg);
-    return true;
+    return impl_->sendMessage(msg);
 }
 
 bool VdoSignaling::sendAnswer(const SignalAnswer &answer) {
@@ -795,8 +898,7 @@ bool VdoSignaling::sendAnswer(const SignalAnswer &answer) {
             msg["description"] = desc;
         }
     }
-    impl_->sendMessage(msg);
-    return true;
+    return impl_->sendMessage(msg);
 }
 
 bool VdoSignaling::sendCandidate(const SignalCandidate &candidate) {
@@ -819,8 +921,7 @@ bool VdoSignaling::sendCandidate(const SignalCandidate &candidate) {
             msg["vector"] = vector;
         }
     }
-    impl_->sendMessage(msg);
-    return true;
+    return impl_->sendMessage(msg);
 }
 
 void VdoSignaling::setCandidateType(const std::string &type) {
@@ -868,6 +969,8 @@ void VdoSignaling::onOffer(OfferCallback cb) { impl_->onOffer = std::move(cb); }
 void VdoSignaling::onAnswer(AnswerCallback cb) { impl_->onAnswer = std::move(cb); }
 void VdoSignaling::onCandidate(CandidateCallback cb) { impl_->onCandidate = std::move(cb); }
 void VdoSignaling::onOfferRequest(OfferRequestCallback cb) { impl_->onOfferRequest = std::move(cb); }
+void VdoSignaling::onIceRestartRequest(IceRestartRequestCallback cb) { impl_->onIceRestartRequest = std::move(cb); }
+void VdoSignaling::onPeerCleanup(PeerCleanupCallback cb) { impl_->onPeerCleanup = std::move(cb); }
 void VdoSignaling::onListing(ListingCallback cb) { impl_->onListing = std::move(cb); }
 
 }  // namespace versus::signaling

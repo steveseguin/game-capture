@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.40 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.41 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -137,6 +137,7 @@ set(VERSUS_HEADERS
     include/versus/signaling/vdo_signaling.h
     include/versus/webrtc/webrtc_client.h
     include/versus/webrtc/ice_config.h
+    include/versus/video/aspect_fit.h
     include/versus/video/window_capture.h
     include/versus/video/video_encoder.h
     include/versus/audio/opus_encoder.h
@@ -343,6 +344,14 @@ if(VERSUS_BUILD_TESTS)
     target_link_libraries(test_vdo_signaling PRIVATE versus-lib Qt6::Test)
     add_test(NAME VdoSignalingTest COMMAND test_vdo_signaling)
     set_tests_properties(VdoSignalingTest PROPERTIES
+        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+
+    # Test: WebRTC client ordering helpers
+    add_executable(test_webrtc_client tests/test_webrtc_client.cpp)
+    set_target_properties(test_webrtc_client PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_webrtc_client PRIVATE versus-lib Qt6::Test)
+    add_test(NAME WebRtcClientTest COMMAND test_webrtc_client)
+    set_tests_properties(WebRtcClientTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 
     # Test: ICE config helpers

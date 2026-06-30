@@ -274,6 +274,18 @@ bool currentExecutableLooksInstalled(const QString &exePath) {
     return false;
 }
 
+bool envFlagEnabled(const char *name) {
+    const QString value = qEnvironmentVariable(name).trimmed().toLower();
+    return value == "1" || value == "true" || value == "yes" || value == "on";
+}
+
+bool suppressFirewallWarningUi(const QString &exePath) {
+    if (envFlagEnabled("GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING")) {
+        return true;
+    }
+    return QFileInfo(exePath).baseName().startsWith("test_", Qt::CaseInsensitive);
+}
+
 FirewallRuleState queryFirewallRuleForCurrentExe() {
     FirewallRuleState state;
     const QString currentExe = normalizedAbsolutePath(QCoreApplication::applicationFilePath());
@@ -410,9 +422,12 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
                                              lower.contains("still reconnecting");
                 const bool reconnectedMsg = lower.contains("reconnected to signaling server");
                 const bool disconnectedMsg = lower.contains("connection dropped");
+                const bool remoteHangupMsg = lower.contains("remote vdo.ninja hangup");
 
                 QString statusClass = "ready";
-                if (fatal) {
+                if (fatal && remoteHangupMsg) {
+                    statusClass = "idle";
+                } else if (fatal) {
                     statusClass = "error";
                 } else if (reconnectingMsg || disconnectedMsg) {
                     statusClass = "connecting";
@@ -422,7 +437,9 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
                 updateStatus(status, statusClass);
 
                 if (trayIcon_ && trayIcon_->supportsMessages()) {
-                    if (fatal) {
+                    if (fatal && remoteHangupMsg) {
+                        trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Information, 3000);
+                    } else if (fatal) {
                         trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Warning, 5000);
                     } else if ((reconnectingMsg || disconnectedMsg) && !isVisible() && !reconnectNoticeActive_) {
                         trayIcon_->showMessage(
@@ -517,6 +534,10 @@ void MainWindow::showFirewallWarningIfNeeded() {
     return;
 #else
     const QString currentExe = QCoreApplication::applicationFilePath();
+    if (suppressFirewallWarningUi(currentExe)) {
+        return;
+    }
+
     const FirewallRuleState firewall = queryFirewallRuleForCurrentExe();
     if (firewall.present && firewall.programMatchesCurrentExe) {
         return;

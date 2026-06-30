@@ -107,6 +107,24 @@ class VersusApp {
         int roomScenes = 0;
         int roomNonGuestViewers = 0;
     };
+    struct VideoStateSnapshot {
+        versus::video::EncoderConfig config;
+        int hqWidth = 0;
+        int hqHeight = 0;
+        std::string encoderName;
+        std::string codecName;
+        bool hardwareEncoder = false;
+        bool lqEncoderInitialized = false;
+        std::string lqEncoderName;
+    };
+    struct PendingRemoteCandidate {
+        std::string uuid;
+        std::string session;
+        std::string candidate;
+        std::string mid;
+        int mlineIndex = 0;
+        int64_t queuedAtMs = 0;
+    };
     void setupCallbacks();
     void startAudioCapture(uint32_t selectedWindowProcessId);
     void handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk);
@@ -123,12 +141,26 @@ class VersusApp {
     bool hasAnyActiveVideoTrack() const;
     bool hasAnyActiveAudioTrack() const;
     void sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet);
-    bool applyRuntimeVideoControl(int bitrateKbps, int width, int height, int fps);
+    bool applyRuntimeVideoControl(int bitrateKbps,
+                                  int &width,
+                                  int &height,
+                                  int fps,
+                                  bool vdoScaleResolutionRequest = false,
+                                  bool vdoScaleResolutionCover = false);
+    bool applyRuntimeAudioControl(int bitrateKbps);
     void handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message);
     bool tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &peer, const std::string &message);
     void sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool includeMiniStats);
     void sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer);
-    bool sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason);
+    void sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer);
+    void sendPeerVideoOptions(const std::shared_ptr<PeerSession> &peer);
+    void sendPeerMediaDevices(const std::shared_ptr<PeerSession> &peer);
+    void sendPeerMediaDeviceChange(const std::shared_ptr<PeerSession> &peer,
+                                   const char *kind,
+                                   bool ok,
+                                   const std::string &deviceId,
+                                   const std::string &error);
+    bool sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason, bool rebuildPeerConnection = false);
     void applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source);
     void applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, const char *reason);
     bool enforceRoomCodecLock();
@@ -147,13 +179,21 @@ class VersusApp {
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
     std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
                                                                 const std::string &session) const;
+    void queuePendingRemoteCandidateLocked(const signaling::SignalCandidate &cand, int64_t nowMs);
+    std::vector<PendingRemoteCandidate> takePendingRemoteCandidatesLocked(const std::string &uuid,
+                                                                          const std::string &session,
+                                                                          int64_t nowMs);
+    void drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer, const char *reason);
     void shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer);
     void reapCompletedPeerShutdowns();
     void waitForPendingPeerShutdowns();
-    void removePeerSession(const std::shared_ptr<PeerSession> &peer);
+    void removePeerSession(const std::shared_ptr<PeerSession> &peer, const char *reason);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
     PeerCounts collectPeerCounts() const;
+    VideoStateSnapshot buildVideoStateSnapshotLocked() const;
+    void publishVideoStateSnapshotLocked() const;
+    VideoStateSnapshot videoStateSnapshot() const;
 
     std::atomic<bool> live_{false};
     std::atomic<bool> capturing_{false};
@@ -179,6 +219,7 @@ class VersusApp {
     std::atomic<uint64_t> audioBytesSent_{0};
     std::atomic<uint64_t> videoFramesSent_{0};
     std::atomic<uint64_t> audioPacketsSent_{0};
+    std::atomic<int> audioEncoderBitrateKbps_{192};
     std::atomic<int64_t> metricsStartMs_{0};
     std::atomic<int> lastSentWidth_{0};
     std::atomic<int> lastSentHeight_{0};
@@ -250,9 +291,13 @@ class VersusApp {
         std::unique_ptr<versus::webrtc::WebRtcClient> client;
     };
     std::unordered_map<std::string, std::shared_ptr<PeerSession>> peerSessions_;
+    std::unordered_map<std::string, std::vector<PendingRemoteCandidate>> pendingRemoteCandidates_;
     std::vector<std::future<void>> peerShutdownFutures_;
     versus::video::EncoderConfig videoConfig_{};
-    std::mutex videoSendMutex_;
+    std::atomic<int> configuredVideoBitrateKbps_{12000};
+    mutable std::mutex videoSendMutex_;
+    mutable std::mutex videoStateSnapshotMutex_;
+    mutable VideoStateSnapshot cachedVideoStateSnapshot_;
     std::mutex latestVideoFrameMutex_;
     versus::video::CapturedFrame latestVideoFrame_;
     bool hasLatestVideoFrame_ = false;

@@ -72,12 +72,12 @@ class WebRtcClient {
 
     bool initialize(const PeerConfig &config);
     void shutdown();
-    void resetPeerConnection();  // Create fresh PeerConnection for new viewer
+    bool resetPeerConnection(bool initialVideo = false, bool initialAudio = false, bool initialAlpha = false);
 
     bool setRemoteDescription(const std::string &sdp, const std::string &type);
     std::string createOffer();
     std::string createAnswer(const std::string &offer);
-    void addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex);
+    bool addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex);
 
     void prepareForShutdown();
     void setIceCandidateCallback(IceCandidateCallback cb);

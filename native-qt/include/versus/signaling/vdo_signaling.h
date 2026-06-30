@@ -48,11 +48,21 @@ struct SignalCandidate {
 };
 
 struct ParsedSignalMessage {
+    std::string uuid;
+    std::string session;
+    std::string streamId;
     bool hasOffer = false;
     SignalOffer offer;
     bool hasAnswer = false;
     SignalAnswer answer;
     std::vector<SignalCandidate> candidates;
+    bool hasOfferRequest = false;
+    bool hasIceRestartRequest = false;
+    bool hasPeerCleanup = false;
+    bool hasAlert = false;
+    std::string alertMessage;
+    bool hasListing = false;
+    std::vector<PeerInfo> listing;
 };
 
 class VdoSignaling {
@@ -65,6 +75,8 @@ class VdoSignaling {
     using AnswerCallback = std::function<void(const SignalAnswer &)>;
     using CandidateCallback = std::function<void(const SignalCandidate &)>;
     using OfferRequestCallback = std::function<void(const std::string &uuid, const std::string &session, const std::string &streamId)>;
+    using IceRestartRequestCallback = std::function<void(const std::string &uuid, const std::string &session, const std::string &streamId)>;
+    using PeerCleanupCallback = std::function<void(const std::string &uuid, const std::string &session)>;
     using ListingCallback = std::function<void(const std::vector<PeerInfo> &)>;
 
     VdoSignaling();
@@ -101,6 +113,8 @@ class VdoSignaling {
     void onAnswer(AnswerCallback cb);
     void onCandidate(CandidateCallback cb);
     void onOfferRequest(OfferRequestCallback cb);
+    void onIceRestartRequest(IceRestartRequestCallback cb);
+    void onPeerCleanup(PeerCleanupCallback cb);
     void onListing(ListingCallback cb);
 
   private:

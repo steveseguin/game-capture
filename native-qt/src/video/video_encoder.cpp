@@ -1,4 +1,5 @@
 #include "versus/video/video_encoder.h"
+#include "versus/video/aspect_fit.h"
 #include "versus/video/window_capture.h"
 
 #include <spdlog/spdlog.h>
@@ -72,60 +73,40 @@ const char *videoCodecName(VideoCodec codec) {
     }
 }
 
-struct AspectCoverRect {
-    int x = 0;
-    int y = 0;
-    int width = 0;
-    int height = 0;
-};
-
-AspectCoverRect computeAspectCoverRect(int srcW, int srcH, int dstW, int dstH) {
-    AspectCoverRect rect;
-    if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) {
-        return rect;
+void fillBgraOpaqueBlack(uint8_t *dst, int dstW, int dstH, int dstStride) {
+    if (!dst || dstW <= 0 || dstH <= 0 || dstStride < (dstW * 4)) {
+        return;
     }
 
-    const int64_t cropWidthFromHeight = static_cast<int64_t>(srcH) * dstW / dstH;
-    const int64_t cropHeightFromWidth = static_cast<int64_t>(srcW) * dstH / dstW;
-
-    if (cropWidthFromHeight <= srcW) {
-        rect.width = static_cast<int>(std::max<int64_t>(1, cropWidthFromHeight));
-        rect.height = srcH;
-    } else {
-        rect.width = srcW;
-        rect.height = static_cast<int>(std::max<int64_t>(1, cropHeightFromWidth));
+    const size_t rowSize = static_cast<size_t>(dstW) * 4;
+    for (int y = 0; y < dstH; ++y) {
+        uint8_t *row = dst + static_cast<size_t>(y) * dstStride;
+        std::memset(row, 0, rowSize);
+        for (int x = 0; x < dstW; ++x) {
+            row[x * 4 + 3] = 255;
+        }
     }
-
-    rect.x = (srcW - rect.width) / 2;
-    rect.y = (srcH - rect.height) / 2;
-    return rect;
 }
 
-void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
-                         uint8_t *dst, int dstW, int dstH, int dstStride) {
+void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
+                       uint8_t *dst, int dstW, int dstH, int dstStride) {
     if (!dst || dstW <= 0 || dstH <= 0 || dstStride < (dstW * 4)) {
         return;
     }
 
     if (!src || srcW <= 0 || srcH <= 0 || srcStride < (srcW * 4)) {
-        const size_t rowSize = static_cast<size_t>(dstW) * 4;
-        for (int y = 0; y < dstH; ++y) {
-            uint8_t *row = dst + static_cast<size_t>(y) * dstStride;
-            std::memset(row, 0, rowSize);
-            for (int x = 0; x < dstW; ++x) {
-                row[x * 4 + 3] = 255;
-            }
-        }
+        fillBgraOpaqueBlack(dst, dstW, dstH, dstStride);
         return;
     }
 
-    const AspectCoverRect cover = computeAspectCoverRect(srcW, srcH, dstW, dstH);
-    if (cover.width <= 0 || cover.height <= 0) {
+    const AspectFitRect fit = computeAspectFitRect(srcW, srcH, dstW, dstH);
+    if (fit.width <= 0 || fit.height <= 0) {
+        fillBgraOpaqueBlack(dst, dstW, dstH, dstStride);
         return;
     }
 
-    if (cover.x == 0 && cover.y == 0 &&
-        cover.width == srcW && cover.height == srcH &&
+    if (fit.x == 0 && fit.y == 0 &&
+        fit.width == dstW && fit.height == dstH &&
         srcW == dstW && srcH == dstH) {
         const size_t rowBytes = static_cast<size_t>(dstW) * 4;
         for (int y = 0; y < dstH; ++y) {
@@ -136,8 +117,10 @@ void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
         return;
     }
 
+    fillBgraOpaqueBlack(dst, dstW, dstH, dstStride);
+
     // Downscaling gameplay/text with nearest-neighbor produces visible aliasing.
-    // Keep the cover crop semantics, but resample with bilinear filtering.
+    // Fit the full source into the target so aspect-ratio changes do not crop gameplay.
     thread_local std::vector<int> x0Map;
     thread_local std::vector<int> x1Map;
     thread_local std::vector<int> y0Map;
@@ -145,30 +128,28 @@ void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
     thread_local std::vector<uint16_t> xWeightMap;
     thread_local std::vector<uint16_t> yWeightMap;
 
-    x0Map.resize(static_cast<size_t>(dstW));
-    x1Map.resize(static_cast<size_t>(dstW));
-    xWeightMap.resize(static_cast<size_t>(dstW));
-    y0Map.resize(static_cast<size_t>(dstH));
-    y1Map.resize(static_cast<size_t>(dstH));
-    yWeightMap.resize(static_cast<size_t>(dstH));
+    x0Map.resize(static_cast<size_t>(fit.width));
+    x1Map.resize(static_cast<size_t>(fit.width));
+    xWeightMap.resize(static_cast<size_t>(fit.width));
+    y0Map.resize(static_cast<size_t>(fit.height));
+    y1Map.resize(static_cast<size_t>(fit.height));
+    yWeightMap.resize(static_cast<size_t>(fit.height));
 
-    const auto buildAxisMap = [](int coverOffset,
-                                 int coverExtent,
-                                 int dstExtent,
+    const auto buildAxisMap = [](int sourceExtent,
+                                 int targetExtent,
                                  std::vector<int> &lowMap,
                                  std::vector<int> &highMap,
                                  std::vector<uint16_t> &weightMap) {
-        const double scale = static_cast<double>(coverExtent) / std::max(1, dstExtent);
-        const int minCoord = coverOffset;
-        const int maxCoord = coverOffset + coverExtent - 1;
+        const double scale = static_cast<double>(sourceExtent) / std::max(1, targetExtent);
+        const int maxCoord = sourceExtent - 1;
 
-        for (int i = 0; i < dstExtent; ++i) {
-            double srcPos = coverOffset + ((static_cast<double>(i) + 0.5) * scale) - 0.5;
+        for (int i = 0; i < targetExtent; ++i) {
+            double srcPos = ((static_cast<double>(i) + 0.5) * scale) - 0.5;
             int low = static_cast<int>(std::floor(srcPos));
             double frac = srcPos - low;
 
-            if (low < minCoord) {
-                low = minCoord;
+            if (low < 0) {
+                low = 0;
                 frac = 0.0;
             } else if (low >= maxCoord) {
                 low = maxCoord;
@@ -183,19 +164,19 @@ void blitBgraAspectCover(const uint8_t *src, int srcW, int srcH, int srcStride,
         }
     };
 
-    buildAxisMap(cover.x, cover.width, dstW, x0Map, x1Map, xWeightMap);
-    buildAxisMap(cover.y, cover.height, dstH, y0Map, y1Map, yWeightMap);
+    buildAxisMap(srcW, fit.width, x0Map, x1Map, xWeightMap);
+    buildAxisMap(srcH, fit.height, y0Map, y1Map, yWeightMap);
 
-    for (int y = 0; y < dstH; ++y) {
+    for (int y = 0; y < fit.height; ++y) {
         const int srcY0 = y0Map[static_cast<size_t>(y)];
         const int srcY1 = y1Map[static_cast<size_t>(y)];
         const int wy = yWeightMap[static_cast<size_t>(y)];
         const int invWy = 256 - wy;
         const uint8_t *srcRow0 = src + static_cast<size_t>(srcY0) * srcStride;
         const uint8_t *srcRow1 = src + static_cast<size_t>(srcY1) * srcStride;
-        uint8_t *dstRow = dst + static_cast<size_t>(y) * dstStride;
+        uint8_t *dstRow = dst + static_cast<size_t>(fit.y + y) * dstStride + static_cast<size_t>(fit.x) * 4;
 
-        for (int x = 0; x < dstW; ++x) {
+        for (int x = 0; x < fit.width; ++x) {
             const int srcX0 = x0Map[static_cast<size_t>(x)];
             const int srcX1 = x1Map[static_cast<size_t>(x)];
             const int wx = xWeightMap[static_cast<size_t>(x)];
@@ -400,8 +381,8 @@ class VideoEncoder::Impl {
         if (aspectFitInputBuffer_.size() != paddedSize) {
             aspectFitInputBuffer_.resize(paddedSize);
         }
-        blitBgraAspectCover(input.data.data(), input.width, input.height, input.stride,
-                            aspectFitInputBuffer_.data(), swsSrcW, swsSrcH, swsSrcW * 4);
+        blitBgraAspectFit(input.data.data(), input.width, input.height, input.stride,
+                          aspectFitInputBuffer_.data(), swsSrcW, swsSrcH, swsSrcW * 4);
 
         if (!swsCtx_ || lastWidth_ != swsSrcW || lastHeight_ != swsSrcH) {
             if (swsCtx_) {
@@ -3135,8 +3116,8 @@ class VideoEncoder::Impl {
         if (conversionScratchBgra_.size() != scratchSize) {
             conversionScratchBgra_.resize(scratchSize);
         }
-        blitBgraAspectCover(bgra, srcW, srcH, srcStride,
-                            conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
+        blitBgraAspectFit(bgra, srcW, srcH, srcStride,
+                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
 
         uint8_t* yPlane = nv12;
         uint8_t* uvPlane = nv12 + dstW * dstH;
@@ -3192,8 +3173,8 @@ class VideoEncoder::Impl {
         if (conversionScratchBgra_.size() != scratchSize) {
             conversionScratchBgra_.resize(scratchSize);
         }
-        blitBgraAspectCover(bgra, srcW, srcH, srcStride,
-                            conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
+        blitBgraAspectFit(bgra, srcW, srcH, srcStride,
+                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
 
         if ((dstW & 1) != 0 || (dstH & 1) != 0) {
             std::fill(uPlane, uPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
@@ -3243,7 +3224,7 @@ class VideoEncoder::Impl {
 
     void convertBGRAtoRGB32(const uint8_t *bgra, int srcW, int srcH, int srcStride,
                             uint8_t *dst, int dstW, int dstH) {
-        blitBgraAspectCover(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4);
+        blitBgraAspectFit(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4);
     }
 
     EncoderConfig config_{};

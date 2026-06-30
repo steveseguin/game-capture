@@ -1,5 +1,7 @@
 #include "versus/app/versus_app.h"
 
+#include "versus/video/aspect_fit.h"
+
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -7,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <cctype>
+#include <cstddef>
 #include <cmath>
 #include <thread>
 
@@ -25,6 +28,7 @@ constexpr int64_t kRoomInitGracePeriodMs = 1500;
 constexpr int64_t kDirectInitGracePeriodMs = 1000;
 constexpr int64_t kDisconnectedPeerPruneMs = 10000;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
+constexpr int64_t kPendingRemoteCandidateTtlMs = 15000;
 constexpr int kHardwareFailSampleWindow = 300;
 constexpr double kHardwareFailRatioThreshold = 0.35;
 constexpr int kHardwareMaxSelfRecoveries = 2;
@@ -32,6 +36,7 @@ constexpr int kLqWidth = 640;
 constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
 constexpr int kLqBitrateKbps = 2000;
+constexpr std::size_t kPendingRemoteCandidatesMaxPerPeer = 100;
 
 int64_t steadyNowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -163,6 +168,205 @@ std::string resolutionLabel(int width, int height) {
     return std::to_string(width) + " x " + std::to_string(height);
 }
 
+int clampEvenDimension(int value, int minimum, int maximum) {
+    const int clamped = std::clamp(value, minimum, maximum);
+    return std::max(2, clamped & ~1);
+}
+
+int deriveAspectDimension(int knownValue, int knownAspect, int derivedAspect) {
+    if (knownValue <= 0 || knownAspect <= 0 || derivedAspect <= 0) {
+        return 0;
+    }
+    return std::max(1, static_cast<int>(std::lround(
+                           static_cast<double>(knownValue) *
+                           static_cast<double>(derivedAspect) /
+                           static_cast<double>(knownAspect))));
+}
+
+struct CompletedResolution {
+    int width = 0;
+    int height = 0;
+};
+
+CompletedResolution completeResolutionRequest(int requestedWidth,
+                                              int requestedHeight,
+                                              int aspectWidth,
+                                              int aspectHeight) {
+    constexpr int kMinWidth = 160;
+    constexpr int kMaxWidth = 3840;
+    constexpr int kMinHeight = 90;
+    constexpr int kMaxHeight = 2160;
+
+    CompletedResolution result;
+    const bool widthRequested = requestedWidth > 0;
+    const bool heightRequested = requestedHeight > 0;
+    if (!widthRequested && !heightRequested) {
+        return result;
+    }
+
+    const int baseWidth = aspectWidth > 0 ? aspectWidth : 16;
+    const int baseHeight = aspectHeight > 0 ? aspectHeight : 9;
+
+    if (widthRequested && heightRequested) {
+        result.width = clampEvenDimension(requestedWidth, kMinWidth, kMaxWidth);
+        result.height = clampEvenDimension(requestedHeight, kMinHeight, kMaxHeight);
+        return result;
+    }
+
+    if (heightRequested) {
+        result.height = clampEvenDimension(requestedHeight, kMinHeight, kMaxHeight);
+        const int derivedWidth = deriveAspectDimension(result.height, baseHeight, baseWidth);
+        if (derivedWidth > kMaxWidth) {
+            result.width = kMaxWidth;
+            result.height = clampEvenDimension(
+                deriveAspectDimension(result.width, baseWidth, baseHeight),
+                kMinHeight,
+                kMaxHeight);
+        } else if (derivedWidth < kMinWidth) {
+            result.width = kMinWidth;
+            result.height = clampEvenDimension(
+                deriveAspectDimension(result.width, baseWidth, baseHeight),
+                kMinHeight,
+                kMaxHeight);
+        } else {
+            result.width = clampEvenDimension(derivedWidth, kMinWidth, kMaxWidth);
+        }
+        return result;
+    }
+
+    result.width = clampEvenDimension(requestedWidth, kMinWidth, kMaxWidth);
+    const int derivedHeight = deriveAspectDimension(result.width, baseWidth, baseHeight);
+    if (derivedHeight > kMaxHeight) {
+        result.height = kMaxHeight;
+        result.width = clampEvenDimension(
+            deriveAspectDimension(result.height, baseHeight, baseWidth),
+            kMinWidth,
+            kMaxWidth);
+    } else if (derivedHeight < kMinHeight) {
+        result.height = kMinHeight;
+        result.width = clampEvenDimension(
+            deriveAspectDimension(result.height, baseHeight, baseWidth),
+            kMinWidth,
+            kMaxWidth);
+    } else {
+        result.height = clampEvenDimension(derivedHeight, kMinHeight, kMaxHeight);
+    }
+    return result;
+}
+
+CompletedResolution completeVdoScaleResolutionRequest(int requestedWidth,
+                                                      int requestedHeight,
+                                                      bool cover,
+                                                      int nativeWidth,
+                                                      int nativeHeight) {
+    const int baseWidth = nativeWidth > 0 ? nativeWidth : 16;
+    const int baseHeight = nativeHeight > 0 ? nativeHeight : 9;
+    const bool widthRequested = requestedWidth > 0;
+    const bool heightRequested = requestedHeight > 0;
+    if (!widthRequested && !heightRequested) {
+        return {};
+    }
+
+    double scale = 1.0;
+    if (!widthRequested) {
+        scale = static_cast<double>(requestedHeight) / static_cast<double>(baseHeight);
+    } else if (!heightRequested) {
+        scale = static_cast<double>(requestedWidth) / static_cast<double>(baseWidth);
+    } else {
+        const double widthScale = static_cast<double>(requestedWidth) / static_cast<double>(baseWidth);
+        const double heightScale = static_cast<double>(requestedHeight) / static_cast<double>(baseHeight);
+        scale = cover ? std::max(widthScale, heightScale) : std::min(widthScale, heightScale);
+    }
+    if (!(scale > 0.0)) {
+        return {};
+    }
+    scale = std::min(scale, 1.0);
+
+    const int scaledWidth = std::max(2, static_cast<int>(std::lround(static_cast<double>(baseWidth) * scale)) & ~1);
+    const int scaledHeight = std::max(2, static_cast<int>(std::lround(static_cast<double>(baseHeight) * scale)) & ~1);
+    return completeResolutionRequest(scaledWidth, scaledHeight, baseWidth, baseHeight);
+}
+
+bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
+                              int dstW,
+                              int dstH,
+                              std::vector<uint8_t> &out) {
+    if (frame.format != video::CapturedFrame::Format::BGRA ||
+        frame.width <= 0 ||
+        frame.height <= 0 ||
+        frame.stride < frame.width * 4 ||
+        dstW <= 0 ||
+        dstH <= 0 ||
+        frame.data.size() < static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height)) {
+        return false;
+    }
+
+    out.assign(static_cast<size_t>(dstW) * static_cast<size_t>(dstH), 0);
+    const video::AspectFitRect fit = video::computeAspectFitRect(frame.width, frame.height, dstW, dstH);
+    if (fit.width <= 0 || fit.height <= 0) {
+        return false;
+    }
+
+    const uint8_t *src = frame.data.data();
+    if (fit.x == 0 && fit.y == 0 &&
+        fit.width == dstW && fit.height == dstH &&
+        frame.width == dstW && frame.height == dstH) {
+        for (int y = 0; y < dstH; ++y) {
+            const size_t srcRow = static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
+            const size_t dstRow = static_cast<size_t>(y) * static_cast<size_t>(dstW);
+            for (int x = 0; x < dstW; ++x) {
+                out[dstRow + static_cast<size_t>(x)] =
+                    src[srcRow + static_cast<size_t>(x) * 4 + 3];
+            }
+        }
+        return true;
+    }
+
+    for (int y = 0; y < fit.height; ++y) {
+        const int srcY = (y * frame.height) / fit.height;
+        const size_t srcRow = static_cast<size_t>(srcY) * static_cast<size_t>(frame.stride);
+        const size_t dstRow = static_cast<size_t>(fit.y + y) * static_cast<size_t>(dstW) +
+                              static_cast<size_t>(fit.x);
+        for (int x = 0; x < fit.width; ++x) {
+            const int srcX = (x * frame.width) / fit.width;
+            out[dstRow + static_cast<size_t>(x)] =
+                src[srcRow + static_cast<size_t>(srcX) * 4 + 3];
+        }
+    }
+    return true;
+}
+
+std::string redactPasswordQueryValue(std::string url) {
+    constexpr const char *kPasswordParam = "password=";
+    constexpr size_t kPasswordParamLength = 9;
+
+    size_t searchFrom = 0;
+    while (true) {
+        const size_t paramPos = url.find(kPasswordParam, searchFrom);
+        if (paramPos == std::string::npos) {
+            break;
+        }
+
+        const size_t valueStart = paramPos + kPasswordParamLength;
+        const size_t valueEnd = url.find('&', valueStart);
+        const std::string value = url.substr(
+            valueStart,
+            valueEnd == std::string::npos ? std::string::npos : valueEnd - valueStart);
+        if (value != "false" && value != "0" && value != "off") {
+            url.replace(
+                valueStart,
+                valueEnd == std::string::npos ? std::string::npos : valueEnd - valueStart,
+                "<redacted>");
+        }
+
+        if (valueEnd == std::string::npos) {
+            break;
+        }
+        searchFrom = valueEnd + 1;
+    }
+    return url;
+}
+
 const char *videoCodecName(video::VideoCodec codec) {
     switch (codec) {
         case video::VideoCodec::H264:
@@ -194,6 +398,17 @@ const char *audioSourceModeName(AudioSourceMode mode) {
         default:
             return "none";
     }
+}
+
+nlohmann::json integerRange(int minValue, int maxValue, int step = 0) {
+    nlohmann::json range = {
+        {"min", minValue},
+        {"max", maxValue}
+    };
+    if (step > 0) {
+        range["step"] = step;
+    }
+    return range;
 }
 
 std::vector<float> normalizeAudioForOpus(const audio::StreamChunk &chunk) {
@@ -330,30 +545,30 @@ bool VersusApp::startCapture(const std::string &windowId) {
     captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
-    activeHqWidth_ = 0;
-    activeHqHeight_ = 0;
-    lastCaptureWidth_ = 0;
-    lastCaptureHeight_ = 0;
-    lastCaptureResizeMs_ = 0;
-    lastHqReconfigureMs_ = 0;
-    lastResizeKeyframeRequestMs_ = 0;
-    hardwareEncodeSampleCount_ = 0;
-    hardwareEncodeFailCount_ = 0;
-    hardwareRecoveryAttemptCount_ = 0;
-    hardwareAutoFallbackTriggered_ = false;
-    softwareExternalEncodeFailCount_ = 0;
-    softwareExternalFailWindowStartMs_ = 0;
-    hqAspectLocked_ = false;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        activeHqWidth_ = 0;
+        activeHqHeight_ = 0;
+        lastCaptureWidth_ = 0;
+        lastCaptureHeight_ = 0;
+        lastCaptureResizeMs_ = 0;
+        lastHqReconfigureMs_ = 0;
+        lastResizeKeyframeRequestMs_ = 0;
+        hardwareEncodeSampleCount_ = 0;
+        hardwareEncodeFailCount_ = 0;
+        hardwareRecoveryAttemptCount_ = 0;
+        hardwareAutoFallbackTriggered_ = false;
+        softwareExternalEncodeFailCount_ = 0;
+        softwareExternalFailWindowStartMs_ = 0;
+        hqAspectLocked_ = false;
+        lqEncoderInitialized_.store(false, std::memory_order_relaxed);
+        publishVideoStateSnapshotLocked();
+    }
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
         hasLatestVideoFrame_ = false;
         latestVideoFrame_ = video::CapturedFrame{};
     }
-    {
-        std::lock_guard<std::mutex> lock(videoSendMutex_);
-        lqEncoderInitialized_.store(false, std::memory_order_relaxed);
-    }
-
     selectedWindowId_ = windowId;
     if (!windowCapture_.startCapture(windowId, 1920, 1080, 60)) {
         return false;
@@ -371,7 +586,11 @@ bool VersusApp::startCapture(const std::string &windowId) {
     }
     startAudioCapture(selectedWindowProcessId);
 
-    video::EncoderConfig config = videoConfig_;
+    video::EncoderConfig config;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        config = videoConfig_;
+    }
     if (config.width == 0 || config.height == 0) {
         config.width = 1920;
         config.height = 1080;
@@ -383,36 +602,53 @@ bool VersusApp::startCapture(const std::string &windowId) {
         // Dual-track VP9 alpha uses a separate grayscale encoder for transparency.
         primaryConfig.enableAlpha = false;
     }
-    if (!videoEncoder_.initialize(primaryConfig)) {
+    std::string activeEncoderName;
+    bool activeHardwareEncoder = false;
+    bool alphaEncoderOk = false;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        if (!videoEncoder_.initialize(primaryConfig)) {
+            windowCapture_.stopCapture();
+            return false;
+        }
+        activeHqWidth_ = std::max(2, primaryConfig.width & ~1);
+        activeHqHeight_ = std::max(2, primaryConfig.height & ~1);
+        hqAspectLocked_ = false;
+        activeEncoderName = videoEncoder_.activeEncoderName();
+        activeHardwareEncoder = videoEncoder_.isHardwareEncoderActive();
+
+        // VP9 alpha: initialize a separate encoder instance for the alpha (gray) track.
+        videoEncoderAlpha_.shutdown();
+        if (config.codec == video::VideoCodec::VP9 && config.enableAlpha) {
+            video::EncoderConfig alphaConfig = config;
+            alphaConfig.enableAlpha = true;
+            alphaConfig.bitrate = std::max(500, config.bitrate / 4);
+            alphaConfig.minBitrate = std::max(250, alphaConfig.bitrate / 2);
+            alphaConfig.maxBitrate = std::max(alphaConfig.bitrate + 1000, (alphaConfig.bitrate * 3) / 2);
+            alphaConfig.preferredHardware = video::HardwareEncoder::None;
+            alphaEncoderOk = videoEncoderAlpha_.initialize(alphaConfig);
+        }
+        publishVideoStateSnapshotLocked();
+    }
+    if (activeEncoderName.empty()) {
         windowCapture_.stopCapture();
         return false;
     }
-    activeHqWidth_ = std::max(2, primaryConfig.width & ~1);
-    activeHqHeight_ = std::max(2, primaryConfig.height & ~1);
-    hqAspectLocked_ = false;
     spdlog::info("[App] Video encoder active: {} (hardware={})",
-                 videoEncoder_.activeEncoderName(), videoEncoder_.isHardwareEncoderActive());
+                 activeEncoderName, activeHardwareEncoder);
 
-    // VP9 alpha: initialize a separate encoder instance for the alpha (gray) track.
-    videoEncoderAlpha_.shutdown();
     if (config.codec == video::VideoCodec::VP9 && config.enableAlpha) {
-        video::EncoderConfig alphaConfig = config;
-        alphaConfig.enableAlpha = true;
-        alphaConfig.bitrate = std::max(500, config.bitrate / 4);
-        alphaConfig.minBitrate = std::max(250, alphaConfig.bitrate / 2);
-        alphaConfig.maxBitrate = std::max(alphaConfig.bitrate + 1000, (alphaConfig.bitrate * 3) / 2);
-        alphaConfig.preferredHardware = video::HardwareEncoder::None;
-        if (!videoEncoderAlpha_.initialize(alphaConfig)) {
+        if (!alphaEncoderOk) {
             spdlog::warn("[App] VP9 alpha encoder init failed; streaming without alpha channel");
         } else {
-            spdlog::info("[App] VP9 alpha encoder active: {} kbps", alphaConfig.bitrate);
+            spdlog::info("[App] VP9 alpha encoder active: {} kbps", std::max(500, config.bitrate / 4));
         }
     }
 
     audio::AudioEncoderConfig audioConfig;
     audioConfig.sampleRate = 48000;
     audioConfig.channels = 2;
-    audioConfig.bitrate = 192;
+    audioConfig.bitrate = audioEncoderBitrateKbps_.load(std::memory_order_relaxed);
     opusEncoder_.initialize(audioConfig);
 
     windowCapture_.setFrameCallback([this](const video::CapturedFrame &frame) {
@@ -462,6 +698,21 @@ void VersusApp::stopCapture() {
         videoEncoder_.shutdown();
         videoEncoderAlpha_.shutdown();
         shutdownLqEncoderLocked();
+        activeHqWidth_ = 0;
+        activeHqHeight_ = 0;
+        lastCaptureWidth_ = 0;
+        lastCaptureHeight_ = 0;
+        lastCaptureResizeMs_ = 0;
+        lastHqReconfigureMs_ = 0;
+        lastResizeKeyframeRequestMs_ = 0;
+        hardwareEncodeSampleCount_ = 0;
+        hardwareEncodeFailCount_ = 0;
+        hardwareRecoveryAttemptCount_ = 0;
+        hardwareAutoFallbackTriggered_ = false;
+        softwareExternalEncodeFailCount_ = 0;
+        softwareExternalFailWindowStartMs_ = 0;
+        hqAspectLocked_ = false;
+        publishVideoStateSnapshotLocked();
     }
     audioCapture_.StopCapture();
     microphoneAudioCapture_.StopCapture();
@@ -480,20 +731,6 @@ void VersusApp::stopCapture() {
     captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
-    activeHqWidth_ = 0;
-    activeHqHeight_ = 0;
-    lastCaptureWidth_ = 0;
-    lastCaptureHeight_ = 0;
-    lastCaptureResizeMs_ = 0;
-    lastHqReconfigureMs_ = 0;
-    lastResizeKeyframeRequestMs_ = 0;
-    hardwareEncodeSampleCount_ = 0;
-    hardwareEncodeFailCount_ = 0;
-    hardwareRecoveryAttemptCount_ = 0;
-    hardwareAutoFallbackTriggered_ = false;
-    softwareExternalEncodeFailCount_ = 0;
-    softwareExternalFailWindowStartMs_ = 0;
-    hqAspectLocked_ = false;
     capturing_ = false;
 }
 
@@ -502,12 +739,17 @@ void VersusApp::setSelectedWindow(const std::string &windowId) {
 }
 
 void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
+    std::lock_guard<std::mutex> lock(videoSendMutex_);
     videoConfig_ = config;
+    if (config.bitrate > 0) {
+        configuredVideoBitrateKbps_.store(config.bitrate, std::memory_order_relaxed);
+    }
     if (!capturing_) {
         activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
         activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
         hqAspectLocked_ = false;
     }
+    publishVideoStateSnapshotLocked();
 }
 
 void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
@@ -647,7 +889,7 @@ bool VersusApp::goLive(const StartOptions &options) {
         viewUrl = signaling_.getViewUrl();
     }
     spdlog::info("[App] ========================================");
-    spdlog::info("[App] VIEW URL: {}", viewUrl);
+    spdlog::info("[App] VIEW URL: {}", redactPasswordQueryValue(viewUrl));
     spdlog::info("[App] ========================================");
 
     live_ = true;
@@ -704,15 +946,15 @@ void VersusApp::emitRuntimeEvent(const std::string &message, bool fatal) {
 }
 
 std::string VersusApp::getVideoEncoderName() const {
-    return videoEncoder_.activeEncoderName();
+    return videoStateSnapshot().encoderName;
 }
 
 std::string VersusApp::getVideoCodecName() const {
-    return videoEncoder_.activeCodecName();
+    return videoStateSnapshot().codecName;
 }
 
 bool VersusApp::isHardwareVideoEncoder() const {
-    return videoEncoder_.isHardwareEncoderActive();
+    return videoStateSnapshot().hardwareEncoder;
 }
 
 float VersusApp::getAudioLevelRms() const {
@@ -725,6 +967,7 @@ float VersusApp::getAudioPeak() const {
 
 StreamMetrics VersusApp::getStreamMetrics() const {
     StreamMetrics metrics;
+    const VideoStateSnapshot videoState = videoStateSnapshot();
 
     const int64_t startedMs = metricsStartMs_.load(std::memory_order_relaxed);
     const int64_t elapsedMs = startedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - startedMs) : 1;
@@ -737,11 +980,11 @@ StreamMetrics VersusApp::getStreamMetrics() const {
     metrics.width = lastSentWidth_.load(std::memory_order_relaxed);
     metrics.height = lastSentHeight_.load(std::memory_order_relaxed);
     if (metrics.width <= 0 || metrics.height <= 0) {
-        metrics.width = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
-        metrics.height = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+        metrics.width = videoState.hqWidth;
+        metrics.height = videoState.hqHeight;
     }
-    metrics.codec = getVideoCodecName();
-    metrics.encoder = getVideoEncoderName();
+    metrics.codec = videoState.codecName;
+    metrics.encoder = videoState.encoderName;
 
     const PeerCounts counts = collectPeerCounts();
     metrics.peerCount = counts.total;
@@ -1074,6 +1317,42 @@ void VersusApp::setupSignalingCallbacks() {
         }
     });
 
+    signaling_.onPeerCleanup([this](const std::string &uuid, const std::string &session) {
+        spdlog::info("[Signaling] onPeerCleanup uuid={} session={}", uuid, session);
+        std::shared_ptr<PeerSession> peer;
+        {
+            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+            peer = findPeerSessionForSignalLocked(uuid, session);
+        }
+        if (!peer) {
+            spdlog::warn("[Signaling] No matching peer for cleanup uuid={} session={}", uuid, session);
+            return;
+        }
+        removePeerSession(peer, "signaling-cleanup");
+    });
+
+    signaling_.onIceRestartRequest([this](const std::string &uuid, const std::string &session, const std::string &streamId) {
+        spdlog::info("[Signaling] onIceRestartRequest uuid={} session={} streamId={}", uuid, session, streamId);
+        std::shared_ptr<PeerSession> peer;
+        {
+            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+            peer = findPeerSessionForSignalLocked(uuid, session);
+        }
+        if (!peer) {
+            spdlog::warn("[Signaling] No matching peer for ICE restart uuid={} session={}", uuid, session);
+            return;
+        }
+
+        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        if (!sendPeerOffer(peer, "signaling-ice-restart", true)) {
+            spdlog::warn("[App] Failed to refresh peer connection from signaling ICE restart {}:{}",
+                         peer->uuid,
+                         peer->session);
+        }
+    });
+
     signaling_.onOfferRequest([this](const std::string &uuid, const std::string &session, const std::string &streamId) {
         spdlog::info("[Signaling] onOfferRequest uuid={} session={} streamId={}", uuid, session, streamId);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -1137,8 +1416,10 @@ void VersusApp::setupSignalingCallbacks() {
             peerConfig.iceServers = resolvedIceServers_;
             peerConfig.iceMode = iceMode_;
         }
-        peerConfig.videoCodec = toPeerVideoCodec(videoConfig_.codec);
-        peerConfig.enableAlphaTrack = (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha);
+        const VideoStateSnapshot videoState = videoStateSnapshot();
+        peerConfig.videoCodec = toPeerVideoCodec(videoState.config.codec);
+        peerConfig.enableAlphaTrack =
+            (videoState.config.codec == video::VideoCodec::VP9 && videoState.config.enableAlpha);
         // Always negotiate VDO.Ninja's sendChannel so both sides can exchange
         // the standard info handshake, even for direct VP9/alpha viewers.
         peerConfig.enableDataChannel = true;
@@ -1147,9 +1428,9 @@ void VersusApp::setupSignalingCallbacks() {
         peerConfig.initialVideo = true;
         peerConfig.initialAudio = true;
         peerConfig.initialAlpha = false;
-        peerConfig.videoWidth = std::max(1, videoConfig_.width);
-        peerConfig.videoHeight = std::max(1, videoConfig_.height);
-        peerConfig.videoFps = std::max(1, videoConfig_.frameRate);
+        peerConfig.videoWidth = std::max(1, videoState.config.width);
+        peerConfig.videoHeight = std::max(1, videoState.config.height);
+        peerConfig.videoFps = std::max(1, videoState.config.frameRate);
         if (!peer->client->initialize(peerConfig)) {
             spdlog::error("[WebRTC] Failed to initialize peer session {}:{}", uuid, resolvedSession);
             return;
@@ -1186,7 +1467,7 @@ void VersusApp::setupSignalingCallbacks() {
                 spdlog::info("[WebRTC] Peer connection closed {}:{}; removing session",
                              peerPtr->uuid,
                              peerPtr->session);
-                removePeerSession(peerPtr);
+                removePeerSession(peerPtr, "connection-closed");
                 return;
             }
             if (state == webrtc::ConnectionState::Failed) {
@@ -1213,7 +1494,7 @@ void VersusApp::setupSignalingCallbacks() {
                             false);
                     }
                 }
-                removePeerSession(peerPtr);
+                removePeerSession(peerPtr, "connection-failed");
             }
         });
 
@@ -1409,13 +1690,10 @@ void VersusApp::setupSignalingCallbacks() {
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
             peer = findPeerSessionForSignalLocked(cand.uuid, cand.session);
-        }
-
-        if (!peer || !peer->client) {
-            spdlog::debug("[Signaling] Ignoring candidate for unknown peer uuid={} session={}",
-                          cand.uuid,
-                          cand.session);
-            return;
+            if (!peer || !peer->client) {
+                queuePendingRemoteCandidateLocked(cand, steadyNowMs());
+                return;
+            }
         }
 
         peer->client->addRemoteCandidate(cand.candidate, cand.mid, cand.mlineIndex);
@@ -1439,13 +1717,20 @@ bool VersusApp::isControlMessageAuthorized(const std::shared_ptr<PeerSession> &p
     return token == remoteControlToken_;
 }
 
-bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height, int fps) {
+bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
+                                         int &width,
+                                         int &height,
+                                         int fps,
+                                         bool vdoScaleResolutionRequest,
+                                         bool vdoScaleResolutionCover) {
     if (bitrateKbps <= 0 && width <= 0 && height <= 0 && fps <= 0) {
         return true;
     }
 
     std::lock_guard<std::mutex> lock(videoSendMutex_);
     auto nextConfig = videoConfig_;
+    const int requestedWidth = width;
+    const int requestedHeight = height;
 
     const bool bitrateRequested = bitrateKbps > 0;
     if (bitrateRequested) {
@@ -1456,13 +1741,40 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
     }
 
     const bool hasResolutionRequest = width > 0 || height > 0;
-    const bool widthRequested = width > 0;
-    const bool heightRequested = height > 0;
-    if (widthRequested) {
-        nextConfig.width = std::clamp(width, 160, 3840);
-    }
-    if (heightRequested) {
-        nextConfig.height = std::clamp(height, 90, 2160);
+    if (hasResolutionRequest) {
+        const int aspectWidth = std::max(2, ((lastCaptureWidth_ > 0 ? lastCaptureWidth_ : videoConfig_.width) & ~1));
+        const int aspectHeight = std::max(2, ((lastCaptureHeight_ > 0 ? lastCaptureHeight_ : videoConfig_.height) & ~1));
+        const CompletedResolution resolvedResolution =
+            vdoScaleResolutionRequest
+                ? completeVdoScaleResolutionRequest(width,
+                                                    height,
+                                                    vdoScaleResolutionCover,
+                                                    aspectWidth,
+                                                    aspectHeight)
+                : completeResolutionRequest(width, height, aspectWidth, aspectHeight);
+        if (resolvedResolution.width <= 0 || resolvedResolution.height <= 0) {
+            return false;
+        }
+        nextConfig.width = resolvedResolution.width;
+        nextConfig.height = resolvedResolution.height;
+        if (vdoScaleResolutionRequest) {
+            spdlog::info("[App] Resolved VDO runtime resolution request {}x{} cover={} using source {}x{} -> {}x{}",
+                         requestedWidth,
+                         requestedHeight,
+                         vdoScaleResolutionCover,
+                         aspectWidth,
+                         aspectHeight,
+                         nextConfig.width,
+                         nextConfig.height);
+        } else if (requestedWidth <= 0 || requestedHeight <= 0) {
+            spdlog::info("[App] Completed partial runtime resolution request {}x{} using aspect {}x{} -> {}x{}",
+                         requestedWidth,
+                         requestedHeight,
+                         aspectWidth,
+                         aspectHeight,
+                         nextConfig.width,
+                         nextConfig.height);
+        }
     }
     if (fps > 0) {
         nextConfig.frameRate = std::clamp(fps, 10, 120);
@@ -1478,10 +1790,19 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
         activeHqWidth_ = std::max(2, nextConfig.width & ~1);
         activeHqHeight_ = std::max(2, nextConfig.height & ~1);
         hqAspectLocked_ = false;
+        publishVideoStateSnapshotLocked();
+        if (hasResolutionRequest) {
+            width = videoConfig_.width;
+            height = videoConfig_.height;
+        }
         return true;
     }
 
     if (!bitrateChanged && !resolutionChanged && !fpsChanged) {
+        if (hasResolutionRequest) {
+            width = videoConfig_.width;
+            height = videoConfig_.height;
+        }
         return true;
     }
 
@@ -1501,6 +1822,7 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
                 activeHqWidth_ = std::max(2, previousConfig.width & ~1);
                 activeHqHeight_ = std::max(2, previousConfig.height & ~1);
                 hqAspectLocked_ = false;
+                publishVideoStateSnapshotLocked();
             }
             return false;
         }
@@ -1514,10 +1836,33 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps, int width, int height,
     }
 
     videoConfig_ = nextConfig;
+    publishVideoStateSnapshotLocked();
     if (hasResolutionRequest || bitrateRequested) {
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
     }
+    if (hasResolutionRequest) {
+        width = videoConfig_.width;
+        height = videoConfig_.height;
+    }
+    return true;
+}
+
+bool VersusApp::applyRuntimeAudioControl(int bitrateKbps) {
+    const int targetKbps = bitrateKbps <= 0 ? 192 : std::clamp(bitrateKbps, 6, 510);
+
+    if (!capturing_) {
+        audioEncoderBitrateKbps_.store(targetKbps, std::memory_order_relaxed);
+        return true;
+    }
+
+    std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
+    if (!opusEncoder_.setBitrate(targetKbps)) {
+        return false;
+    }
+
+    audioEncoderBitrateKbps_.store(targetKbps, std::memory_order_relaxed);
+    spdlog::info("[App] Applying runtime audio bitrate update: {} kbps", targetKbps);
     return true;
 }
 
@@ -1525,7 +1870,12 @@ bool VersusApp::enforceRoomCodecLock() {
     if (room_.empty()) {
         return true;
     }
-    if (videoConfig_.codec == video::VideoCodec::H264) {
+    bool needsCodecLock = false;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        needsCodecLock = videoConfig_.codec != video::VideoCodec::H264;
+    }
+    if (!needsCodecLock) {
         return true;
     }
 
@@ -1536,14 +1886,18 @@ bool VersusApp::enforceRoomCodecLock() {
             false);
     }
 
+    std::lock_guard<std::mutex> lock(videoSendMutex_);
+    if (videoConfig_.codec == video::VideoCodec::H264) {
+        return true;
+    }
     const auto previousConfig = videoConfig_;
     videoConfig_.codec = video::VideoCodec::H264;
 
     if (!capturing_) {
+        publishVideoStateSnapshotLocked();
         return true;
     }
 
-    std::lock_guard<std::mutex> lock(videoSendMutex_);
     videoEncoder_.shutdown();
     shutdownLqEncoderLocked();
     if (videoEncoder_.initialize(videoConfig_)) {
@@ -1551,6 +1905,7 @@ bool VersusApp::enforceRoomCodecLock() {
         activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
         lastHqReconfigureMs_ = steadyNowMs();
         hqAspectLocked_ = false;
+        publishVideoStateSnapshotLocked();
         return true;
     }
 
@@ -1562,6 +1917,7 @@ bool VersusApp::enforceRoomCodecLock() {
         activeHqWidth_ = std::max(2, previousConfig.width & ~1);
         activeHqHeight_ = std::max(2, previousConfig.height & ~1);
         hqAspectLocked_ = false;
+        publishVideoStateSnapshotLocked();
     }
     return false;
 }
@@ -1650,7 +2006,7 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
                      peer->uuid,
                      peer->session,
                      nowMs - disconnectedSinceMs);
-        removePeerSession(peer);
+        removePeerSession(peer, "stale-disconnected-prune");
     }
 
     for (const auto &peer : expired) {
@@ -1722,6 +2078,7 @@ bool VersusApp::ensureLqEncoderInitializedLocked() {
     }
 
     lqEncoderInitialized_.store(true, std::memory_order_relaxed);
+    publishVideoStateSnapshotLocked();
     spdlog::info("[App] LQ encoder active: {} ({}x{}@{} {}kbps)",
                  videoEncoderLq_.activeEncoderName(),
                  kLqWidth,
@@ -1737,6 +2094,7 @@ void VersusApp::shutdownLqEncoderLocked() {
     }
     videoEncoderLq_.shutdown();
     lqEncoderInitialized_.store(false, std::memory_order_relaxed);
+    publishVideoStateSnapshotLocked();
 }
 
 void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool includeMiniStats) {
@@ -1758,23 +2116,17 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
             peerRole);
     }
 
-    int hqWidth = 0;
-    int hqHeight = 0;
-    {
-        std::lock_guard<std::mutex> lock(videoSendMutex_);
-        hqWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
-        hqHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
-    }
+    const VideoStateSnapshot videoState = videoStateSnapshot();
 
     const int requestedVideoBitrate = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
     const bool peerWantsLq =
         assignedTier == StreamTier::LQ ||
         (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps);
     const int effectiveBitrate =
-        requestedVideoBitrate > 0 ? requestedVideoBitrate : (peerWantsLq ? kLqBitrateKbps : videoConfig_.bitrate);
-    const int effectiveWidth = peerWantsLq ? kLqWidth : hqWidth;
-    const int effectiveHeight = peerWantsLq ? kLqHeight : hqHeight;
-    const int effectiveFps = peerWantsLq ? kLqFps : videoConfig_.frameRate;
+        requestedVideoBitrate > 0 ? requestedVideoBitrate : (peerWantsLq ? kLqBitrateKbps : videoState.config.bitrate);
+    const int effectiveWidth = peerWantsLq ? kLqWidth : videoState.hqWidth;
+    const int effectiveHeight = peerWantsLq ? kLqHeight : videoState.hqHeight;
+    const int effectiveFps = peerWantsLq ? kLqFps : videoState.config.frameRate;
     const int64_t metricsStartedMs = metricsStartMs_.load(std::memory_order_relaxed);
     const int64_t elapsedMs = metricsStartedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - metricsStartedMs) : 1;
     const double aggregateVideoKbps =
@@ -1794,20 +2146,31 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     info["width_url"] = effectiveWidth;
     info["height_url"] = effectiveHeight;
     info["fps_url"] = effectiveFps;
-    info["codec_url"] = peerWantsLq ? "H.264" : videoCodecName(videoConfig_.codec);
+    info["video_init_width"] = effectiveWidth;
+    info["video_init_height"] = effectiveHeight;
+    info["video_init_frameRate"] = effectiveFps;
+    info["codec_url"] = peerWantsLq ? "H.264" : videoCodecName(videoState.config.codec);
     if (peerWantsLq) {
-        info["video_encoder"] = lqEncoderInitialized_.load(std::memory_order_relaxed)
-            ? videoEncoderLq_.activeEncoderName()
+        info["video_encoder"] = videoState.lqEncoderInitialized
+            ? videoState.lqEncoderName
             : "LQ-CPU-H264";
         info["video_codec"] = "H.264";
         info["hardware_encoder"] = false;
     } else {
-        info["video_encoder"] = videoEncoder_.activeEncoderName();
-        info["video_codec"] = videoEncoder_.activeCodecName();
-        info["hardware_encoder"] = videoEncoder_.isHardwareEncoderActive();
+        info["video_encoder"] = videoState.encoderName;
+        info["video_codec"] = videoState.codecName;
+        info["hardware_encoder"] = videoState.hardwareEncoder;
     }
     info["room_init"] = !room_.empty();
     info["room_init_received"] = initReceived;
+    info["broadcast_mode"] = true;
+    info["remote"] = remoteControlEnabled_.load(std::memory_order_relaxed);
+    info["allowdrawing"] = false;
+    info["obs_control"] = false;
+    info["screenShareState"] = false;
+    info["video_muted_init"] = !videoEnabled;
+    info["muted"] = !audioEnabled;
+    info["proaudio_init"] = false;
     info["assigned_role"] = peerRoleName(peerRole);
     info["assigned_tier"] = streamTierName(assignedTier);
     info["requested_video_bitrate_kbps"] = requestedVideoBitrate;
@@ -1841,7 +2204,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     if (!peer->systemBrowser.empty()) {
         info["system_browser"] = peer->systemBrowser;
     }
-    if (videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha) {
+    if (videoState.config.codec == video::VideoCodec::VP9 && videoState.config.enableAlpha) {
         info["alpha_send"] = "vp9-dualtrack-v1";
         info["alpha_active"] = peer->alphaAllowed.load(std::memory_order_relaxed);
     }
@@ -1869,10 +2232,9 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
             {"fps", sentFps},
             {"width", effectiveWidth},
             {"height", effectiveHeight},
-            {"codec", peerWantsLq ? "H.264" : videoCodecName(videoConfig_.codec)}};
+            {"codec", peerWantsLq ? "H.264" : videoCodecName(videoState.config.codec)}};
         miniInfo["rot"] = roomOnlyTier;
         msg["miniInfo"] = miniInfo;
-        msg["stats"] = miniInfo["out"];
     }
 
     msg["info"] = info;
@@ -1886,10 +2248,10 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
 
     int width = lastSentWidth_.load(std::memory_order_relaxed);
     int height = lastSentHeight_.load(std::memory_order_relaxed);
+    const VideoStateSnapshot videoState = videoStateSnapshot();
     if (width <= 0 || height <= 0) {
-        std::lock_guard<std::mutex> lock(videoSendMutex_);
-        width = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
-        height = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+        width = videoState.hqWidth;
+        height = videoState.hqHeight;
     }
 
     const int64_t metricsStartedMs = metricsStartMs_.load(std::memory_order_relaxed);
@@ -1911,11 +2273,11 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
     stats["label"] = startOptions_.label.empty() ? "Game Capture" : startOptions_.label;
     stats["video_bitrate_kbps"] = aggregateVideoKbps;
     stats["audio_bitrate_kbps"] = aggregateAudioKbps;
-    stats["available_outgoing_bitrate_kbps"] = videoConfig_.bitrate;
+    stats["available_outgoing_bitrate_kbps"] = videoState.config.bitrate;
     stats["nacks_per_second"] = 0;
     stats["resolution"] = resolutionLabel(width, height);
-    stats["video_encoder"] = getVideoEncoderName();
-    stats["video_codec"] = getVideoCodecName();
+    stats["video_encoder"] = videoState.encoderName;
+    stats["video_codec"] = videoState.codecName;
     stats["room_only_tier"] = roomOnlyTier;
     stats["peers"] = counts.total;
     stats["active_video"] = counts.activeVideo;
@@ -1924,6 +2286,171 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
     const std::string key = streamId_.empty() ? std::string("game-capture") : streamId_;
     nlohmann::json msg;
     msg["remoteStats"][key] = stats;
+    peer->client->sendDataMessage(msg.dump());
+}
+
+void VersusApp::sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer || !peer->client || !peer->client->isDataChannelOpen()) {
+        return;
+    }
+
+    nlohmann::json options = nlohmann::json::array();
+    if (audioSourceMode_ != AudioSourceMode::None || includeMicrophone_) {
+        std::string microphoneLabel = activeMicrophoneSourceName_;
+        std::string microphoneDeviceId = microphoneDeviceId_;
+        if (microphoneLabel == "default-microphone" ||
+            microphoneLabel == "selected-microphone" ||
+            microphoneLabel.empty()) {
+            const auto devices = microphoneAudioCapture_.GetInputDevices();
+            for (const auto &device : devices) {
+                if ((!microphoneDeviceId_.empty() && device.id == microphoneDeviceId_) ||
+                    (microphoneDeviceId_.empty() && device.isDefault)) {
+                    microphoneLabel = device.name.empty() ? std::string("Microphone/input device") : device.name;
+                    microphoneDeviceId = device.id;
+                    break;
+                }
+            }
+            if (microphoneLabel == "default-microphone" || microphoneLabel.empty()) {
+                microphoneLabel = "Default microphone/input";
+            } else if (microphoneLabel == "selected-microphone") {
+                microphoneLabel = "Selected microphone/input";
+            }
+        }
+
+        std::string label;
+        switch (audioSourceMode_) {
+            case AudioSourceMode::SelectedWindow:
+                label = "Selected window/app audio";
+                break;
+            case AudioSourceMode::DefaultOutput:
+                label = "Default system output";
+                break;
+            case AudioSourceMode::CommunicationsOutput:
+                label = "Communications output";
+                break;
+            case AudioSourceMode::DefaultMicrophone:
+                label = microphoneLabel;
+                break;
+            case AudioSourceMode::None:
+            default:
+                label = includeMicrophone_ ? microphoneLabel : "";
+                break;
+        }
+        if (includeMicrophone_ &&
+            audioSourceMode_ != AudioSourceMode::DefaultMicrophone &&
+            audioSourceMode_ != AudioSourceMode::None) {
+            label += " + " + microphoneLabel;
+        }
+
+        nlohmann::json track;
+        track["trackLabel"] = label.empty() ? "Game Capture audio" : label;
+        track["deviceId"] = microphoneDeviceId.empty() ? "game-capture-audio" : microphoneDeviceId;
+        track["audioConstraints"] = nlohmann::json::object();
+        track["currentAudioConstraints"] = {
+            {"sampleRate", 48000},
+            {"channelCount", 2}
+        };
+        track["equalizer"] = false;
+        track["lowcut"] = false;
+        track["subGain"] = false;
+        track["gating"] = false;
+        track["compressor"] = false;
+        track["micDelay"] = false;
+        track["micPanning"] = false;
+        options.push_back(std::move(track));
+    }
+
+    nlohmann::json msg;
+    msg["UUID"] = peer->uuid;
+    msg["audioOptions"] = options;
+    peer->client->sendDataMessage(msg.dump());
+}
+
+void VersusApp::sendPeerVideoOptions(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer || !peer->client || !peer->client->isDataChannelOpen()) {
+        return;
+    }
+
+    const VideoStateSnapshot videoState = videoStateSnapshot();
+    const int width = std::max(2, videoState.hqWidth);
+    const int height = std::max(2, videoState.hqHeight);
+    const int fps = std::max(1, videoState.config.frameRate);
+
+    nlohmann::json options;
+    options["trackLabel"] = "Game Capture window";
+    options["currentCameraConstraints"] = {
+        {"width", width},
+        {"height", height},
+        {"frameRate", fps}
+    };
+    options["cameraConstraints"] = {
+        {"width", integerRange(160, std::max(3840, width), 2)},
+        {"height", integerRange(90, std::max(2160, height), 2)},
+        {"frameRate", integerRange(1, std::max(120, fps), 1)}
+    };
+
+    nlohmann::json msg;
+    msg["UUID"] = peer->uuid;
+    msg["videoOptions"] = options;
+    peer->client->sendDataMessage(msg.dump());
+}
+
+void VersusApp::sendPeerMediaDevices(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer || !peer->client || !peer->client->isDataChannelOpen()) {
+        return;
+    }
+
+    nlohmann::json devices = nlohmann::json::array();
+    devices.push_back({
+        {"deviceId", selectedWindowId_.empty() ? "game-capture-window" : selectedWindowId_},
+        {"kind", "videoinput"},
+        {"label", "Game Capture window"},
+        {"groupId", "game-capture"}
+    });
+
+    const auto inputDevices = microphoneAudioCapture_.GetInputDevices();
+    for (const auto &device : inputDevices) {
+        devices.push_back({
+            {"deviceId", device.id.empty() ? "default" : device.id},
+            {"kind", "audioinput"},
+            {"label", device.name.empty() ? "Microphone/input device" : device.name},
+            {"groupId", device.isDefault ? "default-audioinput" : "audioinput"}
+        });
+    }
+
+    nlohmann::json msg;
+    msg["UUID"] = peer->uuid;
+    msg["mediaDevices"] = devices;
+    peer->client->sendDataMessage(msg.dump());
+}
+
+void VersusApp::sendPeerMediaDeviceChange(const std::shared_ptr<PeerSession> &peer,
+                                          const char *kind,
+                                          bool ok,
+                                          const std::string &deviceId,
+                                          const std::string &error) {
+    if (!peer || !peer->client || !peer->client->isDataChannelOpen()) {
+        return;
+    }
+
+    nlohmann::json msg;
+    msg["UUID"] = peer->uuid;
+    msg["mediaDeviceChange"] = {
+        {"kind", kind ? kind : "unknown"},
+        {"ok", ok},
+        {"deviceId", deviceId.empty() ? nlohmann::json(false) : nlohmann::json(deviceId)},
+        {"error", error.empty() ? nlohmann::json(false) : nlohmann::json(error)}
+    };
+    if (!ok) {
+        if (kind && std::string(kind) == "camera") {
+            msg["rejected"] = "changeCamera";
+        } else if (kind && std::string(kind) == "microphone") {
+            msg["rejected"] = "changeMicrophone";
+        } else if (kind && std::string(kind) == "speaker") {
+            msg["rejected"] = "changeSpeaker";
+        }
+        msg["message"] = error.empty() ? "Device change is not supported by Game Capture." : error;
+    }
     peer->client->sendDataMessage(msg.dump());
 }
 
@@ -1943,6 +2470,25 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         return;
     }
 
+    const bool peerByeRequested = msg.contains("bye");
+    const bool peerCleanupRequested =
+        msg.contains("request") &&
+        msg["request"].is_string() &&
+        toLowerCopy(msg["request"].get<std::string>()) == "cleanup";
+    if (peerByeRequested || peerCleanupRequested) {
+        const char *cleanupKind = peerByeRequested ? "bye" : "cleanup";
+        const char *cleanupReason = peerByeRequested ? "peer-bye" : "peer-cleanup";
+        spdlog::info("[WebRTC] Peer sent {} {}:{}; removing session", cleanupKind, peer->uuid, peer->session);
+        removePeerSession(peer, cleanupReason);
+        return;
+    }
+
+    if (msg.contains("cbid")) {
+        nlohmann::json callbackResponse;
+        callbackResponse["cbid"] = msg["cbid"];
+        peer->client->sendDataMessage(callbackResponse.dump());
+    }
+
     auto parseIntValue = [&msg](const char *key, int defaultValue = 0) {
         if (!msg.contains(key)) {
             return defaultValue;
@@ -1955,6 +2501,15 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
         return jsonIntLike(value, defaultValue);
     };
+    auto parseStringValue = [](const nlohmann::json &value) -> std::string {
+        if (value.is_string()) {
+            return value.get<std::string>();
+        }
+        if (value.is_number_integer()) {
+            return std::to_string(value.get<int64_t>());
+        }
+        return {};
+    };
 
     std::string action;
     const nlohmann::json *actionValue = nullptr;
@@ -1964,8 +2519,27 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             actionValue = &msg["value"];
         }
     }
+    auto controlTokenFromMessage = [&msg]() -> std::string {
+        if (msg.contains("remote") && msg["remote"].is_string()) {
+            return msg["remote"].get<std::string>();
+        }
+        return {};
+    };
     const bool actionIsVideo = action == "video" || action == "camera";
     const bool actionIsAudio = action == "audio" || action == "mic";
+
+    if (msg.contains("iceRestartRequest") && jsonBoolLike(msg["iceRestartRequest"], true)) {
+        spdlog::info("[WebRTC] Peer requested data-channel ICE restart {}:{}", peer->uuid, peer->session);
+        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        if (!sendPeerOffer(peer, "datachannel-ice-restart", true)) {
+            spdlog::warn("[App] Failed to refresh peer connection from data-channel ICE restart {}:{}",
+                         peer->uuid,
+                         peer->session);
+        }
+        return;
+    }
 
     const nlohmann::json *infoPtr = nullptr;
     if (msg.contains("info") && msg["info"].is_object()) {
@@ -2055,6 +2629,218 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         peer->client->sendDataMessage(pong.dump());
     }
 
+    const bool audioSettingsRequested =
+        msg.contains("getAudioSettings") && jsonBoolLike(msg["getAudioSettings"], true);
+    const bool videoSettingsRequested =
+        msg.contains("getVideoSettings") && jsonBoolLike(msg["getVideoSettings"], true);
+    const std::string controlToken = controlTokenFromMessage();
+    const bool controlAuthorized = isControlMessageAuthorized(peer, controlToken);
+    const bool directorAuthorized =
+        peer &&
+        peer->roomMode &&
+        peer->roleValid.load(std::memory_order_relaxed) &&
+        peer->role.load(std::memory_order_relaxed) == PeerRole::Director;
+    auto sendRejectedControl = [&peer](const char *rejectedName, const char *message) {
+        nlohmann::json rejected;
+        rejected["rejected"] = rejectedName;
+        if (message && *message) {
+            rejected["message"] = message;
+        }
+        peer->client->sendDataMessage(rejected.dump());
+    };
+
+    const bool hasRequestAsTargetedControl =
+        msg.contains("requestAs") &&
+        (msg.contains("targetBitrate") ||
+         msg.contains("targetAudioBitrate") ||
+         msg.contains("requestResolution"));
+    if (hasRequestAsTargetedControl) {
+        const std::string requesterUuid = msg.contains("UUID") ? parseStringValue(msg["UUID"]) : "";
+        const std::string requestAsTarget = parseStringValue(msg["requestAs"]);
+        const std::string nativeStatsKey = streamId_.empty() ? std::string("game-capture") : streamId_;
+        const bool targetMatchesNative =
+            !requestAsTarget.empty() &&
+            (requestAsTarget == nativeStatsKey || requestAsTarget == peer->streamId);
+
+        if (requesterUuid.empty()) {
+            spdlog::warn("[App] Ignoring requestAs control from {} without requester UUID", peer->uuid);
+            return;
+        }
+        if (!targetMatchesNative) {
+            spdlog::warn("[App] Ignoring requestAs control from {} for non-native target '{}'",
+                         peer->uuid,
+                         requestAsTarget);
+            return;
+        }
+        if (!controlAuthorized) {
+            spdlog::warn("[App] Ignoring unauthorized requestAs control from {} for '{}'",
+                         peer->uuid,
+                         requestAsTarget);
+            return;
+        }
+    }
+
+    if (msg.contains("hangup") && jsonBoolLike(msg["hangup"], true)) {
+        if (!controlAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized VDO hangup from {}", peer->uuid);
+            sendRejectedControl("hangup", "Remote hangup is not authorized.");
+        } else {
+            spdlog::info("[App] Remote hangup requested by {}:{}; stopping stream", peer->uuid, peer->session);
+            stopLive();
+            stopCapture();
+            emitRuntimeEvent("Stopped by remote VDO.Ninja hangup.", true);
+        }
+        return;
+    }
+
+    if (audioSettingsRequested || videoSettingsRequested) {
+        if (!directorAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized Control Center settings request from {}", peer->uuid);
+        } else {
+            if (audioSettingsRequested) {
+                sendPeerAudioOptions(peer);
+            }
+            if (videoSettingsRequested) {
+                sendPeerVideoOptions(peer);
+            }
+            sendPeerMediaDevices(peer);
+        }
+    }
+    if (msg.contains("refreshMicrophone") && jsonBoolLike(msg["refreshMicrophone"], true)) {
+        if (!directorAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized refreshMicrophone from {}", peer->uuid);
+            sendRejectedControl("refreshMicrophone", "Remote microphone refresh is not authorized.");
+        } else {
+            sendPeerAudioOptions(peer);
+            sendPeerMediaDevices(peer);
+        }
+    }
+    if (msg.contains("refreshVideo") && jsonBoolLike(msg["refreshVideo"], true)) {
+        if (!controlAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized refreshVideo from {}", peer->uuid);
+            sendRejectedControl("refreshVideo", "Remote video refresh is not authorized.");
+        } else {
+            sendPeerVideoOptions(peer);
+            sendPeerMediaDevices(peer);
+        }
+    }
+    if (msg.contains("changeCamera")) {
+        if (!directorAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized changeCamera from {}", peer->uuid);
+            sendRejectedControl("changeCamera", "Remote camera changes are not authorized.");
+        } else {
+            const std::string deviceId = msg["changeCamera"].is_string() ? msg["changeCamera"].get<std::string>() : "";
+            const std::string currentWindowDeviceId = selectedWindowId_.empty() ? "game-capture-window" : selectedWindowId_;
+            const bool sameDevice = deviceId.empty() || deviceId == "game-capture-window" || deviceId == currentWindowDeviceId;
+            sendPeerMediaDeviceChange(
+                peer,
+                "camera",
+                sameDevice,
+                deviceId,
+                sameDevice ? "" : "Changing the captured window from VDO.Ninja Control Center is not supported.");
+            if (sameDevice) {
+                sendPeerVideoOptions(peer);
+                sendPeerMediaDevices(peer);
+            }
+        }
+    }
+    if (msg.contains("changeMicrophone")) {
+        const std::string deviceId =
+            msg["changeMicrophone"].is_string() ? msg["changeMicrophone"].get<std::string>() : "";
+        if (!directorAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized changeMicrophone from {}", peer->uuid);
+            sendRejectedControl("changeMicrophone", "Remote microphone changes are not authorized.");
+        } else {
+            sendPeerMediaDeviceChange(
+                peer,
+                "microphone",
+                false,
+                deviceId,
+                "Changing microphone devices live from VDO.Ninja Control Center is not supported.");
+        }
+    }
+    if (msg.contains("changeSpeaker")) {
+        const std::string deviceId =
+            msg["changeSpeaker"].is_string() ? msg["changeSpeaker"].get<std::string>() : "";
+        if (!directorAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized changeSpeaker from {}", peer->uuid);
+            sendRejectedControl("changeSpeaker", "Remote speaker changes are not authorized.");
+        } else {
+            sendPeerMediaDeviceChange(
+                peer,
+                "speaker",
+                false,
+                deviceId,
+                "Changing speaker/output devices from Game Capture is not applicable.");
+        }
+    }
+    const std::array<const char *, 39> unsupportedVdoControlKeys = {
+        "obsCommand",
+        "getOBSState",
+        "requestAudioHack",
+        "requestVideoRecord",
+        "changeOrder",
+        "changeURL",
+        "changeLabel",
+        "restartWhip",
+        "reload",
+        "scale",
+        "pan",
+        "tilt",
+        "zoom",
+        "focus",
+        "autofocus",
+        "exposure",
+        "keyframeRate",
+        "requestChangeEQ",
+        "requestChangeLowcut",
+        "requestChangeGating",
+        "requestChangeCompressor",
+        "requestChangeSubGain",
+        "requestChangeMicPanning",
+        "requestChangeMicDelay",
+        "lowerhand",
+        "displayMute",
+        "speakerMute",
+        "micIsolate",
+        "micIsolated",
+        "lowerVolume",
+        "requestUpload",
+        "stopClock",
+        "resumeClock",
+        "setClock",
+        "hideClock",
+        "showClock",
+        "startClock",
+        "pauseClock",
+        "showTime"};
+    for (const char *unsupportedKey : unsupportedVdoControlKeys) {
+        if (msg.contains(unsupportedKey)) {
+            spdlog::warn("[App] Rejected unsupported VDO control {} from {}", unsupportedKey, peer->uuid);
+            sendRejectedControl(unsupportedKey, "This VDO.Ninja Control Center command is not supported by Game Capture.");
+        }
+    }
+    if (msg.contains("group")) {
+        spdlog::warn("[App] Rejected unsupported VDO control group from {}", peer->uuid);
+        sendRejectedControl("group", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+    }
+    if (msg.contains("rotate")) {
+        spdlog::warn("[App] Rejected unsupported VDO control rotate from {}", peer->uuid);
+        sendRejectedControl("rotate", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+    }
+    if (msg.contains("mirrorGuestState") && msg.contains("mirrorGuestTarget")) {
+        spdlog::warn("[App] Rejected unsupported VDO control mirrorGuestState from {}", peer->uuid);
+        sendRejectedControl("mirrorGuestState", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+    }
+    if (msg.contains("getConnectionMap")) {
+        spdlog::warn("[App] Rejected unsupported VDO control getConnectionMap from {}", peer->uuid);
+        sendRejectedControl("getConnectionMap", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+    }
+    if (msg.contains("reconnectPeer")) {
+        spdlog::warn("[App] Rejected unsupported VDO control reconnectPeer from {}", peer->uuid);
+        sendRejectedControl("reconnectPeer", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+    }
+
     const bool hasInlineInitFields =
         msg.contains("role") ||
         msg.contains("scene") ||
@@ -2136,23 +2922,15 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                          peer->uuid,
                          peer->session);
 
-            nlohmann::json ack;
-            ack["ack"] = "init";
-            ack["ok"] = false;
-            ack["error"] = "invalid_role";
-            ack["assigned_role"] = peerRoleName(peer->role.load(std::memory_order_relaxed));
-            ack["assigned_tier"] = streamTierName(peer->assignedTier.load(std::memory_order_relaxed));
-            ack["video"] = peer->videoEnabled.load(std::memory_order_relaxed);
-            ack["audio"] = peer->audioEnabled.load(std::memory_order_relaxed);
-            peer->client->sendDataMessage(ack.dump());
             sendPeerDataInfo(peer, true);
             return;
         }
 
+        const bool initAlreadyReceived = peer->initReceived.load(std::memory_order_relaxed);
         const bool currentVideoEnabled = peer->videoEnabled.load(std::memory_order_relaxed);
         const bool currentAudioEnabled = peer->audioEnabled.load(std::memory_order_relaxed);
-        bool videoEnabled = peer->initReceived.load(std::memory_order_relaxed) ? currentVideoEnabled : true;
-        bool audioEnabled = peer->initReceived.load(std::memory_order_relaxed) ? currentAudioEnabled : true;
+        bool videoEnabled = initAlreadyReceived ? currentVideoEnabled : true;
+        bool audioEnabled = initAlreadyReceived ? currentAudioEnabled : true;
         if (init.contains("video")) {
             videoEnabled = jsonToggleBool(init["video"], currentVideoEnabled, videoEnabled);
         }
@@ -2195,50 +2973,49 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             peer->systemBrowser = init["browser"].get<std::string>();
         }
 
-        if (!hasExplicitRoleSignal && peer->initReceived.load(std::memory_order_relaxed)) {
+        if (!hasExplicitRoleSignal && initAlreadyReceived) {
             role = peer->role.load(std::memory_order_relaxed);
             roleValid = peer->roleValid.load(std::memory_order_relaxed);
         }
 
-        if (!hasExplicitRoleSignal &&
-            !hasExplicitMediaSignal &&
-            peer->roomMode &&
-            peer->initReceived.load(std::memory_order_relaxed)) {
-            sendPeerDataInfo(peer, true);
-            return;
-        }
-        if (!hasExplicitRoleSignal &&
-            !hasExplicitMediaSignal &&
-            !peer->roomMode &&
-            peer->initReceived.load(std::memory_order_relaxed)) {
+        const bool metadataOnlyRefresh =
+            !hasExplicitRoleSignal && !hasExplicitMediaSignal && initAlreadyReceived;
+        if (metadataOnlyRefresh) {
             // Direct viewers often send a later info heartbeat after we have
             // already promoted them through the grace-window fallback. Treat
-            // that as metadata/capability refresh only, not a second init.
-            return;
-        }
+            // that as metadata/capability refresh only, not a second init. Do
+            // not return here; VDO data-channel messages can carry additional
+            // top-level requests such as keyframe or requestStats.
+            if (peer->roomMode) {
+                sendPeerDataInfo(peer, true);
+            }
+        } else {
+            const bool videoMuteStateChanged = initAlreadyReceived && currentVideoEnabled != videoEnabled;
+            const bool audioMuteStateChanged = initAlreadyReceived && currentAudioEnabled != audioEnabled;
 
-        applyPeerInitState(peer, roleValid, role, videoEnabled, audioEnabled);
-        if (peer->roomMode && roleValid) {
-            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
-        }
+            applyPeerInitState(peer, roleValid, role, videoEnabled, audioEnabled);
+            if (peer->roomMode && roleValid) {
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            }
 
-        nlohmann::json ack;
-        ack["ack"] = "init";
-        ack["ok"] = !peer->roomMode || roleValid;
-        ack["assigned_role"] = peerRoleName(peer->role.load(std::memory_order_relaxed));
-        ack["assigned_tier"] = streamTierName(peer->assignedTier.load(std::memory_order_relaxed));
-        ack["video"] = peer->videoEnabled.load(std::memory_order_relaxed);
-        ack["audio"] = peer->audioEnabled.load(std::memory_order_relaxed);
-        if (!ack["ok"].get<bool>()) {
-            ack["error"] = "invalid_role";
+            sendPeerDataInfo(peer, true);
+            if ((videoMuteStateChanged || audioMuteStateChanged) && peer->client && peer->client->isDataChannelOpen()) {
+                nlohmann::json muteState;
+                if (videoMuteStateChanged) {
+                    muteState["videoMuted"] = !videoEnabled;
+                }
+                if (audioMuteStateChanged) {
+                    muteState["muteState"] = !audioEnabled;
+                }
+                peer->client->sendDataMessage(muteState.dump());
+            }
+            applyPeerMediaPlan(peer, hasExplicitRoleSignal ? "peer-init" : "peer-media-update");
         }
-        peer->client->sendDataMessage(ack.dump());
-        sendPeerDataInfo(peer, true);
-        applyPeerMediaPlan(peer, hasExplicitRoleSignal ? "peer-init" : "peer-media-update");
     }
 
     const bool requestKeyframe = (msg.contains("keyframe") ? jsonBoolLike(msg["keyframe"], false) : false) ||
+                                 (msg.contains("requestKeyframe") ? jsonBoolLike(msg["requestKeyframe"], false) : false) ||
                                  action == "forcekeyframe";
     if (requestKeyframe) {
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -2247,7 +3024,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     bool directorMediaStateChanged = false;
     bool directorMediaStateAuthorized = true;
     if (msg.contains("remoteVideoMuted") || msg.contains("volume")) {
-        directorMediaStateAuthorized = isControlMessageAuthorized(peer, "");
+        directorMediaStateAuthorized = directorAuthorized;
     }
     if (msg.contains("remoteVideoMuted")) {
         if (!directorMediaStateAuthorized) {
@@ -2258,6 +3035,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         } else {
             const bool muted = jsonBoolLike(msg["remoteVideoMuted"], false);
             peer->videoEnabled.store(!muted, std::memory_order_relaxed);
+            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
             nlohmann::json confirm;
@@ -2290,51 +3068,72 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     }
 
     bool peerMediaRateChanged = false;
+    int requestedBitrate = 0;
     if (msg.contains("bitrate")) {
         const int requestedPeerBitrate = parseRateLimitValue(msg["bitrate"], -1);
         peer->requestedVideoBitrateKbps.store(requestedPeerBitrate, std::memory_order_relaxed);
         peerMediaRateChanged = true;
-        if (requestedPeerBitrate == 0) {
-            peer->videoEnabled.store(false, std::memory_order_relaxed);
-        } else if (requestedPeerBitrate > 0 || requestedPeerBitrate < 0) {
-            peer->videoEnabled.store(true, std::memory_order_relaxed);
-        }
+        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
     }
-    if (msg.contains("audioBitrate") || msg.contains("targetAudioBitrate")) {
-        const nlohmann::json &audioValue = msg.contains("audioBitrate") ? msg["audioBitrate"] : msg["targetAudioBitrate"];
-        const int requestedAudioBitrate = parseRateLimitValue(audioValue, -1);
+    if (msg.contains("audioBitrate")) {
+        const int requestedAudioBitrate = parseRateLimitValue(msg["audioBitrate"], -1);
         peer->requestedAudioBitrateKbps.store(requestedAudioBitrate, std::memory_order_relaxed);
         peerMediaRateChanged = true;
-        if (requestedAudioBitrate == 0) {
-            peer->audioEnabled.store(false, std::memory_order_relaxed);
-        } else if (requestedAudioBitrate > 0 || requestedAudioBitrate < 0) {
-            peer->audioEnabled.store(true, std::memory_order_relaxed);
+    }
+    if (msg.contains("targetBitrate")) {
+        const bool unlockTargetBitrate =
+            msg["targetBitrate"].is_boolean() && !msg["targetBitrate"].get<bool>();
+        const int requestedTargetBitrate = unlockTargetBitrate ? -1 : jsonIntLike(msg["targetBitrate"], -1);
+        if (unlockTargetBitrate || requestedTargetBitrate > 0) {
+            peer->requestedVideoBitrateKbps.store(requestedTargetBitrate, std::memory_order_relaxed);
+            peerMediaRateChanged = true;
+            if (requestedTargetBitrate > 0) {
+                requestedBitrate = requestedTargetBitrate;
+            } else {
+                requestedBitrate = configuredVideoBitrateKbps_.load(std::memory_order_relaxed);
+            }
+            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         }
     }
+    if (msg.contains("targetAudioBitrate")) {
+        const bool unlockTargetAudioBitrate =
+            msg["targetAudioBitrate"].is_boolean() && !msg["targetAudioBitrate"].get<bool>();
+        const int requestedAudioBitrate =
+            unlockTargetAudioBitrate ? -1 : jsonIntLike(msg["targetAudioBitrate"], -1);
+        if (unlockTargetAudioBitrate || requestedAudioBitrate > 0) {
+            peer->requestedAudioBitrateKbps.store(requestedAudioBitrate, std::memory_order_relaxed);
+            peerMediaRateChanged = true;
+            if (!applyRuntimeAudioControl(requestedAudioBitrate)) {
+                spdlog::warn("[App] Failed to apply data-channel audio bitrate request from {}", peer->uuid);
+            }
+        }
+    }
+    bool sendPeerInfoAfterRateChange = false;
     if (peerMediaRateChanged) {
-        nlohmann::json ack;
-        ack["ack"] = "rateLimit";
-        ack["ok"] = true;
-        ack["bitrate"] = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
-        ack["audioBitrate"] = peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed);
-        peer->client->sendDataMessage(ack.dump());
         if (peer->initReceived.load(std::memory_order_relaxed)) {
             applyPeerMediaPlan(peer, "peer-rate-limit");
-            sendPeerDataInfo(peer, true);
+            sendPeerInfoAfterRateChange = true;
         }
     }
 
-    int requestedBitrate = parseIntValue("targetBitrate", 0);
     int requestedWidth = 0;
     int requestedHeight = 0;
     int requestedFps = 0;
+    bool vdoScaleResolutionRequest = false;
+    bool vdoScaleResolutionCover = false;
     if (action == "bitrate" && actionValue) {
         requestedBitrate = jsonIntLike(*actionValue, 0);
     }
     if (msg.contains("requestResolution") && msg["requestResolution"].is_object()) {
         const auto &resolution = msg["requestResolution"];
+        vdoScaleResolutionRequest = resolution.contains("w") || resolution.contains("h");
+        if (resolution.contains("c")) {
+            vdoScaleResolutionCover = jsonBoolLike(resolution["c"], false);
+        }
         if (resolution.contains("w")) {
             requestedWidth = jsonIntLike(resolution["w"], 0);
         }
@@ -2373,50 +3172,125 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         requestedHeight = jsonIntLike(*actionValue, requestedHeight);
     }
 
+    bool videoSettingsControlRequested = false;
+    if (msg.contains("requestVideoHack") && jsonBoolLike(msg["requestVideoHack"], true)) {
+        const std::string token = controlTokenFromMessage();
+
+        if (!isControlMessageAuthorized(peer, token)) {
+            spdlog::warn("[App] Rejected unauthorized requestVideoHack from {}", peer->uuid);
+        } else {
+            const std::string keyName = msg.contains("keyname") && msg["keyname"].is_string()
+                ? toLowerCopy(msg["keyname"].get<std::string>())
+                : "";
+            const nlohmann::json *value = msg.contains("value") ? &msg["value"] : nullptr;
+            const bool lockAspect = msg.contains("ctrl") && jsonBoolLike(msg["ctrl"], false);
+            if (value && (keyName == "width" || keyName == "setwidth")) {
+                requestedWidth = jsonIntLike(*value, requestedWidth);
+                if (!lockAspect && requestedHeight <= 0) {
+                    requestedHeight = videoStateSnapshot().hqHeight;
+                }
+                videoSettingsControlRequested = true;
+            } else if (value && (keyName == "height" || keyName == "setheight")) {
+                requestedHeight = jsonIntLike(*value, requestedHeight);
+                if (!lockAspect && requestedWidth <= 0) {
+                    requestedWidth = videoStateSnapshot().hqWidth;
+                }
+                videoSettingsControlRequested = true;
+            } else if (value && (keyName == "framerate" || keyName == "fps")) {
+                requestedFps = jsonIntLike(*value, requestedFps);
+                videoSettingsControlRequested = true;
+            } else {
+                nlohmann::json rejected;
+                rejected["rejected"] = "requestVideoHack";
+                rejected["message"] = "This Game Capture setting cannot be changed from VDO.Ninja Control Center.";
+                if (!keyName.empty()) {
+                    rejected["keyname"] = keyName;
+                }
+                peer->client->sendDataMessage(rejected.dump());
+            }
+        }
+    }
+
     const bool hasControlRequest =
         requestedBitrate > 0 ||
         requestedWidth > 0 ||
         requestedHeight > 0 ||
         requestedFps > 0;
 
+    bool sentPeerInfoForControl = false;
     if (hasControlRequest) {
         if (peer->roomMode && !peer->initReceived.load(std::memory_order_relaxed)) {
-            nlohmann::json ack;
-            ack["ack"] = "control";
-            ack["ok"] = false;
-            ack["error"] = "init_required";
-            peer->client->sendDataMessage(ack.dump());
+            spdlog::debug("[App] Ignoring data-channel bitrate/resolution request before room init from {}", peer->uuid);
             return;
         }
 
-        std::string token;
-        if (msg.contains("remote") && msg["remote"].is_string()) {
-            token = msg["remote"].get<std::string>();
-        } else if (msg.contains("token") && msg["token"].is_string()) {
-            token = msg["token"].get<std::string>();
-        }
-
-        nlohmann::json ack;
-        ack["ack"] = "control";
-        ack["targetBitrate"] = requestedBitrate;
-        if (requestedWidth > 0 && requestedHeight > 0) {
-            ack["requestResolution"] = {{"w", requestedWidth}, {"h", requestedHeight}, {"f", requestedFps}};
-        }
-
-        if (!isControlMessageAuthorized(peer, token)) {
-            spdlog::warn("[App] Rejected unauthorized data-channel control message from {}", peer->uuid);
-            ack["ok"] = false;
-            ack["error"] = "unauthorized";
-            peer->client->sendDataMessage(ack.dump());
-        } else {
-            const bool ok = applyRuntimeVideoControl(requestedBitrate, requestedWidth, requestedHeight, requestedFps);
-            ack["ok"] = ok;
-            if (!ok) {
-                ack["error"] = "apply_failed";
+        const bool ok = applyRuntimeVideoControl(requestedBitrate,
+                                                 requestedWidth,
+                                                 requestedHeight,
+                                                 requestedFps,
+                                                 vdoScaleResolutionRequest,
+                                                 vdoScaleResolutionCover);
+        if (ok) {
+            sendPeerDataInfo(peer, true);
+            sentPeerInfoForControl = true;
+            if (videoSettingsControlRequested) {
+                sendPeerVideoOptions(peer);
             }
-            peer->client->sendDataMessage(ack.dump());
-            if (ok) {
-                sendPeerDataInfo(peer, true);
+        } else {
+            spdlog::warn("[App] Failed to apply data-channel bitrate/resolution request from {}", peer->uuid);
+        }
+    }
+    if (sendPeerInfoAfterRateChange && !sentPeerInfoForControl) {
+        sendPeerDataInfo(peer, true);
+    }
+
+    const bool refreshConnectionRequested =
+        msg.contains("refreshConnection") && jsonBoolLike(msg["refreshConnection"], true);
+    const bool refreshAllRequested =
+        msg.contains("refreshAll") && jsonBoolLike(msg["refreshAll"], true);
+    if (refreshConnectionRequested || refreshAllRequested) {
+        const std::string token = controlTokenFromMessage();
+        if (!isControlMessageAuthorized(peer, token)) {
+            spdlog::warn("[App] Rejected unauthorized connection refresh from {}", peer->uuid);
+            sendRejectedControl(
+                refreshAllRequested ? "refreshAll" : "refreshConnection",
+                refreshAllRequested
+                    ? "Remote full refresh is not authorized."
+                    : "Remote connection refresh is not authorized.");
+        } else {
+            if (refreshAllRequested) {
+                sendPeerAudioOptions(peer);
+                sendPeerVideoOptions(peer);
+                sendPeerMediaDevices(peer);
+            }
+            const char *reason = refreshAllRequested ? "refresh-all" : "refresh-connection";
+            std::vector<std::shared_ptr<PeerSession>> peersToRefresh;
+            {
+                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+                peersToRefresh.reserve(peerSessions_.size());
+                for (const auto &entry : peerSessions_) {
+                    if (entry.second && entry.second->client) {
+                        peersToRefresh.push_back(entry.second);
+                    }
+                }
+            }
+            spdlog::info("[App] Control recovery {} requested by {}:{}; rebuilding {} peer connection(s)",
+                         reason,
+                         peer->uuid,
+                         peer->session,
+                         peersToRefresh.size());
+            for (const auto &refreshPeer : peersToRefresh) {
+                if (!refreshPeer || !refreshPeer->client) {
+                    continue;
+                }
+                refreshPeer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                if (!sendPeerOffer(refreshPeer, reason, true)) {
+                    spdlog::warn("[App] Failed to refresh peer connection {}:{}",
+                                 refreshPeer->uuid,
+                                 refreshPeer->session);
+                }
             }
         }
     }
@@ -2438,41 +3312,6 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (statsRequested) {
         sendPeerDataInfo(peer, true);
         sendPeerRemoteStats(peer);
-        nlohmann::json response = nlohmann::json::object();
-        if (msg.contains("id")) {
-            response["id"] = msg["id"];
-        }
-        if (msg.contains("callbackID")) {
-            response["callbackID"] = msg["callbackID"];
-        }
-        if (msg.contains("requestID")) {
-            response["requestID"] = msg["requestID"];
-        }
-        if (!response.empty()) {
-            const int64_t metricsStartedMs = metricsStartMs_.load(std::memory_order_relaxed);
-            const int64_t elapsedMs = metricsStartedMs > 0 ? std::max<int64_t>(1, steadyNowMs() - metricsStartedMs) : 1;
-            const double aggregateVideoKbps =
-                (static_cast<double>(videoBytesSent_.load(std::memory_order_relaxed)) * 8.0) /
-                static_cast<double>(elapsedMs);
-            const double aggregateAudioKbps =
-                (static_cast<double>(audioBytesSent_.load(std::memory_order_relaxed)) * 8.0) /
-                static_cast<double>(elapsedMs);
-            const PeerCounts counts = collectPeerCounts();
-            response["ok"] = true;
-            response["action"] = action.empty() ? "getStats" : action;
-            response["stats"] = {
-                {"peers", counts.total},
-                {"hq_peers", counts.hq},
-                {"lq_peers", counts.lq},
-                {"active_video", counts.activeVideo},
-                {"active_audio", counts.activeAudio},
-                {"video_kbps", aggregateVideoKbps},
-                {"audio_kbps", aggregateAudioKbps},
-                {"width", lastSentWidth_.load(std::memory_order_relaxed)},
-                {"height", lastSentHeight_.load(std::memory_order_relaxed)},
-                {"codec", videoCodecName(videoConfig_.codec)}};
-            peer->client->sendDataMessage(response.dump());
-        }
     }
 }
 
@@ -2569,6 +3408,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             }
 
             videoConfig_ = fallbackConfig;
+            publishVideoStateSnapshotLocked();
             softwareExternalEncodeFailCount_ = 0;
             softwareExternalFailWindowStartMs_ = 0;
             softwareOverloadSamples_.store(0, std::memory_order_relaxed);
@@ -2656,6 +3496,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         if (reinitAndCheck(selfRecoveryConfig, true, false, "Self-recovery reinit", "current")) {
                             hardwareRecoveryAttemptCount_++;
                             videoConfig_ = selfRecoveryConfig;
+                            publishVideoStateSnapshotLocked();
                             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                             emitRuntimeEvent(
@@ -2695,6 +3536,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
                             hardwareRecoveryAttemptCount_ = 0;
                             videoConfig_ = candidateConfig;
+                            publishVideoStateSnapshotLocked();
                             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                             emitRuntimeEvent(
@@ -2716,6 +3558,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         videoEncoder_.shutdown();
                         if (videoEncoder_.initialize(fallbackConfig)) {
                             videoConfig_ = fallbackConfig;
+                            publishVideoStateSnapshotLocked();
                             hardwareAutoFallbackTriggered_ = true;
                             hardwareRecoveryAttemptCount_ = 0;
                             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -2859,30 +3702,15 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
     // VP9 alpha: encode the alpha (gray) plane and send on alpha tracks of HQ peers.
     if (haveHqPacket && videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha) {
-        if (frame.format == video::CapturedFrame::Format::BGRA &&
-            frame.width > 0 && frame.height > 0 && frame.stride >= frame.width * 4 &&
-            frame.data.size() >= static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height)) {
-
-            const size_t numPixels = static_cast<size_t>(frame.width) * static_cast<size_t>(frame.height);
-            if (alphaGrayBuffer_.size() != numPixels) {
-                alphaGrayBuffer_.resize(numPixels);
-            }
-            // Extract alpha byte from each BGRA pixel using the captured row stride.
-            const uint8_t *src = frame.data.data();
-            for (int y = 0; y < frame.height; ++y) {
-                const size_t srcRow = static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
-                const size_t dstRow = static_cast<size_t>(y) * static_cast<size_t>(frame.width);
-                for (int x = 0; x < frame.width; ++x) {
-                    alphaGrayBuffer_[dstRow + static_cast<size_t>(x)] =
-                        src[srcRow + static_cast<size_t>(x) * 4 + 3];
-                }
-            }
+        const int alphaWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+        const int alphaHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+        if (buildAspectFitAlphaPlane(frame, alphaWidth, alphaHeight, alphaGrayBuffer_)) {
 
             video::CapturedFrame alphaFrame;
             alphaFrame.format = video::CapturedFrame::Format::Gray;
-            alphaFrame.width = frame.width;
-            alphaFrame.height = frame.height;
-            alphaFrame.stride = frame.width;
+            alphaFrame.width = alphaWidth;
+            alphaFrame.height = alphaHeight;
+            alphaFrame.stride = alphaWidth;
             alphaFrame.timestamp = frame.timestamp;
             alphaFrame.data = alphaGrayBuffer_;
 
@@ -3257,7 +4085,8 @@ bool VersusApp::hasAnyActiveVideoTrack() const {
             entry.second->role.load(std::memory_order_relaxed),
             entry.second->videoEnabled.load(std::memory_order_relaxed),
             entry.second->audioEnabled.load(std::memory_order_relaxed)};
-        if (canSendVideo(route)) {
+        if (entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed) != 0 &&
+            canSendVideo(route)) {
             return true;
         }
     }
@@ -3278,7 +4107,8 @@ bool VersusApp::hasAnyActiveAudioTrack() const {
             entry.second->role.load(std::memory_order_relaxed),
             entry.second->videoEnabled.load(std::memory_order_relaxed),
             entry.second->audioEnabled.load(std::memory_order_relaxed)};
-        if (canSendAudio(route)) {
+        if (entry.second->requestedAudioBitrateKbps.load(std::memory_order_relaxed) != 0 &&
+            canSendAudio(route)) {
             return true;
         }
     }
@@ -3312,7 +4142,9 @@ VersusApp::PeerCounts VersusApp::collectPeerCounts() const {
             }
         }
 
-        if (entry.second->client->hasActiveVideoTrack() && canSendVideo(route)) {
+        if (entry.second->client->hasActiveVideoTrack() &&
+            entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed) != 0 &&
+            canSendVideo(route)) {
             counts.activeVideo++;
             const StreamTier tier = assignStreamTier(
                 route.roomMode,
@@ -3325,11 +4157,49 @@ VersusApp::PeerCounts VersusApp::collectPeerCounts() const {
                 counts.lq++;
             }
         }
-        if (entry.second->client->hasActiveAudioTrack() && canSendAudio(route)) {
+        if (entry.second->client->hasActiveAudioTrack() &&
+            entry.second->requestedAudioBitrateKbps.load(std::memory_order_relaxed) != 0 &&
+            canSendAudio(route)) {
             counts.activeAudio++;
         }
     }
     return counts;
+}
+
+VersusApp::VideoStateSnapshot VersusApp::buildVideoStateSnapshotLocked() const {
+    VideoStateSnapshot snapshot;
+    snapshot.config = videoConfig_;
+    snapshot.hqWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+    snapshot.hqHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+    snapshot.encoderName = videoEncoder_.activeEncoderName();
+    snapshot.codecName = videoEncoder_.activeCodecName();
+    snapshot.hardwareEncoder = videoEncoder_.isHardwareEncoderActive();
+    snapshot.lqEncoderInitialized = lqEncoderInitialized_.load(std::memory_order_relaxed);
+    if (snapshot.lqEncoderInitialized) {
+        snapshot.lqEncoderName = videoEncoderLq_.activeEncoderName();
+    }
+    return snapshot;
+}
+
+void VersusApp::publishVideoStateSnapshotLocked() const {
+    const VideoStateSnapshot snapshot = buildVideoStateSnapshotLocked();
+    std::lock_guard<std::mutex> snapshotLock(videoStateSnapshotMutex_);
+    cachedVideoStateSnapshot_ = snapshot;
+}
+
+VersusApp::VideoStateSnapshot VersusApp::videoStateSnapshot() const {
+    std::unique_lock<std::mutex> lock(videoSendMutex_, std::try_to_lock);
+    if (lock.owns_lock()) {
+        const VideoStateSnapshot snapshot = buildVideoStateSnapshotLocked();
+        {
+            std::lock_guard<std::mutex> snapshotLock(videoStateSnapshotMutex_);
+            cachedVideoStateSnapshot_ = snapshot;
+        }
+        return snapshot;
+    }
+
+    std::lock_guard<std::mutex> snapshotLock(videoStateSnapshotMutex_);
+    return cachedVideoStateSnapshot_;
 }
 
 void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet) {
@@ -3350,6 +4220,9 @@ void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket 
                 entry.second->videoEnabled.load(std::memory_order_relaxed),
                 entry.second->audioEnabled.load(std::memory_order_relaxed)};
             if (!canSendAudio(route)) {
+                continue;
+            }
+            if (entry.second->requestedAudioBitrateKbps.load(std::memory_order_relaxed) == 0) {
                 continue;
             }
             peers.push_back(entry.second);
@@ -3439,7 +4312,7 @@ bool VersusApp::tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &p
     return handled;
 }
 
-bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason) {
+bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason, bool rebuildPeerConnection) {
     if (!peer || !peer->client) {
         return false;
     }
@@ -3457,10 +4330,57 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
         it->second->candidateType = "local";
     }
 
-    spdlog::info("[App] Sending offer {}:{} reason={}",
+    if (rebuildPeerConnection) {
+        std::lock_guard<std::mutex> mediaPlanLock(peer->mediaPlanMutex);
+        const bool wantVideo = peer->videoEnabled.load(std::memory_order_relaxed);
+        const bool wantAudio = peer->audioEnabled.load(std::memory_order_relaxed);
+        const VideoStateSnapshot videoState = videoStateSnapshot();
+        const bool wantAlpha = wantVideo &&
+            videoState.config.codec == video::VideoCodec::VP9 &&
+            videoState.config.enableAlpha &&
+            peer->alphaAllowed.load(std::memory_order_relaxed);
+
+        spdlog::info("[App] Rebuilding peer connection {}:{} reason={} media video={} audio={} alpha={}",
+                     peer->uuid,
+                     peer->session,
+                     reason ? reason : "unspecified",
+                     wantVideo,
+                     wantAudio,
+                     wantAlpha);
+        if (!peer->client->resetPeerConnection(wantVideo, wantAudio, wantAlpha)) {
+            spdlog::error("[WebRTC] Failed to rebuild peer connection for {}:{} during recovery offer",
+                          peer->uuid,
+                          peer->session);
+            removePeerSession(peer, "recovery-peerconnection-rebuild-failed");
+            return false;
+        }
+        peer->dataChannelOpen.store(false, std::memory_order_relaxed);
+        if (wantVideo && !peer->client->hasConfiguredVideoTrack()) {
+            spdlog::error("[WebRTC] Failed to restore video track for {}:{} during recovery offer",
+                          peer->uuid,
+                          peer->session);
+            removePeerSession(peer, "recovery-video-track-failed");
+            return false;
+        }
+        if (wantAudio && !peer->client->hasConfiguredAudioTrack()) {
+            spdlog::error("[WebRTC] Failed to restore audio track for {}:{} during recovery offer",
+                          peer->uuid,
+                          peer->session);
+            removePeerSession(peer, "recovery-audio-track-failed");
+            return false;
+        }
+        if (wantVideo || wantAudio || wantAlpha) {
+            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        }
+    }
+
+    spdlog::info("[App] Sending offer {}:{} reason={} rebuildPeerConnection={}",
                  peer->uuid,
                  peer->session,
-                 reason ? reason : "unspecified");
+                 reason ? reason : "unspecified",
+                 rebuildPeerConnection);
 
     const auto offerSdp = peer->client->createOffer();
     if (offerSdp.empty()) {
@@ -3468,7 +4388,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                       peer->uuid,
                       peer->session,
                       reason ? reason : "unspecified");
-        removePeerSession(peer);
+        removePeerSession(peer, "offer-create-failed");
         return false;
     }
 
@@ -3486,6 +4406,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                           peer->uuid,
                           peer->session,
                           reason ? reason : "unspecified");
+            removePeerSession(peer, "offer-send-failed");
             return false;
         }
     }
@@ -3523,6 +4444,27 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const 
         return;
     }
 
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+            return;
+        }
+    }
+
+    spdlog::info("[App] Applying peer answer {}:{} source={}",
+                 peer->uuid,
+                 peer->session,
+                 source ? source : "unknown");
+
+    if (!peer->client->setRemoteDescription(sdp, "answer")) {
+        spdlog::warn("[App] Failed to apply peer answer {}:{} source={}",
+                     peer->uuid,
+                     peer->session,
+                     source ? source : "unknown");
+        return;
+    }
+
     std::vector<PendingCandidate> buffered;
     std::string candidateType = "local";
     bool queuedRenegotiation = false;
@@ -3538,14 +4480,8 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const 
         candidateType = it->second->candidateType;
         queuedRenegotiation = it->second->renegotiationQueued.exchange(false, std::memory_order_relaxed);
     }
-
-    spdlog::info("[App] Applying peer answer {}:{} source={}",
-                 peer->uuid,
-                 peer->session,
-                 source ? source : "unknown");
-
-    peer->client->setRemoteDescription(sdp, "answer");
     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+    drainPendingRemoteCandidates(peer, source ? source : "answer-applied");
 
     for (const auto &pending : buffered) {
         signaling::SignalCandidate cand;
@@ -3582,9 +4518,10 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
     const bool wantVideo = initReceived && peer->videoEnabled.load(std::memory_order_relaxed);
     const bool wantAudio = initReceived && peer->audioEnabled.load(std::memory_order_relaxed);
+    const VideoStateSnapshot videoState = videoStateSnapshot();
     const bool wantAlpha = wantVideo &&
-        videoConfig_.codec == video::VideoCodec::VP9 &&
-        videoConfig_.enableAlpha &&
+        videoState.config.codec == video::VideoCodec::VP9 &&
+        videoState.config.enableAlpha &&
         peer->alphaAllowed.load(std::memory_order_relaxed);
 
     {
@@ -3652,7 +4589,136 @@ std::shared_ptr<VersusApp::PeerSession> VersusApp::findPeerSessionForSignalLocke
     return matchedPeer;
 }
 
-void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer) {
+void VersusApp::queuePendingRemoteCandidateLocked(const signaling::SignalCandidate &cand, int64_t nowMs) {
+    if (cand.uuid.empty() || cand.candidate.empty()) {
+        spdlog::debug("[Signaling] Ignoring candidate without queueable peer identity uuid={} session={}",
+                      cand.uuid,
+                      cand.session);
+        return;
+    }
+
+    auto &queue = pendingRemoteCandidates_[makePeerKey(cand.uuid, cand.session)];
+
+    std::size_t expiredCount = 0;
+    while (!queue.empty() && nowMs - queue.front().queuedAtMs > kPendingRemoteCandidateTtlMs) {
+        queue.erase(queue.begin());
+        ++expiredCount;
+    }
+    if (expiredCount > 0) {
+        spdlog::warn("[Signaling] Dropped {} stale queued remote ICE candidates uuid={} session={}",
+                     expiredCount,
+                     cand.uuid,
+                     cand.session);
+    }
+
+    if (queue.size() >= kPendingRemoteCandidatesMaxPerPeer) {
+        queue.erase(queue.begin());
+        spdlog::warn("[Signaling] Pending remote ICE queue full; dropping oldest candidate uuid={} session={}",
+                     cand.uuid,
+                     cand.session);
+    }
+
+    queue.push_back({
+        cand.uuid,
+        cand.session,
+        cand.candidate,
+        cand.mid,
+        cand.mlineIndex,
+        nowMs,
+    });
+    spdlog::info("[Signaling] Queued remote ICE candidate before peer session ready uuid={} session={} queued={}",
+                 cand.uuid,
+                 cand.session,
+                 queue.size());
+}
+
+std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandidatesLocked(
+    const std::string &uuid,
+    const std::string &session,
+    int64_t nowMs) {
+    std::vector<PendingRemoteCandidate> drained;
+    if (uuid.empty()) {
+        return drained;
+    }
+
+    int matchingPeerCount = 0;
+    for (const auto &entry : peerSessions_) {
+        if (entry.second && entry.second->uuid == uuid) {
+            ++matchingPeerCount;
+        }
+    }
+
+    auto drainKey = [&](const std::string &key) {
+        const auto it = pendingRemoteCandidates_.find(key);
+        if (it == pendingRemoteCandidates_.end()) {
+            return;
+        }
+
+        std::size_t expiredCount = 0;
+        for (const auto &pending : it->second) {
+            if (nowMs - pending.queuedAtMs > kPendingRemoteCandidateTtlMs) {
+                ++expiredCount;
+                continue;
+            }
+            drained.push_back(pending);
+        }
+        if (expiredCount > 0) {
+            spdlog::warn("[Signaling] Dropped {} stale queued remote ICE candidates for key={}",
+                         expiredCount,
+                         key);
+        }
+        pendingRemoteCandidates_.erase(it);
+    };
+
+    const std::string exactKey = makePeerKey(uuid, session);
+    drainKey(exactKey);
+
+    const std::string emptySessionKey = makePeerKey(uuid, "");
+    if (session.empty() || emptySessionKey == exactKey) {
+        return drained;
+    }
+
+    if (matchingPeerCount == 1) {
+        drainKey(emptySessionKey);
+    } else if (pendingRemoteCandidates_.find(emptySessionKey) != pendingRemoteCandidates_.end()) {
+        spdlog::warn("[Signaling] Keeping queued empty-session ICE candidates for ambiguous uuid={} peerCount={}",
+                     uuid,
+                     matchingPeerCount);
+    }
+
+    return drained;
+}
+
+void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer, const char *reason) {
+    if (!peer || !peer->client) {
+        return;
+    }
+
+    std::vector<PendingRemoteCandidate> pendingCandidates;
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+            return;
+        }
+        pendingCandidates = takePendingRemoteCandidatesLocked(peer->uuid, peer->session, steadyNowMs());
+    }
+
+    if (pendingCandidates.empty()) {
+        return;
+    }
+
+    spdlog::info("[Signaling] Draining {} queued remote ICE candidates for {}:{} reason={}",
+                 pendingCandidates.size(),
+                 peer->uuid,
+                 peer->session,
+                 reason ? reason : "unspecified");
+    for (const auto &pending : pendingCandidates) {
+        peer->client->addRemoteCandidate(pending.candidate, pending.mid, pending.mlineIndex);
+    }
+}
+
+void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer, const char *reason) {
     if (!peer) {
         return;
     }
@@ -3667,9 +4733,24 @@ void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer) {
         }
         removedPeer = it->second;
         peerSessions_.erase(it);
+        pendingRemoteCandidates_.erase(makePeerKey(peer->uuid, peer->session));
+        const bool hasOtherSameUuid = std::any_of(
+            peerSessions_.begin(),
+            peerSessions_.end(),
+            [&](const auto &entry) {
+                return entry.second && entry.second->uuid == peer->uuid;
+            });
+        if (!hasOtherSameUuid) {
+            pendingRemoteCandidates_.erase(makePeerKey(peer->uuid, ""));
+        }
         hasRemainingPeers = !peerSessions_.empty();
     }
 
+    spdlog::info("[App] Removed peer session {}:{} reason={} remainingPeers={}",
+                 removedPeer->uuid,
+                 removedPeer->session,
+                 reason ? reason : "unspecified",
+                 hasRemainingPeers ? "yes" : "no");
     shutdownPeerClientAsync(removedPeer);
     if (!hasRemainingPeers) {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
@@ -3746,6 +4827,7 @@ void VersusApp::clearPeerSessions() {
             }
         }
         peerSessions_.clear();
+        pendingRemoteCandidates_.clear();
     }
 
     for (const auto &peer : peers) {

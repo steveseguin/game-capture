@@ -20,6 +20,16 @@
 
 namespace {
 
+const char *passwordLogValue(const std::string &password) {
+    if (password.empty()) {
+        return "(empty)";
+    }
+    if (password == "false" || password == "0" || password == "off") {
+        return "disabled";
+    }
+    return "(set)";
+}
+
 std::string resolveLogFilePath() {
 #ifdef _WIN32
     const char *localAppData = std::getenv("LOCALAPPDATA");
@@ -356,7 +366,7 @@ int main(int argc, char *argv[]) {
         spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} audioSource={} includeMicrophone={} microphoneDevice={}",
                      streamId,
                      room.empty() ? "(none)" : room,
-                     password,
+                     passwordLogValue(password),
                      server,
                      durationMs,
                      maxViewers,

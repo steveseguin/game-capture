@@ -502,6 +502,81 @@ async function waitForProbeMessage(page, predicateSource, timeoutMs) {
   return { ok: false, stage: 'probe-message', state: last };
 }
 
+async function getDirectorProbeMessageCount(page) {
+  return page.evaluate(() => {
+    const probe = window.__directorRoomE2EProbe || { messages: [] };
+    const messages = Array.isArray(probe.messages) ? probe.messages : [];
+    return messages.length;
+  });
+}
+
+async function waitForDirectorSettingsPayload(page, timeoutMs, minMessageCount = 0) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate((minCount) => {
+      const probe = window.__directorRoomE2EProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const candidates = messages.slice(Math.max(0, minCount));
+      const audioOptions = candidates.find((entry) =>
+        entry && entry.message && Array.isArray(entry.message.audioOptions)) || null;
+      const videoOptions = candidates.find((entry) =>
+        entry && entry.message && entry.message.videoOptions &&
+        typeof entry.message.videoOptions === 'object') || null;
+      const mediaDevices = candidates.find((entry) =>
+        entry && entry.message && Array.isArray(entry.message.mediaDevices)) || null;
+      return {
+        count: messages.length,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        audioOptions,
+        videoOptions,
+        mediaDevices,
+        ok: !!audioOptions && !!videoOptions && !!mediaDevices
+      };
+    }, minMessageCount);
+    if (last && last.ok) {
+      return { ok: true, state: last };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'director-settings-payload', state: last };
+}
+
+async function waitForDirectorVideoOptionsDimensions(page, expectedWidth, expectedHeight, timeoutMs, minMessageCount = 0) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate(({ width, height, minCount }) => {
+      const probe = window.__directorRoomE2EProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const candidates = messages.slice(Math.max(0, minCount));
+      const match = candidates.find((entry) => {
+        const options = entry && entry.message ? entry.message.videoOptions : null;
+        const current = options && options.currentCameraConstraints;
+        if (!current) {
+          return false;
+        }
+        return Number(current.width) === Number(width) &&
+          Number(current.height) === Number(height);
+      }) || null;
+      return {
+        count: messages.length,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        match
+      };
+    }, {
+      width: expectedWidth,
+      height: expectedHeight,
+      minCount: minMessageCount
+    });
+    if (last && last.match) {
+      return { ok: true, state: last };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'director-video-options-dimensions', state: last };
+}
+
 async function waitForStatsInfo(page, uuid, predicateSource, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -866,10 +941,22 @@ async function run() {
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
 
-    const oneShotStatsId = `stats-${Date.now()}`;
+    const settingsMessageCount = await getDirectorProbeMessageCount(page);
+    const directorSettingsRequest = await sendDirectorRequest(page, uuid, {
+      getAudioSettings: true,
+      getVideoSettings: true
+    });
+    if (!directorSettingsRequest.ok) {
+      throw Object.assign(new Error('director settings sendRequest failed'), { result: directorSettingsRequest });
+    }
+    await check('director-settings-payload', () => waitForDirectorSettingsPayload(
+      page,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      settingsMessageCount
+    ));
+
     const oneShotStatsRequest = await sendDirectorRequest(page, uuid, {
-      requestStats: true,
-      requestID: oneShotStatsId
+      requestStats: true
     });
     if (!oneShotStatsRequest.ok) {
       throw Object.assign(new Error('one-shot stats sendRequest failed'), { result: oneShotStatsRequest });
@@ -878,10 +965,10 @@ async function run() {
       page,
       `(entry) => {
         const msg = entry && entry.message;
-        return msg && msg.requestID === '${oneShotStatsId}' && msg.ok === true &&
-          msg.stats &&
-          Number(msg.stats.peers) >= 1 &&
-          String(msg.stats.codec || '').length > 0;
+        const stats = msg && msg.remoteStats && msg.remoteStats['${config.streamId}'];
+        return stats &&
+          /\\d+\\s*x\\s*\\d+/i.test(String(stats.resolution || '')) &&
+          String(stats.video_codec || '').length > 0;
       }`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
@@ -953,16 +1040,17 @@ async function run() {
     if (!resolutionRequest.ok) {
       throw Object.assign(new Error('requestVdoResolution failed'), { result: resolutionRequest });
     }
-    await check('vdo-request-resolution-acks', () => waitForProbeMessage(
+    const resolutionRefreshMessageCount = await getDirectorProbeMessageCount(page);
+    const resolutionRefreshRequest = await sendDirectorRequest(page, uuid, { refreshVideo: true });
+    if (!resolutionRefreshRequest.ok) {
+      throw Object.assign(new Error('refreshVideo after requestResolution failed'), { result: resolutionRefreshRequest });
+    }
+    await check('vdo-request-resolution-video-options', () => waitForDirectorVideoOptionsDimensions(
       page,
-      `(entry) => {
-        const msg = entry && entry.message;
-        return msg && msg.ack === 'control' && msg.ok === true &&
-          msg.requestResolution &&
-          Number(msg.requestResolution.w) === ${config.requestWidth} &&
-          Number(msg.requestResolution.h) === ${config.requestHeight};
-      }`,
-      Math.max(10000, Math.floor(config.timeoutMs / 3))
+      config.requestWidth,
+      config.requestHeight,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      resolutionRefreshMessageCount
     ));
 
     const statsClick = await clickSceneStatsButton(page, uuid);
@@ -979,13 +1067,10 @@ async function run() {
     if (!statsBitrateClick.ok) {
       throw Object.assign(new Error('clickStatsBitrateControl failed'), { result: statsBitrateClick });
     }
-    await check('director-stats-bitrate-control-acks', () => waitForProbeMessage(
+    await check('director-stats-bitrate-control-info', () => waitForStatsInfo(
       page,
-      `(entry) => {
-        const msg = entry && entry.message;
-        return msg && msg.ack === 'control' && msg.ok === true &&
-          Number(msg.targetBitrate) === ${config.targetBitrateKbps};
-      }`,
+      uuid,
+      `(info) => Number(info.quality_url) === ${config.targetBitrateKbps}`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
 
@@ -993,7 +1078,7 @@ async function run() {
     if (!directorAudioMuteClick.ok) {
       throw Object.assign(new Error('director audio mute button click failed'), { result: directorAudioMuteClick });
     }
-    await check('director-audio-mute-button-acks', () => waitForProbeMessage(
+    await check('director-audio-mute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
         const msg = entry && entry.message;
@@ -1005,7 +1090,7 @@ async function run() {
     if (!directorAudioUnmuteClick.ok) {
       throw Object.assign(new Error('director audio unmute button click failed'), { result: directorAudioUnmuteClick });
     }
-    await check('director-audio-unmute-button-acks', () => waitForProbeMessage(
+    await check('director-audio-unmute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
         const msg = entry && entry.message;
@@ -1018,7 +1103,7 @@ async function run() {
     if (!directorVideoMuteClick.ok) {
       throw Object.assign(new Error('director video mute button click failed'), { result: directorVideoMuteClick });
     }
-    await check('director-video-mute-button-acks', () => waitForProbeMessage(
+    await check('director-video-mute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
         const msg = entry && entry.message;
@@ -1030,7 +1115,7 @@ async function run() {
     if (!directorVideoUnmuteClick.ok) {
       throw Object.assign(new Error('director video unmute button click failed'), { result: directorVideoUnmuteClick });
     }
-    await check('director-video-unmute-button-acks', () => waitForProbeMessage(
+    await check('director-video-unmute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
         const msg = entry && entry.message;
@@ -1044,24 +1129,20 @@ async function run() {
     if (!audioOffRequest.ok) {
       throw Object.assign(new Error('audio off sendRequest failed'), { result: audioOffRequest });
     }
-    await check('director-audio-off-media-update-acks', () => waitForProbeMessage(
+    await check('director-audio-off-media-update-info', () => waitForStatsInfo(
       page,
-      `(entry) => {
-        const msg = entry && entry.message;
-        return msg && msg.ack === 'init' && msg.ok === true && msg.audio === false;
-      }`,
+      uuid,
+      `(info) => info.muted === true`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
     const audioOnRequest = await sendDirectorRequest(page, uuid, { audio: true });
     if (!audioOnRequest.ok) {
       throw Object.assign(new Error('audio on sendRequest failed'), { result: audioOnRequest });
     }
-    await check('director-audio-on-media-update-acks', () => waitForProbeMessage(
+    await check('director-audio-on-media-update-info', () => waitForStatsInfo(
       page,
-      `(entry) => {
-        const msg = entry && entry.message;
-        return msg && msg.ack === 'init' && msg.ok === true && msg.audio === true;
-      }`,
+      uuid,
+      `(info) => info.muted === false`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
 
@@ -1069,24 +1150,20 @@ async function run() {
     if (!videoOffRequest.ok) {
       throw Object.assign(new Error('video off sendRequest failed'), { result: videoOffRequest });
     }
-    await check('director-video-off-media-update-acks', () => waitForProbeMessage(
+    await check('director-video-off-media-update-info', () => waitForStatsInfo(
       page,
-      `(entry) => {
-        const msg = entry && entry.message;
-        return msg && msg.ack === 'init' && msg.ok === true && msg.video === false;
-      }`,
+      uuid,
+      `(info) => info.video_muted_init === true`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
     const videoOnRequest = await sendDirectorRequest(page, uuid, { video: true });
     if (!videoOnRequest.ok) {
       throw Object.assign(new Error('video on sendRequest failed'), { result: videoOnRequest });
     }
-    await check('director-video-on-media-update-acks', () => waitForProbeMessage(
+    await check('director-video-on-media-update-info', () => waitForStatsInfo(
       page,
-      `(entry) => {
-        const msg = entry && entry.message;
-        return msg && msg.ack === 'init' && msg.ok === true && msg.video === true;
-      }`,
+      uuid,
+      `(info) => info.video_muted_init === false`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
     await check('post-video-toggle-director-video-decodes', () => waitForDecodedDirectorVideo(page, config));

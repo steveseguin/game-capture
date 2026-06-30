@@ -11,6 +11,7 @@ class TestOpusEncoder : public QObject {
     void testPtsIsMonotonicIn100nsUnits();
     void testRemainderCarriesIntoNextEncodeCall();
     void testFormatMismatchRejected();
+    void testRuntimeBitrateUpdate();
 };
 
 void TestOpusEncoder::testPtsIsMonotonicIn100nsUnits() {
@@ -85,6 +86,29 @@ void TestOpusEncoder::testFormatMismatchRejected() {
     std::vector<float> samples(480 * 2, 0.0f);
     QVERIFY(!encoder.encode(samples, 44100, 2, 0));
     QCOMPARE(callbackCount, 0);
+}
+
+void TestOpusEncoder::testRuntimeBitrateUpdate() {
+    versus::audio::OpusEncoder encoder;
+    versus::audio::AudioEncoderConfig config;
+    config.sampleRate = 48000;
+    config.channels = 2;
+    config.bitrate = 128;
+
+    QVERIFY(!encoder.setBitrate(64));
+    QVERIFY(encoder.initialize(config));
+    QVERIFY(encoder.setBitrate(64));
+    QVERIFY(encoder.setBitrate(2));
+
+    int callbackCount = 0;
+    encoder.setPacketCallback([&callbackCount](const versus::audio::EncodedAudioPacket &) { callbackCount++; });
+
+    std::vector<float> samples(480 * 2, 0.1f);
+    QVERIFY(encoder.encode(samples, 48000, 2, 0));
+    QCOMPARE(callbackCount, 1);
+
+    encoder.shutdown();
+    QVERIFY(!encoder.setBitrate(64));
 }
 
 QTEST_MAIN(TestOpusEncoder)

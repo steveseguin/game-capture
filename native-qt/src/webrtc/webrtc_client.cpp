@@ -124,6 +124,12 @@ std::string selectH264ProfileLevelId(int width, int height, int fps) {
 }  // namespace
 
 struct WebRtcClient::Impl {
+    struct RemoteCandidate {
+        std::string candidate;
+        std::string mid;
+        int mlineIndex = 0;
+    };
+
     rtc::Configuration config;
     std::shared_ptr<rtc::PeerConnection> pc;
     std::shared_ptr<rtc::Track> videoTrack;
@@ -144,9 +150,12 @@ struct WebRtcClient::Impl {
     std::shared_ptr<rtc::DataChannel> sendChannel;
     std::mutex descMutex;
     std::mutex dataChannelMutex;
+    std::mutex remoteCandidateMutex;
+    std::vector<RemoteCandidate> pendingRemoteCandidates;
     std::atomic<ConnectionState> state{ConnectionState::Disconnected};
     std::atomic<bool> suppressCallbacks{false};
     std::atomic<bool> gatheringComplete{false};
+    std::atomic<bool> remoteDescriptionSet{false};
     std::atomic<bool> sentFirstKeyframe{false};
     std::atomic<bool> videoTrackOpen{false};
     std::atomic<bool> alphaVideoTrackOpen{false};
@@ -165,6 +174,67 @@ struct WebRtcClient::Impl {
     int configuredVideoHeight = 1080;
     int configuredVideoFps = 60;
     IceMode iceMode = IceMode::All;
+
+    void resetRemoteCandidateState() {
+        {
+            std::lock_guard<std::mutex> lock(remoteCandidateMutex);
+            pendingRemoteCandidates.clear();
+        }
+        remoteDescriptionSet.store(false, std::memory_order_relaxed);
+    }
+
+    bool tryAddRemoteCandidate(const RemoteCandidate &remote) {
+        if (!pc || remote.candidate.empty()) {
+            return false;
+        }
+        (void)remote.mlineIndex;
+        pc->addRemoteCandidate(rtc::Candidate(remote.candidate, remote.mid));
+        return true;
+    }
+
+    bool queueRemoteCandidate(RemoteCandidate remote) {
+        if (remote.candidate.empty()) {
+            return false;
+        }
+
+        constexpr size_t kMaxPendingRemoteCandidates = 100;
+        std::lock_guard<std::mutex> lock(remoteCandidateMutex);
+        if (pendingRemoteCandidates.size() >= kMaxPendingRemoteCandidates) {
+            pendingRemoteCandidates.erase(pendingRemoteCandidates.begin());
+            spdlog::warn("[WebRTC] Pending remote ICE candidate queue full; dropping oldest candidate");
+        }
+        pendingRemoteCandidates.push_back(std::move(remote));
+        spdlog::info("[WebRTC] Queued remote ICE candidate until remote description is set (pending={})",
+                     pendingRemoteCandidates.size());
+        return true;
+    }
+
+    void drainPendingRemoteCandidates() {
+        std::vector<RemoteCandidate> pending;
+        {
+            std::lock_guard<std::mutex> lock(remoteCandidateMutex);
+            pending.swap(pendingRemoteCandidates);
+        }
+        if (pending.empty()) {
+            return;
+        }
+
+        size_t added = 0;
+        for (const auto &remote : pending) {
+            try {
+                if (tryAddRemoteCandidate(remote)) {
+                    ++added;
+                }
+            } catch (const std::exception &e) {
+                spdlog::warn("[WebRTC] Failed to add queued remote ICE candidate: {}", e.what());
+            } catch (...) {
+                spdlog::warn("[WebRTC] Failed to add queued remote ICE candidate");
+            }
+        }
+        spdlog::info("[WebRTC] Drained queued remote ICE candidates: added={} dropped={}",
+                     added,
+                     pending.size() - added);
+    }
 
     void resetMediaState() {
         videoTrack.reset();
@@ -269,7 +339,7 @@ struct WebRtcClient::Impl {
         });
     }
 
-    void clearDataChannel() {
+    void clearDataChannel(bool detachCallbacks = false) {
         std::shared_ptr<rtc::DataChannel> oldChannel;
         {
             std::lock_guard<std::mutex> lock(dataChannelMutex);
@@ -278,6 +348,9 @@ struct WebRtcClient::Impl {
         }
 
         if (oldChannel) {
+            if (detachCallbacks) {
+                oldChannel->resetCallbacks();
+            }
             oldChannel->close();
         }
         if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
@@ -506,6 +579,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     rtcConfig.forceMediaTransport = true;
     impl_->config = rtcConfig;
     impl_->suppressCallbacks.store(false, std::memory_order_relaxed);
+    impl_->resetRemoteCandidateState();
 
     impl_->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
     impl_->resetMediaState();
@@ -600,24 +674,31 @@ void WebRtcClient::shutdown() {
         impl_->pc.reset();
     }
     impl_->resetMediaState();
+    impl_->resetRemoteCandidateState();
 }
 
-void WebRtcClient::resetPeerConnection() {
-    spdlog::info("[WebRTC] Resetting PeerConnection for new viewer");
-    impl_->suppressCallbacks.store(false, std::memory_order_relaxed);
+bool WebRtcClient::resetPeerConnection(bool initialVideo, bool initialAudio, bool initialAlpha) {
+    spdlog::info("[WebRTC] Resetting PeerConnection");
+    const bool previousSuppress = impl_->suppressCallbacks.exchange(true, std::memory_order_relaxed);
 
     // Close old connection
-    impl_->clearDataChannel();
+    impl_->clearDataChannel(true);
     if (impl_->pc) {
+        impl_->pc->resetCallbacks();
         impl_->pc->close();
         impl_->pc.reset();
     }
     impl_->resetMediaState();
+    impl_->resetRemoteCandidateState();
     impl_->gatheringComplete.store(false);
-    impl_->localDescription.clear();
+    {
+        std::lock_guard<std::mutex> lock(impl_->descMutex);
+        impl_->localDescription.clear();
+    }
 
     // Create fresh PeerConnection
     impl_->pc = std::make_shared<rtc::PeerConnection>(impl_->config);
+    impl_->suppressCallbacks.store(previousSuppress, std::memory_order_relaxed);
 
     impl_->pc->onStateChange([this](rtc::PeerConnection::State state) {
         const char* stateStr = "unknown";
@@ -677,6 +758,15 @@ void WebRtcClient::resetPeerConnection() {
     });
 
     if (impl_->enableDataChannel) {
+        if (initialVideo && !impl_->ensureVideoTrack()) {
+            return false;
+        }
+        if (initialVideo && initialAlpha && impl_->enableAlphaTrack && !impl_->ensureAlphaVideoTrack()) {
+            return false;
+        }
+        if (initialAudio && !impl_->ensureAudioTrack()) {
+            return false;
+        }
         impl_->setupBootstrapTransport();
     } else {
         impl_->resetMediaState();
@@ -684,6 +774,7 @@ void WebRtcClient::resetPeerConnection() {
         impl_->clearDataChannel();
     }
     spdlog::info("[WebRTC] PeerConnection reset complete");
+    return true;
 }
 
 
@@ -700,7 +791,17 @@ bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::strin
     if (type == "answer") {
         descType = rtc::Description::Type::Answer;
     }
-    impl_->pc->setRemoteDescription(rtc::Description(sdp, descType));
+    try {
+        impl_->pc->setRemoteDescription(rtc::Description(sdp, descType));
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to set remote {} description: {}", type, e.what());
+        return false;
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to set remote {} description", type);
+        return false;
+    }
+    impl_->remoteDescriptionSet.store(true, std::memory_order_relaxed);
+    impl_->drainPendingRemoteCandidates();
     return true;
 }
 
@@ -708,6 +809,7 @@ std::string WebRtcClient::createOffer() {
     if (!impl_->pc) {
         return {};
     }
+    impl_->resetRemoteCandidateState();
     {
         std::lock_guard<std::mutex> lock(impl_->descMutex);
         impl_->localDescription.clear();
@@ -771,7 +873,17 @@ std::string WebRtcClient::createAnswer(const std::string &offer) {
         std::lock_guard<std::mutex> lock(impl_->descMutex);
         impl_->localDescription.clear();
     }
-    impl_->pc->setRemoteDescription(rtc::Description(offer, rtc::Description::Type::Offer));
+    try {
+        impl_->pc->setRemoteDescription(rtc::Description(offer, rtc::Description::Type::Offer));
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to set remote offer description: {}", e.what());
+        return {};
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to set remote offer description");
+        return {};
+    }
+    impl_->remoteDescriptionSet.store(true, std::memory_order_relaxed);
+    impl_->drainPendingRemoteCandidates();
     impl_->pc->setLocalDescription(rtc::Description::Type::Answer);
 
     auto hasFreshLocalDescription = [this]() {
@@ -789,11 +901,24 @@ std::string WebRtcClient::createAnswer(const std::string &offer) {
     return impl_->localDescription;
 }
 
-void WebRtcClient::addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex) {
+bool WebRtcClient::addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex) {
     if (!impl_->pc) {
-        return;
+        spdlog::warn("[WebRTC] Dropping remote ICE candidate because peer connection is not initialized");
+        return false;
     }
-    impl_->pc->addRemoteCandidate(rtc::Candidate(candidate, mid));
+    Impl::RemoteCandidate remote{candidate, mid, mlineIndex};
+    if (!impl_->remoteDescriptionSet.load(std::memory_order_relaxed)) {
+        return impl_->queueRemoteCandidate(std::move(remote));
+    }
+    try {
+        return impl_->tryAddRemoteCandidate(remote);
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to add remote ICE candidate: {}", e.what());
+        return false;
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to add remote ICE candidate");
+        return false;
+    }
 }
 
 void WebRtcClient::prepareForShutdown() {

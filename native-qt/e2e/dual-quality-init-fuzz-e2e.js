@@ -387,7 +387,7 @@ async function installInfoProbe(page, uuid) {
       }
       try {
         const parsed = JSON.parse(payload);
-        if (parsed && (parsed.info || parsed.ack === 'init' || parsed.miniInfo)) {
+        if (parsed && (parsed.info || parsed.miniInfo)) {
           probe.records.push({
             ts: Date.now(),
             channel: channelName,
@@ -449,10 +449,9 @@ async function collectProbeSummary(page) {
         requestedVideoBitrateKbps: Number(entry.message.info.requested_video_bitrate_kbps || 0),
         requestedAudioBitrateKbps: Number(entry.message.info.requested_audio_bitrate_kbps || 0)
       }));
-    const ackCount = records.filter((entry) => entry && entry.message && entry.message.ack === 'init').length;
     return {
       totalRecords: records.length,
-      ackCount,
+      infoCount: infoRecords.length,
       infoRecords
     };
   });
@@ -491,7 +490,7 @@ function writeReport(config, startedAt, finishedAt, rows, summary, failure, publ
     '## Probe Summary',
     '',
     `- Total probe records: ${summary ? summary.totalRecords : 0}`,
-    `- Init ack records: ${summary ? summary.ackCount : 0}`,
+    `- Info records: ${summary ? summary.infoCount : 0}`,
     `- Info records: ${summary ? summary.infoRecords.length : 0}`
   );
 

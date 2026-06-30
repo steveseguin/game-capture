@@ -46,6 +46,21 @@ bool OpusEncoder::initialize(const AudioEncoderConfig &config) {
     return true;
 }
 
+bool OpusEncoder::setBitrate(int kbps) {
+    if (!initialized_ || !impl_->encoder) {
+        return false;
+    }
+
+    const int clamped = std::clamp(kbps, 6, 510);
+    const int result = opus_encoder_ctl(impl_->encoder, OPUS_SET_BITRATE(clamped * 1000));
+    if (result != OPUS_OK) {
+        spdlog::error("Failed to set Opus bitrate to {} kbps: {}", clamped, opus_strerror(result));
+        return false;
+    }
+    config_.bitrate = clamped;
+    return true;
+}
+
 void OpusEncoder::shutdown() {
     if (impl_ && impl_->encoder) {
         opus_encoder_destroy(impl_->encoder);

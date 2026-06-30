@@ -345,7 +345,7 @@ async function installInfoProbe(page, uuid) {
       }
       try {
         const parsed = JSON.parse(payload);
-        if (parsed && (parsed.info || parsed.ack === 'init' || parsed.miniInfo)) {
+        if (parsed && (parsed.info || parsed.miniInfo)) {
           probe.records.push({
             ts: Date.now(),
             channel: channelName,
@@ -421,13 +421,11 @@ async function waitForTierInfo(page, expectedTier, timeoutMs) {
       }) || null;
       const latestInfo = records.filter((entry) => entry && entry.message && entry.message.info).slice(-1)[0] || null;
       const latestMini = records.filter((entry) => entry && entry.message && entry.message.miniInfo).slice(-1)[0] || null;
-      const initAck = records.filter((entry) => entry && entry.message && entry.message.ack === 'init').slice(-1)[0] || null;
       return {
         totalRecords: records.length,
         infoRecord,
         latestInfo,
-        latestMini,
-        initAck
+        latestMini
       };
     }, expectedTier);
 

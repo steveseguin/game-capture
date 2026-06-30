@@ -30,6 +30,7 @@ class OpusEncoder {
     bool initialize(const AudioEncoderConfig &config);
     void shutdown();
 
+    bool setBitrate(int kbps);
     bool encode(const std::vector<float> &samples, int sampleRate, int channels, int64_t pts);
     void setPacketCallback(PacketCallback cb) { packetCallback_ = std::move(cb); }
 

@@ -385,7 +385,7 @@ async function installInfoProbe(page, uuid) {
       }
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed && (parsed.info || parsed.ack)) {
+        if (parsed && (parsed.info || parsed.miniInfo || parsed.remoteStats)) {
           probe.records.push({
             ts: Date.now(),
             channel: channelName,
@@ -474,20 +474,28 @@ async function waitForInfoField(page, fieldName, expectedValue, timeoutMs) {
   return { ok: false, stage: 'info-field', state: last };
 }
 
-async function waitForInitAck(page, expected, timeoutMs) {
+async function waitForInfoState(page, expected, timeoutMs) {
   const start = Date.now();
   let last = null;
   while (Date.now() - start < timeoutMs) {
     last = await page.evaluate((expectedValues) => {
       const probe = window.__gameCaptureInfoProbe || { records: [] };
       const records = Array.isArray(probe.records) ? probe.records : [];
-      const matches = records
-        .filter((entry) => entry && entry.message && entry.message.ack === 'init')
-        .map((entry) => entry.message)
-        .filter((message) => Object.entries(expectedValues).every(([key, value]) => message[key] === value));
+      const infoRecords = records
+        .filter((entry) => entry && entry.message && entry.message.info)
+        .map((entry) => entry.message.info);
+      const matches = infoRecords.filter((info) => Object.entries(expectedValues).every(([key, value]) => {
+        if (key === 'audio') {
+          return Boolean(info.muted) === !value;
+        }
+        if (key === 'video') {
+          return Boolean(info.video_muted_init) === !value;
+        }
+        return info[key] === value;
+      }));
       return {
         total: records.length,
-        initAckCount: records.filter((entry) => entry && entry.message && entry.message.ack === 'init').length,
+        infoCount: infoRecords.length,
         latest: records.length ? records[records.length - 1].message : null,
         match: matches.length ? matches[matches.length - 1] : null
       };
@@ -497,7 +505,7 @@ async function waitForInitAck(page, expected, timeoutMs) {
     }
     await wait(250);
   }
-  return { ok: false, stage: 'init-ack', state: last };
+  return { ok: false, stage: 'info-state', state: last };
 }
 
 async function waitForExpectedDimensions(page, expectedTier, timeoutMs, initialState = null) {
@@ -536,16 +544,16 @@ async function waitForExpectedDimensions(page, expectedTier, timeoutMs, initialS
   return { ok: false, state: lastState, decoded };
 }
 
-async function installControlAckProbe(page, uuid) {
+async function installControlInfoProbe(page, uuid) {
   return page.evaluate((peerUuid) => {
     const sessionObj = window.session || null;
     if (!sessionObj || !sessionObj.rpcs || !sessionObj.rpcs[peerUuid]) {
       return { ok: false, reason: 'no_rpc' };
     }
     const rpc = sessionObj.rpcs[peerUuid];
-    const probe = window.__gameCaptureControlProbe || { acks: [] };
-    if (!Array.isArray(probe.acks)) {
-      probe.acks = [];
+    const probe = window.__gameCaptureControlProbe || { messages: [] };
+    if (!Array.isArray(probe.messages)) {
+      probe.messages = [];
     }
     window.__gameCaptureControlProbe = probe;
 
@@ -555,14 +563,14 @@ async function installControlAckProbe(page, uuid) {
       }
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed && parsed.ack === 'control') {
-          probe.acks.push({
+        if (parsed && (parsed.info || parsed.miniInfo || parsed.remoteStats)) {
+          probe.messages.push({
             ts: Date.now(),
             channel: channelName,
             message: parsed
           });
-          if (probe.acks.length > 100) {
-            probe.acks.shift();
+          if (probe.messages.length > 100) {
+            probe.messages.shift();
           }
         }
       } catch {
@@ -599,23 +607,29 @@ async function installControlAckProbe(page, uuid) {
   }, uuid);
 }
 
-async function waitForControlAck(page, timeoutMs) {
+async function waitForControlInfo(page, timeoutMs) {
   const start = Date.now();
   let last = null;
   while (Date.now() - start < timeoutMs) {
     last = await page.evaluate(() => {
-      const probe = window.__gameCaptureControlProbe || { acks: [] };
-      const acks = Array.isArray(probe.acks) ? probe.acks : [];
-      const okAck = acks.find((entry) => entry && entry.message && entry.message.ok === true) || null;
-      const latest = acks.length ? acks[acks.length - 1] : null;
-      return { count: acks.length, okAck, latest };
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const okInfo = messages.find((entry) => {
+        const info = entry && entry.message ? entry.message.info : null;
+        return info &&
+          Number(info.quality_url) === 3500 &&
+          Number(info.width_url) === 960 &&
+          Number(info.height_url) === 540;
+      }) || null;
+      const latest = messages.length ? messages[messages.length - 1] : null;
+      return { count: messages.length, okInfo, latest };
     });
-    if (last && last.okAck) {
+    if (last && last.okInfo) {
       return { ok: true, state: last };
     }
     await wait(250);
   }
-  return { ok: false, stage: 'control-ack', state: last };
+  return { ok: false, stage: 'control-info', state: last };
 }
 
 async function waitForPublisherLog(publisher, pattern, timeoutMs) {
@@ -995,8 +1009,8 @@ async function caseReconnectControlMedia(input) {
   );
   assertOk(muteGuest.ok, 'reconnect-control-media: failed to send guest audio=false init', muteGuest);
 
-  const mutedAck = await waitForInitAck(guest.page, { audio: false }, 8000);
-  assertOk(mutedAck.ok, 'reconnect-control-media: missing audio=false init ack', mutedAck.state || mutedAck);
+  const mutedInfo = await waitForInfoState(guest.page, { audio: false }, 8000);
+  assertOk(mutedInfo.ok, 'reconnect-control-media: missing audio=false info update', mutedInfo.state || mutedInfo);
 
   const unmuteGuest = await sendInitMessage(
     guest.page,
@@ -1009,11 +1023,11 @@ async function caseReconnectControlMedia(input) {
   );
   assertOk(unmuteGuest.ok, 'reconnect-control-media: failed to send guest audio=true init', unmuteGuest);
 
-  const unmutedAck = await waitForInitAck(guest.page, { audio: true }, 8000);
-  assertOk(unmutedAck.ok, 'reconnect-control-media: missing audio=true init ack', unmutedAck.state || unmutedAck);
+  const unmutedInfo = await waitForInfoState(guest.page, { audio: true }, 8000);
+  assertOk(unmutedInfo.ok, 'reconnect-control-media: missing audio=true info update', unmutedInfo.state || unmutedInfo);
 
-  const controlProbe = await installControlAckProbe(scene.page, scene.peerUuid);
-  assertOk(controlProbe.ok, 'reconnect-control-media: failed to install control ack probe', controlProbe);
+  const controlProbe = await installControlInfoProbe(scene.page, scene.peerUuid);
+  assertOk(controlProbe.ok, 'reconnect-control-media: failed to install control info probe', controlProbe);
 
   const controlSend = await sendWithRetry(scene.page, {
     keyframe: true,
@@ -1024,8 +1038,8 @@ async function caseReconnectControlMedia(input) {
   }, 8000);
   assertOk(controlSend.ok, 'reconnect-control-media: failed to send control payload', controlSend);
 
-  const controlAck = await waitForControlAck(scene.page, 10000);
-  assertOk(controlAck.ok, 'reconnect-control-media: missing control ack', controlAck.state || controlAck);
+  const controlInfo = await waitForControlInfo(scene.page, 10000);
+  assertOk(controlInfo.ok, 'reconnect-control-media: missing control info update', controlInfo.state || controlInfo);
 
   await wait(config.holdMs);
   const scenePostResult = await waitForDecodedVideo(scene.page, 15000, 'ctrl-scene-post-control');
