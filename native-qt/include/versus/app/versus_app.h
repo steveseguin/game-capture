@@ -35,6 +35,7 @@ struct StreamMetrics {
     double videoBitrateKbps = 0.0;
     double audioBitrateKbps = 0.0;
     double frameRate = 0.0;
+    double droppedFrameRate = 0.0;
     int width = 0;
     int height = 0;
     std::string codec;
@@ -44,6 +45,39 @@ struct StreamMetrics {
     int lqPeerCount = 0;
     int activeVideoPeers = 0;
     int activeAudioPeers = 0;
+    uint64_t videoFramesCaptured = 0;
+    uint64_t videoFramesSent = 0;
+    uint64_t videoFramesDropped = 0;
+    uint64_t audioPacketsSent = 0;
+    uint64_t videoEncodeFailures = 0;
+    uint64_t videoSendFailures = 0;
+    uint64_t audioSendFailures = 0;
+};
+
+struct ConnectionHealth {
+    std::string iceMode;
+    std::string candidatePath;
+    int resolvedIceServers = 0;
+    int peerCount = 0;
+    int hqPeerCount = 0;
+    int lqPeerCount = 0;
+    int activeVideoPeers = 0;
+    int activeAudioPeers = 0;
+    std::string codec;
+    std::string encoder;
+    double videoBitrateKbps = 0.0;
+    double audioBitrateKbps = 0.0;
+    double frameRate = 0.0;
+    double droppedFrameRate = 0.0;
+    int width = 0;
+    int height = 0;
+    uint64_t videoFramesCaptured = 0;
+    uint64_t videoFramesSent = 0;
+    uint64_t videoFramesDropped = 0;
+    uint64_t videoEncodeFailures = 0;
+    uint64_t videoSendFailures = 0;
+    uint64_t audioSendFailures = 0;
+    std::string lastPeerDisconnectReason;
 };
 
 struct StartOptions {
@@ -83,12 +117,20 @@ class VersusApp {
     void setAudioSourceMode(AudioSourceMode mode);
     void setIncludeMicrophone(bool enabled);
     void setMicrophoneDeviceId(const std::string &deviceId);
+    void setAudioMixConfig(float primaryGain, float additionalGain, bool limiterEnabled);
     std::string getVideoEncoderName() const;
     std::string getVideoCodecName() const;
     bool isHardwareVideoEncoder() const;
     float getAudioLevelRms() const;
     float getAudioPeak() const;
+    float getPrimaryAudioLevelRms() const;
+    float getPrimaryAudioPeak() const;
+    float getAdditionalAudioLevelRms() const;
+    float getAdditionalAudioPeak() const;
     StreamMetrics getStreamMetrics() const;
+    ConnectionHealth getConnectionHealth() const;
+    std::string buildDiagnosticsJson() const;
+    bool writeDiagnosticsJson(const std::string &path) const;
 
     bool isLive() const { return live_; }
 
@@ -130,7 +172,14 @@ class VersusApp {
     void handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk);
     void handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk);
     void mixAdditionalAudioInto(std::vector<float> &samples, uint32_t sampleRate, uint32_t channels);
+    void applyAudioGain(std::vector<float> &samples, float gain) const;
+    void applyAudioLimiter(std::vector<float> &samples) const;
+    void updateAudioLevelMeters(const std::vector<float> &samples,
+                                std::atomic<float> &rmsTarget,
+                                std::atomic<float> &peakTarget);
     void encodeNormalizedAudio(std::vector<float> &normalizedSamples);
+    StreamMetrics buildStreamMetricsSnapshot(bool updateRecentWindow) const;
+    void resetMetricsWindow(int64_t nowMs);
     void setupSignalingCallbacks();
     void startSignalingRecovery();
     void stopSignalingRecoveryThread();
@@ -162,6 +211,8 @@ class VersusApp {
                                    const std::string &error);
     bool sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason, bool rebuildPeerConnection = false);
     void applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source);
+    int renegotiatePeersForH264CodecFallback(const char *reason);
+    bool fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<PeerSession> &peer, const char *source);
     void applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, const char *reason);
     bool enforceRoomCodecLock();
     void applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
@@ -190,6 +241,7 @@ class VersusApp {
     void removePeerSession(const std::shared_ptr<PeerSession> &peer, const char *reason);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
+    void recordPeerEvent(const std::shared_ptr<PeerSession> &peer, const std::string &event) const;
     PeerCounts collectPeerCounts() const;
     VideoStateSnapshot buildVideoStateSnapshotLocked() const;
     void publishVideoStateSnapshotLocked() const;
@@ -215,10 +267,22 @@ class VersusApp {
     std::atomic<int64_t> audioPts100ns_{0};
     std::atomic<float> audioLevelRms_{0.0f};
     std::atomic<float> audioPeak_{0.0f};
+    std::atomic<float> primaryAudioLevelRms_{0.0f};
+    std::atomic<float> primaryAudioPeak_{0.0f};
+    std::atomic<float> additionalAudioLevelRms_{0.0f};
+    std::atomic<float> additionalAudioPeak_{0.0f};
+    std::atomic<float> primaryAudioGain_{1.0f};
+    std::atomic<float> additionalAudioGain_{1.0f};
+    std::atomic<bool> audioLimiterEnabled_{true};
     std::atomic<uint64_t> videoBytesSent_{0};
     std::atomic<uint64_t> audioBytesSent_{0};
+    std::atomic<uint64_t> videoFramesCaptured_{0};
     std::atomic<uint64_t> videoFramesSent_{0};
+    std::atomic<uint64_t> videoFramesDropped_{0};
     std::atomic<uint64_t> audioPacketsSent_{0};
+    std::atomic<uint64_t> videoEncodeFailures_{0};
+    std::atomic<uint64_t> videoSendFailures_{0};
+    std::atomic<uint64_t> audioSendFailures_{0};
     std::atomic<int> audioEncoderBitrateKbps_{192};
     std::atomic<int64_t> metricsStartMs_{0};
     std::atomic<int> lastSentWidth_{0};
@@ -232,6 +296,8 @@ class VersusApp {
     std::atomic<int> pliWindowCount_{0};
     std::atomic<int64_t> lastCpuWarningMs_{0};
     std::atomic<int> softwareOverloadSamples_{0};
+    std::atomic<bool> relayCandidateSeen_{false};
+    std::atomic<bool> directCandidateSeen_{false};
     std::vector<versus::webrtc::IceServerConfig> resolvedIceServers_;
     versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::StunOnly;
     std::thread signalingRecoveryThread_;
@@ -247,8 +313,21 @@ class VersusApp {
     mutable std::mutex signalingOpsMutex_;
     mutable std::mutex iceConfigMutex_;
     mutable std::mutex runtimeEventMutex_;
-    std::mutex additionalAudioMutex_;
+    mutable std::mutex additionalAudioMutex_;
     std::mutex audioEncodeMutex_;
+    mutable std::mutex healthStateMutex_;
+    mutable std::mutex metricsWindowMutex_;
+    mutable int64_t recentMetricsLastMs_ = 0;
+    mutable uint64_t recentMetricsLastVideoBytes_ = 0;
+    mutable uint64_t recentMetricsLastAudioBytes_ = 0;
+    mutable uint64_t recentMetricsLastVideoFrames_ = 0;
+    mutable uint64_t recentMetricsLastDroppedFrames_ = 0;
+    mutable double recentVideoBitrateKbps_ = 0.0;
+    mutable double recentAudioBitrateKbps_ = 0.0;
+    mutable double recentFrameRate_ = 0.0;
+    mutable double recentDroppedFrameRate_ = 0.0;
+    mutable bool recentMetricsInitialized_ = false;
+    std::string lastPeerDisconnectReason_;
     RuntimeEventCallback runtimeEventCallback_;
     struct PendingCandidate {
         std::string candidate;
@@ -261,6 +340,7 @@ class VersusApp {
         std::string streamId;
         // VDO.Ninja uses this as a routing hint ("local" vs "remote"), not candidate transport type.
         std::string candidateType = "local";
+        int64_t createdAtMs = 0;
         bool answerReceived = false;
         bool offerDispatched = false;
         bool roomMode = false;
@@ -286,6 +366,20 @@ class VersusApp {
         std::atomic<int> requestedVideoBitrateKbps{-1};
         std::atomic<int> requestedAudioBitrateKbps{-1};
         std::atomic<bool> renegotiationQueued{false};
+        std::atomic<bool> codecFallbackAttempted{false};
+        std::atomic<int64_t> lastStateChangeMs{0};
+        std::atomic<int> offerCount{0};
+        std::atomic<int> recoveryOfferCount{0};
+        std::atomic<int> answerCount{0};
+        std::atomic<int> localCandidatesSent{0};
+        std::atomic<int> remoteCandidatesApplied{0};
+        std::atomic<int> rejectedControlCount{0};
+        mutable std::mutex diagnosticsMutex;
+        std::string lastConnectionState = "new";
+        std::string lastOfferReason;
+        std::string lastAnswerSource;
+        std::string lastRemovalReason;
+        std::deque<std::string> timeline;
         std::mutex mediaPlanMutex;
         std::vector<PendingCandidate> pendingCandidates;
         std::unique_ptr<versus::webrtc::WebRtcClient> client;

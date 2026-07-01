@@ -1,16 +1,19 @@
 ﻿#include "versus/ui/main_window.h"
 
+#include <QAbstractItemView>
 #include <QApplication>
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QCursor>
+#include <QEvent>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFontDatabase>
 #include <QFrame>
 #include <QGuiApplication>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QMenuBar>
@@ -75,7 +78,7 @@ versus::video::VideoCodec codecFromUiValue(const QString &value) {
     return versus::video::VideoCodec::H264;
 }
 
-bool codecRequiresFfmpegPath(versus::video::VideoCodec codec) {
+bool codecUsesExternalFfmpeg(versus::video::VideoCodec codec) {
     return codec != versus::video::VideoCodec::H264;
 }
 
@@ -85,14 +88,17 @@ bool codecSupportsAlphaWorkflow(versus::video::VideoCodec codec) {
 
 QString codecTooltipFor(versus::video::VideoCodec codec) {
     if (codec == versus::video::VideoCodec::H265) {
-        return "H.265 is experimental and may not decode in Chromium-based viewers.";
+        return "H.265 is experimental and may not decode in Chromium-based viewers. Game Capture will fall back to "
+               "H.264 if startup or encode stability fails.";
     }
     if (codec == versus::video::VideoCodec::AV1) {
-        return "AV1 publish is experimental. Alpha-preserving AV1 paths vary by viewer; the current OBS VDO.Ninja "
-               "transparency workflow uses VP9 instead.";
+        return "AV1 publish is experimental. Game Capture will try the selected encoder preference and fall back to "
+               "H.264 if startup or encode stability fails. Alpha-preserving AV1 paths vary by viewer; the current "
+               "OBS VDO.Ninja transparency workflow uses VP9 instead.";
     }
     if (codec == versus::video::VideoCodec::VP9) {
-        return "VP9 publish is experimental. Compatible OBS VDO.Ninja native receivers can upgrade this stream to "
+        return "VP9 publish is experimental and software-heavy. Game Capture will fall back to H.264 if startup or "
+               "encode stability fails. Compatible OBS VDO.Ninja native receivers can upgrade this stream to "
                "transparency; browser viewers stay standard color video.";
     }
     return QString();
@@ -153,6 +159,30 @@ QSettings makeUiSettings() {
     return QSettings(APP_SETTINGS_ORG, APP_SETTINGS_NAME);
 }
 
+class ComboWheelGuard final : public QObject {
+  public:
+    explicit ComboWheelGuard(QObject *parent) : QObject(parent) {}
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() != QEvent::Wheel) {
+            return QObject::eventFilter(watched, event);
+        }
+
+        auto *combo = qobject_cast<QComboBox *>(watched);
+        if (!combo) {
+            return QObject::eventFilter(watched, event);
+        }
+
+        if (combo->view() && combo->view()->isVisible()) {
+            return QObject::eventFilter(watched, event);
+        }
+
+        event->ignore();
+        return true;
+    }
+};
+
 void restoreComboByData(QComboBox *combo, const QVariant &data) {
     if (!combo || !data.isValid()) {
         return;
@@ -161,6 +191,68 @@ void restoreComboByData(QComboBox *combo, const QVariant &data) {
     if (index >= 0) {
         combo->setCurrentIndex(index);
     }
+}
+
+void installComboWheelGuard(QComboBox *combo) {
+    if (!combo) {
+        return;
+    }
+    combo->installEventFilter(new ComboWheelGuard(combo));
+}
+
+void setSensitiveFieldVisible(QLineEdit *input, QPushButton *toggle, bool visible, const QString &label) {
+    if (!input || !toggle) {
+        return;
+    }
+
+    input->setEchoMode(visible ? QLineEdit::Normal : QLineEdit::Password);
+    toggle->setText(visible ? "Hide" : "Show");
+    toggle->setToolTip(QString("%1 %2").arg(visible ? "Hide" : "Show", label));
+}
+
+void setSensitiveRevealEnabled(QLineEdit *input, QPushButton *toggle, bool enabled, const QString &label) {
+    if (!input || !toggle) {
+        return;
+    }
+
+    toggle->setEnabled(enabled);
+    if (!enabled && toggle->isChecked()) {
+        QSignalBlocker blocker(toggle);
+        toggle->setChecked(false);
+        setSensitiveFieldVisible(input, toggle, false, label);
+    }
+}
+
+QWidget *wrapSensitiveLineEdit(QLineEdit *input,
+                               QPushButton **toggleOut,
+                               const QString &label,
+                               QWidget *parent) {
+    if (!input) {
+        return nullptr;
+    }
+
+    input->setEchoMode(QLineEdit::Password);
+
+    auto *wrapper = new QWidget(parent);
+    auto *layout = new QHBoxLayout(wrapper);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+    layout->addWidget(input, 1);
+
+    auto *toggle = new QPushButton("Show", wrapper);
+    toggle->setCheckable(true);
+    toggle->setFixedWidth(58);
+    toggle->setCursor(Qt::PointingHandCursor);
+    toggle->setToolTip(QString("Show %1").arg(label));
+    QObject::connect(toggle, &QPushButton::toggled, input, [input, toggle, label](bool checked) {
+        setSensitiveFieldVisible(input, toggle, checked, label);
+    });
+
+    layout->addWidget(toggle);
+    if (toggleOut) {
+        *toggleOut = toggle;
+    }
+    return wrapper;
 }
 
 QString audioDeviceLabel(const versus::audio::AudioDeviceInfo &device) {
@@ -491,12 +583,7 @@ MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
                     statsPanel_->setVisible(false);
                     statsPanel_->clear();
                 }
-                if (audioMeter_) {
-                    audioMeter_->setValue(0);
-                }
-                if (audioLevelLabel_) {
-                    audioLevelLabel_->setText("-inf dB");
-                }
+                resetOperatorHealthUi();
                 if (encoderStatusLabel_) {
                     encoderStatusLabel_->setText("Active Encoder: (not streaming)");
                     encoderStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
@@ -661,6 +748,15 @@ void MainWindow::loadPersistedSettings() {
     if (includeMicrophoneCheck_) {
         includeMicrophoneCheck_->setChecked(settings.value("audio/includeMicrophone", false).toBool());
     }
+    if (primaryAudioGainSpin_) {
+        primaryAudioGainSpin_->setValue(settings.value("audio/primaryGainPercent", 100).toInt());
+    }
+    if (microphoneAudioGainSpin_) {
+        microphoneAudioGainSpin_->setValue(settings.value("audio/microphoneGainPercent", 100).toInt());
+    }
+    if (audioLimiterCheck_) {
+        audioLimiterCheck_->setChecked(settings.value("audio/limiterEnabled", true).toBool());
+    }
 
     restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
@@ -716,6 +812,9 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
     settings.setValue("audio/includeMicrophone", includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false);
     settings.setValue("audio/microphoneDeviceId", microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentData().toString() : QString());
+    settings.setValue("audio/primaryGainPercent", primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100);
+    settings.setValue("audio/microphoneGainPercent", microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100);
+    settings.setValue("audio/limiterEnabled", audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true);
     settings.setValue("control/enabled", remoteControlCheck_ ? remoteControlCheck_->isChecked() : false);
     settings.setValue("control/token", remoteControlTokenInput_ ? remoteControlTokenInput_->text().trimmed() : QString());
     settings.sync();
@@ -770,6 +869,15 @@ void MainWindow::connectPersistedSettingSignals() {
     }
     if (microphoneDeviceSelect_) {
         connect(microphoneDeviceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (primaryAudioGainSpin_) {
+        connect(primaryAudioGainSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
+    }
+    if (microphoneAudioGainSpin_) {
+        connect(microphoneAudioGainSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
+    }
+    if (audioLimiterCheck_) {
+        connect(audioLimiterCheck_, &QCheckBox::toggled, this, saveNow);
     }
     if (remoteControlCheck_) {
         connect(remoteControlCheck_, &QCheckBox::toggled, this, saveNow);
@@ -936,8 +1044,16 @@ void MainWindow::setupUI() {
     basicForm->addRow("Stream / URL", streamIdInput_);
 
     passwordInput_ = new QLineEdit(this);
+    passwordInput_->setObjectName("passwordInput");
     passwordInput_->setPlaceholderText("Password (leave blank for default, 'false' to disable)");
-    basicForm->addRow("Password", passwordInput_);
+    if (auto *passwordRow = wrapSensitiveLineEdit(passwordInput_, &passwordRevealButton_, "password", this)) {
+        if (passwordRevealButton_) {
+            passwordRevealButton_->setObjectName("passwordRevealButton");
+        }
+        basicForm->addRow("Password", passwordRow);
+    } else {
+        basicForm->addRow("Password", passwordInput_);
+    }
     layout->addLayout(basicForm);
 
     auto *urlHint = new QLabel("Tip: paste a full VDO URL and Game Capture auto-uses stream/room/password.", this);
@@ -982,11 +1098,13 @@ void MainWindow::setupUI() {
     resolutionSelect_->addItem("1920x1080", QVariant("1920x1080"));
     resolutionSelect_->addItem("1280x720", QVariant("1280x720"));
     resolutionSelect_->addItem("960x540", QVariant("960x540"));
+    installComboWheelGuard(resolutionSelect_);
     advancedForm->addRow("Resolution", resolutionSelect_);
 
     fpsSelect_ = new QComboBox(this);
     fpsSelect_->addItem("60", QVariant(60));
     fpsSelect_->addItem("30", QVariant(30));
+    installComboWheelGuard(fpsSelect_);
     advancedForm->addRow("FPS", fpsSelect_);
 
     bitrateSelect_ = new QComboBox(this);
@@ -996,6 +1114,7 @@ void MainWindow::setupUI() {
     bitrateSelect_->addItem("Low (3000 kbps)", QVariant(3000));
     bitrateSelect_->addItem("Custom", QVariant(-1));
     bitrateSelect_->setCurrentIndex(1);
+    installComboWheelGuard(bitrateSelect_);
     connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBitratePresetChanged);
     advancedForm->addRow("Bitrate Preset", bitrateSelect_);
@@ -1029,6 +1148,7 @@ void MainWindow::setupUI() {
     iceModeSelect_->addItem("Host Only (LAN)", QVariant("host-only"));
     iceModeSelect_->setToolTip(
         "Direct STUN avoids slower TURN relays. Use Auto or Relay Only only when restrictive networks block direct UDP.");
+    installComboWheelGuard(iceModeSelect_);
     advancedForm->addRow("ICE Mode", iceModeSelect_);
 
     audioSourceSelect_ = new QComboBox(this);
@@ -1040,6 +1160,7 @@ void MainWindow::setupUI() {
     audioSourceSelect_->addItem("No audio", QVariant("none"));
     audioSourceSelect_->setToolTip(
         "Use Communications output for VOIP-style games, or Default microphone/input when voice chat is captured through an input device.");
+    installComboWheelGuard(audioSourceSelect_);
     advancedForm->addRow("Audio Source", audioSourceSelect_);
 
     includeMicrophoneCheck_ = new QCheckBox("Also add microphone/input", this);
@@ -1054,7 +1175,30 @@ void MainWindow::setupUI() {
     microphoneDeviceSelect_->setToolTip(
         "Choose a microphone/input to mix in. If the selected device is unavailable, capture falls back to the Windows default input.");
     refreshMicrophoneDevices();
+    installComboWheelGuard(microphoneDeviceSelect_);
     advancedForm->addRow("Microphone", microphoneDeviceSelect_);
+
+    primaryAudioGainSpin_ = new QSpinBox(this);
+    primaryAudioGainSpin_->setObjectName("primaryAudioGainSpin");
+    primaryAudioGainSpin_->setRange(0, 200);
+    primaryAudioGainSpin_->setValue(100);
+    primaryAudioGainSpin_->setSuffix("%");
+    primaryAudioGainSpin_->setToolTip("Applies gain to the selected game/app audio before mixing.");
+    advancedForm->addRow("Game Audio Gain", primaryAudioGainSpin_);
+
+    microphoneAudioGainSpin_ = new QSpinBox(this);
+    microphoneAudioGainSpin_->setObjectName("microphoneAudioGainSpin");
+    microphoneAudioGainSpin_->setRange(0, 200);
+    microphoneAudioGainSpin_->setValue(100);
+    microphoneAudioGainSpin_->setSuffix("%");
+    microphoneAudioGainSpin_->setToolTip("Applies gain to the added microphone/input before mixing.");
+    advancedForm->addRow("Mic Gain", microphoneAudioGainSpin_);
+
+    audioLimiterCheck_ = new QCheckBox("Limit mixed output", this);
+    audioLimiterCheck_->setObjectName("audioLimiterCheck");
+    audioLimiterCheck_->setChecked(true);
+    audioLimiterCheck_->setToolTip("Soft-limits combined game/app and microphone audio before Opus encoding.");
+    advancedForm->addRow("Audio Limiter", audioLimiterCheck_);
 
     remoteControlCheck_ = new QCheckBox("Enable director control via data channel", this);
     remoteControlCheck_->setObjectName("remoteControlCheck");
@@ -1067,29 +1211,41 @@ void MainWindow::setupUI() {
     remoteControlTokenInput_->setObjectName("remoteControlTokenInput");
     remoteControlTokenInput_->setPlaceholderText("Optional token (defaults to password or stream ID)");
     remoteControlTokenInput_->setEnabled(false);
-    advancedForm->addRow("Control Token", remoteControlTokenInput_);
+    if (auto *remoteTokenRow = wrapSensitiveLineEdit(remoteControlTokenInput_, &remoteControlTokenRevealButton_, "control token", this)) {
+        if (remoteControlTokenRevealButton_) {
+            remoteControlTokenRevealButton_->setObjectName("remoteControlTokenRevealButton");
+            remoteControlTokenRevealButton_->setEnabled(false);
+        }
+        advancedForm->addRow("Control Token", remoteTokenRow);
+    } else {
+        advancedForm->addRow("Control Token", remoteControlTokenInput_);
+    }
 
     connect(remoteControlCheck_, &QCheckBox::toggled, this, [this](bool checked) {
         if (remoteControlTokenInput_) {
             remoteControlTokenInput_->setEnabled(checked);
         }
+        setSensitiveRevealEnabled(remoteControlTokenInput_, remoteControlTokenRevealButton_, checked, "control token");
     });
 
     encoderSelect_ = new QComboBox(this);
+    encoderSelect_->setObjectName("encoderSelect");
     encoderSelect_->addItem("Auto (Prefer NVIDIA)", QVariant("auto"));
     encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
     encoderSelect_->addItem("FFmpeg NVENC (Advanced)", QVariant("ffmpeg_nvenc"));
     encoderSelect_->addItem("Intel Quick Sync", QVariant("qsv"));
     encoderSelect_->addItem("AMD AMF", QVariant("amf"));
     encoderSelect_->addItem("Software", QVariant("software"));
+    installComboWheelGuard(encoderSelect_);
     advancedForm->addRow("Encoder", encoderSelect_);
 
     codecSelect_ = new QComboBox(this);
     codecSelect_->setObjectName("codecSelect");
     codecSelect_->addItem("H.264 (Compatibility)", QVariant("h264"));
-    codecSelect_->addItem("H.265 / HEVC (Experimental)", QVariant("h265"));
-    codecSelect_->addItem("AV1 (Experimental)", QVariant("av1"));
-    codecSelect_->addItem("VP9 (OBS Alpha Preview)", QVariant("vp9"));
+    codecSelect_->addItem("H.265 / HEVC (Experimental, auto fallback)", QVariant("h265"));
+    codecSelect_->addItem("AV1 (Experimental, auto fallback)", QVariant("av1"));
+    codecSelect_->addItem("VP9 (OBS Alpha Preview, auto fallback)", QVariant("vp9"));
+    installComboWheelGuard(codecSelect_);
     advancedForm->addRow("Video Codec", codecSelect_);
 
     alphaWorkflowCheck_ = new QCheckBox("Enable alpha workflow (experimental)", this);
@@ -1143,29 +1299,98 @@ void MainWindow::setupUI() {
     statusLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     layout->addWidget(statusLabel_);
 
-    // Audio input meter
-    auto *audioLayout = new QHBoxLayout();
-    auto *audioTitle = new QLabel("Audio Input", this);
-    audioTitle->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
-    audioLayout->addWidget(audioTitle);
+    // Operator-facing connection health
+    auto *healthLayout = new QGridLayout();
+    healthLayout->setHorizontalSpacing(12);
+    healthLayout->setVerticalSpacing(4);
+    auto *healthTitle = new QLabel("Connection Health", this);
+    healthTitle->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT));
+    healthLayout->addWidget(healthTitle, 0, 0, 1, 2);
 
-    audioMeter_ = new QProgressBar(this);
-    audioMeter_->setObjectName("audioMeter");
-    audioMeter_->setRange(0, 100);
-    audioMeter_->setValue(0);
-    audioMeter_->setTextVisible(false);
-    audioMeter_->setFixedHeight(10);
-    audioMeter_->setStyleSheet(QString(
-        "QProgressBar { border: 1px solid #2f4254; border-radius: 4px; background: #0d1620; }"
-        "QProgressBar::chunk { background-color: %1; border-radius: 3px; }").arg(COLOR_ACCENT));
-    audioLayout->addWidget(audioMeter_, 1);
+    connectionHealthLabel_ = new QLabel("ICE: - | Candidates: - | Peers: 0", this);
+    connectionHealthLabel_->setObjectName("connectionHealthLabel");
+    connectionHealthLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    connectionHealthLabel_->setWordWrap(true);
+    healthLayout->addWidget(connectionHealthLabel_, 1, 0, 1, 2);
 
-    audioLevelLabel_ = new QLabel("-inf dB", this);
-    audioLevelLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
-    audioLevelLabel_->setMinimumWidth(70);
-    audioLevelLabel_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    audioLayout->addWidget(audioLevelLabel_);
-    layout->addLayout(audioLayout);
+    connectionMediaLabel_ = new QLabel("Codec: - | FPS: - | Resolution: - | Bitrate: -", this);
+    connectionMediaLabel_->setObjectName("connectionMediaLabel");
+    connectionMediaLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    connectionMediaLabel_->setWordWrap(true);
+    healthLayout->addWidget(connectionMediaLabel_, 2, 0, 1, 2);
+
+    connectionIssueLabel_ = new QLabel("Drops/encode/video/audio send: 0/0/0/0 | Last disconnect: none", this);
+    connectionIssueLabel_->setObjectName("connectionIssueLabel");
+    connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    connectionIssueLabel_->setWordWrap(true);
+    healthLayout->addWidget(connectionIssueLabel_, 3, 0, 1, 2);
+    layout->addLayout(healthLayout);
+
+    // Audio source meters
+    auto *audioGrid = new QGridLayout();
+    audioGrid->setHorizontalSpacing(10);
+    audioGrid->setVerticalSpacing(5);
+    auto *audioTitle = new QLabel("Audio Sources", this);
+    audioTitle->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT));
+    audioGrid->addWidget(audioTitle, 0, 0, 1, 3);
+
+    auto makeAudioMeter = [this](const QString &objectName) {
+        auto *meter = new QProgressBar(this);
+        meter->setObjectName(objectName);
+        meter->setRange(0, 100);
+        meter->setValue(0);
+        meter->setTextVisible(false);
+        meter->setFixedHeight(10);
+        meter->setStyleSheet(QString(
+            "QProgressBar { border: 1px solid #2f4254; border-radius: 4px; background: #0d1620; }"
+            "QProgressBar::chunk { background-color: %1; border-radius: 3px; }").arg(COLOR_ACCENT));
+        return meter;
+    };
+
+    auto makeLevelLabel = [this](const QString &objectName) {
+        auto *label = new QLabel("-inf dB", this);
+        label->setObjectName(objectName);
+        label->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+        label->setMinimumWidth(70);
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        return label;
+    };
+
+    auto *mixedAudioLabel = new QLabel("Mixed output", this);
+    mixedAudioLabel->setObjectName("mixedAudioSourceLabel");
+    mixedAudioLabel->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    audioGrid->addWidget(mixedAudioLabel, 1, 0);
+
+    audioMeter_ = makeAudioMeter("audioMeter");
+    audioGrid->addWidget(audioMeter_, 1, 1);
+
+    audioLevelLabel_ = makeLevelLabel("audioLevelLabel");
+    audioGrid->addWidget(audioLevelLabel_, 1, 2);
+
+    primaryAudioSourceLabel_ = new QLabel("Primary: -", this);
+    primaryAudioSourceLabel_->setObjectName("primaryAudioSourceLabel");
+    primaryAudioSourceLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    audioGrid->addWidget(primaryAudioSourceLabel_, 2, 0);
+
+    primaryAudioMeter_ = makeAudioMeter("primaryAudioMeter");
+    audioGrid->addWidget(primaryAudioMeter_, 2, 1);
+
+    primaryAudioLevelLabel_ = makeLevelLabel("primaryAudioLevelLabel");
+    audioGrid->addWidget(primaryAudioLevelLabel_, 2, 2);
+
+    microphoneAudioSourceLabel_ = new QLabel("Mic/input: Off", this);
+    microphoneAudioSourceLabel_->setObjectName("microphoneAudioSourceLabel");
+    microphoneAudioSourceLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    audioGrid->addWidget(microphoneAudioSourceLabel_, 3, 0);
+
+    microphoneAudioMeter_ = makeAudioMeter("microphoneAudioMeter");
+    audioGrid->addWidget(microphoneAudioMeter_, 3, 1);
+
+    microphoneAudioLevelLabel_ = makeLevelLabel("microphoneAudioLevelLabel");
+    audioGrid->addWidget(microphoneAudioLevelLabel_, 3, 2);
+
+    audioGrid->setColumnStretch(1, 1);
+    layout->addLayout(audioGrid);
 
     // Share link
     shareLabel_ = new QLabel("", this);
@@ -1205,6 +1430,7 @@ void MainWindow::setupUI() {
     statsPanel_ = new StatsPanel(this);
     statsPanel_->setVisible(false);
     layout->addWidget(statsPanel_);
+    resetOperatorHealthUi();
 
     auto *footerLayout = new QHBoxLayout();
     footerLayout->addStretch();
@@ -1615,12 +1841,7 @@ void MainWindow::onGoLiveClicked() {
                     self->statsPanel_->setVisible(false);
                     self->statsPanel_->clear();
                 }
-                if (self->audioMeter_) {
-                    self->audioMeter_->setValue(0);
-                }
-                if (self->audioLevelLabel_) {
-                    self->audioLevelLabel_->setText("-inf dB");
-                }
+                self->resetOperatorHealthUi();
                 if (self->encoderStatusLabel_) {
                     self->encoderStatusLabel_->setText("Active Encoder: (not streaming)");
                     self->encoderStatusLabel_->setStyleSheet(
@@ -1688,6 +1909,11 @@ void MainWindow::onGoLiveClicked() {
         const QString microphoneDeviceId = microphoneDeviceSelect_
             ? microphoneDeviceSelect_->currentData().toString()
             : QString();
+        const float primaryAudioGain =
+            static_cast<float>(primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100) / 100.0f;
+        const float microphoneAudioGain =
+            static_cast<float>(microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100) / 100.0f;
+        const bool audioLimiterEnabled = audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
         if (encoderMode == "nvenc") {
             config.preferredHardware = versus::video::HardwareEncoder::NVENC;
@@ -1703,10 +1929,6 @@ void MainWindow::onGoLiveClicked() {
         } else {
             config.preferredHardware = versus::video::HardwareEncoder::NVENC;
         }
-        if (codecRequiresFfmpegPath(config.codec)) {
-            config.forceFfmpegNvenc = true;
-        }
-
         spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={}",
                      config.width,
                      config.height,
@@ -1771,7 +1993,19 @@ void MainWindow::onGoLiveClicked() {
 
         QPointer<MainWindow> self(this);
         auto *core = core_;
-        startFuture_ = QtConcurrent::run([self, core, startOpId, selectedWindowId, config, options, encoderMode, audioSourceValue, includeMicrophone, microphoneDeviceId]() {
+        startFuture_ = QtConcurrent::run([self,
+                                           core,
+                                           startOpId,
+                                           selectedWindowId,
+                                           config,
+                                           options,
+                                           encoderMode,
+                                           audioSourceValue,
+                                           includeMicrophone,
+                                           microphoneDeviceId,
+                                           primaryAudioGain,
+                                           microphoneAudioGain,
+                                           audioLimiterEnabled]() {
             bool started = false;
             QString failureStatus;
 
@@ -1780,6 +2014,7 @@ void MainWindow::onGoLiveClicked() {
             core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
             core->setIncludeMicrophone(includeMicrophone);
             core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
+            core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
             if (!core->startCapture(selectedWindowId)) {
                 failureStatus = "Failed to start capture";
@@ -2034,6 +2269,7 @@ void MainWindow::onStatsTimer() {
     if (core_ && isLive_) {
         StreamStats stats;
         const auto metrics = core_->getStreamMetrics();
+        const auto health = core_->getConnectionHealth();
         stats.videoBitrate = metrics.videoBitrateKbps > 0.0 ? metrics.videoBitrateKbps : selectedBitrateKbps();
         stats.audioBitrate = metrics.audioBitrateKbps > 0.0 ? metrics.audioBitrateKbps : 0.0;
         stats.frameRate = metrics.frameRate > 0.0 ? metrics.frameRate : fpsSelect_->currentData().toInt();
@@ -2054,34 +2290,31 @@ void MainWindow::onStatsTimer() {
         stats.rtt = 0;
 
         updateStats(stats);
-
-        const float rms = core_->getAudioLevelRms();
-        const float peak = core_->getAudioPeak();
-        double db = (rms > 1.0e-6f) ? (20.0 * std::log10(static_cast<double>(rms))) : -90.0;
-        db = std::clamp(db, -90.0, 0.0);
-        int meterPct = static_cast<int>(std::round(((db + 60.0) / 60.0) * 100.0));
-        meterPct = std::clamp(meterPct, 0, 100);
-        meterPct = std::max(meterPct, static_cast<int>(std::round(peak * 100.0f)));
-        audioMeter_->setValue(meterPct);
-
-        if (db <= -89.0) {
-            audioLevelLabel_->setText("-inf dB");
-        } else {
-            audioLevelLabel_->setText(QString("%1 dB").arg(db, 0, 'f', 1));
+        updateOperatorHealthUi(health);
+        if (primaryAudioSourceLabel_) {
+            primaryAudioSourceLabel_->setText(audioSourceSummaryText());
+        }
+        if (microphoneAudioSourceLabel_) {
+            microphoneAudioSourceLabel_->setText(microphoneSourceSummaryText());
         }
 
-        QString meterColor = COLOR_ACCENT;
-        if (meterPct >= 85) {
-            meterColor = COLOR_RED;
-        } else if (meterPct >= 65) {
-            meterColor = COLOR_YELLOW;
-        }
-        audioMeter_->setStyleSheet(QString(
-            "QProgressBar { border: 1px solid #2f2f47; border-radius: 4px; background: #0d0d16; }"
-            "QProgressBar::chunk { background-color: %1; border-radius: 3px; }").arg(meterColor));
+        updateAudioMeter(audioMeter_, audioLevelLabel_, core_->getAudioLevelRms(), core_->getAudioPeak());
+        updateAudioMeter(
+            primaryAudioMeter_,
+            primaryAudioLevelLabel_,
+            core_->getPrimaryAudioLevelRms(),
+            core_->getPrimaryAudioPeak());
+        const bool showAdditionalMicLevel =
+            includeMicrophoneCheck_ &&
+            includeMicrophoneCheck_->isChecked() &&
+            (!audioSourceSelect_ || audioSourceSelect_->currentData().toString() != QStringLiteral("default-microphone"));
+        updateAudioMeter(
+            microphoneAudioMeter_,
+            microphoneAudioLevelLabel_,
+            showAdditionalMicLevel ? core_->getAdditionalAudioLevelRms() : 0.0f,
+            showAdditionalMicLevel ? core_->getAdditionalAudioPeak() : 0.0f);
     } else {
-        audioMeter_->setValue(0);
-        audioLevelLabel_->setText("-inf dB");
+        resetOperatorHealthUi();
     }
 }
 
@@ -2103,17 +2336,9 @@ void MainWindow::syncCodecUiState() {
     }
 
     const versus::video::VideoCodec selectedCodec = codecFromUiValue(codecSelect_->currentData().toString());
-    const bool requiresFfmpeg = codecRequiresFfmpegPath(selectedCodec);
-    if (requiresFfmpeg && encoderSelect_->currentData().toString() != "ffmpeg_nvenc") {
-        const int ffmpegIndex = encoderSelect_->findData("ffmpeg_nvenc");
-        if (ffmpegIndex >= 0) {
-            QSignalBlocker blocker(encoderSelect_);
-            encoderSelect_->setCurrentIndex(ffmpegIndex);
-        }
-    }
-
+    const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
-    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || requiresFfmpeg;
+    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || usesExternalFfmpeg;
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(enableFfmpegFields);
     }
@@ -2144,6 +2369,136 @@ int MainWindow::selectedBitrateKbps() const {
     return customBitrateSpin_->value();
 }
 
+QString MainWindow::audioSourceSummaryText() const {
+    if (!audioSourceSelect_) {
+        return QStringLiteral("Primary: -");
+    }
+    const QString text = audioSourceSelect_->currentText().trimmed();
+    const int gain = primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100;
+    return QStringLiteral("Primary: %1 (%2%)").arg(text.isEmpty() ? QStringLiteral("-") : text).arg(gain);
+}
+
+QString MainWindow::microphoneSourceSummaryText() const {
+    const QString primarySource = audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString();
+    if (primarySource == QStringLiteral("default-microphone")) {
+        return QStringLiteral("Mic/input: Primary source");
+    }
+    if (!includeMicrophoneCheck_ || !includeMicrophoneCheck_->isChecked()) {
+        return QStringLiteral("Mic/input: Off");
+    }
+    const QString text = microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentText().trimmed() : QString();
+    const int gain = microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100;
+    return QStringLiteral("Mic/input: %1 (%2%)")
+        .arg(text.isEmpty() ? QStringLiteral("Windows default") : text)
+        .arg(gain);
+}
+
+void MainWindow::updateAudioMeter(QProgressBar *meter, QLabel *label, float rms, float peak) {
+    if (!meter || !label) {
+        return;
+    }
+
+    double db = (rms > 1.0e-6f) ? (20.0 * std::log10(static_cast<double>(rms))) : -90.0;
+    db = std::clamp(db, -90.0, 0.0);
+    int meterPct = static_cast<int>(std::round(((db + 60.0) / 60.0) * 100.0));
+    meterPct = std::clamp(meterPct, 0, 100);
+    meterPct = std::max(meterPct, static_cast<int>(std::round(std::clamp(peak, 0.0f, 1.0f) * 100.0f)));
+    meter->setValue(meterPct);
+
+    if (db <= -89.0) {
+        label->setText("-inf dB");
+    } else {
+        label->setText(QString("%1 dB").arg(db, 0, 'f', 1));
+    }
+
+    QString meterColor = COLOR_ACCENT;
+    if (meterPct >= 85) {
+        meterColor = COLOR_RED;
+    } else if (meterPct >= 65) {
+        meterColor = COLOR_YELLOW;
+    }
+    meter->setStyleSheet(QString(
+        "QProgressBar { border: 1px solid #2f4254; border-radius: 4px; background: #0d1620; }"
+        "QProgressBar::chunk { background-color: %1; border-radius: 3px; }").arg(meterColor));
+}
+
+void MainWindow::resetOperatorHealthUi() {
+    if (connectionHealthLabel_) {
+        connectionHealthLabel_->setText("ICE: - | Candidates: - | Peers: 0");
+        connectionHealthLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    }
+    if (connectionMediaLabel_) {
+        connectionMediaLabel_->setText("Codec: - | FPS: - | Resolution: - | Bitrate: -");
+        connectionMediaLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    }
+    if (connectionIssueLabel_) {
+        connectionIssueLabel_->setText("Drops/encode/video/audio send: 0/0/0/0 | Last disconnect: none");
+        connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    }
+
+    if (primaryAudioSourceLabel_) {
+        primaryAudioSourceLabel_->setText(audioSourceSummaryText());
+    }
+    if (microphoneAudioSourceLabel_) {
+        microphoneAudioSourceLabel_->setText(microphoneSourceSummaryText());
+    }
+
+    updateAudioMeter(audioMeter_, audioLevelLabel_, 0.0f, 0.0f);
+    updateAudioMeter(primaryAudioMeter_, primaryAudioLevelLabel_, 0.0f, 0.0f);
+    updateAudioMeter(microphoneAudioMeter_, microphoneAudioLevelLabel_, 0.0f, 0.0f);
+}
+
+void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &health) {
+    const QString iceMode = QString::fromStdString(health.iceMode.empty() ? std::string("-") : health.iceMode);
+    const QString candidatePath = QString::fromStdString(
+        health.candidatePath.empty() ? std::string("-") : health.candidatePath);
+
+    if (connectionHealthLabel_) {
+        connectionHealthLabel_->setText(QString("ICE: %1 | Candidates: %2 | Peers: %3 (%4 HQ / %5 LQ, V%6/A%7)")
+            .arg(iceMode)
+            .arg(candidatePath)
+            .arg(health.peerCount)
+            .arg(health.hqPeerCount)
+            .arg(health.lqPeerCount)
+            .arg(health.activeVideoPeers)
+            .arg(health.activeAudioPeers));
+        const bool relayPath = candidatePath.contains("Relay", Qt::CaseInsensitive);
+        connectionHealthLabel_->setStyleSheet(QString("color: %1;").arg(relayPath ? COLOR_YELLOW : COLOR_TEXT_DIM));
+    }
+
+    if (connectionMediaLabel_) {
+        const QString codec = QString::fromStdString(health.codec.empty() ? std::string("-") : health.codec);
+        const QString resolution = (health.width > 0 && health.height > 0)
+            ? QString("%1x%2").arg(health.width).arg(health.height)
+            : QStringLiteral("-");
+        connectionMediaLabel_->setText(QString("Codec: %1 | FPS: %2 | Sent: %3 | Bitrate: %4 kbps video / %5 kbps audio")
+            .arg(codec)
+            .arg(health.frameRate, 0, 'f', 1)
+            .arg(resolution)
+            .arg(health.videoBitrateKbps, 0, 'f', 0)
+            .arg(health.audioBitrateKbps, 0, 'f', 0));
+        connectionMediaLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    }
+
+    if (connectionIssueLabel_) {
+        const QString lastDisconnect = health.lastPeerDisconnectReason.empty()
+            ? QStringLiteral("none")
+            : QString::fromStdString(health.lastPeerDisconnectReason);
+        connectionIssueLabel_->setText(QString("Drops/encode/video/audio send: %1 (%2/s) / %3 / %4 / %5 | Last disconnect: %6")
+            .arg(static_cast<qulonglong>(health.videoFramesDropped))
+            .arg(health.droppedFrameRate, 0, 'f', 1)
+            .arg(static_cast<qulonglong>(health.videoEncodeFailures))
+            .arg(static_cast<qulonglong>(health.videoSendFailures))
+            .arg(static_cast<qulonglong>(health.audioSendFailures))
+            .arg(lastDisconnect));
+        const bool hasFailures = health.videoFramesDropped > 0 ||
+                                 health.videoEncodeFailures > 0 ||
+                                 health.videoSendFailures > 0 ||
+                                 health.audioSendFailures > 0;
+        connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(hasFailures ? COLOR_YELLOW : COLOR_TEXT_DIM));
+    }
+}
+
 void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (windowListWidget_) {
         windowListWidget_->setEnabled(enabled);
@@ -2154,6 +2509,7 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (passwordInput_) {
         passwordInput_->setEnabled(enabled);
     }
+    setSensitiveRevealEnabled(passwordInput_, passwordRevealButton_, enabled, "password");
     if (advancedToggle_) {
         const bool locked = !enabled;
         advancedToggle_->setEnabled(true);
@@ -2205,12 +2561,26 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (microphoneDeviceSelect_) {
         microphoneDeviceSelect_->setEnabled(enabled);
     }
+    if (primaryAudioGainSpin_) {
+        primaryAudioGainSpin_->setEnabled(enabled);
+    }
+    if (microphoneAudioGainSpin_) {
+        microphoneAudioGainSpin_->setEnabled(enabled);
+    }
+    if (audioLimiterCheck_) {
+        audioLimiterCheck_->setEnabled(enabled);
+    }
     if (remoteControlCheck_) {
         remoteControlCheck_->setEnabled(enabled);
     }
     if (remoteControlTokenInput_) {
         const bool remoteControlEnabled = remoteControlCheck_ && remoteControlCheck_->isChecked();
         remoteControlTokenInput_->setEnabled(enabled && remoteControlEnabled);
+        setSensitiveRevealEnabled(
+            remoteControlTokenInput_,
+            remoteControlTokenRevealButton_,
+            enabled && remoteControlEnabled,
+            "control token");
     }
     if (encoderSelect_) {
         encoderSelect_->setEnabled(enabled);

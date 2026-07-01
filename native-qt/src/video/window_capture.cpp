@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <exception>
 #include <mutex>
 #include <thread>
 
@@ -160,6 +161,32 @@ const WindowInfo *findBestWindowMatch(const std::vector<WindowInfo> &windows, co
 namespace {
 
 constexpr int kFramePoolBufferCount = 4;
+
+struct ScopedOutputDuplicationFrame {
+    IDXGIOutputDuplication *duplication = nullptr;
+    bool active = false;
+
+    ~ScopedOutputDuplicationFrame() {
+        if (active && duplication) {
+            duplication->ReleaseFrame();
+        }
+    }
+
+    void dismiss() { active = false; }
+};
+
+struct ScopedD3DTextureMap {
+    ID3D11DeviceContext *context = nullptr;
+    ID3D11Texture2D *texture = nullptr;
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    bool active = false;
+
+    ~ScopedD3DTextureMap() {
+        if (active && context && texture) {
+            context->Unmap(texture, 0);
+        }
+    }
+};
 
 bool tryParseWindowHandle(const std::string &windowId, HWND &outHwnd) {
     if (windowId.empty()) {
@@ -573,6 +600,20 @@ class WindowCapture::Impl {
     }
 
     void onFrameArrived(winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const &sender) {
+        try {
+            onFrameArrivedUnsafe(sender);
+        } catch (const winrt::hresult_error &e) {
+            spdlog::warn("[Capture::Impl] Frame-arrived processing failed hr=0x{:08x} msg={}",
+                         static_cast<unsigned int>(e.code()),
+                         winrt::to_string(e.message()));
+        } catch (const std::exception &e) {
+            spdlog::warn("[Capture::Impl] Frame-arrived processing failed: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[Capture::Impl] Frame-arrived processing failed with unknown exception");
+        }
+    }
+
+    void onFrameArrivedUnsafe(winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const &sender) {
         if (!capturing_.load(std::memory_order_acquire)) {
             return;
         }
@@ -615,7 +656,12 @@ class WindowCapture::Impl {
         auto surface = frame.Surface();
         auto access = surface.as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
         winrt::com_ptr<ID3D11Texture2D> texture;
-        winrt::check_hresult(access->GetInterface(winrt::guid_of<ID3D11Texture2D>(), texture.put_void()));
+        const HRESULT hr = access->GetInterface(winrt::guid_of<ID3D11Texture2D>(), texture.put_void());
+        if (FAILED(hr) || !texture) {
+            spdlog::warn("[Capture::Impl] Failed to query capture frame texture hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
+            return;
+        }
         int64_t timestamp = frame.SystemRelativeTime().count();
         processFrame(texture.get(), timestamp, contentWidth, contentHeight, 0, 0);
     }
@@ -634,8 +680,14 @@ class WindowCapture::Impl {
                 capturing_.store(false, std::memory_order_release);
                 break;
             }
+            ScopedOutputDuplicationFrame releaseFrame{outputDuplication_.get(), true};
             winrt::com_ptr<ID3D11Texture2D> texture;
-            resource->QueryInterface(texture.put());
+            hr = resource->QueryInterface(texture.put());
+            if (FAILED(hr) || !texture) {
+                spdlog::warn("[Capture::Impl] Desktop duplication frame was not a texture hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                continue;
+            }
             D3D11_TEXTURE2D_DESC desc;
             texture->GetDesc(&desc);
             int sourceX = 0;
@@ -647,7 +699,6 @@ class WindowCapture::Impl {
                 if (!IsWindow(targetHwnd_) || !GetWindowRect(targetHwnd_, &windowRect)) {
                     spdlog::warn("[Capture::Impl] Target window closed during desktop duplication capture");
                     capturing_.store(false, std::memory_order_release);
-                    outputDuplication_->ReleaseFrame();
                     break;
                 }
 
@@ -664,7 +715,6 @@ class WindowCapture::Impl {
                         spdlog::warn("[Capture::Impl] Target window is outside duplicated output; waiting for it to return");
                         desktopCropWarningLogged_ = true;
                     }
-                    outputDuplication_->ReleaseFrame();
                     continue;
                 }
                 desktopCropWarningLogged_ = false;
@@ -679,7 +729,6 @@ class WindowCapture::Impl {
                          contentHeight,
                          sourceX,
                          sourceY);
-            outputDuplication_->ReleaseFrame();
         }
     }
 
@@ -689,12 +738,30 @@ class WindowCapture::Impl {
                       int contentHeight,
                       int sourceX,
                       int sourceY) {
+        try {
+            processFrameUnsafe(texture, timestamp, contentWidth, contentHeight, sourceX, sourceY);
+        } catch (const std::exception &e) {
+            spdlog::warn("[Capture::Impl] Frame copy failed: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[Capture::Impl] Frame copy failed with unknown exception");
+        }
+    }
+
+    void processFrameUnsafe(ID3D11Texture2D *texture,
+                            int64_t timestamp,
+                            int contentWidth,
+                            int contentHeight,
+                            int sourceX,
+                            int sourceY) {
         if (!texture) {
             return;
         }
         std::lock_guard<std::mutex> processLock(processFrameMutex_);
         D3D11_TEXTURE2D_DESC desc;
         texture->GetDesc(&desc);
+        if (desc.Width == 0 || desc.Height == 0) {
+            return;
+        }
 
         if (!stagingTexture_ || stagingWidth_ != desc.Width || stagingHeight_ != desc.Height) {
             D3D11_TEXTURE2D_DESC stagingDesc = desc;
@@ -710,10 +777,14 @@ class WindowCapture::Impl {
         }
 
         context_->CopyResource(stagingTexture_.get(), texture);
-        D3D11_MAPPED_SUBRESOURCE mapped;
-        if (FAILED(context_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+        ScopedD3DTextureMap mapped{context_.get(), stagingTexture_.get()};
+        const HRESULT mapHr = context_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped.mapped);
+        if (FAILED(mapHr)) {
+            spdlog::warn("[Capture::Impl] Failed to map staging texture hr=0x{:08x}",
+                         static_cast<unsigned int>(mapHr));
             return;
         }
+        mapped.active = true;
 
         const int maxSourceX = std::max(0, static_cast<int>(desc.Width) - 1);
         const int maxSourceY = std::max(0, static_cast<int>(desc.Height) - 1);
@@ -728,14 +799,13 @@ class WindowCapture::Impl {
         frame.format = CapturedFrame::Format::BGRA;
         size_t dataSize = static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height);
         frame.data.resize(dataSize);
-        const auto *mappedBytes = static_cast<const uint8_t *>(mapped.pData);
+        const auto *mappedBytes = static_cast<const uint8_t *>(mapped.mapped.pData);
         for (int y = 0; y < frame.height; ++y) {
-            const uint8_t *srcRow = mappedBytes + static_cast<size_t>(sourceY + y) * mapped.RowPitch +
+            const uint8_t *srcRow = mappedBytes + static_cast<size_t>(sourceY + y) * mapped.mapped.RowPitch +
                                     static_cast<size_t>(sourceX) * 4;
             uint8_t *dstRow = frame.data.data() + static_cast<size_t>(y) * frame.stride;
             std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
         }
-        context_->Unmap(stagingTexture_.get(), 0);
 
         {
             std::lock_guard<std::mutex> lock(frameMutex_);

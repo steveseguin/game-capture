@@ -73,6 +73,7 @@ class WebRtcClient {
     bool initialize(const PeerConfig &config);
     void shutdown();
     bool resetPeerConnection(bool initialVideo = false, bool initialAudio = false, bool initialAlpha = false);
+    void setVideoCodec(PeerConfig::VideoCodec codec, bool enableAlphaTrack = false);
 
     bool setRemoteDescription(const std::string &sdp, const std::string &type);
     std::string createOffer();

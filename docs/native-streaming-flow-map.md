@@ -2,11 +2,11 @@
 
 Status: living architecture review artifact for Codex-assisted review.
 
-Last reviewed: 2026-06-30.
+Last reviewed: 2026-07-01.
 
 Primary scope: native Qt publisher workflow for signaling, WebRTC peer sessions, video tracks, audio tracks, encoder state, room routing, recovery, and firewall reachability.
 
-Reviewed change window: commits since 2026-05-28, pending 0.2.41 signaling/media validation fixes, and the adjacent late-May room recovery/microphone work because it directly affects peer-session and media-track behavior.
+Reviewed change window: commits since 2026-05-28, pending 0.2.42 signaling/media validation fixes, and the adjacent late-May room recovery/microphone work because it directly affects peer-session and media-track behavior.
 
 Recent commits in scope:
 - `281c322` - Warn portable users about firewall rule.
@@ -46,7 +46,7 @@ These contracts describe message shapes and ordering expectations that the nativ
 - Remote endpoint stop uses data-channel `hangup: true`. This is distinct from `bye`: `hangup` stops the publisher/output endpoint after director or `remote` token authorization, while `bye` only cleans up the sending peer session. Unauthorized `hangup` returns VDO-shaped `rejected: "hangup"`.
 - Peer recovery messages include WebSocket `iceRestartRequest` and data-channel `iceRestartRequest`. Both are unprivileged transport recovery requests for an existing peer and are separate from privileged Control Center `refreshConnection`.
 - Control Center `refreshConnection` and `refreshAll` are publisher-wide recovery controls in official VDO.Ninja: after authorization, the recipient restarts every current `pcs`/`rpcs` peer connection. Native mirrors that by taking a snapshot of current PeerSessions and rebuilding each underlying PeerConnection; settings/device readback from `refreshAll` remains scoped to the requesting control peer.
-- `optimizedBitrate` is a VDO visibility/optimization hint, not the same thing as `targetBitrate`. Official VDO stores it as a per-peer optimized cap and applies it only through the visibility-aware bitrate limiting path. The adjacent OBS plugin recognizes/extracts it but does not apply full bitrate/resolution scaling to already-encoded OBS media. Native Game Capture must not map `optimizedBitrate` directly to global encoder bitrate; implementing it later requires a visibility-state model and a clear per-peer route policy.
+- `optimizedBitrate` is a VDO visibility/optimization hint, not the same thing as `targetBitrate`. Official VDO stores it as a per-peer optimized cap and applies it through the bitrate limiting path. Native Game Capture maps it to the existing per-peer route bitrate cap, including `0` route-disable and false/unlock behavior, and must not map it directly to global encoder bitrate.
 - Native libdatachannel/libjuice does not expose browser-style in-place `restartIce()` after candidate gathering begins. Recovery preserves the app-level `PeerSession` UUID/session but rebuilds the underlying PeerConnection, restores desired media tracks, and sends a new offer from that preserved session.
 - Publisher-to-viewer status uses existing VDO message families: `info`, `miniInfo`, `remoteStats`, `pong`, `videoMuted`, `muteState`, and `rejected`. Custom `ack` envelopes are not part of the reviewed VDO message vocabulary.
 - Native `remoteStats` is a publisher-aggregate compatibility payload keyed by the native stream id. Unlike a browser VDO session with multiple peer connections, it does not enumerate other publisher peers; `info` and `miniInfo` remain the peer-route-specific status payloads.
@@ -81,6 +81,9 @@ Comparison notes from the current review:
 - Confirmed lifecycle invariant preserved in this review: initial offer creation/send failure does not leave a healthy-looking `PeerSession` behind. `sendPeerOffer` clears dispatch state before offering and removes the peer on create or signaling-send failure; post-send map mismatch is treated as an already-removed peer. This protects max-viewer accounting and empty-session UUID lookup from stale bootstrap sessions.
 - Confirmed settings-surface invariant preserved in this review: native `videoOptions` only advertises `width`, `height`, and `frameRate`, matching the supported `requestVideoHack` key set. No browser-only camera setting is advertised without a corresponding native mutation path.
 - Confirmed direct-volume mapping preserved in this review: native top-level `volume` remains director-only. Official `action:"volume"` API calls are converted by the VDO page into top-level `volume`, while scene/direct volume action messages are local playback controls and are not native publisher outbound-audio commands.
+- Confirmed operator-health behavior fixed in this review: live bitrate/FPS readback is recent-window/smoothed rather than a lifetime average, and capture-frame overwrite drops are counted when the encode thread falls behind.
+- Confirmed ICE reporting boundary in this review: native can report local/remote candidate evidence, including relay candidates, but it does not claim an exact selected ICE pair because the current libdatachannel/libjuice surface in use does not expose browser-style selected-candidate-pair stats.
+- Confirmed mixed-audio robustness fixed in this review: primary game/app audio and additional microphone audio now have bounded per-source gain controls and a mixed-output soft limiter before Opus encoding.
 
 Current official reference anchors reviewed on 2026-06-30:
 - Settings-panel open paths send `getAudioSettings` and `getVideoSettings`; native must answer only from director-authorized peers with `audioOptions`, `videoOptions`, and/or `mediaDevices`.
@@ -110,7 +113,7 @@ New or clarified information from the plugin notes:
 - Publisher offer requests are not only `request:"offerSDP"`. The adjacent plugin accepts `offerSDP`, `sendoffer`, `play`, and stream-id-bearing `joinroom` as offer-request triggers. Native mirrors that parser contract while keeping plain `joinroom` as room admission, not peer creation.
 - The adjacent plugin also tracks incremental room membership notifications (`someonejoined` with a stream id, `videoAddedToRoom`, and `videoRemovedFromRoom`). Those are useful for OBS/native viewing sources that maintain a room-member snapshot. Game Capture's publisher path does not currently expose stream-added/removed callbacks, so these messages are documented as known upstream room-state shapes rather than peer-session creation or cleanup triggers.
 - Server alert/error shapes include `request:"alert"`, `request:"error"`, and bare `alert`. Native routes all three to the same alert callback so stream-id conflicts and room-capacity errors surface through the existing runtime-event path.
-- `optimizedBitrate` is extracted by the plugin as official media-control vocabulary, but the plugin's publisher path only applies the safe send-active subset (`bitrate` and `audioBitrate`) to already-encoded media. This reinforces the native rule that `optimizedBitrate` should stay advisory unless native gains compatible visibility-aware per-peer routing.
+- `optimizedBitrate` is extracted by the plugin as official media-control vocabulary, but the plugin's publisher path only applies the safe send-active subset (`bitrate` and `audioBitrate`) to already-encoded media. Native Game Capture has a per-peer route owner, so it applies `optimizedBitrate` there while keeping global encoder bitrate under `targetBitrate`.
 - `hangup: true` is an endpoint/output stop command. It is not a peer cleanup message and must not be grouped with unsupported browser-only controls.
 - `bye` remains peer cleanup only, and bound data-channel `request:"cleanup"` is also peer cleanup. In the OBS plugin this removes the peer/output relationship; in native it removes the bound PeerSession or the signaling-resolved PeerSession.
 - OBS/tally source state is official when carried as `obsState` with `visibility`, `sourceActive`, `streaming`, `recording`, `virtualcam`, and `details`. `sceneDisplay` and `sceneMute` are related scene-state shims. These are OBS/browser-source state reports, not native Game Capture transport controls.
@@ -123,7 +126,7 @@ New or clarified information from the plugin notes:
 Native alignment after this pass:
 - WebSocket/control parser normalization now accepts `transferred` and bare `listing` arrays as listings, and accepts `sendoffer`, `play`, and stream-id-bearing `joinroom` as offer-request aliases.
 - Plain room `joinroom` without a stream id remains non-offer signaling and is ignored by the publisher peer-creation path.
-- `optimizedBitrate` is documented as recognized VDO vocabulary but remains a no-op in native. Native continues to use `bitrate`/`audioBitrate` for peer route enable/rate state and `targetBitrate`/`targetAudioBitrate` for sender-target requests; it does not silently reinterpret `optimizedBitrate` as either family.
+- `optimizedBitrate` is now recognized VDO vocabulary with a native owner. Native applies it as a per-peer video route cap/disable value, continues to use `bitrate`/`audioBitrate` for explicit peer route enable/rate state, and continues to reserve `targetBitrate`/`targetAudioBitrate` for sender-target requests.
 - Authorized `hangup` now stops the native publisher endpoint through the normal stop workflow. Unauthorized `hangup` returns `rejected: "hangup"`.
 - Native data-channel handling is already field-driven for actionable publisher controls. In one parsed message it can echo `cbid`, update peer metadata, answer `ping`, apply authorized controls, set pending keyframe state from `keyframe` or compatibility `requestKeyframe`, process rate/resolution controls, and answer `requestStats` / `requestStatsContinuous`; it should not be refactored into a first-match-only command switch.
 - Metadata-only `info` refresh is a passive peer-state update. It may send a fresh `info` response for room peers, but it must not exit the data-channel handler before other top-level fields in the same message are evaluated.
@@ -170,6 +173,7 @@ Flow map terms:
 | OpusEncoder | Opus encoder state | mixed PCM | encoded audio packets |
 | DualStreamPolicy | room/direct viewer route decisions | peer role/init/media flags | HQ, LQ, or no media route |
 | Installer and MainWindow firewall check | installed firewall rule and portable warning | current executable path | inbound UDP allow rule or warning |
+| Diagnostics export | read-only snapshot of app, signaling, peer, media, and candidate state | VersusApp state owners | JSON diagnostics file on exit or headless timeout |
 
 ## State Inventory
 
@@ -213,6 +217,11 @@ Signaling state:
 - pending ICE candidates.
 - renegotiation queued.
 - candidate type last observed.
+- offer count and recovery-offer count.
+- accepted answer count and last answer source.
+- local candidates sent and remote candidates applied.
+- last connection state and last state-change timestamp.
+- last removal reason and bounded peer timeline.
 
 Room/control state:
 - room mode flag.
@@ -252,6 +261,13 @@ Snapshot state:
 - Snapshot includes current encoder config, active HQ dimensions, encoder name, codec name, hardware flag, and LQ encoder state.
 - Snapshot reads must be short and must not send network messages while holding the video lock.
 
+Metrics state:
+- Captured frames count every WindowCapture callback.
+- Sent frames count successful encoded video packet fanout events.
+- Dropped frames count capture callbacks that overwrite a frame already waiting for the encode thread.
+- Operator health and diagnostics expose recent/smoothed video bitrate, audio bitrate, FPS, dropped-frame rate, and total drop/encode/send counters.
+- Candidate path health is candidate-observation evidence, not a browser `selectedCandidatePair` equivalent.
+
 ### Audio State
 
 Owner: VersusApp owns source selection and routing. Audio capture cores own device/process capture. OpusEncoder owns encode state.
@@ -263,6 +279,32 @@ Core states:
 - AdditionalMicActive: secondary mic is captured and buffered.
 - MixPrimaryAndMic: primary chunks are mixed with available mic samples.
 - MicStandaloneFallback: additional mic can produce audio if primary audio is inactive.
+
+Mix controls:
+- Primary gain applies to the selected game/app/output/microphone source after normalization and before source metering/mixing.
+- Additional microphone gain applies after normalization and before buffering or standalone fallback encode.
+- The mixed-output limiter runs after primary+mic summing and before mixed-output metering/Opus encode.
+- Gain is bounded to 0% through 200%; limiter defaults on for public-user safety.
+
+### Diagnostics State
+
+Owner: VersusApp exposes a read-only JSON snapshot; individual component owners remain authoritative for their state.
+
+Triggers:
+- `--diagnostics-out=<path>` writes diagnostics during headless timeout and again on process exit.
+- GUI mode also writes on process exit when the same argument is provided.
+
+Snapshot boundaries:
+- Diagnostics must not mutate signaling, peer, capture, encoder, or audio state.
+- Password and remote token values are not written; only password enabled/disabled and token length are exported.
+- Pending remote ICE queues are summarized by key and count rather than dumping every queued candidate.
+- Peer timelines are bounded and capture state transitions, offer/recovery reasons, candidate flow, answer application, rejected controls, data-channel open/close, and removal reasons.
+- Diagnostics include recent health metrics plus total captured/sent/dropped frame counts, encode/send failure counts, audio send failures, and audio mix gain/limiter settings.
+
+Review use:
+- Use diagnostics JSON with logs to explain slot churn, repeated reconnects, missing answers, stale peers, unexpected room roles, per-peer bitrate disables, codec fallback, and Control Center rejection behavior.
+- If a live VDO.Ninja issue is hard to reproduce, run a headless stress/E2E workflow with `--diagnostics-out` so final app state and peer-route state are preserved.
+- Diagnostics are app-side evidence, not an official VDO protocol message. Do not send diagnostics over the VDO data channel unless a future official field owner is identified.
 
 ### Signaling State
 
@@ -293,6 +335,7 @@ These are the important concurrency boundaries. Keep this section current when a
 | Latest captured frame | latestVideoFrameMutex | replace/read latest frame cache | encode, signaling, peer mutation |
 | Additional audio buffer | additionalAudioMutex | append/read/mix mic samples | Opus encode, peer sends |
 | Audio encode | audioEncodeMutex | Opus encode and audio PTS update | capture-device calls |
+| Recent metrics window | metricsWindowMutex | update/read smoothed bitrate/FPS/drop rates | network sends, encode, peer mutation |
 | Signaling transport operations | signalingOpsMutex | connect, disconnect, join, publish, send offer/candidate | peer map mutation after taking other locks |
 | Per-peer media plan | PeerSession.mediaPlanMutex | ensure one media-plan renegotiation path per peer | global peer cleanup |
 | Runtime event callback | runtimeEventMutex | copy callback | invoke callback while holding lock |
@@ -328,6 +371,7 @@ Candidate routing rule:
 - If UUID/session resolve to the current PeerSession, the candidate enters that peer's WebRtcClient.
 - If UUID is present but no matching PeerSession exists yet, VersusApp queues the candidate for up to 15s, capped at 100 candidates per UUID/session key.
 - Queued pre-peer candidates drain only after that peer's answer has been accepted. Empty-session queued candidates drain only when UUID lookup is unambiguous.
+- Singular candidate payloads without a non-empty ICE candidate line are rejected. Bundled candidate arrays skip non-object or empty candidate entries and only parse as a candidate message when at least one valid candidate remains.
 - Candidates with no UUID cannot be safely associated with a future WebSocket PeerSession and are ignored.
 
 VdoSignaling outgoing cases:
@@ -353,7 +397,7 @@ Current native dispatch order:
 - Terminal peer recovery: data-channel `iceRestartRequest` rebuilds the bound PeerConnection, sends a recovery offer, and returns.
 - Peer metadata and init: `info`, `init`, inline role/media flags, and direct-viewer fallback update peer role, media flags, alpha capability, and system metadata.
 - Privileged endpoint/control branches: `hangup`, settings readback, device refresh/change, `requestVideoHack`, `refreshConnection`, and `refreshAll` check director/remote-token guards according to the compatibility contract.
-- Routed target-control guard: `requestAs` plus `targetBitrate`, `targetAudioBitrate`, or `requestResolution` is handled before those fields reach normal runtime control parsing. Native requires a requester `UUID`, director or `remote` authorization, and a `requestAs` target matching its stream-id `remoteStats` key; mismatches return without applying global encoder/audio changes.
+- Routed target-control guard: `requestAs` plus `targetBitrate`, `optimizedBitrate`, `targetAudioBitrate`, or `requestResolution` is handled before those fields reach normal runtime control parsing. Native requires a requester `UUID`, director or `remote` authorization, and a `requestAs` target matching its stream-id `remoteStats` key; mismatches return without applying global encoder/audio changes.
 - Recognized unsupported browser/OBS controls emit VDO-shaped `rejected` responses without inventing native behavior.
 - Field-fanout publisher controls: keyframe, director media mute/volume, bitrate/audio bitrate, target bitrate/audio target, generic resolution, continuous stats, and immediate stats are evaluated independently unless an earlier terminal branch returned.
 
@@ -363,9 +407,9 @@ JSON message families:
 - Keyframe request: sets global keyframe state.
 - Peer lifecycle and transport recovery: `bye` removes the bound peer session immediately; `iceRestartRequest` rebuilds the underlying PeerConnection inside the existing bound PeerSession, restores desired media tracks, sends a recovery offer with fresh ICE credentials, and requests a keyframe.
 - Director media controls: `remoteVideoMuted` and audio `volume`; require director role.
-- Peer rate limits: `bitrate` and `audioBitrate` requested video/audio bitrate updates; zero disables a media send route but does not set VDO mute state.
+- Peer rate limits: `bitrate`, `optimizedBitrate`, and `audioBitrate` requested video/audio bitrate updates; zero disables a media send route but does not set VDO mute state. `optimizedBitrate` follows official VDO's per-peer optimized-cap owner rather than changing native global encoder state.
 - Sender target controls: `targetBitrate` and `targetAudioBitrate`; false/unlock clears the target route cap and positive values request a sender target. Zero values are ignored for target controls to match VDO.Ninja's `parseInt(value) || -1` path.
-- Routed sender target controls: `requestAs` wraps `targetBitrate`, `targetAudioBitrate`, and `requestResolution` when the official director/stats UI asks one peer to control another target. Native can only route that wrapper to its own aggregate publisher target, not to arbitrary browser peer UUIDs.
+- Routed sender target controls: `requestAs` wraps `targetBitrate`, `optimizedBitrate`, `targetAudioBitrate`, and `requestResolution` when the official director/stats UI asks one peer to control another target. Native can only route that wrapper to its own aggregate publisher target, not to arbitrary browser peer UUIDs.
 - Runtime geometry controls: object-form `requestResolution` uses VDO scale-bound semantics; string-form resolution and width/height action aliases are native literal-dimension controls. Generic VDO controls require init in room mode but are not director/token-only.
 - Control Center settings readback: director-only `getAudioSettings` returns `audioOptions`; director-only `getVideoSettings` returns `videoOptions`; either authorized request also returns `mediaDevices`.
 - Control Center video settings mutation: `requestVideoHack` requires director role or a valid remote token, supports only native encoder geometry fields `width`, `height`, and `frameRate`, follows VDO's `ctrl` aspect-lock semantics for width/height, and rejects unsupported camera/PTZ/image keys with VDO's `rejected` family after authorization.
@@ -376,6 +420,8 @@ JSON message families:
 - Unsupported browser-only Control Center commands return VDO-shaped `rejected` messages. Native does not try to fake browser features such as advanced WebAudio effects, low-cut filters, solo/private chat volume routing, recording, order/URL/label changes, browser reload, sender scale, PTZ, per-peer `keyframeRate`, WHIP restart, clock/group controls, rotate/mirror controls, connection map requests, or reconnect-peer commands.
 - Stats requests: one-shot or continuous stats/info responses.
 - Unknown or malformed JSON: ignored or logged without escaping the transport callback.
+- Presence-based VDO controls: data-channel `iceRestartRequest`, `hangup`, `refreshMicrophone`, `refreshVideo`, `requestVideoHack`, `refreshConnection`, and `refreshAll` are classified by field presence, matching official VDO's `"field" in msg` branches. WebSocket `iceRestartRequest` is also presence-based. WebSocket `bye` remains truthy-or-`request:"cleanup"` based, while data-channel `bye` remains presence-based, matching the official split documented in the adjacent plugin notes.
+- Extreme numeric JSON: bitrate, volume, resolution, FPS, candidate `sdpMLineIndex`, and boolean-like numeric fields are parsed with bounded integer conversion. Oversized unsigned/signed numbers clamp to native `int` range and non-finite floats fall back to defaults instead of escaping parser callbacks.
 
 Runtime-control contract:
 - Positive `targetBitrate` is approximated as native global encoder state because the native publisher pre-encodes once and routes packets to peers; the peer route state still records the requested VDO target.
@@ -792,7 +838,7 @@ These tables are the compact review model. When the code changes, each affected 
 | Configured | MainWindow and VersusApp | User settings or runtime control commit config | EncoderReady, ReconfigureFailed | Codec/alpha/room constraints are accepted |
 | EncoderReady | VersusApp and VideoEncoder | Encoder initialization succeeds | Active, Recovering, Stopped | Snapshot exposes coherent dimensions, codec, encoder name, and LQ state |
 | Active | Encode thread | Capture frames and active tracks exist | Recovering, Reconfiguring, Stopped | Route policy and keyframe gates choose who receives packets |
-| VideoRouteTargeted | VersusApp | Data channel receives `bitrate` or `targetBitrate` | Active, Reconfiguring, Stopped | `bitrate:0` suppresses that peer's video route without setting VDO mute state; `targetBitrate:false` stores no target cap and restores native configured bitrate after a target cap; positive `targetBitrate` may also update native global encoder bitrate |
+| VideoRouteTargeted | VersusApp | Data channel receives `bitrate`, `optimizedBitrate`, or `targetBitrate` | Active, Reconfiguring, Stopped | `bitrate:0` and `optimizedBitrate:0` suppress that peer's video route without setting VDO mute state; `optimizedBitrate:false` and `targetBitrate:false` clear caps; positive `optimizedBitrate` stays per-peer, while positive `targetBitrate` may also update native global encoder bitrate |
 | Reconfiguring | VersusApp | Runtime bitrate/resolution/fps control | EncoderReady, ReconfigureFailed | Width and height are resolved as a pair before applying |
 | Recovering | VersusApp and VideoEncoder | Encoder send/init failure | EncoderReady, Stopped | Recovery tries current hardware, alternate hardware, then software fallback |
 | Stopped | VersusApp | Stop capture/live | Configured | Encoders and packetizers are released before next capture session |
@@ -1405,6 +1451,32 @@ Resolution: `keyframeRate` is now in native's recognized unsupported-control buc
 
 Validation: local official VDO review confirmed `webrtc.js` stores `keyframeRate` on `session.pcs[UUID]` and schedules `session.forcePLI(UUID)`, so the behavior is per-peer browser transport state. Local `ninja-plugin` notes also classify `keyframeRate` as unsupported unless the native publisher implements that cadence. The shipped-app Control Center workflow passed on stream `codex_keyrate_704631`, including the new `keyframeRate` rejection, object-form VDO resolution scaling, bitrate/audio controls, requestAs routing, recovery offer/answer checks, fresh ICE credentials, data-channel and signaling ICE restart, and peer cleanup paths.
 
+### Finding AL: Presence Controls And Extreme Numeric Payloads Needed VDO-Aligned Handling
+
+Status: fixed in current working tree on 2026-07-01.
+
+Impact: official VDO handles several recovery/control fields through field presence checks, not truthy checks. Native already had several of those flows, but false-valued payloads such as `{iceRestartRequest:false}`, `{refreshVideo:false}`, or `{refreshConnection:false}` could be ignored even though official VDO would enter the same branch. Separately, the signaling parser used direct `int` extraction for candidate `sdpMLineIndex` and boolean-like numeric fields, which meant an extreme JSON number could throw out of parser code instead of being treated as malformed or bounded input.
+
+Why it matters: VDO.Ninja control and recovery messages may be generated by different browser paths, automation, or compatibility layers. A false-valued presence field is still an official branch selector in several cases, and SDP/candidate messages can contain hostile or merely oversized numeric fields. The native publisher should recover, reject, clamp, or ignore without destabilizing the transport callback.
+
+Expected invariant: official presence-based controls remain presence-based; WebSocket `bye` remains truthy-or-cleanup based; per-peer optimized bitrate is not confused with global target bitrate; extreme numeric JSON cannot escape parser callbacks.
+
+Resolution: native now treats data-channel `iceRestartRequest`, `hangup`, `refreshMicrophone`, `refreshVideo`, `requestVideoHack`, `refreshConnection`, and `refreshAll` as field-presence controls, and treats WebSocket `iceRestartRequest` the same way. `optimizedBitrate` is now a per-peer route/rate cap that supports zero route-disable and false/unlock behavior without reconfiguring the global encoder. App and signaling JSON numeric parsing now clamps oversized integer values and ignores non-finite floats through defaults; SDP/candidate string fields are read only when actually strings.
+
+Validation: the Control Center shipped-app workflow passed on stream `codex_extreme_sdp_20260701b`, exercising false-valued `refreshVideo`, false-valued unauthorized `refreshConnection`, false-valued data-channel and signaling `iceRestartRequest`, `optimizedBitrate` apply/unlock, and an oversized VDO `requestResolution` clamp.
+
+### Finding AM: Empty ICE Candidate Payloads Parsed As Valid Candidates
+
+Status: fixed in current working tree on 2026-07-01.
+
+Impact: a signaling payload with a `candidate` object but no actual candidate string, or a bundled `candidates` array containing empty/non-object entries, could still produce parsed candidate entries.
+
+Why it matters: WebRTC expects an ICE candidate line. Treating an empty candidate object as valid can push bad input into the WebRtcClient path and make fuzz/stress failures harder to interpret.
+
+Expected invariant: a candidate message is only valid when at least one non-empty ICE candidate line is present. Malformed entries in bundled candidate arrays are skipped, and the whole message is rejected if nothing valid remains.
+
+Resolution: VdoSignaling now rejects singular empty candidate payloads and filters bundled candidate entries before dispatch. Focused parser torture checks cover empty candidate objects, mixed malformed/valid candidate bundles, malformed descriptions, invalid JSON, non-object payloads, and extreme `sdpMLineIndex` clamping.
+
 ## High-Level Review Checklist For Future Passes
 
 Use this checklist before digging into line-level code.
@@ -1440,6 +1512,7 @@ Use this checklist before digging into line-level code.
 - Does a transform apply equally to HQ, LQ, and alpha output?
 - Can reconnect reuse stable UUID/session identity?
 - Can logs leak password, room secret, or share URL password query values?
+- Does a Release-binary E2E viewer open only after the publisher has emitted its VDO view URL/readiness signal, especially when an experimental codec first falls back to H.264?
 
 ## Source Anchors
 
@@ -1455,5 +1528,7 @@ Use these anchors when refreshing the map:
 - Firewall warning: `native-qt/src/ui/main_window.cpp`
 - Installer firewall rule: `native-qt/installer.nsi`
 - Release Control Center workflow: `native-qt/e2e/control-e2e.js`
+- Release direct-view workflow: `native-qt/e2e/stream-e2e.js`
+- Diagnostics export: `VersusApp::buildDiagnosticsJson`, `VersusApp::writeDiagnosticsJson`, and `--diagnostics-out` in `native-qt/src/main.cpp`
 - Official VDO reference, read only: `C:\Users\steve\Code\vdoninja\main.js`, `C:\Users\steve\Code\vdoninja\webrtc.js`, `C:\Users\steve\Code\vdoninja\lib.js`
 - Adjacent OBS plugin VDO reference, read only: `C:\Users\steve\Code\ninja-plugin\docs\vdoninja-workflow-map.md`, `C:\Users\steve\Code\ninja-plugin\src\vdoninja-output.cpp`

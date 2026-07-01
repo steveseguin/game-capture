@@ -1,5 +1,8 @@
 #include <QtTest/QtTest>
 
+#include <limits>
+#include <vector>
+
 #include "versus/signaling/vdo_signaling.h"
 
 class TestVdoSignaling : public QObject {
@@ -13,6 +16,8 @@ class TestVdoSignaling : public QObject {
     void testParsesOfferRequestAliases();
     void testParsesCleanupAndIceRestartControls();
     void testParsesServerAlertAliases();
+    void testRejectsEmptyCandidatePayloads();
+    void testParserTorturePayloads();
 };
 
 void TestVdoSignaling::testViewUrlEncodesPasswordAndRoom() {
@@ -154,6 +159,62 @@ void TestVdoSignaling::testParsesServerAlertAliases() {
     QVERIFY(signaling.tryParseSignalPayload(R"({"alert":"Stream ID is already in use."})", parsed));
     QVERIFY(parsed.hasAlert);
     QCOMPARE(QString::fromStdString(parsed.alertMessage), QString("Stream ID is already in use."));
+}
+
+void TestVdoSignaling::testRejectsEmptyCandidatePayloads() {
+    versus::signaling::VdoSignaling signaling;
+    versus::signaling::ParsedSignalMessage parsed;
+
+    QVERIFY(!signaling.tryParseSignalPayload(
+        R"({"UUID":"viewer","session":"default","candidate":{"sdpMid":"0","sdpMLineIndex":0}})",
+        parsed));
+    QVERIFY(!parsed.candidates.size());
+
+    QVERIFY(signaling.tryParseSignalPayload(
+        R"({"UUID":"viewer","session":"default","candidates":[
+            "not-a-candidate-object",
+            {"sdpMid":"0","sdpMLineIndex":0},
+            {"candidate":"candidate:1 1 UDP 1 127.0.0.1 9 typ host","sdpMid":"0","sdpMLineIndex":0}
+        ]})",
+        parsed));
+    QCOMPARE(static_cast<int>(parsed.candidates.size()), 1);
+    QCOMPARE(QString::fromStdString(parsed.candidates[0].candidate),
+             QString("candidate:1 1 UDP 1 127.0.0.1 9 typ host"));
+}
+
+void TestVdoSignaling::testParserTorturePayloads() {
+    versus::signaling::VdoSignaling signaling;
+    versus::signaling::ParsedSignalMessage parsed;
+
+    QVERIFY(!signaling.tryParseSignalPayload("{not-json", parsed));
+    QVERIFY(!signaling.tryParseSignalPayload(R"(["not","an","object"])", parsed));
+    QVERIFY(!signaling.tryParseSignalPayload(
+        R"({"UUID":"viewer","description":{"type":"answer","sdp":123}})",
+        parsed));
+
+    QVERIFY(signaling.tryParseSignalPayload(
+        R"({"UUID":"viewer","session":"default","type":"remote","candidate":{
+            "candidate":"candidate:1 1 UDP 1 127.0.0.1 9 typ host",
+            "mid":"video",
+            "sdpMLineIndex":999999999999
+        }})",
+        parsed));
+    QCOMPARE(static_cast<int>(parsed.candidates.size()), 1);
+    QCOMPARE(parsed.candidates[0].mlineIndex, std::numeric_limits<int>::max());
+
+    QVERIFY(signaling.tryParseSignalPayload(
+        R"({"UUID":"viewer","session":"default","type":"remote","candidate":{
+            "candidate":"candidate:1 1 UDP 1 127.0.0.1 9 typ host",
+            "smid":"audio",
+            "sdpMLineIndex":-999999999999
+        }})",
+        parsed));
+    QCOMPARE(parsed.candidates[0].mlineIndex, std::numeric_limits<int>::min());
+
+    QVERIFY(signaling.tryParseSignalPayload(
+        R"({"iceRestartRequest":false,"UUID":"viewer","session":"default","streamID":"stream"})",
+        parsed));
+    QVERIFY(parsed.hasIceRestartRequest);
 }
 
 QTEST_MAIN(TestVdoSignaling)

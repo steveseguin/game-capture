@@ -777,6 +777,11 @@ bool WebRtcClient::resetPeerConnection(bool initialVideo, bool initialAudio, boo
     return true;
 }
 
+void WebRtcClient::setVideoCodec(PeerConfig::VideoCodec codec, bool enableAlphaTrack) {
+    impl_->videoCodec = codec;
+    impl_->enableAlphaTrack = enableAlphaTrack;
+}
+
 
 bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::string &type) {
     if (!impl_->pc) {

@@ -29,6 +29,8 @@ function parseArgs(argv) {
     remoteToken: 'control-token',
     viewerBaseUrl: 'https://vdo.ninja/',
     publisherPath: '',
+    diagnosticsOut: '',
+    windowFilter: '',
     videoEncoder: '',
     ffmpegPath: '',
     ffmpegOptions: '',
@@ -75,6 +77,10 @@ function parseArgs(argv) {
       args.viewerBaseUrl = arg.slice('--viewer-base-url='.length);
     } else if (arg.startsWith('--publisher-path=')) {
       args.publisherPath = arg.slice('--publisher-path='.length);
+    } else if (arg.startsWith('--diagnostics-out=')) {
+      args.diagnosticsOut = path.resolve(arg.slice('--diagnostics-out='.length));
+    } else if (arg.startsWith('--window=')) {
+      args.windowFilter = arg.slice('--window='.length);
     } else if (arg.startsWith('--video-encoder=')) {
       args.videoEncoder = arg.slice('--video-encoder='.length);
     } else if (arg.startsWith('--ffmpeg-path=')) {
@@ -172,8 +178,14 @@ function spawnPublisher(config) {
     '--remote-control',
     `--remote-token=${config.remoteToken}`
   ];
+  if (config.windowFilter) {
+    args.push(`--window=${config.windowFilter}`);
+  }
   if (config.videoEncoder) {
     args.push(`--video-encoder=${config.videoEncoder}`);
+  }
+  if (config.diagnosticsOut) {
+    args.push(`--diagnostics-out=${config.diagnosticsOut}`);
   }
   if (config.ffmpegPath) {
     args.push(`--ffmpeg-path=${config.ffmpegPath}`);
@@ -545,6 +557,98 @@ async function waitForControlInfo(page, timeoutMs, expectedBitrate, expectedReso
   }
 
   return { ok: false, stage: 'control-info', state: lastState };
+}
+
+async function waitForVdoScaledControlInfo(
+  page,
+  timeoutMs,
+  requestedWidth,
+  requestedHeight,
+  maxFitWidth,
+  maxFitHeight,
+  minMessageCount = 0
+) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate(({ reqW, reqH, maxW, maxH, minCount }) => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const latest = messages.length ? messages[messages.length - 1] : null;
+      const candidates = messages.slice(Math.max(0, minCount));
+      const success = candidates.find((entry) => {
+        const info = entry && entry.message ? entry.message.info : null;
+        if (!info) {
+          return false;
+        }
+        const width = Number(info.width_url);
+        const height = Number(info.height_url);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+          return false;
+        }
+        const widthFits = width <= Math.min(Number(reqW), Number(maxW));
+        const heightFits = height <= Math.min(Number(reqH), Number(maxH));
+        const heightHonored = Number(reqH) <= Number(maxH) ? height === Number(reqH) : height === Number(maxH);
+        return widthFits && heightFits && heightHonored;
+      }) || null;
+      return {
+        messageCount: messages.length,
+        minCount,
+        latest,
+        success
+      };
+    }, {
+      reqW: requestedWidth,
+      reqH: requestedHeight,
+      maxW: maxFitWidth,
+      maxH: maxFitHeight,
+      minCount: minMessageCount
+    });
+
+    if (lastState && lastState.success) {
+      return { ok: true, state: lastState };
+    }
+    await wait(250);
+  }
+
+  return { ok: false, stage: 'vdo-scaled-control-info', state: lastState };
+}
+
+async function waitForBoundedResolutionInfo(page, timeoutMs, minMessageCount = 0) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate((minCount) => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const latest = messages.length ? messages[messages.length - 1] : null;
+      const candidates = messages.slice(Math.max(0, minCount));
+      const success = candidates.find((entry) => {
+        const info = entry && entry.message ? entry.message.info : null;
+        if (!info) {
+          return false;
+        }
+        const width = Number(info.width_url);
+        const height = Number(info.height_url);
+        return Number.isFinite(width) && Number.isFinite(height) &&
+          width >= 160 && width <= 3840 &&
+          height >= 90 && height <= 2160;
+      }) || null;
+      return {
+        messageCount: messages.length,
+        minCount,
+        latest,
+        success
+      };
+    }, minMessageCount);
+
+    if (lastState && lastState.success) {
+      return { ok: true, state: lastState };
+    }
+    await wait(250);
+  }
+
+  return { ok: false, stage: 'bounded-resolution-info', state: lastState };
 }
 
 async function waitForNoControlInfoBitrate(page, timeoutMs, unexpectedBitrate, minMessageCount = 0) {
@@ -1126,6 +1230,26 @@ async function main() {
     console.log('[CONTROL] VDO refreshVideo remote-token payload PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
+    const remoteTokenRefreshVideoFalseSend = await sendControlMessage(page, {
+      refreshVideo: false,
+      remote: config.remoteToken
+    });
+    if (!remoteTokenRefreshVideoFalseSend.ok) {
+      failure = { stage: 'send-refresh-video-false-request', state: remoteTokenRefreshVideoFalseSend };
+      return;
+    }
+    const refreshVideoFalseResult = await waitForVideoSettingsPayload(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      probeMessageCount
+    );
+    if (!refreshVideoFalseResult.ok) {
+      failure = refreshVideoFalseResult;
+      return;
+    }
+    console.log('[CONTROL] VDO refreshVideo false/presence payload PASS');
+
+    probeMessageCount = await getProbeMessageCount(page);
     const remoteTokenRefreshMicrophoneSend = await sendControlMessage(page, {
       refreshMicrophone: true,
       remote: config.remoteToken
@@ -1345,13 +1469,6 @@ async function main() {
     console.log(`[CONTROL] VDO requestVideoHack height no-ctrl PASS (${currentVideoWidth}x${noCtrlHeight})`);
 
     const vdoStatsResolutionRequest = { w: 4096, h: noCtrlHeight, s: false, c: false };
-    const vdoStatsResolutionExpected = completeVdoScaleResolution(
-      vdoStatsResolutionRequest.w,
-      vdoStatsResolutionRequest.h,
-      currentVideoWidth,
-      currentVideoHeight,
-      vdoStatsResolutionRequest.c
-    );
     probeMessageCount = await getProbeMessageCount(page);
     const vdoStatsResolutionSend = await sendControlMessage(page, {
       requestResolution: vdoStatsResolutionRequest,
@@ -1361,11 +1478,13 @@ async function main() {
       failure = { stage: 'send-vdo-stats-resolution', state: vdoStatsResolutionSend };
       return;
     }
-    const vdoStatsResolutionInfo = await waitForControlInfo(
+    const vdoStatsResolutionInfo = await waitForVdoScaledControlInfo(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      null,
-      vdoStatsResolutionExpected,
+      vdoStatsResolutionRequest.w,
+      vdoStatsResolutionRequest.h,
+      currentVideoWidth,
+      currentVideoHeight,
       probeMessageCount
     );
     if (!vdoStatsResolutionInfo.ok) {
@@ -1373,6 +1492,32 @@ async function main() {
       return;
     }
     console.log(`[CONTROL] VDO stats requestResolution scale PASS (${JSON.stringify(vdoStatsResolutionInfo.state.success.message.info)})`);
+
+    const extremeResolutionRequest = {
+      w: Number.MAX_SAFE_INTEGER,
+      h: Number.MAX_SAFE_INTEGER,
+      c: false
+    };
+    probeMessageCount = await getProbeMessageCount(page);
+    const extremeResolutionSend = await sendControlMessage(page, {
+      requestResolution: extremeResolutionRequest,
+      remote: config.remoteToken
+    });
+    if (!extremeResolutionSend.ok) {
+      failure = { stage: 'send-extreme-vdo-stats-resolution', state: extremeResolutionSend };
+      return;
+    }
+    const extremeResolutionInfo = await waitForBoundedResolutionInfo(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      probeMessageCount
+    );
+    if (!extremeResolutionInfo.ok) {
+      failure = extremeResolutionInfo;
+      return;
+    }
+    console.log(`[CONTROL] VDO extreme requestResolution clamp PASS (${JSON.stringify(extremeResolutionInfo.state.success.message.info)})`);
+
     const postVdoStatsResolutionVideo = await waitForDecodedVideo(
       page,
       Math.max(10000, Math.floor(config.timeoutMs / 3)),
@@ -1530,6 +1675,45 @@ async function main() {
       return;
     }
     console.log(`[CONTROL] VDO bitrate/audioBitrate route restore info PASS (${JSON.stringify(routeRestoreInfo.state.success.message.info)})`);
+
+    const optimizedBitrateKbps = 750;
+    probeMessageCount = await getProbeMessageCount(page);
+    const optimizedBitrateSend = await sendControlMessage(page, { optimizedBitrate: optimizedBitrateKbps });
+    if (!optimizedBitrateSend.ok) {
+      failure = { stage: 'send-optimized-bitrate', state: optimizedBitrateSend };
+      return;
+    }
+    const optimizedBitrateInfo = await waitForRequestedVideoInfo(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      optimizedBitrateKbps,
+      false,
+      probeMessageCount
+    );
+    if (!optimizedBitrateInfo.ok) {
+      failure = optimizedBitrateInfo;
+      return;
+    }
+    console.log(`[CONTROL] VDO optimizedBitrate info PASS (${JSON.stringify(optimizedBitrateInfo.state.success.message.info)})`);
+
+    probeMessageCount = await getProbeMessageCount(page);
+    const optimizedBitrateUnlockSend = await sendControlMessage(page, { optimizedBitrate: false });
+    if (!optimizedBitrateUnlockSend.ok) {
+      failure = { stage: 'send-optimized-bitrate-unlock', state: optimizedBitrateUnlockSend };
+      return;
+    }
+    const optimizedBitrateUnlockInfo = await waitForRequestedVideoInfo(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      -1,
+      false,
+      probeMessageCount
+    );
+    if (!optimizedBitrateUnlockInfo.ok) {
+      failure = optimizedBitrateUnlockInfo;
+      return;
+    }
+    console.log(`[CONTROL] VDO optimizedBitrate unlock info PASS (${JSON.stringify(optimizedBitrateUnlockInfo.state.success.message.info)})`);
 
     let requestAsMismatchBitrate = config.bitrateKbps + 2222;
     if (requestAsMismatchBitrate === config.publisherDefaultBitrateKbps) {
@@ -1706,6 +1890,25 @@ async function main() {
     console.log('[CONTROL] VDO refreshConnection unauthorized guard PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedRefreshConnectionFalseSend = await sendControlMessage(page, { refreshConnection: false });
+    if (!unauthorizedRefreshConnectionFalseSend.ok) {
+      failure = { stage: 'send-unauthorized-refresh-connection-false', state: unauthorizedRefreshConnectionFalseSend };
+      return;
+    }
+    const unauthorizedRefreshConnectionFalseRejected = await waitForProbeMessageField(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'rejected',
+      'refreshConnection',
+      probeMessageCount
+    );
+    if (!unauthorizedRefreshConnectionFalseRejected.ok) {
+      failure = unauthorizedRefreshConnectionFalseRejected;
+      return;
+    }
+    console.log('[CONTROL] VDO refreshConnection false/presence unauthorized guard PASS');
+
+    probeMessageCount = await getProbeMessageCount(page);
     const unauthorizedRefreshAllSend = await sendControlMessage(page, { refreshAll: true });
     if (!unauthorizedRefreshAllSend.ok) {
       failure = { stage: 'send-unauthorized-refresh-all', state: unauthorizedRefreshAllSend };
@@ -1862,6 +2065,42 @@ async function main() {
     }
     console.log('[CONTROL] Publisher data-channel iceRestartRequest answer log observed');
 
+    const beforeDataChannelIceFalseText = publisher.stdout.join('');
+    const dataChannelIceRestartFalseSend = await sendControlMessageWithRetry(
+      page,
+      { iceRestartRequest: false },
+      Math.max(10000, Math.floor(config.timeoutMs / 3))
+    );
+    if (!dataChannelIceRestartFalseSend.ok) {
+      failure = { stage: 'send-datachannel-ice-restart-false', state: dataChannelIceRestartFalseSend };
+      return;
+    }
+    const dataChannelIceFalseOffer = await waitForPublisherStdout(
+      publisher,
+      (text) => text.indexOf('reason=datachannel-ice-restart rebuildPeerConnection=true', beforeDataChannelIceFalseText.length) >= 0,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      'publisher-datachannel-ice-restart-false-offer-log'
+    );
+    if (!dataChannelIceFalseOffer.ok) {
+      failure = dataChannelIceFalseOffer;
+      return;
+    }
+    console.log('[CONTROL] Publisher data-channel iceRestartRequest false/presence offer log observed');
+    const dataChannelIceFalseText = publisher.stdout.join('');
+    const dataChannelIceFalseOfferIndex =
+      dataChannelIceFalseText.indexOf('reason=datachannel-ice-restart rebuildPeerConnection=true', beforeDataChannelIceFalseText.length);
+    const dataChannelIceFalseAnswer = await waitForPublisherStdout(
+      publisher,
+      (text) => dataChannelIceFalseOfferIndex >= 0 && text.indexOf('[App] Applying peer answer', dataChannelIceFalseOfferIndex) >= 0,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      'publisher-datachannel-ice-restart-false-answer-log'
+    );
+    if (!dataChannelIceFalseAnswer.ok) {
+      failure = dataChannelIceFalseAnswer;
+      return;
+    }
+    console.log('[CONTROL] Publisher data-channel iceRestartRequest false/presence answer log observed');
+
     const beforeSignalingIceText = publisher.stdout.join('');
     const signalingIceRestartSend = await sendSignalingMessage(page, { iceRestartRequest: true });
     if (!signalingIceRestartSend.ok) {
@@ -1898,6 +2137,38 @@ async function main() {
       return;
     }
     console.log('[CONTROL] Publisher signaling iceRestartRequest answer log observed');
+
+    const beforeSignalingIceFalseText = publisher.stdout.join('');
+    const signalingIceRestartFalseSend = await sendSignalingMessage(page, { iceRestartRequest: false });
+    if (!signalingIceRestartFalseSend.ok) {
+      failure = { stage: 'send-signaling-ice-restart-false', state: signalingIceRestartFalseSend };
+      return;
+    }
+    const signalingIceFalseOffer = await waitForPublisherStdout(
+      publisher,
+      (text) => text.indexOf('reason=signaling-ice-restart rebuildPeerConnection=true', beforeSignalingIceFalseText.length) >= 0,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      'publisher-signaling-ice-restart-false-offer-log'
+    );
+    if (!signalingIceFalseOffer.ok) {
+      failure = signalingIceFalseOffer;
+      return;
+    }
+    console.log(`[CONTROL] Publisher signaling iceRestartRequest false/presence offer log observed via ${signalingIceRestartFalseSend.route}`);
+    const signalingIceFalseText = publisher.stdout.join('');
+    const signalingIceFalseOfferIndex =
+      signalingIceFalseText.indexOf('reason=signaling-ice-restart rebuildPeerConnection=true', beforeSignalingIceFalseText.length);
+    const signalingIceFalseAnswer = await waitForPublisherStdout(
+      publisher,
+      (text) => signalingIceFalseOfferIndex >= 0 && text.indexOf('[App] Applying peer answer', signalingIceFalseOfferIndex) >= 0,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      'publisher-signaling-ice-restart-false-answer-log'
+    );
+    if (!signalingIceFalseAnswer.ok) {
+      failure = signalingIceFalseAnswer;
+      return;
+    }
+    console.log('[CONTROL] Publisher signaling iceRestartRequest false/presence answer log observed');
 
     const cleanupPage = await context.newPage();
     await cleanupPage.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });

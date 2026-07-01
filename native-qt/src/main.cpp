@@ -1,6 +1,7 @@
 ﻿#include <QApplication>
 #include <QIcon>
 #include <QMetaObject>
+#include <QObject>
 #include <QTimer>
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <sstream>
 
 #include <spdlog/spdlog.h>
@@ -55,6 +57,47 @@ std::string resolveLogFilePath() {
     std::_Exit(exitCode);
 }
 
+std::optional<int> parseInteger(const std::string &value) {
+    try {
+        size_t parsed = 0;
+        const int result = std::stoi(value, &parsed);
+        if (parsed == value.size()) {
+            return result;
+        }
+    } catch (...) {
+    }
+    return std::nullopt;
+}
+
+std::optional<int> parsePositiveInteger(const std::string &value) {
+    const auto parsed = parseInteger(value);
+    if (parsed && *parsed > 0) {
+        return parsed;
+    }
+    return std::nullopt;
+}
+
+std::optional<int> parseNonNegativeInteger(const std::string &value) {
+    const auto parsed = parseInteger(value);
+    if (parsed && *parsed >= 0) {
+        return parsed;
+    }
+    return std::nullopt;
+}
+
+int clampEvenDimension(int value, int minimum, int maximum) {
+    const int clamped = std::clamp(value, minimum, maximum);
+    return std::max(2, clamped & ~1);
+}
+
+int clampStartupWidth(int value) {
+    return clampEvenDimension(value, 160, 3840);
+}
+
+int clampStartupHeight(int value) {
+    return clampEvenDimension(value, 90, 2160);
+}
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
@@ -85,6 +128,7 @@ int main(int argc, char *argv[]) {
     bool alphaWorkflowEnabled = false;
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
+    std::string diagnosticsOutArg;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -155,48 +199,42 @@ int main(int argc, char *argv[]) {
             const std::string resolution = arg.substr(13);
             const auto xPos = resolution.find('x');
             if (xPos != std::string::npos) {
-                try {
-                    width = std::max(1, std::stoi(resolution.substr(0, xPos)));
-                    height = std::max(1, std::stoi(resolution.substr(xPos + 1)));
-                } catch (...) {
-                    // Keep defaults when parse fails.
+                const auto parsedWidth = parsePositiveInteger(resolution.substr(0, xPos));
+                const auto parsedHeight = parsePositiveInteger(resolution.substr(xPos + 1));
+                if (parsedWidth && parsedHeight) {
+                    width = clampStartupWidth(*parsedWidth);
+                    height = clampStartupHeight(*parsedHeight);
                 }
             }
         } else if (arg.find("--width=") == 0) {
-            try {
-                width = std::max(1, std::stoi(arg.substr(8)));
-            } catch (...) {
-                // Keep default on parse errors.
+            const auto parsed = parsePositiveInteger(arg.substr(8));
+            if (parsed) {
+                width = clampStartupWidth(*parsed);
             }
         } else if (arg.find("--height=") == 0) {
-            try {
-                height = std::max(1, std::stoi(arg.substr(9)));
-            } catch (...) {
-                // Keep default on parse errors.
+            const auto parsed = parsePositiveInteger(arg.substr(9));
+            if (parsed) {
+                height = clampStartupHeight(*parsed);
             }
         } else if (arg.find("--fps=") == 0) {
-            try {
-                fps = std::max(1, std::stoi(arg.substr(6)));
-            } catch (...) {
-                // Keep default on parse errors.
+            const auto parsed = parsePositiveInteger(arg.substr(6));
+            if (parsed) {
+                fps = std::clamp(*parsed, 1, 120);
             }
         } else if (arg.find("--bitrate-kbps=") == 0) {
-            try {
-                bitrateKbps = std::max(1, std::stoi(arg.substr(15)));
-            } catch (...) {
-                // Keep default on parse errors.
+            const auto parsed = parsePositiveInteger(arg.substr(15));
+            if (parsed) {
+                bitrateKbps = std::clamp(*parsed, 250, 100000);
             }
         } else if (arg.find("--duration-ms=") == 0) {
-            try {
-                durationMs = std::max(1000, std::stoi(arg.substr(14)));
-            } catch (...) {
-                // Keep default duration on parse errors.
+            const auto parsed = parsePositiveInteger(arg.substr(14));
+            if (parsed) {
+                durationMs = std::max(1000, *parsed);
             }
         } else if (arg.find("--max-viewers=") == 0) {
-            try {
-                maxViewers = std::max(0, std::stoi(arg.substr(14)));
-            } catch (...) {
-                // Keep default on parse errors.
+            const auto parsed = parseNonNegativeInteger(arg.substr(14));
+            if (parsed) {
+                maxViewers = *parsed;
             }
         } else if (arg == "--remote-control") {
             remoteControlEnabled = true;
@@ -210,6 +248,8 @@ int main(int argc, char *argv[]) {
         } else if (arg.find("--mic-device=") == 0) {
             microphoneDeviceId = arg.substr(13);
             includeMicrophone = true;
+        } else if (arg.find("--diagnostics-out=") == 0) {
+            diagnosticsOutArg = arg.substr(18);
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
         }
@@ -247,6 +287,20 @@ int main(int argc, char *argv[]) {
     auto coreHolder = std::make_unique<versus::app::VersusApp>();
     auto &core = *coreHolder;
     core.initialize();
+    auto writeDiagnostics = [&core, &diagnosticsOutArg](const char *reason) {
+        if (diagnosticsOutArg.empty()) {
+            return;
+        }
+        if (core.writeDiagnosticsJson(diagnosticsOutArg)) {
+            spdlog::info("[Diagnostics] Exported diagnostics reason={} path={}",
+                         reason ? reason : "unspecified",
+                         diagnosticsOutArg);
+        } else {
+            spdlog::warn("[Diagnostics] Failed to export diagnostics reason={} path={}",
+                         reason ? reason : "unspecified",
+                         diagnosticsOutArg);
+        }
+    };
     core.onRuntimeEvent([headless](const std::string &message, bool fatal) {
         if (message.empty()) {
             return;
@@ -376,6 +430,14 @@ int main(int argc, char *argv[]) {
                      includeMicrophone,
                      microphoneDeviceId.empty() ? "(default)" : "(selected)");
 
+        QTimer diagnosticsTimer;
+        if (!diagnosticsOutArg.empty()) {
+            QObject::connect(&diagnosticsTimer, &QTimer::timeout, [&writeDiagnostics]() {
+                writeDiagnostics("headless-periodic");
+            });
+            diagnosticsTimer.start(5000);
+        }
+
         // Configure
         versus::app::StartOptions options;
         options.server = server;
@@ -441,8 +503,9 @@ int main(int argc, char *argv[]) {
         });
 
         // Run for configurable duration then exit
-        QTimer::singleShot(durationMs, []() {
+        QTimer::singleShot(durationMs, [&writeDiagnostics]() {
             spdlog::info("[Headless] Timeout, exiting");
+            writeDiagnostics("headless-timeout");
             QApplication::quit();
         });
 
@@ -450,6 +513,7 @@ int main(int argc, char *argv[]) {
         if (app.property("force_exit_without_shutdown").toBool()) {
             forceExitProcess(result);
         }
+        writeDiagnostics("headless-exit");
         core.shutdown();
         return result;
     }
@@ -461,6 +525,7 @@ int main(int argc, char *argv[]) {
     if (app.property("force_exit_without_shutdown").toBool()) {
         forceExitProcess(result);
     }
+    writeDiagnostics("gui-exit");
     core.shutdown();
     return result;
 }

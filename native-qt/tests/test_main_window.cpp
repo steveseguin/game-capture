@@ -10,6 +10,7 @@
 #include <QProgressBar>
 #include <QSettings>
 #include <QSystemTrayIcon>
+#include <QWheelEvent>
 
 #include "versus/ui/main_window.h"
 #include "versus/ui/window_list_widget.h"
@@ -33,6 +34,7 @@ private slots:
     void testStatsPanelHiddenInitially();
     void testInputFieldsExist();
     void testPasswordInputDefaults();
+    void testClosedComboBoxesIgnoreWheel();
     void testParseStreamTargetInput();
     void testAdvancedPanelAndViewerLimit();
     void testAdvancedPanelResizesWindowWhenClosed();
@@ -40,10 +42,13 @@ private slots:
     void testResolutionOptions();
     void testIceModeOptions();
     void testAudioSourceOptions();
+    void testAudioMixControls();
     void testRoomModeQualityToggle();
     void testBitrateOptions();
     void testCustomBitrateControl();
     void testAudioMeterExists();
+    void testAudioSourceMetersExist();
+    void testConnectionHealthPanelExists();
     void testEncoderStatusLabelExists();
     void testShareLinkButtonsExist();
     void testFfmpegAdvancedControls();
@@ -291,6 +296,23 @@ void TestMainWindow::testAudioSourceOptions() {
     QCOMPARE(microphoneCombo->itemData(0).toString(), QString());
 }
 
+void TestMainWindow::testAudioMixControls() {
+    auto *primaryGain = window_->findChild<QSpinBox*>("primaryAudioGainSpin");
+    auto *micGain = window_->findChild<QSpinBox*>("microphoneAudioGainSpin");
+    auto *limiter = window_->findChild<QCheckBox*>("audioLimiterCheck");
+
+    QVERIFY(primaryGain != nullptr);
+    QVERIFY(micGain != nullptr);
+    QVERIFY(limiter != nullptr);
+    QCOMPARE(primaryGain->minimum(), 0);
+    QCOMPARE(primaryGain->maximum(), 200);
+    QCOMPARE(primaryGain->value(), 100);
+    QCOMPARE(micGain->minimum(), 0);
+    QCOMPARE(micGain->maximum(), 200);
+    QCOMPARE(micGain->value(), 100);
+    QVERIFY(limiter->isChecked());
+}
+
 void TestMainWindow::testRoomModeQualityToggle() {
     auto *roomModeLqCheck = window_->findChild<QCheckBox*>("roomModeLqCheck");
     QVERIFY(roomModeLqCheck != nullptr);
@@ -299,19 +321,54 @@ void TestMainWindow::testRoomModeQualityToggle() {
 }
 
 void TestMainWindow::testPasswordInputDefaults() {
-    auto lineEdits = window_->findChildren<QLineEdit*>();
-    QLineEdit *passwordInput = nullptr;
-    for (auto *lineEdit : lineEdits) {
-        if (lineEdit->placeholderText().contains("Password", Qt::CaseInsensitive)) {
-            passwordInput = lineEdit;
-            break;
-        }
-    }
-
+    auto *passwordInput = window_->findChild<QLineEdit*>("passwordInput");
     QVERIFY(passwordInput != nullptr);
     QVERIFY(passwordInput->text().isEmpty());
     QVERIFY(passwordInput->placeholderText().contains("leave blank", Qt::CaseInsensitive));
     QVERIFY(passwordInput->placeholderText().contains("false", Qt::CaseInsensitive));
+    QCOMPARE(passwordInput->echoMode(), QLineEdit::Password);
+
+    auto *passwordReveal = window_->findChild<QPushButton*>("passwordRevealButton");
+    QVERIFY(passwordReveal != nullptr);
+    QVERIFY(passwordReveal->isEnabled());
+    QCOMPARE(passwordReveal->text(), QString("Show"));
+
+    passwordReveal->setChecked(true);
+    QCOMPARE(passwordInput->echoMode(), QLineEdit::Normal);
+    QCOMPARE(passwordReveal->text(), QString("Hide"));
+
+    passwordReveal->setChecked(false);
+    QCOMPARE(passwordInput->echoMode(), QLineEdit::Password);
+    QCOMPARE(passwordReveal->text(), QString("Show"));
+
+    auto *tokenInput = window_->findChild<QLineEdit*>("remoteControlTokenInput");
+    auto *tokenReveal = window_->findChild<QPushButton*>("remoteControlTokenRevealButton");
+    QVERIFY(tokenInput != nullptr);
+    QVERIFY(tokenReveal != nullptr);
+    QCOMPARE(tokenInput->echoMode(), QLineEdit::Password);
+    QVERIFY(!tokenReveal->isEnabled());
+}
+
+void TestMainWindow::testClosedComboBoxesIgnoreWheel() {
+    auto *iceModeCombo = window_->findChild<QComboBox*>("iceModeSelect");
+    QVERIFY(iceModeCombo != nullptr);
+    QVERIFY(iceModeCombo->count() > 1);
+
+    iceModeCombo->setCurrentIndex(1);
+    const int expectedIndex = iceModeCombo->currentIndex();
+    const QPoint localCenter = iceModeCombo->rect().center();
+    QWheelEvent wheelEvent(
+        QPointF(localCenter),
+        QPointF(iceModeCombo->mapToGlobal(localCenter)),
+        QPoint(),
+        QPoint(0, 120),
+        Qt::NoButton,
+        Qt::NoModifier,
+        Qt::NoScrollPhase,
+        false);
+
+    QCoreApplication::sendEvent(iceModeCombo, &wheelEvent);
+    QCOMPARE(iceModeCombo->currentIndex(), expectedIndex);
 }
 
 void TestMainWindow::testParseStreamTargetInput() {
@@ -408,8 +465,16 @@ void TestMainWindow::testRemoteControlControls() {
     QVERIFY(tokenInput != nullptr);
     QVERIFY(!tokenInput->isEnabled());
 
+    auto *tokenReveal = window_->findChild<QPushButton*>("remoteControlTokenRevealButton");
+    QVERIFY(tokenReveal != nullptr);
+    QVERIFY(!tokenReveal->isEnabled());
+
     remoteCheck->setChecked(true);
     QVERIFY(tokenInput->isEnabled());
+    QVERIFY(tokenReveal->isEnabled());
+
+    tokenReveal->setChecked(true);
+    QCOMPARE(tokenInput->echoMode(), QLineEdit::Normal);
 }
 
 void TestMainWindow::testCustomBitrateControl() {
@@ -449,6 +514,42 @@ void TestMainWindow::testAudioMeterExists() {
     QVERIFY(meter != nullptr);
     QCOMPARE(meter->minimum(), 0);
     QCOMPARE(meter->maximum(), 100);
+}
+
+void TestMainWindow::testAudioSourceMetersExist() {
+    auto *primarySource = window_->findChild<QLabel*>("primaryAudioSourceLabel");
+    auto *primaryMeter = window_->findChild<QProgressBar*>("primaryAudioMeter");
+    auto *primaryLevel = window_->findChild<QLabel*>("primaryAudioLevelLabel");
+    auto *micSource = window_->findChild<QLabel*>("microphoneAudioSourceLabel");
+    auto *micMeter = window_->findChild<QProgressBar*>("microphoneAudioMeter");
+    auto *micLevel = window_->findChild<QLabel*>("microphoneAudioLevelLabel");
+
+    QVERIFY(primarySource != nullptr);
+    QVERIFY(primaryMeter != nullptr);
+    QVERIFY(primaryLevel != nullptr);
+    QVERIFY(micSource != nullptr);
+    QVERIFY(micMeter != nullptr);
+    QVERIFY(micLevel != nullptr);
+    QCOMPARE(primaryMeter->minimum(), 0);
+    QCOMPARE(primaryMeter->maximum(), 100);
+    QCOMPARE(micMeter->minimum(), 0);
+    QCOMPARE(micMeter->maximum(), 100);
+    QVERIFY(primarySource->text().contains("Primary"));
+    QVERIFY(micSource->text().contains("Mic/input"));
+}
+
+void TestMainWindow::testConnectionHealthPanelExists() {
+    auto *healthLabel = window_->findChild<QLabel*>("connectionHealthLabel");
+    auto *mediaLabel = window_->findChild<QLabel*>("connectionMediaLabel");
+    auto *issueLabel = window_->findChild<QLabel*>("connectionIssueLabel");
+
+    QVERIFY(healthLabel != nullptr);
+    QVERIFY(mediaLabel != nullptr);
+    QVERIFY(issueLabel != nullptr);
+    QVERIFY(healthLabel->text().contains("ICE"));
+    QVERIFY(healthLabel->text().contains("Candidates"));
+    QVERIFY(mediaLabel->text().contains("Codec"));
+    QVERIFY(issueLabel->text().contains("Drops/encode/video/audio send"));
 }
 
 void TestMainWindow::testEncoderStatusLabelExists() {
@@ -499,16 +600,27 @@ void TestMainWindow::testFfmpegAdvancedControls() {
 
 void TestMainWindow::testCodecControls() {
     auto *codecCombo = window_->findChild<QComboBox*>("codecSelect");
+    auto *encoderCombo = window_->findChild<QComboBox*>("encoderSelect");
+    auto *ffmpegPathInput = window_->findChild<QLineEdit*>("ffmpegPathInput");
     QVERIFY(codecCombo != nullptr);
+    QVERIFY(encoderCombo != nullptr);
+    QVERIFY(ffmpegPathInput != nullptr);
     QVERIFY(codecCombo->count() >= 4);
+    QCOMPARE(codecCombo->currentData().toString(), QString("h264"));
 
     auto *alphaCheck = window_->findChild<QCheckBox*>("alphaWorkflowCheck");
     QVERIFY(alphaCheck != nullptr);
     QVERIFY(!alphaCheck->isEnabled());
 
+    const int qsvIndex = encoderCombo->findData("qsv");
+    QVERIFY(qsvIndex >= 0);
+    encoderCombo->setCurrentIndex(qsvIndex);
+
     const int av1Index = codecCombo->findData("av1");
     QVERIFY(av1Index >= 0);
     codecCombo->setCurrentIndex(av1Index);
+    QCOMPARE(encoderCombo->currentData().toString(), QString("qsv"));
+    QVERIFY(ffmpegPathInput->isEnabled());
     QVERIFY(alphaCheck->isEnabled());
 }
 

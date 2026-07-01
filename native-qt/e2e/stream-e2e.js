@@ -242,6 +242,57 @@ async function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function tailText(value, maxLength = 6000) {
+  const text = String(value || '');
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return text.slice(text.length - maxLength);
+}
+
+async function waitForPublisherReady(started, config) {
+  const minDelayMs = Math.max(0, Number(config.startupDelayMs) || 0);
+  const maxWaitMs = Math.max(minDelayMs, minDelayMs + Math.min(Math.max(config.timeoutMs, 15000), 60000));
+  const start = Date.now();
+  let lastReadySignal = '';
+
+  while (Date.now() - start < maxWaitMs) {
+    const stdoutText = started.stdout.join('');
+    const stderrText = started.stderr.join('');
+    const outputText = `${stdoutText}\n${stderrText}`;
+    const elapsedMs = Date.now() - start;
+
+    if (started.proc.exitCode !== null) {
+      return {
+        ok: false,
+        reason: 'publisher-exited',
+        exitCode: started.proc.exitCode,
+        elapsedMs,
+        outputTail: tailText(outputText)
+      };
+    }
+
+    if (config.publisher === 'test-stream') {
+      lastReadySignal = 'fixed-delay';
+    } else if (/VIEW URL:/i.test(outputText) || /Stream started, waiting for connections/i.test(outputText)) {
+      lastReadySignal = 'view-url';
+    }
+
+    if (lastReadySignal && elapsedMs >= minDelayMs) {
+      return { ok: true, elapsedMs, signal: lastReadySignal };
+    }
+
+    await wait(250);
+  }
+
+  return {
+    ok: false,
+    reason: 'publisher-not-ready',
+    elapsedMs: Date.now() - start,
+    outputTail: tailText(`${started.stdout.join('')}\n${started.stderr.join('')}`)
+  };
+}
+
 async function waitForSessionPeer(page, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -477,8 +528,20 @@ async function main() {
 
   const started = spawnPublisher(config);
   console.log(`[E2E] Spawned publisher: ${started.command} ${started.args.join(' ')}`);
-  console.log(`[E2E] Waiting ${config.startupDelayMs}ms for publisher startup...`);
-  await wait(config.startupDelayMs);
+  console.log(`[E2E] Waiting for publisher readiness (minimum ${config.startupDelayMs}ms)...`);
+  const publisherReady = await waitForPublisherReady(started, config);
+  if (!publisherReady.ok) {
+    if (!config.keepPublisher && started.proc && !started.proc.killed) {
+      started.proc.kill();
+    }
+    console.error('[E2E] FAIL');
+    console.error(`[E2E] Publisher did not become ready: ${JSON.stringify(publisherReady)}`);
+    if (publisherReady.outputTail && publisherReady.outputTail.trim()) {
+      console.error(`[E2E] Publisher output tail:\n${publisherReady.outputTail}`);
+    }
+    process.exit(1);
+  }
+  console.log(`[E2E] Publisher ready via ${publisherReady.signal} after ${publisherReady.elapsedMs}ms`);
 
   const results = [];
   try {

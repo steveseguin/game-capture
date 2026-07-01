@@ -13,10 +13,12 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <iomanip>
 #include <initializer_list>
+#include <limits>
 #include <mutex>
 #include <queue>
 #include <random>
@@ -77,10 +79,14 @@ bool jsonBoolLike(const json &value, bool defaultValue) {
         return value.get<bool>();
     }
     if (value.is_number_integer()) {
-        return value.get<int>() != 0;
+        if (value.is_number_unsigned()) {
+            return value.get<uint64_t>() != 0;
+        }
+        return value.get<int64_t>() != 0;
     }
     if (value.is_number_float()) {
-        return value.get<double>() != 0.0;
+        const double numeric = value.get<double>();
+        return std::isfinite(numeric) ? numeric != 0.0 : defaultValue;
     }
     if (value.is_string()) {
         std::string lower = value.get<std::string>();
@@ -92,6 +98,47 @@ bool jsonBoolLike(const json &value, bool defaultValue) {
         }
         if (lower == "false" || lower == "0" || lower == "no" || lower == "off") {
             return false;
+        }
+    }
+    return defaultValue;
+}
+
+int jsonIntLike(const json &value, int defaultValue = 0) {
+    if (value.is_number_integer()) {
+        if (value.is_number_unsigned()) {
+            const auto numeric = value.get<uint64_t>();
+            if (numeric > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                return std::numeric_limits<int>::max();
+            }
+            return static_cast<int>(numeric);
+        }
+        const auto numeric = value.get<int64_t>();
+        if (numeric > static_cast<int64_t>(std::numeric_limits<int>::max())) {
+            return std::numeric_limits<int>::max();
+        }
+        if (numeric < static_cast<int64_t>(std::numeric_limits<int>::min())) {
+            return std::numeric_limits<int>::min();
+        }
+        return static_cast<int>(numeric);
+    }
+    if (value.is_number_float()) {
+        const double rounded = std::round(value.get<double>());
+        if (!std::isfinite(rounded)) {
+            return defaultValue;
+        }
+        if (rounded > static_cast<double>(std::numeric_limits<int>::max())) {
+            return std::numeric_limits<int>::max();
+        }
+        if (rounded < static_cast<double>(std::numeric_limits<int>::min())) {
+            return std::numeric_limits<int>::min();
+        }
+        return static_cast<int>(rounded);
+    }
+    if (value.is_string()) {
+        try {
+            return std::stoi(value.get<std::string>());
+        } catch (...) {
+            return defaultValue;
         }
     }
     return defaultValue;
@@ -115,6 +162,14 @@ std::string jsonStringValue(const json &obj, std::initializer_list<const char *>
         }
     }
     return "";
+}
+
+int jsonIntValue(const json &obj, const char *key, int defaultValue = 0) {
+    const auto it = obj.find(key);
+    if (it == obj.end()) {
+        return defaultValue;
+    }
+    return jsonIntLike(*it, defaultValue);
 }
 
 void parseListingArray(const json &msg, ParsedSignalMessage &parsed) {
@@ -379,7 +434,7 @@ bool parseSignalPayloadJson(const json &msg,
         return true;
     }
 
-    if (msg.contains("iceRestartRequest") && jsonBoolLike(msg["iceRestartRequest"], true)) {
+    if (msg.contains("iceRestartRequest")) {
         parsed.hasIceRestartRequest = true;
         return true;
     }
@@ -409,8 +464,8 @@ bool parseSignalPayloadJson(const json &msg,
             return false;
         }
 
-        const std::string sdp = descJson.value("sdp", "");
-        const std::string type = descJson.value("type", "");
+        const std::string sdp = jsonStringValue(descJson, {"sdp"});
+        const std::string type = jsonStringValue(descJson, {"type"});
         if (type == "offer") {
             parsed.hasOffer = true;
             parsed.offer = SignalOffer{uuid, sdp, session, streamId};
@@ -447,11 +502,14 @@ bool parseSignalPayloadJson(const json &msg,
 
         SignalCandidate cand;
         cand.uuid = uuid;
-        cand.candidate = candJson.value("candidate", "");
+        cand.candidate = jsonStringValue(candJson, {"candidate"});
         cand.mid = jsonStringValue(candJson, {"sdpMid", "mid", "smid", "rmid"});
-        cand.mlineIndex = candJson.value("sdpMLineIndex", 0);
+        cand.mlineIndex = jsonIntValue(candJson, "sdpMLineIndex", 0);
         cand.session = session;
         cand.type = jsonStringValue(msg, {"type"});
+        if (cand.candidate.empty()) {
+            return false;
+        }
         parsed.candidates.push_back(cand);
         return !parsed.candidates.empty();
     }
@@ -478,13 +536,19 @@ bool parseSignalPayloadJson(const json &msg,
         }
 
         for (const auto &candItem : candArray) {
+            if (!candItem.is_object()) {
+                continue;
+            }
             SignalCandidate cand;
             cand.uuid = uuid;
-            cand.candidate = candItem.value("candidate", "");
+            cand.candidate = jsonStringValue(candItem, {"candidate"});
             cand.mid = jsonStringValue(candItem, {"sdpMid", "mid", "smid", "rmid"});
-            cand.mlineIndex = candItem.value("sdpMLineIndex", 0);
+            cand.mlineIndex = jsonIntValue(candItem, "sdpMLineIndex", 0);
             cand.session = session;
             cand.type = jsonStringValue(msg, {"type"});
+            if (cand.candidate.empty()) {
+                continue;
+            }
             parsed.candidates.push_back(cand);
         }
         return !parsed.candidates.empty();

@@ -1,6 +1,7 @@
 #include "versus/audio/window_audio_capture_core.h"
 
 #include <algorithm>
+#include <exception>
 #include <memory>
 #include <utility>
 
@@ -14,6 +15,7 @@
 #include <mmreg.h>
 #include <ksmedia.h>
 #include <psapi.h>
+#include <spdlog/spdlog.h>
 #include <functiondiscoverykeys_devpkey.h>
 #include <propvarutil.h>
 #include <roapi.h>
@@ -27,6 +29,9 @@ using Microsoft::WRL::ComPtr;
 namespace {
 constexpr DWORD kDefaultSampleRate = 48000;
 constexpr WORD kDefaultChannelCount = 2;
+constexpr uint32_t kMinSupportedSampleRate = 8000;
+constexpr uint32_t kMaxSupportedSampleRate = 384000;
+constexpr uint32_t kMaxSupportedChannelCount = 32;
 constexpr REFERENCE_TIME kDefaultBufferDuration = 100000;
 constexpr wchar_t kProcessLoopbackDevice[] = L"VAD\\Process_Loopback";
 constexpr wchar_t kProcessLoopbackLegacyId[] = L"{B8EC8EE7-E1B3-48BB-B91C-A93EE8AC6274}";
@@ -51,6 +56,28 @@ struct ScopedPropVariant {
     PROPVARIANT *get() { return &value; }
     PROPVARIANT value;
 };
+
+struct ScopedAudioCaptureBuffer {
+    IAudioCaptureClient *client = nullptr;
+    UINT32 frameCount = 0;
+    bool active = false;
+
+    ~ScopedAudioCaptureBuffer() {
+        if (active && client) {
+            client->ReleaseBuffer(frameCount);
+        }
+    }
+};
+
+bool isSupportedAudioFormat(uint32_t sampleRate, uint32_t channels, uint32_t bitsPerSample) {
+    if (sampleRate < kMinSupportedSampleRate || sampleRate > kMaxSupportedSampleRate) {
+        return false;
+    }
+    if (channels == 0 || channels > kMaxSupportedChannelCount) {
+        return false;
+    }
+    return bitsPerSample == 16 || bitsPerSample == 24 || bitsPerSample == 32;
+}
 
 std::string WideToUtf8(const std::wstring &str) {
     if (str.empty()) {
@@ -630,6 +657,14 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
         result.error = "GetMixFormat failed";
         return result;
     }
+    if (!isSupportedAudioFormat(sampleRate_, channels_, bitsPerSample_)) {
+        result.error = "Unsupported audio mix format";
+        spdlog::warn("[Audio] Unsupported process loopback mix format: {}Hz {}ch {}bit",
+                     sampleRate_,
+                     channels_,
+                     bitsPerSample_);
+        return result;
+    }
 
     maxBufferSamples_ = std::max<size_t>(maxBufferSamples_, static_cast<size_t>(sampleRate_) * channels_ * 4);
 
@@ -772,6 +807,14 @@ CaptureResult WindowAudioCaptureCore::StartDefaultEndpoint(DefaultAudioEndpoint 
 
     if (!format) {
         result.error = "GetMixFormat failed";
+        return result;
+    }
+    if (!isSupportedAudioFormat(sampleRate_, channels_, bitsPerSample_)) {
+        result.error = "Unsupported audio mix format";
+        spdlog::warn("[Audio] Unsupported default endpoint mix format: {}Hz {}ch {}bit",
+                     sampleRate_,
+                     channels_,
+                     bitsPerSample_);
         return result;
     }
 
@@ -926,6 +969,14 @@ CaptureResult WindowAudioCaptureCore::StartInputDevice(const std::string &device
         result.error = "GetMixFormat failed";
         return result;
     }
+    if (!isSupportedAudioFormat(sampleRate_, channels_, bitsPerSample_)) {
+        result.error = "Unsupported audio mix format";
+        spdlog::warn("[Audio] Unsupported input device mix format: {}Hz {}ch {}bit",
+                     sampleRate_,
+                     channels_,
+                     bitsPerSample_);
+        return result;
+    }
 
     maxBufferSamples_ = std::max<size_t>(maxBufferSamples_, static_cast<size_t>(sampleRate_) * channels_ * 4);
 
@@ -1009,39 +1060,45 @@ void WindowAudioCaptureCore::CaptureLoop() {
             if (FAILED(hr)) {
                 break;
             }
+            ScopedAudioCaptureBuffer releaseBuffer{captureClient, frameCount, true};
 
-            size_t sampleCount = static_cast<size_t>(frameCount) * channels_;
-            std::vector<float> converted(sampleCount, 0.0f);
+            try {
+                size_t sampleCount = static_cast<size_t>(frameCount) * channels_;
+                std::vector<float> converted(sampleCount, 0.0f);
 
-            if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data && sampleCount > 0) {
-                if (isFloatFormat_) {
-                    const float *src = reinterpret_cast<const float *>(data);
-                    std::copy(src, src + sampleCount, converted.begin());
-                } else if (bitsPerSample_ == 16) {
-                    const int16_t *src = reinterpret_cast<const int16_t *>(data);
-                    for (size_t i = 0; i < sampleCount; ++i) {
-                        converted[i] = static_cast<float>(src[i]) / 32768.0f;
-                    }
-                } else if (bitsPerSample_ == 24) {
-                    const uint8_t *src = reinterpret_cast<const uint8_t *>(data);
-                    for (size_t i = 0; i < sampleCount; ++i) {
-                        int32_t value = src[0] | (src[1] << 8) | (src[2] << 16);
-                        if (value & 0x800000) {
-                            value |= ~0xFFFFFF;
+                if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data && sampleCount > 0) {
+                    if (isFloatFormat_) {
+                        const float *src = reinterpret_cast<const float *>(data);
+                        std::copy(src, src + sampleCount, converted.begin());
+                    } else if (bitsPerSample_ == 16) {
+                        const int16_t *src = reinterpret_cast<const int16_t *>(data);
+                        for (size_t i = 0; i < sampleCount; ++i) {
+                            converted[i] = static_cast<float>(src[i]) / 32768.0f;
                         }
-                        converted[i] = static_cast<float>(value) / 8388608.0f;
-                        src += 3;
-                    }
-                } else if (bitsPerSample_ == 32) {
-                    const int32_t *src = reinterpret_cast<const int32_t *>(data);
-                    for (size_t i = 0; i < sampleCount; ++i) {
-                        converted[i] = static_cast<float>(src[i]) / 2147483648.0f;
+                    } else if (bitsPerSample_ == 24) {
+                        const uint8_t *src = reinterpret_cast<const uint8_t *>(data);
+                        for (size_t i = 0; i < sampleCount; ++i) {
+                            int32_t value = src[0] | (src[1] << 8) | (src[2] << 16);
+                            if (value & 0x800000) {
+                                value |= ~0xFFFFFF;
+                            }
+                            converted[i] = static_cast<float>(value) / 8388608.0f;
+                            src += 3;
+                        }
+                    } else if (bitsPerSample_ == 32) {
+                        const int32_t *src = reinterpret_cast<const int32_t *>(data);
+                        for (size_t i = 0; i < sampleCount; ++i) {
+                            converted[i] = static_cast<float>(src[i]) / 2147483648.0f;
+                        }
                     }
                 }
-            }
 
-            AppendSamples(converted.data(), converted.size());
-            captureClient->ReleaseBuffer(frameCount);
+                AppendSamples(converted.data(), converted.size());
+            } catch (const std::exception &e) {
+                spdlog::warn("[Audio] Capture packet conversion failed: {}", e.what());
+            } catch (...) {
+                spdlog::warn("[Audio] Capture packet conversion failed with unknown exception");
+            }
         }
     }
 
