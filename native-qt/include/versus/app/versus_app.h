@@ -77,6 +77,10 @@ struct ConnectionHealth {
     uint64_t videoEncodeFailures = 0;
     uint64_t videoSendFailures = 0;
     uint64_t audioSendFailures = 0;
+    double systemCpuPercent = -1.0;
+    double systemMemoryPercent = -1.0;
+    uint64_t systemMemoryUsedBytes = 0;
+    uint64_t systemMemoryTotalBytes = 0;
     std::string lastPeerDisconnectReason;
 };
 
@@ -180,6 +184,7 @@ class VersusApp {
     void encodeNormalizedAudio(std::vector<float> &normalizedSamples);
     StreamMetrics buildStreamMetricsSnapshot(bool updateRecentWindow) const;
     void resetMetricsWindow(int64_t nowMs);
+    void populateSystemResourceUsage(ConnectionHealth &health) const;
     void setupSignalingCallbacks();
     void startSignalingRecovery();
     void stopSignalingRecoveryThread();
@@ -327,6 +332,12 @@ class VersusApp {
     mutable double recentFrameRate_ = 0.0;
     mutable double recentDroppedFrameRate_ = 0.0;
     mutable bool recentMetricsInitialized_ = false;
+    mutable std::mutex systemResourceMutex_;
+    mutable bool systemCpuSampleInitialized_ = false;
+    mutable uint64_t lastSystemIdleTime_ = 0;
+    mutable uint64_t lastSystemKernelTime_ = 0;
+    mutable uint64_t lastSystemUserTime_ = 0;
+    mutable double lastSystemCpuPercent_ = -1.0;
     std::string lastPeerDisconnectReason_;
     RuntimeEventCallback runtimeEventCallback_;
     struct PendingCandidate {

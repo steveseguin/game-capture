@@ -17,6 +17,10 @@
 #include <sstream>
 #include <thread>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace versus::app {
 namespace {
 
@@ -47,6 +51,15 @@ int64_t steadyNowMs() {
                std::chrono::steady_clock::now().time_since_epoch())
         .count();
 }
+
+#ifdef _WIN32
+uint64_t fileTimeToUint64(const FILETIME &value) {
+    ULARGE_INTEGER converted{};
+    converted.LowPart = value.dwLowDateTime;
+    converted.HighPart = value.dwHighDateTime;
+    return converted.QuadPart;
+}
+#endif
 
 std::string toLowerCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
@@ -1269,6 +1282,51 @@ StreamMetrics VersusApp::getStreamMetrics() const {
     return buildStreamMetricsSnapshot(true);
 }
 
+void VersusApp::populateSystemResourceUsage(ConnectionHealth &health) const {
+#ifdef _WIN32
+    MEMORYSTATUSEX memoryStatus{};
+    memoryStatus.dwLength = sizeof(memoryStatus);
+    if (GlobalMemoryStatusEx(&memoryStatus)) {
+        health.systemMemoryPercent = static_cast<double>(memoryStatus.dwMemoryLoad);
+        health.systemMemoryTotalBytes = static_cast<uint64_t>(memoryStatus.ullTotalPhys);
+        health.systemMemoryUsedBytes =
+            static_cast<uint64_t>(memoryStatus.ullTotalPhys - memoryStatus.ullAvailPhys);
+    }
+
+    FILETIME idleTime{};
+    FILETIME kernelTime{};
+    FILETIME userTime{};
+    if (!GetSystemTimes(&idleTime, &kernelTime, &userTime)) {
+        return;
+    }
+
+    const uint64_t idle = fileTimeToUint64(idleTime);
+    const uint64_t kernel = fileTimeToUint64(kernelTime);
+    const uint64_t user = fileTimeToUint64(userTime);
+    std::lock_guard<std::mutex> lock(systemResourceMutex_);
+    if (systemCpuSampleInitialized_) {
+        const uint64_t idleDelta = idle >= lastSystemIdleTime_ ? idle - lastSystemIdleTime_ : 0;
+        const uint64_t kernelDelta = kernel >= lastSystemKernelTime_ ? kernel - lastSystemKernelTime_ : 0;
+        const uint64_t userDelta = user >= lastSystemUserTime_ ? user - lastSystemUserTime_ : 0;
+        const uint64_t totalDelta = kernelDelta + userDelta;
+        if (totalDelta > 0 && idleDelta <= totalDelta) {
+            const double busyPercent =
+                (static_cast<double>(totalDelta - idleDelta) * 100.0) / static_cast<double>(totalDelta);
+            lastSystemCpuPercent_ = std::clamp(busyPercent, 0.0, 100.0);
+        }
+    } else {
+        systemCpuSampleInitialized_ = true;
+    }
+
+    lastSystemIdleTime_ = idle;
+    lastSystemKernelTime_ = kernel;
+    lastSystemUserTime_ = user;
+    health.systemCpuPercent = lastSystemCpuPercent_;
+#else
+    (void)health;
+#endif
+}
+
 ConnectionHealth VersusApp::getConnectionHealth() const {
     ConnectionHealth health;
     const StreamMetrics metrics = buildStreamMetricsSnapshot(false);
@@ -1291,6 +1349,7 @@ ConnectionHealth VersusApp::getConnectionHealth() const {
     health.videoEncodeFailures = metrics.videoEncodeFailures;
     health.videoSendFailures = metrics.videoSendFailures;
     health.audioSendFailures = metrics.audioSendFailures;
+    populateSystemResourceUsage(health);
     {
         std::lock_guard<std::mutex> lock(iceConfigMutex_);
         health.iceMode = webrtc::iceModeName(iceMode_);
@@ -1322,6 +1381,8 @@ std::string VersusApp::buildDiagnosticsJson() const {
     root["generated_steady_ms"] = steadyNowMs();
 
     const StreamMetrics metrics = getStreamMetrics();
+    ConnectionHealth health;
+    populateSystemResourceUsage(health);
     const VideoStateSnapshot videoState = videoStateSnapshot();
     const PeerCounts counts = collectPeerCounts();
 
@@ -1418,6 +1479,12 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"video_encode_failures", metrics.videoEncodeFailures},
         {"video_send_failures", metrics.videoSendFailures},
         {"audio_send_failures", metrics.audioSendFailures}
+    };
+    root["system"] = {
+        {"cpu_percent", health.systemCpuPercent},
+        {"memory_percent", health.systemMemoryPercent},
+        {"memory_used_bytes", health.systemMemoryUsedBytes},
+        {"memory_total_bytes", health.systemMemoryTotalBytes}
     };
     root["peer_counts"] = {
         {"total", counts.total},

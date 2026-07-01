@@ -62,6 +62,24 @@ static const QString APP_VERSION_TEXT = QStringLiteral(APP_VERSION);
 static const QString APP_SETTINGS_ORG = "VDO.Ninja";
 static const QString APP_SETTINGS_NAME = "Game Capture";
 
+QString percentText(double value) {
+    if (value < 0.0) {
+        return QStringLiteral("-");
+    }
+    return QString("%1%").arg(std::clamp(value, 0.0, 100.0), 0, 'f', 0);
+}
+
+QString systemResourceColor(double cpuPercent, double memoryPercent) {
+    const double highestUsage = std::max(cpuPercent, memoryPercent);
+    if (highestUsage >= 90.0) {
+        return COLOR_RED;
+    }
+    if (highestUsage >= 75.0) {
+        return COLOR_YELLOW;
+    }
+    return COLOR_TEXT_DIM;
+}
+
 versus::video::VideoCodec codecFromUiValue(const QString &value) {
     if (value == "h265") {
         return versus::video::VideoCodec::H265;
@@ -1319,11 +1337,17 @@ void MainWindow::setupUI() {
     connectionMediaLabel_->setWordWrap(true);
     healthLayout->addWidget(connectionMediaLabel_, 2, 0, 1, 2);
 
+    systemResourceLabel_ = new QLabel("System: CPU - | RAM -", this);
+    systemResourceLabel_->setObjectName("systemResourceLabel");
+    systemResourceLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    systemResourceLabel_->setWordWrap(true);
+    healthLayout->addWidget(systemResourceLabel_, 3, 0, 1, 2);
+
     connectionIssueLabel_ = new QLabel("Drops/encode/video/audio send: 0/0/0/0 | Last disconnect: none", this);
     connectionIssueLabel_->setObjectName("connectionIssueLabel");
     connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     connectionIssueLabel_->setWordWrap(true);
-    healthLayout->addWidget(connectionIssueLabel_, 3, 0, 1, 2);
+    healthLayout->addWidget(connectionIssueLabel_, 4, 0, 1, 2);
     layout->addLayout(healthLayout);
 
     // Audio source meters
@@ -2431,6 +2455,10 @@ void MainWindow::resetOperatorHealthUi() {
         connectionMediaLabel_->setText("Codec: - | FPS: - | Resolution: - | Bitrate: -");
         connectionMediaLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     }
+    if (systemResourceLabel_) {
+        systemResourceLabel_->setText("System: CPU - | RAM -");
+        systemResourceLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    }
     if (connectionIssueLabel_) {
         connectionIssueLabel_->setText("Drops/encode/video/audio send: 0/0/0/0 | Last disconnect: none");
         connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
@@ -2478,6 +2506,14 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
             .arg(health.videoBitrateKbps, 0, 'f', 0)
             .arg(health.audioBitrateKbps, 0, 'f', 0));
         connectionMediaLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
+    }
+
+    if (systemResourceLabel_) {
+        systemResourceLabel_->setText(QString("System: CPU %1 | RAM %2")
+            .arg(percentText(health.systemCpuPercent))
+            .arg(percentText(health.systemMemoryPercent)));
+        systemResourceLabel_->setStyleSheet(
+            QString("color: %1;").arg(systemResourceColor(health.systemCpuPercent, health.systemMemoryPercent)));
     }
 
     if (connectionIssueLabel_) {

@@ -125,6 +125,7 @@ class MainWindow : public QMainWindow {
     QLabel *microphoneAudioLevelLabel_ = nullptr;
     QLabel *connectionHealthLabel_ = nullptr;
     QLabel *connectionMediaLabel_ = nullptr;
+    QLabel *systemResourceLabel_ = nullptr;
     QLabel *connectionIssueLabel_ = nullptr;
     QLabel *encoderStatusLabel_ = nullptr;
     QPushButton *goLiveButton_ = nullptr;

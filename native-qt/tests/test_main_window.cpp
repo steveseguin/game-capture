@@ -541,14 +541,19 @@ void TestMainWindow::testAudioSourceMetersExist() {
 void TestMainWindow::testConnectionHealthPanelExists() {
     auto *healthLabel = window_->findChild<QLabel*>("connectionHealthLabel");
     auto *mediaLabel = window_->findChild<QLabel*>("connectionMediaLabel");
+    auto *systemLabel = window_->findChild<QLabel*>("systemResourceLabel");
     auto *issueLabel = window_->findChild<QLabel*>("connectionIssueLabel");
 
     QVERIFY(healthLabel != nullptr);
     QVERIFY(mediaLabel != nullptr);
+    QVERIFY(systemLabel != nullptr);
     QVERIFY(issueLabel != nullptr);
     QVERIFY(healthLabel->text().contains("ICE"));
     QVERIFY(healthLabel->text().contains("Candidates"));
     QVERIFY(mediaLabel->text().contains("Codec"));
+    QVERIFY(systemLabel->text().contains("System"));
+    QVERIFY(systemLabel->text().contains("CPU"));
+    QVERIFY(systemLabel->text().contains("RAM"));
     QVERIFY(issueLabel->text().contains("Drops/encode/video/audio send"));
 }
 

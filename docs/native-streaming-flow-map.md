@@ -6,7 +6,7 @@ Last reviewed: 2026-07-01.
 
 Primary scope: native Qt publisher workflow for signaling, WebRTC peer sessions, video tracks, audio tracks, encoder state, room routing, recovery, and firewall reachability.
 
-Reviewed change window: commits since 2026-05-28, pending 0.2.42 signaling/media validation fixes, and the adjacent late-May room recovery/microphone work because it directly affects peer-session and media-track behavior.
+Reviewed change window: commits since 2026-05-28, pending 0.2.43 signaling/media validation fixes, and the adjacent late-May room recovery/microphone work because it directly affects peer-session and media-track behavior.
 
 Recent commits in scope:
 - `281c322` - Warn portable users about firewall rule.
@@ -266,6 +266,7 @@ Metrics state:
 - Sent frames count successful encoded video packet fanout events.
 - Dropped frames count capture callbacks that overwrite a frame already waiting for the encode thread.
 - Operator health and diagnostics expose recent/smoothed video bitrate, audio bitrate, FPS, dropped-frame rate, and total drop/encode/send counters.
+- Operator health also exposes total OS CPU and RAM load so user-facing overload warnings are not confused with app-only encode failure counters.
 - Candidate path health is candidate-observation evidence, not a browser `selectedCandidatePair` equivalent.
 
 ### Audio State
@@ -299,7 +300,7 @@ Snapshot boundaries:
 - Password and remote token values are not written; only password enabled/disabled and token length are exported.
 - Pending remote ICE queues are summarized by key and count rather than dumping every queued candidate.
 - Peer timelines are bounded and capture state transitions, offer/recovery reasons, candidate flow, answer application, rejected controls, data-channel open/close, and removal reasons.
-- Diagnostics include recent health metrics plus total captured/sent/dropped frame counts, encode/send failure counts, audio send failures, and audio mix gain/limiter settings.
+- Diagnostics include recent health metrics plus total captured/sent/dropped frame counts, encode/send failure counts, audio send failures, total system CPU/RAM usage, and audio mix gain/limiter settings.
 
 Review use:
 - Use diagnostics JSON with logs to explain slot churn, repeated reconnects, missing answers, stale peers, unexpected room roles, per-peer bitrate disables, codec fallback, and Control Center rejection behavior.
@@ -336,6 +337,7 @@ These are the important concurrency boundaries. Keep this section current when a
 | Additional audio buffer | additionalAudioMutex | append/read/mix mic samples | Opus encode, peer sends |
 | Audio encode | audioEncodeMutex | Opus encode and audio PTS update | capture-device calls |
 | Recent metrics window | metricsWindowMutex | update/read smoothed bitrate/FPS/drop rates | network sends, encode, peer mutation |
+| System resource sample | systemResourceMutex | update/read prior OS CPU time baseline | network sends, encode, peer mutation |
 | Signaling transport operations | signalingOpsMutex | connect, disconnect, join, publish, send offer/candidate | peer map mutation after taking other locks |
 | Per-peer media plan | PeerSession.mediaPlanMutex | ensure one media-plan renegotiation path per peer | global peer cleanup |
 | Runtime event callback | runtimeEventMutex | copy callback | invoke callback while holding lock |
