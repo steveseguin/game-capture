@@ -19,10 +19,8 @@
     "e2e:dual-quality-soak": "node e2e/dual-quality-soak.js",
     "e2e:dual-quality-requirements": "node e2e/dual-quality-requirements-e2e.js"
   },
-  "dependencies": {
-    "ws": "^8.19.0"
-  },
   "devDependencies": {
-    "playwright": "^1.58.2"
+    "playwright": "^1.58.2",
+    "ws": "^8.21.0"
   }
 }
