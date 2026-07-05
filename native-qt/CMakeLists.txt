@@ -22,6 +22,7 @@ set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 option(VERSUS_USE_NVENC "Enable NVIDIA NVENC hardware encoding" ON)
 option(VERSUS_USE_WHIP "Enable WHIP publishing support" OFF)
 option(VERSUS_USE_GRAPHICS_CAPTURE "Enable Windows Graphics Capture API (requires WinRT)" ON)
+option(VERSUS_USE_SPOUT "Enable Spout2 source support on Windows" ON)
 
 find_package(Threads REQUIRED)
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
@@ -112,6 +113,33 @@ set(OPUS_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(opus)
 
+if(WIN32 AND VERSUS_USE_SPOUT)
+    set(SPOUT_BUILD_LIBRARY ON CACHE BOOL "" FORCE)
+    set(SPOUT_BUILD_SPOUTDX OFF CACHE BOOL "" FORCE)
+    set(SPOUT_BUILD_CMT OFF CACHE BOOL "" FORCE)
+    set(SPOUT_NO_GLOBAL_WARNING ON CACHE BOOL "" FORCE)
+    set(SKIP_INSTALL_ALL ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        spout2
+        GIT_REPOSITORY https://github.com/leadedge/Spout2.git
+        GIT_TAG 2.007.017
+    )
+    FetchContent_MakeAvailable(spout2)
+    if(MSVC)
+        foreach(SPOUT_TARGET Spout_static SpoutLibrary_static Spout SpoutLibrary)
+            if(TARGET ${SPOUT_TARGET})
+                target_compile_options(${SPOUT_TARGET} PRIVATE /UWIN32_LEAN_AND_MEAN)
+            endif()
+        endforeach()
+    endif()
+    if(TARGET Spout)
+        set_target_properties(Spout PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
+    if(TARGET SpoutLibrary)
+        set_target_properties(SpoutLibrary PROPERTIES EXCLUDE_FROM_ALL TRUE)
+    endif()
+endif()
+
 set(VERSUS_SOURCES
     src/main.cpp
     src/app/versus_app.cpp
@@ -122,6 +150,7 @@ set(VERSUS_SOURCES
     src/signaling/vdo_signaling.cpp
     src/webrtc/webrtc_client.cpp
     src/webrtc/ice_config.cpp
+    src/video/spout_capture.cpp
     src/video/window_capture.cpp
     src/video/video_encoder.cpp
     src/audio/opus_encoder.cpp
@@ -138,6 +167,7 @@ set(VERSUS_HEADERS
     include/versus/webrtc/webrtc_client.h
     include/versus/webrtc/ice_config.h
     include/versus/video/aspect_fit.h
+    include/versus/video/spout_capture.h
     include/versus/video/window_capture.h
     include/versus/video/video_encoder.h
     include/versus/audio/opus_encoder.h
@@ -180,6 +210,12 @@ target_include_directories(game-capture PRIVATE
     ${opus_SOURCE_DIR}/include
     ${libdatachannel_SOURCE_DIR}/deps/json/include
 )
+
+if(WIN32 AND VERSUS_USE_SPOUT AND TARGET SpoutLibrary_static)
+    target_link_libraries(game-capture PRIVATE SpoutLibrary_static)
+    target_include_directories(game-capture PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
+    target_compile_definitions(game-capture PRIVATE VERSUS_USE_SPOUT)
+endif()
 
 if(WIN32)
     target_link_libraries(game-capture PRIVATE
@@ -268,6 +304,7 @@ if(VERSUS_BUILD_TESTS)
         src/signaling/vdo_signaling.cpp
         src/webrtc/webrtc_client.cpp
         src/webrtc/ice_config.cpp
+        src/video/spout_capture.cpp
         src/video/window_capture.cpp
         src/video/video_encoder.cpp
         src/audio/opus_encoder.cpp
@@ -294,6 +331,11 @@ if(VERSUS_BUILD_TESTS)
         ${opus_SOURCE_DIR}/include
         ${libdatachannel_SOURCE_DIR}/deps/json/include
     )
+    if(WIN32 AND VERSUS_USE_SPOUT AND TARGET SpoutLibrary_static)
+        target_link_libraries(versus-lib PUBLIC SpoutLibrary_static)
+        target_include_directories(versus-lib PUBLIC ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
+        target_compile_definitions(versus-lib PUBLIC VERSUS_USE_SPOUT)
+    endif()
     if(WIN32)
         target_link_libraries(versus-lib PUBLIC
             ole32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi winhttp
@@ -381,5 +423,21 @@ if(VERSUS_BUILD_TESTS)
     # Benchmark helper: Video encoder real-time throughput/stability probe
     add_executable(bench_video_encoder tests/bench_video_encoder.cpp)
     target_link_libraries(bench_video_encoder PRIVATE versus-lib)
+
+    # Spout validation helper: deterministic RGBA sender for manual and E2E workflows.
+    if(WIN32 AND VERSUS_USE_SPOUT AND TARGET SpoutLibrary_static)
+        add_executable(test_spout_capture tests/test_spout_capture.cpp)
+        set_target_properties(test_spout_capture PROPERTIES AUTOMOC ON)
+        target_link_libraries(test_spout_capture PRIVATE versus-lib Qt6::Test SpoutLibrary_static)
+        target_include_directories(test_spout_capture PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
+        add_test(NAME SpoutCaptureTest COMMAND test_spout_capture)
+        set_tests_properties(SpoutCaptureTest PROPERTIES
+            ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+
+        add_executable(spout_test_sender tests/spout_test_sender.cpp)
+        target_link_libraries(spout_test_sender PRIVATE SpoutLibrary_static)
+        target_include_directories(spout_test_sender PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
+        add_dependencies(test_spout_capture spout_test_sender)
+    endif()
 
 endif()

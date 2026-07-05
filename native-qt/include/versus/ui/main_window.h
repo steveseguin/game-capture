@@ -87,6 +87,7 @@ class MainWindow : public QMainWindow {
     QLineEdit *passwordInput_ = nullptr;
     QPushButton *passwordRevealButton_ = nullptr;
     QLineEdit *labelInput_ = nullptr;
+    QComboBox *sourceModeSelect_ = nullptr;
     QCheckBox *advancedToggle_ = nullptr;
     QWidget *advancedPanel_ = nullptr;
     QComboBox *resolutionSelect_ = nullptr;

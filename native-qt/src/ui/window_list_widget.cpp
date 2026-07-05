@@ -19,11 +19,11 @@ WindowListWidget::WindowListWidget(QWidget *parent)
 
     // Header with label and refresh button
     auto *headerLayout = new QHBoxLayout();
-    auto *label = new QLabel("Select Game/Window:", this);
+    headerLabel_ = new QLabel("Select Game/Window:", this);
     refreshButton_ = new QPushButton("Refresh", this);
     refreshButton_->setFixedWidth(80);
 
-    headerLayout->addWidget(label);
+    headerLayout->addWidget(headerLabel_);
     headerLayout->addStretch();
     headerLayout->addWidget(refreshButton_);
     layout->addLayout(headerLayout);
@@ -208,7 +208,7 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
             selectedWindowId_.clear();
             emit windowSelected(selectedWindowId_);
         }
-        auto *item = new QListWidgetItem("No windows detected. Launch a game and click Refresh.");
+        auto *item = new QListWidgetItem(emptyText_);
         item->setFlags(item->flags() & ~Qt::ItemIsSelectable);
         item->setForeground(QColor(136, 136, 136));
         listWidget_->addItem(item);
@@ -287,6 +287,16 @@ void WindowListWidget::setAutoRefreshEnabled(bool enabled) {
 
 void WindowListWidget::requestThumbnailRefresh() {
     forceThumbnailRefreshOnNextSet_ = true;
+}
+
+void WindowListWidget::setHeaderText(const QString &text) {
+    if (headerLabel_) {
+        headerLabel_->setText(text);
+    }
+}
+
+void WindowListWidget::setEmptyText(const QString &text) {
+    emptyText_ = text;
 }
 
 void WindowListWidget::onItemClicked(QListWidgetItem *item) {

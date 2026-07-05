@@ -173,6 +173,13 @@ versus::app::AudioSourceMode audioSourceModeFromUiValue(const QString &value) {
     return versus::app::AudioSourceMode::SelectedWindow;
 }
 
+versus::app::VideoSourceMode videoSourceModeFromUiValue(const QString &value) {
+    if (value == "spout") {
+        return versus::app::VideoSourceMode::Spout;
+    }
+    return versus::app::VideoSourceMode::Window;
+}
+
 QSettings makeUiSettings() {
     return QSettings(APP_SETTINGS_ORG, APP_SETTINGS_NAME);
 }
@@ -782,7 +789,14 @@ void MainWindow::loadPersistedSettings() {
     restoreComboByData(iceModeSelect_, settings.value("network/iceMode", "stun-only"));
     restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
     restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
+    restoreComboByData(sourceModeSelect_, settings.value("video/sourceMode", "window"));
     restoreComboByData(audioSourceSelect_, settings.value("audio/source", "selected-window"));
+    if (sourceModeSelect_ &&
+        sourceModeSelect_->currentData().toString() == "spout" &&
+        audioSourceSelect_ &&
+        audioSourceSelect_->currentData().toString() == "selected-window") {
+        restoreComboByData(audioSourceSelect_, QString("none"));
+    }
     refreshMicrophoneDevices(settings.value("audio/microphoneDeviceId").toString());
 
     if (remoteControlCheck_) {
@@ -821,6 +835,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
     settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 12000);
     settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 12000);
+    settings.setValue("video/sourceMode", sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window"));
     settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
     settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     settings.setValue("video/alphaWorkflow", alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false);
@@ -866,6 +881,9 @@ void MainWindow::connectPersistedSettingSignals() {
     }
     if (bitrateSelect_) {
         connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (sourceModeSelect_) {
+        connect(sourceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
     if (customBitrateSpin_) {
         connect(customBitrateSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
@@ -1001,6 +1019,40 @@ void MainWindow::setupUI() {
     auto *layout = new QVBoxLayout(content);
     layout->setSpacing(12);
     layout->setContentsMargins(16, 16, 16, 16);
+
+    auto *sourceLayout = new QHBoxLayout();
+    auto *sourceLabel = new QLabel("Video Source", this);
+    sourceLabel->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
+    sourceModeSelect_ = new QComboBox(this);
+    sourceModeSelect_->setObjectName("sourceModeSelect");
+    sourceModeSelect_->addItem("Window", QVariant("window"));
+    sourceModeSelect_->addItem("Spout2", QVariant("spout"));
+    sourceModeSelect_->setToolTip(
+        "Window captures visible app/game windows. Spout2 receives a local Spout sender, including alpha when the sender provides it.");
+    installComboWheelGuard(sourceModeSelect_);
+    connect(sourceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (sourceModeSelect_ &&
+            sourceModeSelect_->currentData().toString() == "spout" &&
+            audioSourceSelect_ &&
+            audioSourceSelect_->currentData().toString() == "selected-window") {
+            const int noAudioIndex = audioSourceSelect_->findData("none");
+            if (noAudioIndex >= 0) {
+                audioSourceSelect_->setCurrentIndex(noAudioIndex);
+            }
+        }
+        selectedWindowId_.clear();
+        if (windowListWidget_) {
+            windowListWidget_->requestThumbnailRefresh();
+        }
+        refreshWindowList();
+        refreshSelectedWindowPreview();
+        updateStatus("Select a source to capture", "idle");
+        updateGoLiveButton();
+        savePersistedSettings();
+    });
+    sourceLayout->addWidget(sourceLabel);
+    sourceLayout->addWidget(sourceModeSelect_, 1);
+    layout->addLayout(sourceLayout);
 
     auto *captureSplitter = new QSplitter(Qt::Horizontal, this);
     captureSplitter->setChildrenCollapsible(false);
@@ -1753,8 +1805,18 @@ void MainWindow::onAutoRefreshWindows() {
 
 void MainWindow::refreshWindowList() {
     if (core_) {
-        auto windows = core_->listWindows();
-        windowListWidget_->setWindowList(windows);
+        const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
+        if (sourceMode == "spout") {
+            windowListWidget_->setHeaderText("Select Spout2 Sender:");
+            windowListWidget_->setEmptyText("No Spout2 senders detected. Start a sender and click Refresh.");
+            auto senders = core_->listSpoutSenders();
+            windowListWidget_->setWindowList(senders);
+        } else {
+            windowListWidget_->setHeaderText("Select Game/Window:");
+            windowListWidget_->setEmptyText("No windows detected. Launch a game and click Refresh.");
+            auto windows = core_->listWindows();
+            windowListWidget_->setWindowList(windows);
+        }
     }
 }
 
@@ -1929,6 +1991,9 @@ void MainWindow::onGoLiveClicked() {
         const QString audioSourceValue = audioSourceSelect_
             ? audioSourceSelect_->currentData().toString()
             : QString("selected-window");
+        const QString sourceModeValue = sourceModeSelect_
+            ? sourceModeSelect_->currentData().toString()
+            : QString("window");
         const bool includeMicrophone = includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false;
         const QString microphoneDeviceId = microphoneDeviceSelect_
             ? microphoneDeviceSelect_->currentData().toString()
@@ -2021,6 +2086,7 @@ void MainWindow::onGoLiveClicked() {
                                            core,
                                            startOpId,
                                            selectedWindowId,
+                                           sourceModeValue,
                                            config,
                                            options,
                                            encoderMode,
@@ -2033,14 +2099,16 @@ void MainWindow::onGoLiveClicked() {
             bool started = false;
             QString failureStatus;
 
+            const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
             core->setSelectedWindow(selectedWindowId);
+            core->setVideoSourceMode(sourceMode);
             core->setVideoConfig(config);
             core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
             core->setIncludeMicrophone(includeMicrophone);
             core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
             core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
-            if (!core->startCapture(selectedWindowId)) {
+            if (!core->startCapture(sourceMode, selectedWindowId)) {
                 failureStatus = "Failed to start capture";
             } else if (!core->goLive(options)) {
                 failureStatus = "Failed to connect";
@@ -2539,6 +2607,9 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (windowListWidget_) {
         windowListWidget_->setEnabled(enabled);
     }
+    if (sourceModeSelect_) {
+        sourceModeSelect_->setEnabled(enabled);
+    }
     if (streamIdInput_) {
         streamIdInput_->setEnabled(enabled);
     }
@@ -2655,9 +2726,18 @@ void MainWindow::refreshSelectedWindowPreview() {
         return;
     }
 
+    const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
     if (selectedWindowId_.isEmpty()) {
         previewLabel_->setPixmap(QPixmap());
-        previewLabel_->setText("Select a window to see live preview");
+        previewLabel_->setText(sourceMode == "spout"
+            ? "Select a Spout2 sender"
+            : "Select a window to see live preview");
+        return;
+    }
+
+    if (sourceMode == "spout") {
+        previewLabel_->setPixmap(QPixmap());
+        previewLabel_->setText(QString("Spout2 sender selected\n%1").arg(selectedWindowId_));
         return;
     }
 

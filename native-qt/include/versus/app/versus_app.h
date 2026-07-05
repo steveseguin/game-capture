@@ -16,6 +16,7 @@
 #include "versus/signaling/vdo_signaling.h"
 #include "versus/app/dual_stream_policy.h"
 #include "versus/webrtc/webrtc_client.h"
+#include "versus/video/spout_capture.h"
 #include "versus/video/video_encoder.h"
 #include "versus/video/window_capture.h"
 #include "versus/audio/opus_encoder.h"
@@ -29,6 +30,11 @@ enum class AudioSourceMode {
     CommunicationsOutput,
     DefaultMicrophone,
     None
+};
+
+enum class VideoSourceMode {
+    Window,
+    Spout
 };
 
 struct StreamMetrics {
@@ -109,10 +115,13 @@ class VersusApp {
     void shutdown();
 
     std::vector<versus::video::WindowInfo> listWindows();
+    std::vector<versus::video::WindowInfo> listSpoutSenders();
     std::vector<versus::audio::AudioDeviceInfo> listAudioInputDevices();
     bool startCapture(const std::string &windowId);
+    bool startCapture(VideoSourceMode mode, const std::string &sourceId);
     void stopCapture();
     void setSelectedWindow(const std::string &windowId);
+    void setVideoSourceMode(VideoSourceMode mode);
 
     bool goLive(const StartOptions &options);
     void stopLive();
@@ -246,6 +255,7 @@ class VersusApp {
     void removePeerSession(const std::shared_ptr<PeerSession> &peer, const char *reason);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
+    void handleVideoFrame(const versus::video::CapturedFrame &frame);
     void recordPeerEvent(const std::shared_ptr<PeerSession> &peer, const std::string &event) const;
     PeerCounts collectPeerCounts() const;
     VideoStateSnapshot buildVideoStateSnapshotLocked() const;
@@ -269,6 +279,7 @@ class VersusApp {
     std::string salt_;
     std::string remoteControlToken_;
     std::string selectedWindowId_;
+    VideoSourceMode videoSourceMode_ = VideoSourceMode::Window;
     std::atomic<int64_t> audioPts100ns_{0};
     std::atomic<float> audioLevelRms_{0.0f};
     std::atomic<float> audioPeak_{0.0f};
@@ -431,6 +442,7 @@ class VersusApp {
     uint32_t additionalAudioChannels_ = 0;
 
     versus::video::WindowCapture windowCapture_;
+    versus::video::SpoutCapture spoutCapture_;
     versus::video::VideoEncoder videoEncoder_;
     versus::video::VideoEncoder videoEncoderLq_;
     versus::video::VideoEncoder videoEncoderAlpha_;

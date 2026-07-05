@@ -114,6 +114,9 @@ int main(int argc, char *argv[]) {
     std::string ffmpegPathArg;
     std::string ffmpegOptionsArg;
     std::string windowFilterArg;
+    std::string videoSourceArg = "window";
+    std::string spoutSenderArg;
+    versus::app::VideoSourceMode videoSourceMode = versus::app::VideoSourceMode::Window;
     versus::app::AudioSourceMode audioSourceMode = versus::app::AudioSourceMode::SelectedWindow;
     std::string audioSourceArg = "selected-window";
     versus::webrtc::IceMode iceMode = versus::webrtc::IceMode::StunOnly;
@@ -170,6 +173,25 @@ int main(int argc, char *argv[]) {
             }
         } else if (arg.find("--window=") == 0) {
             windowFilterArg = arg.substr(9);
+        } else if (arg.find("--source=") == 0) {
+            videoSourceArg = arg.substr(9);
+            std::string normalized = videoSourceArg;
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            if (normalized == "spout" || normalized == "spout2") {
+                videoSourceMode = versus::app::VideoSourceMode::Spout;
+                videoSourceArg = "spout";
+            } else if (normalized == "window" || normalized == "game" || normalized == "app") {
+                videoSourceMode = versus::app::VideoSourceMode::Window;
+                videoSourceArg = "window";
+            } else {
+                spdlog::warn("[Main] Unknown --source value '{}'; expected window|spout", videoSourceArg);
+                videoSourceArg = "window";
+                videoSourceMode = versus::app::VideoSourceMode::Window;
+            }
+        } else if (arg.find("--spout-sender=") == 0) {
+            spoutSenderArg = arg.substr(15);
         } else if (arg.find("--audio-source=") == 0) {
             audioSourceArg = arg.substr(15);
             std::string normalized = audioSourceArg;
@@ -279,6 +301,18 @@ int main(int argc, char *argv[]) {
             windowFilterArg = envWindowFilter;
             spdlog::info("[Main] Using capture window filter from GAME_CAPTURE_WINDOW_FILTER");
         }
+    }
+    if (spoutSenderArg.empty()) {
+        const char *envSpoutSender = std::getenv("GAME_CAPTURE_SPOUT_SENDER");
+        if (envSpoutSender && *envSpoutSender) {
+            spoutSenderArg = envSpoutSender;
+            spdlog::info("[Main] Using Spout sender from GAME_CAPTURE_SPOUT_SENDER");
+        }
+    }
+    if (videoSourceMode == versus::app::VideoSourceMode::Spout && audioSourceArg == "selected-window") {
+        audioSourceArg = "none";
+        audioSourceMode = versus::app::AudioSourceMode::None;
+        spdlog::info("[Main] Defaulting audio source to none for Spout video source");
     }
 
     QApplication app(argc, argv);
@@ -412,12 +446,13 @@ int main(int argc, char *argv[]) {
         core.setVideoConfig(encoderOverride);
     }
     core.setAudioSourceMode(audioSourceMode);
+    core.setVideoSourceMode(videoSourceMode);
     core.setIncludeMicrophone(includeMicrophone);
     core.setMicrophoneDeviceId(microphoneDeviceId);
 
     if (headless) {
         // Headless mode - auto-configure and start streaming
-        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} audioSource={} includeMicrophone={} microphoneDevice={}",
+        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} source={} spoutSender={} audioSource={} includeMicrophone={} microphoneDevice={}",
                      streamId,
                      room.empty() ? "(none)" : room,
                      passwordLogValue(password),
@@ -426,6 +461,8 @@ int main(int argc, char *argv[]) {
                      maxViewers,
                      remoteControlEnabled,
                      versus::webrtc::iceModeName(iceMode),
+                     videoSourceArg,
+                     spoutSenderArg.empty() ? "(auto)" : spoutSenderArg,
                      audioSourceArg,
                      includeMicrophone,
                      microphoneDeviceId.empty() ? "(default)" : "(selected)");
@@ -451,43 +488,81 @@ int main(int argc, char *argv[]) {
         options.remoteControlToken = remoteControlToken;
         options.iceMode = iceMode;
 
-        QTimer::singleShot(1000, [&core, options, windowFilterArg]() {
-            // Auto-select first available window for capture
-            auto windows = core.listWindows();
-            if (!windows.empty()) {
-                const versus::video::WindowInfo *selected = nullptr;
+        QTimer::singleShot(1000, [&core, options, windowFilterArg, videoSourceMode, spoutSenderArg]() {
+            if (videoSourceMode == versus::app::VideoSourceMode::Spout) {
+                auto senders = core.listSpoutSenders();
+                if (senders.empty()) {
+                    spdlog::warn("[Headless] No Spout2 senders found for capture!");
+                    spdlog::default_logger()->flush();
+                    QApplication::quit();
+                    return;
+                }
 
-                if (!windowFilterArg.empty()) {
-                    selected = versus::video::findBestWindowMatch(windows, windowFilterArg);
+                const versus::video::WindowInfo *selected = nullptr;
+                if (!spoutSenderArg.empty()) {
+                    selected = versus::video::findBestWindowMatch(senders, spoutSenderArg);
                     if (!selected) {
-                        spdlog::error("[Headless] No window matched --window={} ({} windows available)",
-                                      windowFilterArg,
-                                      windows.size());
+                        spdlog::error("[Headless] No Spout2 sender matched --spout-sender={} ({} senders available)",
+                                      spoutSenderArg,
+                                      senders.size());
                         spdlog::default_logger()->flush();
                         QApplication::quit();
                         return;
                     }
                 } else {
-                    selected = &windows[0];
+                    selected = &senders[0];
                 }
 
-                spdlog::info("[Headless] Found {} windows, capturing: {} [{} {}x{}]",
-                             windows.size(),
+                spdlog::info("[Headless] Found {} Spout2 senders, capturing: {} [{}x{}]",
+                             senders.size(),
                              selected->name,
-                             selected->executableName,
                              selected->width,
                              selected->height);
-                if (!core.startCapture(selected->id)) {
-                    spdlog::error("[Headless] startCapture failed");
+                core.setVideoSourceMode(versus::app::VideoSourceMode::Spout);
+                if (!core.startCapture(versus::app::VideoSourceMode::Spout, selected->id)) {
+                    spdlog::error("[Headless] Spout startCapture failed");
                     spdlog::default_logger()->flush();
                     QApplication::quit();
                     return;
                 }
             } else {
-                spdlog::warn("[Headless] No windows found for capture!");
-                spdlog::default_logger()->flush();
-                QApplication::quit();
-                return;
+                // Auto-select first available window for capture
+                auto windows = core.listWindows();
+                if (!windows.empty()) {
+                    const versus::video::WindowInfo *selected = nullptr;
+
+                    if (!windowFilterArg.empty()) {
+                        selected = versus::video::findBestWindowMatch(windows, windowFilterArg);
+                        if (!selected) {
+                            spdlog::error("[Headless] No window matched --window={} ({} windows available)",
+                                          windowFilterArg,
+                                          windows.size());
+                            spdlog::default_logger()->flush();
+                            QApplication::quit();
+                            return;
+                        }
+                    } else {
+                        selected = &windows[0];
+                    }
+
+                    spdlog::info("[Headless] Found {} windows, capturing: {} [{} {}x{}]",
+                                 windows.size(),
+                                 selected->name,
+                                 selected->executableName,
+                                 selected->width,
+                                 selected->height);
+                    if (!core.startCapture(selected->id)) {
+                        spdlog::error("[Headless] startCapture failed");
+                        spdlog::default_logger()->flush();
+                        QApplication::quit();
+                        return;
+                    }
+                } else {
+                    spdlog::warn("[Headless] No windows found for capture!");
+                    spdlog::default_logger()->flush();
+                    QApplication::quit();
+                    return;
+                }
             }
 
             spdlog::info("[Headless] Going live...");

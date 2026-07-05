@@ -40,6 +40,8 @@ private slots:
     void testAdvancedPanelResizesWindowWhenClosed();
     void testRemoteControlControls();
     void testResolutionOptions();
+    void testVideoSourceModeControl();
+    void testPersistedSpoutModeUsesNoAudio();
     void testIceModeOptions();
     void testAudioSourceOptions();
     void testAudioMixControls();
@@ -269,6 +271,46 @@ void TestMainWindow::testBitrateOptions() {
 
     // Check that High (12000) is selected by default
     QVERIFY(bitrateCombo->currentText().contains("12000"));
+}
+
+void TestMainWindow::testVideoSourceModeControl() {
+    auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
+    auto *audioCombo = window_->findChild<QComboBox*>("audioSourceSelect");
+    QVERIFY(sourceCombo != nullptr);
+    QVERIFY(audioCombo != nullptr);
+    QVERIFY(sourceCombo->findData("window") >= 0);
+    QVERIFY(sourceCombo->findData("spout") >= 0);
+    QCOMPARE(sourceCombo->currentData().toString(), QString("window"));
+
+    const int selectedWindowAudioIndex = audioCombo->findData("selected-window");
+    QVERIFY(selectedWindowAudioIndex >= 0);
+    audioCombo->setCurrentIndex(selectedWindowAudioIndex);
+    QCOMPARE(audioCombo->currentData().toString(), QString("selected-window"));
+
+    const int spoutIndex = sourceCombo->findData("spout");
+    QVERIFY(spoutIndex >= 0);
+    sourceCombo->setCurrentIndex(spoutIndex);
+    QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("none"));
+}
+
+void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
+    delete window_;
+    window_ = nullptr;
+
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.setValue("video/sourceMode", "spout");
+    settings.setValue("audio/source", "selected-window");
+    settings.sync();
+
+    window_ = new versus::ui::MainWindow(nullptr);
+
+    auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
+    auto *audioCombo = window_->findChild<QComboBox*>("audioSourceSelect");
+    QVERIFY(sourceCombo != nullptr);
+    QVERIFY(audioCombo != nullptr);
+    QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("none"));
 }
 
 void TestMainWindow::testIceModeOptions() {

@@ -605,11 +605,19 @@ std::vector<versus::video::WindowInfo> VersusApp::listWindows() {
     return windowCapture_.getWindows();
 }
 
+std::vector<versus::video::WindowInfo> VersusApp::listSpoutSenders() {
+    return spoutCapture_.getSenders();
+}
+
 std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioInputDevices() {
     return audioCapture_.GetInputDevices();
 }
 
 bool VersusApp::startCapture(const std::string &windowId) {
+    return startCapture(videoSourceMode_, windowId);
+}
+
+bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) {
     if (capturing_) {
         stopCapture();
     }
@@ -665,13 +673,13 @@ bool VersusApp::startCapture(const std::string &windowId) {
         hasLatestVideoFrame_ = false;
         latestVideoFrame_ = video::CapturedFrame{};
     }
-    selectedWindowId_ = windowId;
-    if (!windowCapture_.startCapture(windowId, 1920, 1080, 60)) {
-        return false;
-    }
-
+    selectedWindowId_ = sourceId;
+    videoSourceMode_ = mode;
     uint32_t selectedWindowProcessId = 0;
-    if (!selectedWindowId_.empty()) {
+    if (mode == VideoSourceMode::Window && !selectedWindowId_.empty()) {
+        if (!windowCapture_.startCapture(sourceId, 1920, 1080, 60)) {
+            return false;
+        }
         auto windows = windowCapture_.getWindows();
         for (const auto &info : windows) {
             if (info.id == selectedWindowId_) {
@@ -679,6 +687,21 @@ bool VersusApp::startCapture(const std::string &windowId) {
                 break;
             }
         }
+    } else if (mode == VideoSourceMode::Spout) {
+        video::EncoderConfig captureConfig;
+        {
+            std::lock_guard<std::mutex> lock(videoSendMutex_);
+            captureConfig = videoConfig_;
+        }
+        if (!spoutCapture_.startCapture(
+                sourceId,
+                captureConfig.width,
+                captureConfig.height,
+                captureConfig.frameRate > 0 ? captureConfig.frameRate : 60)) {
+            return false;
+        }
+    } else {
+        return false;
     }
     startAudioCapture(selectedWindowProcessId);
 
@@ -706,6 +729,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
         if (!videoEncoder_.initialize(primaryConfig)) {
             if (config.codec == video::VideoCodec::H264) {
                 windowCapture_.stopCapture();
+                spoutCapture_.stopCapture();
                 return false;
             }
 
@@ -723,6 +747,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
                 spdlog::error("[App] H.264 fallback encoder failed to initialize after {} startup failure",
                               videoCodecName(selectedCodec));
                 windowCapture_.stopCapture();
+                spoutCapture_.stopCapture();
                 return false;
             }
 
@@ -755,6 +780,7 @@ bool VersusApp::startCapture(const std::string &windowId) {
     }
     if (activeEncoderName.empty()) {
         windowCapture_.stopCapture();
+        spoutCapture_.stopCapture();
         return false;
     }
     spdlog::info("[App] Video encoder active: {} (hardware={})",
@@ -774,37 +800,11 @@ bool VersusApp::startCapture(const std::string &windowId) {
     audioConfig.bitrate = audioEncoderBitrateKbps_.load(std::memory_order_relaxed);
     opusEncoder_.initialize(audioConfig);
 
-    windowCapture_.setFrameCallback([this](const video::CapturedFrame &frame) {
-        static int frameCount = 0;
-        static auto lastLog = std::chrono::steady_clock::now();
-        frameCount++;
-        videoFramesCaptured_.fetch_add(1, std::memory_order_relaxed);
-
-        {
-            std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-            latestVideoFrame_ = frame;
-            hasLatestVideoFrame_ = true;
-        }
-
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >= 5) {
-            spdlog::info("[Frame] Received {} frames in last 5s, live={}", frameCount, live_.load());
-            frameCount = 0;
-            lastLog = now;
-        }
-
-        // Notify the encode thread instead of encoding inline.
-        // This decouples capture from encoding so the frame pool can deliver
-        // the next frame immediately without waiting for encode to finish.
-        {
-            std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
-            if (encodeFrameReady_) {
-                videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
-            }
-            encodeFrameReady_ = true;
-        }
-        encodeFrameCV_.notify_one();
-    });
+    const auto frameCallback = [this](const video::CapturedFrame &frame) {
+        handleVideoFrame(frame);
+    };
+    windowCapture_.setFrameCallback(frameCallback);
+    spoutCapture_.setFrameCallback(frameCallback);
 
     capturing_ = true;
     startEncodeThread();
@@ -820,6 +820,7 @@ void VersusApp::stopCapture() {
     stopVideoMaintenanceThread();
     stopEncodeThread();
     windowCapture_.stopCapture();
+    spoutCapture_.stopCapture();
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         videoEncoder_.shutdown();
@@ -868,6 +869,10 @@ void VersusApp::stopCapture() {
 
 void VersusApp::setSelectedWindow(const std::string &windowId) {
     selectedWindowId_ = windowId;
+}
+
+void VersusApp::setVideoSourceMode(VideoSourceMode mode) {
+    videoSourceMode_ = mode;
 }
 
 void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
@@ -4596,7 +4601,42 @@ bool VersusApp::getCachedVideoFrame(video::CapturedFrame &frame) {
             return true;
         }
     }
+    if (videoSourceMode_ == VideoSourceMode::Spout) {
+        return spoutCapture_.getLatestFrame(frame);
+    }
     return windowCapture_.getLatestFrame(frame);
+}
+
+void VersusApp::handleVideoFrame(const video::CapturedFrame &frame) {
+    static int frameCount = 0;
+    static auto lastLog = std::chrono::steady_clock::now();
+    frameCount++;
+    videoFramesCaptured_.fetch_add(1, std::memory_order_relaxed);
+
+    {
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        latestVideoFrame_ = frame;
+        hasLatestVideoFrame_ = true;
+    }
+
+    auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLog).count() >= 5) {
+        spdlog::info("[Frame] Received {} frames in last 5s, live={}", frameCount, live_.load());
+        frameCount = 0;
+        lastLog = now;
+    }
+
+    // Notify the encode thread instead of encoding inline.
+    // This decouples capture from encoding so the frame producer can deliver
+    // the next frame immediately without waiting for encode to finish.
+    {
+        std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
+        if (encodeFrameReady_) {
+            videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+        }
+        encodeFrameReady_ = true;
+    }
+    encodeFrameCV_.notify_one();
 }
 
 void VersusApp::startSignalingRecovery() {

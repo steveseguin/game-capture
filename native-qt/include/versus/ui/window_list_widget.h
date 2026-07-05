@@ -22,6 +22,8 @@ class WindowListWidget : public QWidget {
     QString selectedWindowId() const;
     void setAutoRefreshEnabled(bool enabled);
     void requestThumbnailRefresh();
+    void setHeaderText(const QString &text);
+    void setEmptyText(const QString &text);
 
   signals:
     void windowSelected(const QString &windowId);
@@ -39,11 +41,13 @@ class WindowListWidget : public QWidget {
     void updateItemWidget(QWidget *widget, const versus::video::WindowInfo &window, bool forceThumbnailRefresh);
 
     QListWidget *listWidget_ = nullptr;
+    QLabel *headerLabel_ = nullptr;
     QPushButton *refreshButton_ = nullptr;
     QTimer *autoRefreshTimer_ = nullptr;
     QString selectedWindowId_;
     QMap<QString, QListWidgetItem*> windowItems_;  // Track items by window ID
     QMap<QString, QPixmap> thumbnailCache_;
+    QString emptyText_ = "No windows detected. Launch a game and click Refresh.";
     bool forceThumbnailRefreshOnNextSet_ = false;
 };
 
