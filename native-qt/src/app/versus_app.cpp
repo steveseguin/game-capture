@@ -4734,12 +4734,16 @@ void VersusApp::startVideoMaintenanceThread() {
     videoMaintenanceThread_ = std::thread([this]() {
         int64_t lastInfoBroadcastMs = 0;
         while (videoMaintenanceRunning_.load()) {
-            if (capturing_.load(std::memory_order_relaxed) && !windowCapture_.isCapturing()) {
+            const bool sourceCapturing = videoSourceMode_ == VideoSourceMode::Spout
+                ? spoutCapture_.isCapturing()
+                : windowCapture_.isCapturing();
+            if (capturing_.load(std::memory_order_relaxed) && !sourceCapturing) {
                 videoTrackActive_.store(false, std::memory_order_relaxed);
                 pendingGlobalKeyframe_.store(false, std::memory_order_relaxed);
                 if (!captureBackendFailureNotified_.exchange(true, std::memory_order_relaxed)) {
-                    const std::string message =
-                        "Window capture stopped. Select a valid window and start streaming again.";
+                    const std::string message = videoSourceMode_ == VideoSourceMode::Spout
+                        ? "Spout2 capture stopped. Select a valid Spout2 sender and start streaming again."
+                        : "Window capture stopped. Select a valid window and start streaming again.";
                     spdlog::warn("[App] {}", message);
                     emitRuntimeEvent(message, true);
                 }
