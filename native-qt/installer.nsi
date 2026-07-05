@@ -108,6 +108,22 @@ Section "Install"
     SetOutPath "$INSTDIR\styles"
     File /nonfatal "${BUILD_BIN_DIR}\styles\qmodernwindowsstyle.dll"
 
+    ; Qt plugins - generic input
+    SetOutPath "$INSTDIR\generic"
+    File /nonfatal "${BUILD_BIN_DIR}\generic\*.dll"
+
+    ; Qt plugins - image formats
+    SetOutPath "$INSTDIR\imageformats"
+    File /nonfatal "${BUILD_BIN_DIR}\imageformats\*.dll"
+
+    ; Qt plugins - network information
+    SetOutPath "$INSTDIR\networkinformation"
+    File /nonfatal "${BUILD_BIN_DIR}\networkinformation\*.dll"
+
+    ; Qt plugins - TLS
+    SetOutPath "$INSTDIR\tls"
+    File /nonfatal "${BUILD_BIN_DIR}\tls\*.dll"
+
     ; Create shortcuts
     SetOutPath "$INSTDIR"
     CreateDirectory "$SMPROGRAMS\Game Capture"
@@ -138,6 +154,10 @@ Section "Uninstall"
     Delete "$INSTDIR\*.*"
     RMDir /r "$INSTDIR\platforms"
     RMDir /r "$INSTDIR\styles"
+    RMDir /r "$INSTDIR\generic"
+    RMDir /r "$INSTDIR\imageformats"
+    RMDir /r "$INSTDIR\networkinformation"
+    RMDir /r "$INSTDIR\tls"
     Delete "$INSTDIR\uninstall.exe"
 
     ; Remove directories

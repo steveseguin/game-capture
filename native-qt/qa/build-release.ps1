@@ -35,6 +35,69 @@ function Write-Step([string]$Name) {
     Write-Host "=== $Name ==="
 }
 
+function Resolve-Windeployqt {
+    $command = Get-Command windeployqt -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidates = @()
+    if ($env:VCPKG_ROOT) {
+        $candidates += (Join-Path $env:VCPKG_ROOT "installed\x64-windows\tools\Qt6\bin\windeployqt.exe")
+    }
+    $candidates += @(
+        "C:\vcpkg\installed\x64-windows\tools\Qt6\bin\windeployqt.exe",
+        "C:\vcpkg\packages\qtbase_x64-windows\tools\Qt6\bin\windeployqt.exe",
+        "C:\Users\Steve\code\obs-studio\.deps\obs-deps-qt6-2025-08-23-x64\bin\windeployqt.exe"
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return (Resolve-Path $candidate).Path
+        }
+    }
+    return ""
+}
+
+function Resolve-RuntimeDll([string]$Name) {
+    $roots = @()
+    if ($env:VCPKG_ROOT) {
+        $roots += (Join-Path $env:VCPKG_ROOT "installed\x64-windows\bin")
+    }
+    $roots += "C:\vcpkg\installed\x64-windows\bin"
+
+    if ($env:VCINSTALLDIR) {
+        $roots += (Join-Path $env:VCINSTALLDIR "Redist\MSVC")
+    }
+    $roots += @(
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC",
+        "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Redist\MSVC",
+        "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC",
+        "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\Professional\VC\Redist\MSVC",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\VC\Redist\MSVC",
+        "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Redist\MSVC"
+    )
+
+    foreach ($root in $roots | Select-Object -Unique) {
+        if (-not (Test-Path $root)) {
+            continue
+        }
+        $direct = Join-Path $root $Name
+        if (Test-Path $direct) {
+            return (Resolve-Path $direct).Path
+        }
+        $match = Get-ChildItem -Path $root -Filter $Name -Recurse -File -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+        if ($match) {
+            return $match.FullName
+        }
+    }
+    return ""
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
@@ -64,10 +127,10 @@ New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
 Copy-Item -Path $exePath -Destination (Join-Path $stageDir "game-capture.exe") -Force
 Copy-Item -Path (Join-Path $repoRoot "resources/vdoninja.ico") -Destination (Join-Path $stageDir "vdoninja.ico") -Force
 
-$windeployqt = Get-Command windeployqt -ErrorAction SilentlyContinue
+$windeployqt = Resolve-Windeployqt
 if ($windeployqt) {
     Write-Step "Run windeployqt"
-    & $windeployqt.Source --release --no-translations --compiler-runtime --dir $stageDir $exePath
+    & $windeployqt --release --no-translations --compiler-runtime --dir $stageDir $exePath
 } else {
     Write-Host "windeployqt not found; copying local runtime files from build output."
     $exeDir = Split-Path -Parent $exePath
@@ -117,6 +180,41 @@ if (-not (Test-Path $styleTarget)) {
             Copy-Item -Path $candidate -Destination $styleTarget -Force
             break
         }
+    }
+}
+
+Write-Step "Runtime DLL Closure"
+$runtimeDlls = @(
+    "brotlicommon.dll",
+    "brotlidec.dll",
+    "bz2.dll",
+    "double-conversion.dll",
+    "freetype.dll",
+    "harfbuzz.dll",
+    "jpeg62.dll",
+    "libcrypto-3-x64.dll",
+    "libpng16.dll",
+    "md4c.dll",
+    "pcre2-16.dll",
+    "zlib1.dll",
+    "zstd.dll",
+    "MSVCP140.dll",
+    "MSVCP140_1.dll",
+    "MSVCP140_2.dll",
+    "VCRUNTIME140.dll",
+    "VCRUNTIME140_1.dll"
+)
+foreach ($dll in $runtimeDlls) {
+    $target = Join-Path $stageDir $dll
+    if (Test-Path $target) {
+        continue
+    }
+    $source = Resolve-RuntimeDll $dll
+    if ($source) {
+        Copy-Item -Path $source -Destination $target -Force
+        Write-Host "Copied $dll"
+    } else {
+        Write-Warning "Could not locate runtime dependency $dll"
     }
 }
 
