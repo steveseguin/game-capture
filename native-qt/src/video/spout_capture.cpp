@@ -191,13 +191,6 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
             std::max(1, 1000 / std::max(1, impl_->targetFps)));
 
         while (capturing_.load(std::memory_order_acquire)) {
-            const bool received = receiver &&
-                receiver->ReceiveImage(impl_->pixelBuffer.data(), GL_BGRA, false);
-            if (!received) {
-                std::this_thread::sleep_for(frameInterval);
-                continue;
-            }
-
             if (receiver->IsUpdated()) {
                 impl_->activeSenderName = receiver->GetSenderName()
                     ? receiver->GetSenderName()
@@ -223,6 +216,13 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
             }
 
             if (impl_->senderWidth == 0 || impl_->senderHeight == 0 || impl_->pixelBuffer.empty()) {
+                std::this_thread::sleep_for(frameInterval);
+                continue;
+            }
+
+            const bool received = receiver &&
+                receiver->ReceiveImage(impl_->pixelBuffer.data(), GL_BGRA, false);
+            if (!received) {
                 std::this_thread::sleep_for(frameInterval);
                 continue;
             }

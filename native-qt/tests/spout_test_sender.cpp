@@ -68,6 +68,9 @@ int main(int argc, char **argv) {
     int height = kDefaultHeight;
     int fps = kDefaultFps;
     int durationMs = kDefaultDurationMs;
+    int resizeAfterMs = 0;
+    int resizeWidth = 0;
+    int resizeHeight = 0;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -81,6 +84,12 @@ int main(int argc, char **argv) {
             fps = parseIntArg(arg.substr(6), fps);
         } else if (arg.rfind("--duration-ms=", 0) == 0) {
             durationMs = parseIntArg(arg.substr(14), durationMs);
+        } else if (arg.rfind("--resize-after-ms=", 0) == 0) {
+            resizeAfterMs = parseIntArg(arg.substr(18), resizeAfterMs);
+        } else if (arg.rfind("--resize-width=", 0) == 0) {
+            resizeWidth = parseIntArg(arg.substr(15), resizeWidth);
+        } else if (arg.rfind("--resize-height=", 0) == 0) {
+            resizeHeight = parseIntArg(arg.substr(16), resizeHeight);
         }
     }
 
@@ -88,6 +97,9 @@ int main(int argc, char **argv) {
     height = std::clamp(height, 64, 2160);
     fps = std::clamp(fps, 1, 120);
     durationMs = std::max(1000, durationMs);
+    resizeAfterMs = std::clamp(resizeAfterMs, 0, durationMs);
+    resizeWidth = resizeWidth > 0 ? std::clamp(resizeWidth, 64, 3840) : width;
+    resizeHeight = resizeHeight > 0 ? std::clamp(resizeHeight, 64, 2160) : height;
 
     SPOUTLIBRARY *sender = GetSpout();
     if (!sender) {
@@ -113,9 +125,23 @@ int main(int argc, char **argv) {
     const auto start = std::chrono::steady_clock::now();
     const auto frameInterval = std::chrono::milliseconds(std::max(1, 1000 / fps));
     int frame = 0;
+    bool resized = false;
     while (std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - start)
                .count() < durationMs) {
+        const int elapsedMs = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - start)
+            .count());
+        if (!resized && resizeAfterMs > 0 && elapsedMs >= resizeAfterMs) {
+            width = resizeWidth;
+            height = resizeHeight;
+            pixels.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
+            resized = true;
+            std::cout << "SPOUT_TEST_SENDER_RESIZED name=" << name
+                      << " width=" << width
+                      << " height=" << height
+                      << std::endl;
+        }
         drawFrame(pixels, width, height, frame++);
         sender->SendImage(pixels.data(), static_cast<unsigned int>(width), static_cast<unsigned int>(height), GL_BGRA, false);
         sender->HoldFps(fps);
