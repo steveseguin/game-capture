@@ -109,6 +109,7 @@ class TestSpoutCapture : public QObject {
   private slots:
     void testReceivesBgraAlphaFrames();
     void testContinuesAfterSenderResize();
+    void testContinuesAfterSenderRestartWithSameName();
 };
 
 void TestSpoutCapture::testReceivesBgraAlphaFrames() {
@@ -197,6 +198,60 @@ void TestSpoutCapture::testContinuesAfterSenderResize() {
 
     capture.stopCapture();
     sender.stop();
+}
+
+void TestSpoutCapture::testContinuesAfterSenderRestartWithSameName() {
+    const std::string senderName =
+        "GameCaptureSpoutRestartGate-" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    SenderProcess firstSender(senderName);
+    if (!firstSender.start()) {
+        const QByteArray message =
+            QByteArray("Spout sender process could not start: ") + firstSender.output();
+        QSKIP(message.constData());
+    }
+
+    versus::video::SpoutCapture capture;
+    QTRY_VERIFY_WITH_TIMEOUT(hasSender(capture, senderName), 3000);
+
+    std::atomic<int> initialFrames{0};
+    std::atomic<int> restartedFrames{0};
+    capture.setFrameCallback([&initialFrames, &restartedFrames](const versus::video::CapturedFrame &frame) {
+        if (frame.width == kWidth && frame.height == kHeight) {
+            initialFrames.fetch_add(1, std::memory_order_relaxed);
+        }
+        if (frame.width == kResizeWidth && frame.height == kResizeHeight) {
+            restartedFrames.fetch_add(1, std::memory_order_relaxed);
+        }
+    });
+
+    QVERIFY(capture.startCapture(senderName, kWidth, kHeight, kFps));
+    QTRY_VERIFY_WITH_TIMEOUT(initialFrames.load(std::memory_order_relaxed) >= 2, 3000);
+    firstSender.stop();
+    QTest::qWait(500);
+
+    SenderProcess restartedSender(senderName, {
+        QString("--width=%1").arg(kResizeWidth),
+        QString("--height=%1").arg(kResizeHeight),
+        QString("--duration-ms=%1").arg(7000),
+    });
+    if (!restartedSender.start()) {
+        const QByteArray message =
+            QByteArray("Replacement Spout sender process could not start: ") + restartedSender.output();
+        QSKIP(message.constData());
+    }
+
+    QTRY_VERIFY_WITH_TIMEOUT(restartedFrames.load(std::memory_order_relaxed) >= 2, 7000);
+
+    versus::video::CapturedFrame frame;
+    QVERIFY(capture.getLatestFrame(frame));
+    QCOMPARE(frame.width, kResizeWidth);
+    QCOMPARE(frame.height, kResizeHeight);
+    QCOMPARE(frame.stride, kResizeWidth * 4);
+    QCOMPARE(frame.data.size(), static_cast<size_t>(kResizeWidth) * kResizeHeight * 4);
+
+    capture.stopCapture();
+    restartedSender.stop();
 }
 
 QTEST_MAIN(TestSpoutCapture)

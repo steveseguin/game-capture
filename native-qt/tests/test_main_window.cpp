@@ -42,6 +42,7 @@ private slots:
     void testResolutionOptions();
     void testVideoSourceModeControl();
     void testPersistedSpoutModeUsesNoAudio();
+    void testSpoutSelectionPreviewMessaging();
     void testIceModeOptions();
     void testAudioSourceOptions();
     void testAudioMixControls();
@@ -289,6 +290,10 @@ void TestMainWindow::testVideoSourceModeControl() {
 
     const int spoutIndex = sourceCombo->findData("spout");
     QVERIFY(spoutIndex >= 0);
+    QVERIFY(sourceCombo->itemText(spoutIndex).contains("avatar", Qt::CaseInsensitive));
+    QVERIFY(sourceCombo->toolTip().contains("VTube Studio"));
+    QVERIFY(sourceCombo->toolTip().contains("Warudo"));
+    QVERIFY(sourceCombo->toolTip().contains("same GPU", Qt::CaseInsensitive));
     sourceCombo->setCurrentIndex(spoutIndex);
     QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
     QCOMPARE(audioCombo->currentData().toString(), QString("none"));
@@ -311,6 +316,40 @@ void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
     QVERIFY(audioCombo != nullptr);
     QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
     QCOMPARE(audioCombo->currentData().toString(), QString("none"));
+}
+
+void TestMainWindow::testSpoutSelectionPreviewMessaging() {
+    auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
+    auto *windowList = window_->findChild<versus::ui::WindowListWidget*>();
+    auto *preview = window_->findChild<QLabel*>("selectedPreview");
+    QVERIFY(sourceCombo != nullptr);
+    QVERIFY(windowList != nullptr);
+    QVERIFY(preview != nullptr);
+
+    const int spoutIndex = sourceCombo->findData("spout");
+    QVERIFY(spoutIndex >= 0);
+    sourceCombo->setCurrentIndex(spoutIndex);
+
+    std::vector<versus::video::WindowInfo> senders;
+    versus::video::WindowInfo sender;
+    sender.id = "VTubeStudioSpout";
+    sender.name = "VTubeStudioSpout";
+    sender.executableName = "Spout2 sender";
+    sender.width = 1920;
+    sender.height = 1080;
+    senders.push_back(sender);
+    windowList->setWindowList(senders);
+
+    auto *listWidget = windowList->findChild<QListWidget*>();
+    QVERIFY(listWidget != nullptr);
+    QCOMPARE(listWidget->count(), 1);
+    emit listWidget->itemClicked(listWidget->item(0));
+
+    QVERIFY(preview->text().contains("Spout2 sender selected"));
+    QVERIFY(preview->text().contains("VTubeStudioSpout"));
+    QVERIFY(preview->text().contains("For transparency: VP9 + OBS alpha workflow"));
+    QVERIFY(preview->text().contains("Video only"));
+    QVERIFY(preview->text().contains("selected stream resolution"));
 }
 
 void TestMainWindow::testIceModeOptions() {

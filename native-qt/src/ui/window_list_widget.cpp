@@ -55,6 +55,34 @@ void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel,
     }
 
     const QString windowId = QString::fromStdString(window.id);
+    if (spoutModeEnabled_) {
+        QPixmap fallback(thumbnailLabel->size());
+        fallback.fill(Qt::transparent);
+        QPainter painter(&fallback);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        QLinearGradient gradient(0, 0, fallback.width(), fallback.height());
+        gradient.setColorAt(0.0, QColor("#143a46"));
+        gradient.setColorAt(1.0, QColor("#101927"));
+        painter.setBrush(gradient);
+        painter.setPen(Qt::NoPen);
+        painter.drawRoundedRect(fallback.rect(), 6, 6);
+
+        painter.setPen(QColor("#5de6ff"));
+        QFont font = painter.font();
+        font.setBold(true);
+        font.setPointSize(14);
+        painter.setFont(font);
+        painter.drawText(fallback.rect(), Qt::AlignCenter, QStringLiteral("Spout2"));
+
+        thumbnailLabel->setPixmap(fallback);
+        thumbnailLabel->setText(QString());
+        thumbnailLabel->setProperty("hasThumbnail", true);
+        thumbnailLabel->setProperty("thumbnailRetryCount", 0);
+        thumbnailCache_[windowId] = fallback;
+        return;
+    }
+
     if (!forceRefresh) {
         const auto cached = thumbnailCache_.constFind(windowId);
         if (cached != thumbnailCache_.constEnd() && !cached.value().isNull()) {
@@ -110,6 +138,15 @@ void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel,
     thumbnailLabel->setProperty("thumbnailRetryCount", 0);
 }
 
+QString WindowListWidget::secondaryTextFor(const versus::video::WindowInfo &window) const {
+    QString text = QString::fromStdString(window.executableName).trimmed();
+    if (window.width > 0 && window.height > 0) {
+        const QString dimensions = QString("%1x%2").arg(window.width).arg(window.height);
+        text = text.isEmpty() ? dimensions : QString("%1 - %2").arg(text).arg(dimensions);
+    }
+    return text;
+}
+
 QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &window) {
     auto *widget = new QWidget();
     widget->setObjectName("itemWidget");
@@ -138,7 +175,7 @@ QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &win
     titleLabel->setFont(titleFont);
     titleLabel->setWordWrap(true);
 
-    auto *exeLabel = new QLabel(QString::fromStdString(window.executableName));
+    auto *exeLabel = new QLabel(secondaryTextFor(window));
     exeLabel->setObjectName("exe");
     QFont exeFont = exeLabel->font();
     exeFont.setPointSize(8);
@@ -160,7 +197,7 @@ void WindowListWidget::updateItemWidget(QWidget *widget,
         titleLabel->setText(QString::fromStdString(window.name));
     }
     if (auto *exeLabel = widget->findChild<QLabel*>("exe")) {
-        exeLabel->setText(QString::fromStdString(window.executableName));
+        exeLabel->setText(secondaryTextFor(window));
     }
     if (auto *thumbnailLabel = widget->findChild<QLabel*>("thumbnail")) {
         if (forceThumbnailRefresh) {
@@ -297,6 +334,15 @@ void WindowListWidget::setHeaderText(const QString &text) {
 
 void WindowListWidget::setEmptyText(const QString &text) {
     emptyText_ = text;
+}
+
+void WindowListWidget::setSpoutModeEnabled(bool enabled) {
+    if (spoutModeEnabled_ == enabled) {
+        return;
+    }
+    spoutModeEnabled_ = enabled;
+    thumbnailCache_.clear();
+    requestThumbnailRefresh();
 }
 
 void WindowListWidget::onItemClicked(QListWidgetItem *item) {

@@ -1,6 +1,7 @@
 #include "versus/video/spout_capture.h"
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <condition_variable>
 #include <cstring>
@@ -27,6 +28,32 @@ int64_t steadyTimestamp100ns() {
 }
 
 #if defined(_WIN32) && defined(VERSUS_USE_SPOUT)
+bool parseSpoutDuplicateSuffix(
+    const std::string &name,
+    const std::string &baseName,
+    int &suffix) {
+    const std::string prefix = baseName + "_";
+    if (name.size() <= prefix.size() ||
+        name.compare(0, prefix.size(), prefix) != 0) {
+        return false;
+    }
+
+    const std::string suffixText = name.substr(prefix.size());
+    if (suffixText.empty() ||
+        !std::all_of(suffixText.begin(), suffixText.end(), [](unsigned char ch) {
+            return std::isdigit(ch) != 0;
+        })) {
+        return false;
+    }
+
+    try {
+        suffix = std::stoi(suffixText);
+    } catch (...) {
+        return false;
+    }
+    return suffix > 0;
+}
+
 WindowInfo makeSenderInfo(SPOUTLIBRARY *spout, const char *name) {
     WindowInfo info;
     if (!name || !*name) {
@@ -189,8 +216,118 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
 
         const auto frameInterval = std::chrono::milliseconds(
             std::max(1, 1000 / std::max(1, impl_->targetFps)));
+        int receiveFailureCount = 0;
+        int senderInfoPollCount = 0;
+        const int reconnectThreshold = std::max(10, impl_->targetFps / 2);
+        const int staleFrameThreshold = std::max(30, impl_->targetFps * 2);
+        long lastSenderFrame = -1;
+        int staleFrameCount = 0;
+        const std::string requestedSenderName = impl_->activeSenderName;
+        struct SenderMetadata {
+            std::string name;
+            unsigned int width = 0;
+            unsigned int height = 0;
+            DWORD format = 0;
+        };
+        auto getSenderMetadata = [&](const std::string &name, SenderMetadata &metadata) {
+            unsigned int width = 0;
+            unsigned int height = 0;
+            HANDLE shareHandle = nullptr;
+            DWORD format = 0;
+            if (name.empty() ||
+                !receiver->GetSenderInfo(name.c_str(), width, height, shareHandle, format) ||
+                width == 0 ||
+                height == 0) {
+                return false;
+            }
+
+            metadata.name = name;
+            metadata.width = width;
+            metadata.height = height;
+            metadata.format = format;
+            return true;
+        };
+        auto findReconnectTarget = [&](SenderMetadata &metadata) {
+            // GetSenderCount cleans orphaned Spout sender names before we query.
+            receiver->GetSenderCount();
+
+            if (impl_->activeSenderName != requestedSenderName &&
+                getSenderMetadata(impl_->activeSenderName, metadata)) {
+                return true;
+            }
+            if (getSenderMetadata(requestedSenderName, metadata)) {
+                return true;
+            }
+
+            const int count = std::max(0, receiver->GetSenderCount());
+            SenderMetadata bestMatch;
+            int bestSuffix = -1;
+            for (int i = 0; i < count; ++i) {
+                char name[256]{};
+                if (!receiver->GetSender(i, name, static_cast<int>(sizeof(name)))) {
+                    continue;
+                }
+                int suffix = 0;
+                SenderMetadata candidate;
+                if (parseSpoutDuplicateSuffix(name, requestedSenderName, suffix) &&
+                    getSenderMetadata(name, candidate) &&
+                    suffix > bestSuffix) {
+                    bestSuffix = suffix;
+                    bestMatch = std::move(candidate);
+                }
+            }
+
+            if (bestSuffix > 0) {
+                metadata = std::move(bestMatch);
+                return true;
+            }
+            return false;
+        };
+        auto reconnectToActiveSender = [&](const char *reason, bool force) {
+            SenderMetadata metadata;
+            if (!findReconnectTarget(metadata)) {
+                return false;
+            }
+            if (!force &&
+                metadata.name == impl_->activeSenderName &&
+                metadata.width == impl_->senderWidth &&
+                metadata.height == impl_->senderHeight &&
+                metadata.format == impl_->senderFormat) {
+                return false;
+            }
+
+            receiver->ReleaseReceiver();
+            receiver->SetReceiverName(metadata.name.c_str());
+            impl_->activeSenderName = metadata.name;
+            impl_->senderWidth = metadata.width;
+            impl_->senderHeight = metadata.height;
+            impl_->senderFormat = metadata.format;
+            impl_->pixelBuffer.assign(
+                static_cast<size_t>(impl_->senderWidth) *
+                    static_cast<size_t>(impl_->senderHeight) * 4,
+                0);
+            spdlog::info("[SpoutCapture] {} sender='{}' {}x{} format={}",
+                         reason,
+                         impl_->activeSenderName,
+                         impl_->senderWidth,
+                         impl_->senderHeight,
+                         impl_->senderFormat);
+            return true;
+        };
 
         while (capturing_.load(std::memory_order_acquire)) {
+            senderInfoPollCount++;
+            if (senderInfoPollCount >= reconnectThreshold) {
+                senderInfoPollCount = 0;
+                if (reconnectToActiveSender("Detected sender metadata change", false)) {
+                    receiveFailureCount = 0;
+                    staleFrameCount = 0;
+                    lastSenderFrame = -1;
+                    std::this_thread::sleep_for(frameInterval);
+                    continue;
+                }
+            }
+
             if (receiver->IsUpdated()) {
                 impl_->activeSenderName = receiver->GetSenderName()
                     ? receiver->GetSenderName()
@@ -211,6 +348,9 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                              impl_->senderWidth,
                              impl_->senderHeight,
                              impl_->senderFormat);
+                receiveFailureCount = 0;
+                staleFrameCount = 0;
+                lastSenderFrame = -1;
                 std::this_thread::sleep_for(frameInterval);
                 continue;
             }
@@ -223,6 +363,29 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
             const bool received = receiver &&
                 receiver->ReceiveImage(impl_->pixelBuffer.data(), GL_BGRA, false);
             if (!received) {
+                receiveFailureCount++;
+                if (receiveFailureCount >= reconnectThreshold) {
+                    reconnectToActiveSender("Reconnected", true);
+                    receiveFailureCount = 0;
+                    staleFrameCount = 0;
+                    lastSenderFrame = -1;
+                }
+                std::this_thread::sleep_for(frameInterval);
+                continue;
+            }
+            receiveFailureCount = 0;
+
+            const long senderFrame = receiver->GetSenderFrame();
+            if (senderFrame > 0 && senderFrame == lastSenderFrame) {
+                staleFrameCount++;
+            } else {
+                staleFrameCount = 0;
+                lastSenderFrame = senderFrame;
+            }
+            if (staleFrameCount >= staleFrameThreshold) {
+                reconnectToActiveSender("Reconnected stale sender", true);
+                staleFrameCount = 0;
+                lastSenderFrame = -1;
                 std::this_thread::sleep_for(frameInterval);
                 continue;
             }

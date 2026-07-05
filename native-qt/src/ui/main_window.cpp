@@ -29,6 +29,7 @@
 #include <QSplitter>
 #include <QStandardPaths>
 #include <QStyle>
+#include <QStringList>
 #include <QUrlQuery>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -1026,9 +1027,11 @@ void MainWindow::setupUI() {
     sourceModeSelect_ = new QComboBox(this);
     sourceModeSelect_->setObjectName("sourceModeSelect");
     sourceModeSelect_->addItem("Window", QVariant("window"));
-    sourceModeSelect_->addItem("Spout2", QVariant("spout"));
+    sourceModeSelect_->addItem("Spout2 (avatar apps)", QVariant("spout"));
     sourceModeSelect_->setToolTip(
-        "Window captures visible app/game windows. Spout2 receives a local Spout sender, including alpha when the sender provides it.");
+        "Window captures visible app/game windows. Spout2 is for local avatar/alpha senders such as VTube Studio, "
+        "Warudo, VSeeFace, and VNyan. Start or enable Spout output in that app first. For transparency, use VP9 "
+        "with OBS alpha workflow. If frames are black, run both apps on the same GPU.");
     installComboWheelGuard(sourceModeSelect_);
     connect(sourceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         if (sourceModeSelect_ &&
@@ -1044,9 +1047,12 @@ void MainWindow::setupUI() {
         if (windowListWidget_) {
             windowListWidget_->requestThumbnailRefresh();
         }
+        updateStatus(sourceModeSelect_ && sourceModeSelect_->currentData().toString() == "spout"
+            ? "Select a Spout2 sender"
+            : "Select a window to capture",
+            "idle");
         refreshWindowList();
         refreshSelectedWindowPreview();
-        updateStatus("Select a source to capture", "idle");
         updateGoLiveButton();
         savePersistedSettings();
     });
@@ -1072,7 +1078,7 @@ void MainWindow::setupUI() {
     auto *previewLayout = new QVBoxLayout(previewFrame);
     previewLayout->setContentsMargins(8, 8, 8, 8);
     previewLayout->setSpacing(4);
-    auto *previewTitle = new QLabel("Selected Window Preview", this);
+    auto *previewTitle = new QLabel("Selected Source Preview", this);
     previewTitle->setStyleSheet(QString("color: %1; font-weight: bold;").arg(COLOR_TEXT_DIM));
     previewLayout->addWidget(previewTitle);
 
@@ -1786,7 +1792,8 @@ void MainWindow::onWindowSelected(const QString &windowId) {
 
     refreshSelectedWindowPreview();
     if (hasSelection) {
-        updateStatus("Ready to go live", "ready");
+        const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
+        updateStatus(sourceMode == "spout" ? "Ready to capture Spout2 sender" : "Ready to go live", "ready");
     }
 }
 
@@ -1807,15 +1814,24 @@ void MainWindow::refreshWindowList() {
     if (core_) {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
         if (sourceMode == "spout") {
+            windowListWidget_->setSpoutModeEnabled(true);
             windowListWidget_->setHeaderText("Select Spout2 Sender:");
-            windowListWidget_->setEmptyText("No Spout2 senders detected. Start a sender and click Refresh.");
+            windowListWidget_->setEmptyText(
+                "No Spout2 senders detected. Enable Spout output in the avatar app, keep it running, then Refresh.");
             auto senders = core_->listSpoutSenders();
             windowListWidget_->setWindowList(senders);
+            if (selectedWindowId_.isEmpty()) {
+                updateStatus(senders.empty() ? "Waiting for Spout2 sender" : "Select a Spout2 sender", "idle");
+            }
         } else {
+            windowListWidget_->setSpoutModeEnabled(false);
             windowListWidget_->setHeaderText("Select Game/Window:");
             windowListWidget_->setEmptyText("No windows detected. Launch a game and click Refresh.");
             auto windows = core_->listWindows();
             windowListWidget_->setWindowList(windows);
+            if (selectedWindowId_.isEmpty()) {
+                updateStatus(windows.empty() ? "Waiting for window" : "Select a window to capture", "idle");
+            }
         }
     }
 }
@@ -2737,7 +2753,26 @@ void MainWindow::refreshSelectedWindowPreview() {
 
     if (sourceMode == "spout") {
         previewLabel_->setPixmap(QPixmap());
-        previewLabel_->setText(QString("Spout2 sender selected\n%1").arg(selectedWindowId_));
+        QStringList lines;
+        lines << "Spout2 sender selected" << selectedWindowId_;
+        if (core_) {
+            const auto senders = core_->listSpoutSenders();
+            const auto match = std::find_if(senders.begin(), senders.end(), [this](const auto &sender) {
+                return QString::fromStdString(sender.id) == selectedWindowId_;
+            });
+            if (match != senders.end() && match->width > 0 && match->height > 0) {
+                lines << QString("%1x%2").arg(match->width).arg(match->height);
+            }
+        }
+
+        const bool vp9Selected = codecSelect_ && codecSelect_->currentData().toString() == "vp9";
+        const bool alphaEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+        lines << (vp9Selected && alphaEnabled
+            ? "OBS alpha workflow ready"
+            : "For transparency: VP9 + OBS alpha workflow");
+        lines << "Video only; choose audio separately";
+        lines << "Output uses selected stream resolution";
+        previewLabel_->setText(lines.join('\n'));
         return;
     }
 

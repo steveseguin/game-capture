@@ -25,6 +25,7 @@ private slots:
     void testSelectionPersistence();
     void testSelectionClearsWhenWindowMissing();
     void testItemHasThumbnailWidget();
+    void testSpoutModeShowsSenderDetails();
 
 private:
     versus::ui::WindowListWidget *widget_ = nullptr;
@@ -233,6 +234,40 @@ void TestWindowListWidget::testItemHasThumbnailWidget() {
     QVERIFY(thumbnail != nullptr);
     QVERIFY(!thumbnail->pixmap().isNull());
     QCOMPARE(thumbnail->property("hasThumbnail").toBool(), false);
+}
+
+void TestWindowListWidget::testSpoutModeShowsSenderDetails() {
+    widget_->setSpoutModeEnabled(true);
+
+    std::vector<versus::video::WindowInfo> senders;
+    versus::video::WindowInfo sender;
+    sender.id = "spout:Game Capture Spout Alpha Test";
+    sender.name = "Game Capture Spout Alpha Test";
+    sender.executableName = "Spout2 sender";
+    sender.width = 640;
+    sender.height = 360;
+    senders.push_back(sender);
+
+    widget_->setWindowList(senders);
+
+    auto *listWidget = widget_->findChild<QListWidget*>();
+    QVERIFY(listWidget != nullptr);
+    QCOMPARE(listWidget->count(), 1);
+
+    QWidget *itemWidget = listWidget->itemWidget(listWidget->item(0));
+    QVERIFY(itemWidget != nullptr);
+
+    auto *title = itemWidget->findChild<QLabel*>("title");
+    auto *details = itemWidget->findChild<QLabel*>("exe");
+    auto *thumbnail = itemWidget->findChild<QLabel*>("thumbnail");
+    QVERIFY(title != nullptr);
+    QVERIFY(details != nullptr);
+    QVERIFY(thumbnail != nullptr);
+
+    QCOMPARE(title->text(), QString("Game Capture Spout Alpha Test"));
+    QCOMPARE(details->text(), QString("Spout2 sender - 640x360"));
+    QVERIFY(!thumbnail->pixmap().isNull());
+    QCOMPARE(thumbnail->property("hasThumbnail").toBool(), true);
 }
 
 QTEST_MAIN(TestWindowListWidget)

@@ -585,6 +585,23 @@ webrtc::PeerConfig::VideoCodec toPeerVideoCodec(video::VideoCodec codec) {
     }
 }
 
+video::EncoderConfig primaryVideoEncoderConfig(video::EncoderConfig config) {
+    if (config.codec == video::VideoCodec::VP9) {
+        // Dual-track VP9 alpha sends color and alpha through separate encoders.
+        config.enableAlpha = false;
+    }
+    return config;
+}
+
+video::EncoderConfig alphaVideoEncoderConfig(video::EncoderConfig config) {
+    config.enableAlpha = true;
+    config.bitrate = std::max(500, config.bitrate / 4);
+    config.minBitrate = std::max(250, config.bitrate / 2);
+    config.maxBitrate = std::max(config.bitrate + 1000, (config.bitrate * 3) / 2);
+    config.preferredHardware = video::HardwareEncoder::None;
+    return config;
+}
+
 }  // namespace
 
 VersusApp::VersusApp() = default;
@@ -716,11 +733,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         config.frameRate = 60;
         config.bitrate = 12000;
     }
-    video::EncoderConfig primaryConfig = config;
-    if (primaryConfig.codec == video::VideoCodec::VP9) {
-        // Dual-track VP9 alpha uses a separate grayscale encoder for transparency.
-        primaryConfig.enableAlpha = false;
-    }
+    video::EncoderConfig primaryConfig = primaryVideoEncoderConfig(config);
     std::string activeEncoderName;
     bool activeHardwareEncoder = false;
     bool alphaEncoderOk = false;
@@ -768,13 +781,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         // VP9 alpha: initialize a separate encoder instance for the alpha (gray) track.
         videoEncoderAlpha_.shutdown();
         if (config.codec == video::VideoCodec::VP9 && config.enableAlpha) {
-            video::EncoderConfig alphaConfig = config;
-            alphaConfig.enableAlpha = true;
-            alphaConfig.bitrate = std::max(500, config.bitrate / 4);
-            alphaConfig.minBitrate = std::max(250, alphaConfig.bitrate / 2);
-            alphaConfig.maxBitrate = std::max(alphaConfig.bitrate + 1000, (alphaConfig.bitrate * 3) / 2);
-            alphaConfig.preferredHardware = video::HardwareEncoder::None;
-            alphaEncoderOk = videoEncoderAlpha_.initialize(alphaConfig);
+            alphaEncoderOk = videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(config));
         }
         publishVideoStateSnapshotLocked();
     }
@@ -2556,9 +2563,11 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
                      nextConfig.frameRate,
                      nextConfig.bitrate);
         videoEncoder_.shutdown();
-        if (!videoEncoder_.initialize(nextConfig)) {
+        const auto previousPrimaryConfig = primaryVideoEncoderConfig(previousConfig);
+        const auto nextPrimaryConfig = primaryVideoEncoderConfig(nextConfig);
+        if (!videoEncoder_.initialize(nextPrimaryConfig)) {
             spdlog::error("[App] Failed runtime reconfigure; restoring previous encoder config");
-            if (!videoEncoder_.initialize(previousConfig)) {
+            if (!videoEncoder_.initialize(previousPrimaryConfig)) {
                 spdlog::error("[App] Failed to restore previous encoder config after runtime reconfigure failure");
             } else {
                 activeHqWidth_ = std::max(2, previousConfig.width & ~1);
@@ -2575,6 +2584,17 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     } else if (bitrateChanged) {
         spdlog::info("[App] Applying runtime bitrate update: {} kbps", nextConfig.bitrate);
         videoEncoder_.setBitrate(nextConfig.bitrate);
+    }
+
+    if (nextConfig.codec == video::VideoCodec::VP9 && nextConfig.enableAlpha && (requiresReinit || bitrateChanged)) {
+        videoEncoderAlpha_.shutdown();
+        if (!videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(nextConfig))) {
+            spdlog::warn("[App] VP9 alpha encoder reconfigure failed; continuing without alpha channel");
+            nextConfig.enableAlpha = false;
+            videoEncoderAlpha_.shutdown();
+        }
+    } else if (nextConfig.codec != video::VideoCodec::VP9 || !nextConfig.enableAlpha) {
+        videoEncoderAlpha_.shutdown();
     }
 
     videoConfig_ = nextConfig;
@@ -2658,7 +2678,7 @@ bool VersusApp::enforceRoomCodecLock() {
 
     spdlog::error("[App] Failed to enforce room-mode H.264 lock; restoring previous codec");
     videoConfig_ = previousConfig;
-    if (!videoEncoder_.initialize(previousConfig)) {
+    if (!videoEncoder_.initialize(primaryVideoEncoderConfig(previousConfig))) {
         spdlog::error("[App] Failed to restore previous encoder config after room codec lock failure");
     } else {
         activeHqWidth_ = std::max(2, previousConfig.width & ~1);
@@ -4176,6 +4196,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
             video::EncoderConfig fallbackConfig = videoConfig_;
             fallbackConfig.codec = video::VideoCodec::H264;
+            fallbackConfig.enableAlpha = false;
             fallbackConfig.forceFfmpegNvenc = false;
 
             videoEncoder_.shutdown();
@@ -4273,6 +4294,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                     if (hardwareRecoveryAttemptCount_ < kHardwareMaxSelfRecoveries) {
                         video::EncoderConfig selfRecoveryConfig = videoConfig_;
                         selfRecoveryConfig.codec = video::VideoCodec::H264;
+                        selfRecoveryConfig.enableAlpha = false;
                         if (reinitAndCheck(selfRecoveryConfig, true, false, "Self-recovery reinit", "current")) {
                             hardwareRecoveryAttemptCount_++;
                             videoConfig_ = selfRecoveryConfig;
@@ -4304,6 +4326,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                             video::EncoderConfig candidateConfig = videoConfig_;
                             candidateConfig.preferredHardware = mode;
                             candidateConfig.codec = video::VideoCodec::H264;
+                            candidateConfig.enableAlpha = false;
                             candidateConfig.forceFfmpegNvenc = false;
 
                             if (!reinitAndCheck(candidateConfig,
@@ -4333,6 +4356,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         video::EncoderConfig fallbackConfig = videoConfig_;
                         fallbackConfig.preferredHardware = video::HardwareEncoder::None;
                         fallbackConfig.codec = video::VideoCodec::H264;
+                        fallbackConfig.enableAlpha = false;
                         fallbackConfig.forceFfmpegNvenc = false;
 
                         videoEncoder_.shutdown();
@@ -5354,7 +5378,7 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
         if (!videoEncoder_.initialize(fallbackConfig)) {
             spdlog::error("[App] Remote rejected {} video but H.264 fallback initialization failed",
                           videoCodecName(previousCodec));
-            if (videoEncoder_.initialize(previousConfig)) {
+            if (videoEncoder_.initialize(primaryVideoEncoderConfig(previousConfig))) {
                 videoConfig_ = previousConfig;
                 activeHqWidth_ = std::max(2, previousConfig.width & ~1);
                 activeHqHeight_ = std::max(2, previousConfig.height & ~1);

@@ -24,6 +24,7 @@ class WindowListWidget : public QWidget {
     void requestThumbnailRefresh();
     void setHeaderText(const QString &text);
     void setEmptyText(const QString &text);
+    void setSpoutModeEnabled(bool enabled);
 
   signals:
     void windowSelected(const QString &windowId);
@@ -37,6 +38,7 @@ class WindowListWidget : public QWidget {
 
   private:
     void applyThumbnail(QLabel *thumbnailLabel, const versus::video::WindowInfo &window, bool forceRefresh = false);
+    QString secondaryTextFor(const versus::video::WindowInfo &window) const;
     QWidget* createItemWidget(const versus::video::WindowInfo &window);
     void updateItemWidget(QWidget *widget, const versus::video::WindowInfo &window, bool forceThumbnailRefresh);
 
@@ -49,6 +51,7 @@ class WindowListWidget : public QWidget {
     QMap<QString, QPixmap> thumbnailCache_;
     QString emptyText_ = "No windows detected. Launch a game and click Refresh.";
     bool forceThumbnailRefreshOnNextSet_ = false;
+    bool spoutModeEnabled_ = false;
 };
 
 }  // namespace versus::ui
