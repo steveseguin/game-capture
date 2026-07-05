@@ -1,5 +1,7 @@
 ﻿#include <QApplication>
 #include <QIcon>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QMetaObject>
 #include <QObject>
 #include <QTimer>
@@ -11,12 +13,14 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <vector>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
 
 #include "versus/app/versus_app.h"
+#include "versus/control/local_control_server.h"
 #include "versus/ui/main_window.h"
 #include "versus/video/window_capture.h"
 
@@ -98,6 +102,46 @@ int clampStartupHeight(int value) {
     return clampEvenDimension(value, 90, 2160);
 }
 
+bool boolEnvEnabled(const char *value) {
+    if (!value || !*value) {
+        return false;
+    }
+    std::string normalized = value;
+    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
+}
+
+QJsonArray sourceListToJson(const std::vector<versus::video::WindowInfo> &sources) {
+    QJsonArray items;
+    for (const auto &source : sources) {
+        QJsonObject item;
+        item["id"] = QString::fromStdString(source.id);
+        item["name"] = QString::fromStdString(source.name);
+        item["executableName"] = QString::fromStdString(source.executableName);
+        item["width"] = source.width;
+        item["height"] = source.height;
+        item["processId"] = static_cast<int>(source.processId);
+        items.append(item);
+    }
+    return items;
+}
+
+QJsonArray audioInputListToJson(const std::vector<versus::audio::AudioDeviceInfo> &devices) {
+    QJsonArray items;
+    for (const auto &device : devices) {
+        QJsonObject item;
+        item["id"] = QString::fromStdString(device.id);
+        item["name"] = QString::fromStdString(device.name);
+        item["sampleRate"] = static_cast<int>(device.sampleRate);
+        item["channels"] = static_cast<int>(device.channels);
+        item["isDefault"] = device.isDefault;
+        items.append(item);
+    }
+    return items;
+}
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
@@ -132,6 +176,10 @@ int main(int argc, char *argv[]) {
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
     std::string diagnosticsOutArg;
+    bool localControlEnabled = false;
+    int localControlPort = 0;
+    std::string localControlTokenArg;
+    std::string localControlDiscoveryArg;
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
@@ -274,12 +322,48 @@ int main(int argc, char *argv[]) {
             diagnosticsOutArg = arg.substr(18);
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
+        } else if (arg == "--local-control") {
+            localControlEnabled = true;
+        } else if (arg.find("--local-control-port=") == 0) {
+            const auto parsed = parseNonNegativeInteger(arg.substr(21));
+            if (parsed) {
+                localControlPort = std::clamp(*parsed, 0, 65535);
+                localControlEnabled = true;
+            }
+        } else if (arg.find("--local-control-token=") == 0) {
+            localControlTokenArg = arg.substr(22);
+            localControlEnabled = true;
+        } else if (arg.find("--local-control-discovery=") == 0) {
+            localControlDiscoveryArg = arg.substr(26);
+            localControlEnabled = true;
+        }
+    }
+
+    if (!localControlEnabled && boolEnvEnabled(std::getenv("GAME_CAPTURE_LOCAL_CONTROL"))) {
+        localControlEnabled = true;
+    }
+    if (localControlPort == 0) {
+        if (const char *envPort = std::getenv("GAME_CAPTURE_LOCAL_CONTROL_PORT")) {
+            const auto parsed = parseNonNegativeInteger(envPort);
+            if (parsed) {
+                localControlPort = std::clamp(*parsed, 0, 65535);
+            }
+        }
+    }
+    if (localControlTokenArg.empty()) {
+        if (const char *envToken = std::getenv("GAME_CAPTURE_LOCAL_CONTROL_TOKEN")) {
+            localControlTokenArg = envToken;
+        }
+    }
+    if (localControlDiscoveryArg.empty()) {
+        if (const char *envDiscovery = std::getenv("GAME_CAPTURE_LOCAL_CONTROL_DISCOVERY")) {
+            localControlDiscoveryArg = envDiscovery;
         }
     }
 
     // Set up logging - console for headless, file otherwise
+    std::string logPath = resolveLogFilePath();
     try {
-        const std::string logPath = resolveLogFilePath();
         std::vector<spdlog::sink_ptr> sinks;
         sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath, true));
         if (headless) {
@@ -348,6 +432,46 @@ int main(int argc, char *argv[]) {
             QMetaObject::invokeMethod(qApp, []() { QApplication::quit(); }, Qt::QueuedConnection);
         }
     });
+
+    std::unique_ptr<versus::control::LocalControlServer> localControlServer;
+    if (localControlEnabled) {
+        localControlServer = std::make_unique<versus::control::LocalControlServer>();
+        localControlServer->setDiagnosticsProvider([&core]() {
+            return QByteArray::fromStdString(core.buildDiagnosticsJson());
+        });
+        localControlServer->setWindowSourcesProvider([&core]() {
+            return sourceListToJson(core.listWindows());
+        });
+        localControlServer->setSpoutSourcesProvider([&core]() {
+            return sourceListToJson(core.listSpoutSenders());
+        });
+        localControlServer->setAudioInputSourcesProvider([&core]() {
+            return audioInputListToJson(core.listAudioInputDevices());
+        });
+        localControlServer->setStopCallback([&core]() {
+            QMetaObject::invokeMethod(qApp, [&core]() {
+                core.stopLive();
+                core.stopCapture();
+            }, Qt::QueuedConnection);
+        });
+        localControlServer->setQuitCallback([&core]() {
+            QMetaObject::invokeMethod(qApp, [&core]() {
+                core.stopLive();
+                core.stopCapture();
+                QApplication::quit();
+            }, Qt::QueuedConnection);
+        });
+
+        versus::control::LocalControlServerConfig controlConfig;
+        controlConfig.port = static_cast<quint16>(localControlPort);
+        controlConfig.token = QString::fromStdString(localControlTokenArg);
+        controlConfig.discoveryPath = QString::fromStdString(localControlDiscoveryArg);
+        controlConfig.logPath = QString::fromStdString(logPath);
+        if (!localControlServer->start(controlConfig)) {
+            spdlog::warn("[Main] Local control server was requested but could not start");
+            localControlServer.reset();
+        }
+    }
 
     bool hasVideoConfigOverride = false;
     versus::video::EncoderConfig encoderOverride;

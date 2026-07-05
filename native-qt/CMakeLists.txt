@@ -25,7 +25,7 @@ option(VERSUS_USE_GRAPHICS_CAPTURE "Enable Windows Graphics Capture API (require
 option(VERSUS_USE_SPOUT "Enable Spout2 source support on Windows" ON)
 
 find_package(Threads REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
 
 include(FetchContent)
 
@@ -144,6 +144,7 @@ set(VERSUS_SOURCES
     src/main.cpp
     src/app/versus_app.cpp
     src/app/dual_stream_policy.cpp
+    src/control/local_control_server.cpp
     src/ui/main_window.cpp
     src/ui/window_list_widget.cpp
     src/ui/stats_panel.cpp
@@ -160,6 +161,7 @@ set(VERSUS_SOURCES
 set(VERSUS_HEADERS
     include/versus/app/versus_app.h
     include/versus/app/dual_stream_policy.h
+    include/versus/control/local_control_server.h
     include/versus/ui/main_window.h
     include/versus/ui/window_list_widget.h
     include/versus/ui/stats_panel.h
@@ -197,6 +199,7 @@ target_include_directories(game-capture PRIVATE
 target_link_libraries(game-capture PRIVATE
     Threads::Threads
     Qt6::Widgets
+    Qt6::Network
     spdlog::spdlog
     cxxopts::cxxopts
     datachannel-static
@@ -275,7 +278,7 @@ option(VERSUS_BUILD_TESTS "Build tests" OFF)
 
 if(VERSUS_BUILD_TESTS)
     enable_testing()
-    find_package(Qt6 REQUIRED COMPONENTS Test)
+    find_package(Qt6 REQUIRED COMPONENTS Test Network)
 
     # Ensure Qt platform plugins are found when running tests via ctest.
     set(QT_PLUGIN_PATH_FOR_TESTS "")
@@ -298,6 +301,7 @@ if(VERSUS_BUILD_TESTS)
     set(VERSUS_LIB_SOURCES
         src/app/versus_app.cpp
         src/app/dual_stream_policy.cpp
+        src/control/local_control_server.cpp
         src/ui/main_window.cpp
         src/ui/window_list_widget.cpp
         src/ui/stats_panel.cpp
@@ -320,6 +324,7 @@ if(VERSUS_BUILD_TESTS)
     target_link_libraries(versus-lib PUBLIC
         Threads::Threads
         Qt6::Widgets
+        Qt6::Network
         spdlog::spdlog
         datachannel-static
         mbedtls
@@ -418,6 +423,14 @@ if(VERSUS_BUILD_TESTS)
     target_link_libraries(test_main_window PRIVATE versus-lib Qt6::Test)
     add_test(NAME MainWindowTest COMMAND test_main_window)
     set_tests_properties(MainWindowTest PROPERTIES
+        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+
+    # Test: LocalControlServer
+    add_executable(test_local_control_server tests/test_local_control_server.cpp)
+    set_target_properties(test_local_control_server PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_local_control_server PRIVATE versus-lib Qt6::Test Qt6::Network)
+    add_test(NAME LocalControlServerTest COMMAND test_local_control_server)
+    set_tests_properties(LocalControlServerTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
 
     # Benchmark helper: Video encoder real-time throughput/stability probe

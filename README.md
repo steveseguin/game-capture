@@ -22,6 +22,10 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
 Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
 
+## Local Control
+
+For same-user automation and local issue collection, the compiled app can expose an opt-in loopback JSON API with `--local-control`. It provides diagnostics, recent logs, source discovery, issue-report export, stop, and quit commands. See `docs/local-control-api.md`.
+
 ## Alpha Workflow
 
 - For transparent playback in OBS, choose `VP9 (OBS Alpha Preview)` and enable the alpha workflow.
