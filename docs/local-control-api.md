@@ -37,6 +37,14 @@ Default report path:
 %LOCALAPPDATA%\GameCapture\reports
 ```
 
+Crash reports:
+
+```text
+%LOCALAPPDATA%\GameCapture\crashes
+```
+
+Crash reports are best-effort Windows artifacts written after hard crashes. They include a small `.json` summary and a `.dmp` minidump when dump writing succeeds.
+
 ## Discovery
 
 Read the discovery file to find the current port, base URL, token, and supported endpoints:
@@ -71,6 +79,17 @@ Authorization: Bearer <token>
 ```
 
 `X-Game-Capture-Token: <token>` is also accepted for simple local clients.
+
+## Diagnostics Source Health
+
+`GET /diagnostics` includes a `source` object for quick capture-source checks:
+
+- `mode`, `source_id`, `has_frame`, `bgra`, `width`, `height`
+- `alpha_detected`, `green_background_likely`, `large_source`
+- `transparent_ratio`, `translucent_ratio`, `opaque_ratio`, `green_ratio`
+- `resize_count`, `sampled_frames`
+
+Local tools should show these as plain status, for example: transparency detected, green background detected, large source may lower FPS, or sender resized during capture.
 
 ## Commands
 

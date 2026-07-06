@@ -39,6 +39,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <exception>
 
 namespace versus::ui {
 
@@ -117,8 +118,8 @@ QString codecTooltipFor(versus::video::VideoCodec codec) {
     }
     if (codec == versus::video::VideoCodec::VP9) {
         return "VP9 publish is experimental and software-heavy. Game Capture will fall back to H.264 if startup or "
-               "encode stability fails. Compatible OBS VDO.Ninja native receivers can upgrade this stream to "
-               "transparency; browser viewers stay standard color video.";
+               "encode stability fails. Transparency in OBS requires the VDO.Ninja OBS plugin native receiver; "
+               "browser viewers stay standard color video.";
     }
     return QString();
 }
@@ -135,8 +136,9 @@ QString alphaWorkflowTextFor(versus::video::VideoCodec codec) {
 
 QString alphaWorkflowTooltipFor(versus::video::VideoCodec codec) {
     if (codec == versus::video::VideoCodec::VP9) {
-        return "Compatible OBS VDO.Ninja native receivers can upgrade this stream to dual-track VP9 transparency. "
-               "Browser viewers still receive standard color video.";
+        return "Requires the VDO.Ninja OBS plugin with Native Receiver enabled. Browser Sources and normal browser "
+               "viewers do not composite this alpha track. VP9 alpha uses software libvpx in realtime mode with the "
+               "fastest cpu-used setting; lower resolution/FPS if CPU load is high.";
     }
     if (codec == versus::video::VideoCodec::AV1) {
         return "AV1 alpha is experimental and viewer support varies. For the current OBS VDO.Ninja transparency "
@@ -1338,7 +1340,11 @@ void MainWindow::setupUI() {
 
     ffmpegOptionsInput_ = new QLineEdit(this);
     ffmpegOptionsInput_->setObjectName("ffmpegOptionsInput");
-    ffmpegOptionsInput_->setPlaceholderText("Optional ffmpeg options (e.g. -preset llhq -rc cbr)");
+    ffmpegOptionsInput_->setPlaceholderText("Optional ffmpeg options (VP9: -g 30 -keyint_min 30; NVENC: -preset llhq -rc cbr)");
+    ffmpegOptionsInput_->setToolTip(
+        "Advanced FFmpeg output options are appended after Game Capture defaults. VP9 already uses "
+        "-deadline realtime -cpu-used 8. For slow CPUs, lower resolution/FPS first; advanced VP9 users can try "
+        "-g 30 -keyint_min 30 to reduce all-keyframe cost at the expense of slower recovery after packet loss or late joins.");
     ffmpegOptionsInput_->setEnabled(false);
     advancedForm->addRow("FFmpeg Options", ffmpegOptionsInput_);
 
@@ -2114,23 +2120,45 @@ void MainWindow::onGoLiveClicked() {
                                            audioLimiterEnabled]() {
             bool started = false;
             QString failureStatus;
+            const auto cleanupFailedStartup = [core]() {
+                try {
+                    core->stopLive();
+                    core->stopCapture();
+                } catch (const std::exception &cleanupError) {
+                    spdlog::warn("[UI] Go Live failure cleanup failed: {}", cleanupError.what());
+                } catch (...) {
+                    spdlog::warn("[UI] Go Live failure cleanup failed with unknown exception");
+                }
+            };
 
-            const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
-            core->setSelectedWindow(selectedWindowId);
-            core->setVideoSourceMode(sourceMode);
-            core->setVideoConfig(config);
-            core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
-            core->setIncludeMicrophone(includeMicrophone);
-            core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
-            core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
+            try {
+                const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
+                core->setSelectedWindow(selectedWindowId);
+                core->setVideoSourceMode(sourceMode);
+                core->setVideoConfig(config);
+                core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
+                core->setIncludeMicrophone(includeMicrophone);
+                core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
+                core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
-            if (!core->startCapture(sourceMode, selectedWindowId)) {
-                failureStatus = "Failed to start capture";
-            } else if (!core->goLive(options)) {
-                failureStatus = "Failed to connect";
-                core->stopCapture();
-            } else {
-                started = true;
+                if (!core->startCapture(sourceMode, selectedWindowId)) {
+                    failureStatus = "Failed to start capture";
+                } else {
+                    if (!core->goLive(options)) {
+                        failureStatus = "Failed to connect";
+                        cleanupFailedStartup();
+                    } else {
+                        started = true;
+                    }
+                }
+            } catch (const std::exception &e) {
+                spdlog::error("[UI] Go Live startup failed with exception: {}", e.what());
+                failureStatus = "Startup failed; see log";
+                cleanupFailedStartup();
+            } catch (...) {
+                spdlog::error("[UI] Go Live startup failed with unknown exception");
+                failureStatus = "Startup failed; see log";
+                cleanupFailedStartup();
             }
 
             if (!self) {
@@ -2763,13 +2791,37 @@ void MainWindow::refreshSelectedWindowPreview() {
             if (match != senders.end() && match->width > 0 && match->height > 0) {
                 lines << QString("%1x%2").arg(match->width).arg(match->height);
             }
+            const auto sourceHealth = core_->getSourceHealth();
+            if (sourceHealth.mode == versus::app::VideoSourceMode::Spout &&
+                QString::fromStdString(sourceHealth.sourceId) == selectedWindowId_ &&
+                sourceHealth.hasFrame) {
+                if (sourceHealth.alphaDetected) {
+                    lines << "Transparency detected";
+                } else if (sourceHealth.greenBackgroundLikely) {
+                    lines << "Green background detected";
+                } else if (sourceHealth.bgra) {
+                    lines << "No transparency detected";
+                } else {
+                    lines << "Source format does not expose alpha";
+                }
+                if (sourceHealth.largeSource) {
+                    lines << "Large source may lower FPS";
+                }
+                if (sourceHealth.resizeCount > 0) {
+                    lines << QString("Sender resized %1 time%2")
+                        .arg(static_cast<qulonglong>(sourceHealth.resizeCount))
+                        .arg(sourceHealth.resizeCount == 1 ? "" : "s");
+                }
+            } else if (isLive_) {
+                lines << "Checking source alpha...";
+            }
         }
 
         const bool vp9Selected = codecSelect_ && codecSelect_->currentData().toString() == "vp9";
         const bool alphaEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
         lines << (vp9Selected && alphaEnabled
-            ? "OBS alpha workflow ready"
-            : "For transparency: VP9 + OBS alpha workflow");
+            ? "OBS alpha requires VDO.Ninja OBS plugin"
+            : "For transparency: VP9 + OBS alpha workflow + OBS plugin");
         lines << "Video only; choose audio separately";
         lines << "Output uses selected stream resolution";
         previewLabel_->setText(lines.join('\n'));

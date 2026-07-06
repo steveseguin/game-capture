@@ -485,6 +485,16 @@ const char *audioSourceModeName(AudioSourceMode mode) {
     }
 }
 
+const char *videoSourceModeName(VideoSourceMode mode) {
+    switch (mode) {
+        case VideoSourceMode::Spout:
+            return "spout";
+        case VideoSourceMode::Window:
+        default:
+            return "window";
+    }
+}
+
 nlohmann::json integerRange(int minValue, int maxValue, int step = 0) {
     nlohmann::json range = {
         {"min", minValue},
@@ -692,6 +702,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     }
     selectedWindowId_ = sourceId;
     videoSourceMode_ = mode;
+    resetSourceHealth(mode, sourceId);
     uint32_t selectedWindowProcessId = 0;
     if (mode == VideoSourceMode::Window && !selectedWindowId_.empty()) {
         if (!windowCapture_.startCapture(sourceId, 1920, 1080, 60)) {
@@ -1294,6 +1305,94 @@ StreamMetrics VersusApp::getStreamMetrics() const {
     return buildStreamMetricsSnapshot(true);
 }
 
+SourceHealth VersusApp::getSourceHealth() const {
+    std::lock_guard<std::mutex> lock(sourceHealthMutex_);
+    return sourceHealth_;
+}
+
+void VersusApp::resetSourceHealth(VideoSourceMode mode, const std::string &sourceId) {
+    std::lock_guard<std::mutex> lock(sourceHealthMutex_);
+    sourceHealth_ = SourceHealth{};
+    sourceHealth_.mode = mode;
+    sourceHealth_.sourceId = sourceId;
+}
+
+void VersusApp::updateSourceHealthFromFrame(const video::CapturedFrame &frame) {
+    if (frame.width <= 0 || frame.height <= 0) {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(sourceHealthMutex_);
+    if (sourceHealth_.hasFrame &&
+        (sourceHealth_.width != frame.width || sourceHealth_.height != frame.height)) {
+        sourceHealth_.resizeCount++;
+    }
+
+    sourceHealth_.hasFrame = true;
+    sourceHealth_.bgra = frame.format == video::CapturedFrame::Format::BGRA;
+    sourceHealth_.width = frame.width;
+    sourceHealth_.height = frame.height;
+    sourceHealth_.largeSource =
+        frame.width > 1920 ||
+        frame.height > 1080 ||
+        (static_cast<int64_t>(frame.width) * static_cast<int64_t>(frame.height)) > (1920LL * 1080LL);
+
+    if (frame.format != video::CapturedFrame::Format::BGRA ||
+        frame.stride < frame.width * 4 ||
+        frame.data.size() < static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height)) {
+        sourceHealth_.sampledFrames++;
+        sourceHealth_.transparentRatio = 0.0;
+        sourceHealth_.translucentRatio = 0.0;
+        sourceHealth_.opaqueRatio = 0.0;
+        sourceHealth_.greenRatio = 0.0;
+        sourceHealth_.alphaDetected = false;
+        sourceHealth_.greenBackgroundLikely = false;
+        return;
+    }
+
+    const int stepX = std::max(1, frame.width / 80);
+    const int stepY = std::max(1, frame.height / 45);
+    int total = 0;
+    int transparent = 0;
+    int translucent = 0;
+    int opaque = 0;
+    int green = 0;
+
+    for (int y = 0; y < frame.height; y += stepY) {
+        const uint8_t *row = frame.data.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
+        for (int x = 0; x < frame.width; x += stepX) {
+            const uint8_t *px = row + static_cast<size_t>(x) * 4;
+            const int b = px[0];
+            const int g = px[1];
+            const int r = px[2];
+            const int a = px[3];
+            total++;
+            if (a <= 8) {
+                transparent++;
+            } else if (a < 248) {
+                translucent++;
+            } else {
+                opaque++;
+            }
+            if (g > 150 && g > r + 40 && g > b + 40) {
+                green++;
+            }
+        }
+    }
+
+    sourceHealth_.sampledFrames++;
+    sourceHealth_.transparentRatio = total > 0 ? static_cast<double>(transparent) / total : 0.0;
+    sourceHealth_.translucentRatio = total > 0 ? static_cast<double>(translucent) / total : 0.0;
+    sourceHealth_.opaqueRatio = total > 0 ? static_cast<double>(opaque) / total : 0.0;
+    sourceHealth_.greenRatio = total > 0 ? static_cast<double>(green) / total : 0.0;
+    sourceHealth_.alphaDetected =
+        sourceHealth_.transparentRatio >= 0.01 ||
+        sourceHealth_.translucentRatio >= 0.01;
+    sourceHealth_.greenBackgroundLikely =
+        !sourceHealth_.alphaDetected &&
+        sourceHealth_.greenRatio >= 0.20;
+}
+
 void VersusApp::populateSystemResourceUsage(ConnectionHealth &health) const {
 #ifdef _WIN32
     MEMORYSTATUSEX memoryStatus{};
@@ -1393,6 +1492,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
     root["generated_steady_ms"] = steadyNowMs();
 
     const StreamMetrics metrics = getStreamMetrics();
+    const SourceHealth sourceHealth = getSourceHealth();
     ConnectionHealth health;
     populateSystemResourceUsage(health);
     const VideoStateSnapshot videoState = videoStateSnapshot();
@@ -1403,6 +1503,23 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"capturing", capturing_.load(std::memory_order_relaxed)},
         {"reconnecting", reconnecting_.load(std::memory_order_relaxed)},
         {"stop_requested", stopRequested_.load(std::memory_order_relaxed)}
+    };
+    root["source"] = {
+        {"mode", videoSourceModeName(sourceHealth.mode)},
+        {"source_id", sourceHealth.sourceId},
+        {"has_frame", sourceHealth.hasFrame},
+        {"bgra", sourceHealth.bgra},
+        {"width", sourceHealth.width},
+        {"height", sourceHealth.height},
+        {"sampled_frames", sourceHealth.sampledFrames},
+        {"resize_count", sourceHealth.resizeCount},
+        {"transparent_ratio", sourceHealth.transparentRatio},
+        {"translucent_ratio", sourceHealth.translucentRatio},
+        {"opaque_ratio", sourceHealth.opaqueRatio},
+        {"green_ratio", sourceHealth.greenRatio},
+        {"alpha_detected", sourceHealth.alphaDetected},
+        {"green_background_likely", sourceHealth.greenBackgroundLikely},
+        {"large_source", sourceHealth.largeSource}
     };
     root["signaling"] = {
         {"server", startOptions_.server},
@@ -4636,6 +4753,7 @@ void VersusApp::handleVideoFrame(const video::CapturedFrame &frame) {
     static auto lastLog = std::chrono::steady_clock::now();
     frameCount++;
     videoFramesCaptured_.fetch_add(1, std::memory_order_relaxed);
+    updateSourceHealthFromFrame(frame);
 
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);

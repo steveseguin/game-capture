@@ -21,6 +21,7 @@
 
 #include "versus/app/versus_app.h"
 #include "versus/control/local_control_server.h"
+#include "versus/diagnostics/crash_reporter.h"
 #include "versus/ui/main_window.h"
 #include "versus/video/window_capture.h"
 
@@ -378,6 +379,11 @@ int main(int argc, char *argv[]) {
     } catch (...) {
         // Fall back to default logger
     }
+    versus::diagnostics::installCrashReporter({
+        versus::diagnostics::defaultCrashDirectory(),
+        logPath,
+        APP_VERSION
+    });
 
     if (windowFilterArg.empty()) {
         const char *envWindowFilter = std::getenv("GAME_CAPTURE_WINDOW_FILTER");

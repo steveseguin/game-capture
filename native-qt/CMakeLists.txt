@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.43 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.44 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -145,6 +145,7 @@ set(VERSUS_SOURCES
     src/app/versus_app.cpp
     src/app/dual_stream_policy.cpp
     src/control/local_control_server.cpp
+    src/diagnostics/crash_reporter.cpp
     src/ui/main_window.cpp
     src/ui/window_list_widget.cpp
     src/ui/stats_panel.cpp
@@ -162,6 +163,7 @@ set(VERSUS_HEADERS
     include/versus/app/versus_app.h
     include/versus/app/dual_stream_policy.h
     include/versus/control/local_control_server.h
+    include/versus/diagnostics/crash_reporter.h
     include/versus/ui/main_window.h
     include/versus/ui/window_list_widget.h
     include/versus/ui/stats_panel.h
@@ -232,6 +234,7 @@ if(WIN32)
         dwmapi
         d3d11
         dxgi
+        dbghelp
         winhttp
     )
 endif()
@@ -302,6 +305,7 @@ if(VERSUS_BUILD_TESTS)
         src/app/versus_app.cpp
         src/app/dual_stream_policy.cpp
         src/control/local_control_server.cpp
+        src/diagnostics/crash_reporter.cpp
         src/ui/main_window.cpp
         src/ui/window_list_widget.cpp
         src/ui/stats_panel.cpp
@@ -344,6 +348,7 @@ if(VERSUS_BUILD_TESTS)
     if(WIN32)
         target_link_libraries(versus-lib PUBLIC
             ole32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi winhttp
+            dbghelp
         )
     endif()
     if(VERSUS_USE_NVENC)
@@ -432,6 +437,17 @@ if(VERSUS_BUILD_TESTS)
     add_test(NAME LocalControlServerTest COMMAND test_local_control_server)
     set_tests_properties(LocalControlServerTest PROPERTIES
         ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+
+    # Test: crash reporter child-process artifact writing
+    if(WIN32)
+        add_executable(test_crash_reporter
+            tests/test_crash_reporter.cpp
+            src/diagnostics/crash_reporter.cpp
+            include/versus/diagnostics/crash_reporter.h)
+        target_include_directories(test_crash_reporter PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+        target_link_libraries(test_crash_reporter PRIVATE spdlog::spdlog dbghelp)
+        add_test(NAME CrashReporterTest COMMAND test_crash_reporter)
+    endif()
 
     # Benchmark helper: Video encoder real-time throughput/stability probe
     add_executable(bench_video_encoder tests/bench_video_encoder.cpp)

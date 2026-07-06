@@ -7,6 +7,7 @@ Add Spout2 as a local video source in Game Capture so VTuber and graphics apps c
 `Spout sender -> Game Capture -> dual-track VP9 -> VDO.Ninja OBS plugin`
 
 This does not add browser-native transparency. Browser viewers should remain standard color-video viewers unless a separate viewer-side chroma-key feature is added later.
+Transparent OBS playback still requires the VDO.Ninja OBS plugin native receiver; an OBS Browser Source cannot composite the VP9 alpha track.
 
 ## Confirmed Baseline
 
@@ -14,6 +15,8 @@ This does not add browser-native transparency. Browser viewers should remain sta
 - The current VP9 alpha workflow extracts BGRA byte 3 as a grayscale alpha plane and sends it as the second VP9 video track.
 - Compatible Ninja OBS plugin receivers negotiate `alpha_receive=vp9-dualtrack-v1` and receive that alpha track.
 - Browser viewers remain compatible but do not composite transparency.
+- OBS plugin validation details live in `docs/obs-ninja-plugin-testing.md`.
+- VP9/libvpx uses `-deadline realtime` and `-cpu-used`, not x264-style preset names. Game Capture defaults to `-cpu-used 8` for the fastest realtime VP9 path; if users still see low FPS, reduce output resolution/FPS or use advanced FFmpeg options with clear tradeoffs.
 
 ## SDK Compatibility
 

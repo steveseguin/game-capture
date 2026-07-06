@@ -26,13 +26,22 @@ Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\lo
 
 For same-user automation and local issue collection, the compiled app can expose an opt-in loopback JSON API with `--local-control`. It provides diagnostics, recent logs, source discovery, issue-report export, stop, and quit commands. See `docs/local-control-api.md`.
 
+## Logs and Crash Reports
+
+- Runtime logs are written to `%LOCALAPPDATA%\GameCapture\logs\game-capture-debug.log`.
+- On Windows, hard crashes write best-effort reports to `%LOCALAPPDATA%\GameCapture\crashes`.
+- A crash report includes a small `.json` summary and a `.dmp` minidump. If startup or Go Live fails, attach the latest log and crash report when filing an issue.
+
 ## Alpha Workflow
 
 - For transparent playback in OBS, choose `VP9 (OBS Alpha Preview)` and enable the alpha workflow.
+- Transparent playback in OBS requires the [VDO.Ninja OBS plugin](https://github.com/steveseguin/ninja-obs-plugin) with its native receiver path enabled. OBS Browser Sources and normal browser viewers do not composite the alpha track.
 - Compatible OBS VDO.Ninja native receivers automatically upgrade that stream to dual-track VP9 transparency.
-- Browser viewers remain compatible, but they stay standard color video; they do not composite the alpha track into transparency.
+- Browser viewers remain compatible, but they stay standard color video.
 - If you need the broadest viewer compatibility, leave alpha disabled.
 - AV1 alpha-preserving encode remains experimental and is not the current OBS transparency path.
+
+VP9 alpha is software-heavy because Game Capture encodes both the color video and a second alpha video track. The default VP9 settings already use libvpx realtime mode with the fastest `-cpu-used 8` setting. For low frame rates, lower output resolution/FPS first. Advanced users can use `FFmpeg Options` to override output options; for example, `-g 30 -keyint_min 30` can reduce all-keyframe cost, but recovery after packet loss or late joins may be slower.
 
 Web landing/download page:
 - `docs/gamecapture.html`

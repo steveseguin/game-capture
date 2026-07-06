@@ -90,6 +90,24 @@ struct ConnectionHealth {
     std::string lastPeerDisconnectReason;
 };
 
+struct SourceHealth {
+    VideoSourceMode mode = VideoSourceMode::Window;
+    std::string sourceId;
+    bool hasFrame = false;
+    bool bgra = false;
+    int width = 0;
+    int height = 0;
+    uint64_t sampledFrames = 0;
+    uint64_t resizeCount = 0;
+    double transparentRatio = 0.0;
+    double translucentRatio = 0.0;
+    double opaqueRatio = 0.0;
+    double greenRatio = 0.0;
+    bool alphaDetected = false;
+    bool greenBackgroundLikely = false;
+    bool largeSource = false;
+};
+
 struct StartOptions {
     std::string room;
     std::string password;
@@ -142,6 +160,7 @@ class VersusApp {
     float getAdditionalAudioPeak() const;
     StreamMetrics getStreamMetrics() const;
     ConnectionHealth getConnectionHealth() const;
+    SourceHealth getSourceHealth() const;
     std::string buildDiagnosticsJson() const;
     bool writeDiagnosticsJson(const std::string &path) const;
 
@@ -192,6 +211,8 @@ class VersusApp {
                                 std::atomic<float> &peakTarget);
     void encodeNormalizedAudio(std::vector<float> &normalizedSamples);
     StreamMetrics buildStreamMetricsSnapshot(bool updateRecentWindow) const;
+    void resetSourceHealth(VideoSourceMode mode, const std::string &sourceId);
+    void updateSourceHealthFromFrame(const versus::video::CapturedFrame &frame);
     void resetMetricsWindow(int64_t nowMs);
     void populateSystemResourceUsage(ConnectionHealth &health) const;
     void setupSignalingCallbacks();
@@ -332,6 +353,8 @@ class VersusApp {
     mutable std::mutex additionalAudioMutex_;
     std::mutex audioEncodeMutex_;
     mutable std::mutex healthStateMutex_;
+    mutable std::mutex sourceHealthMutex_;
+    SourceHealth sourceHealth_;
     mutable std::mutex metricsWindowMutex_;
     mutable int64_t recentMetricsLastMs_ = 0;
     mutable uint64_t recentMetricsLastVideoBytes_ = 0;
