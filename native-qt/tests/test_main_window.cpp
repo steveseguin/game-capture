@@ -723,7 +723,8 @@ void TestMainWindow::testAlphaWorkflowMessaging() {
     codecCombo->setCurrentIndex(vp9Index);
     QVERIFY(alphaCheck->isEnabled());
     QVERIFY(alphaCheck->text().contains("OBS alpha"));
-    QVERIFY(alphaCheck->toolTip().contains("OBS VDO.Ninja native receivers"));
+    QVERIFY(alphaCheck->toolTip().contains("VDO.Ninja OBS plugin"));
+    QVERIFY(alphaCheck->toolTip().contains("Native Receiver"));
     QVERIFY(alphaCheck->toolTip().contains("Browser viewers", Qt::CaseInsensitive));
     QVERIFY(codecCombo->toolTip().contains("transparency", Qt::CaseInsensitive));
 
