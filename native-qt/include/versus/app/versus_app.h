@@ -119,6 +119,7 @@ struct SourceHealth {
     double translucentRatio = 0.0;
     double opaqueRatio = 0.0;
     double greenRatio = 0.0;
+    double colorContentRatio = 0.0;
     bool alphaDetected = false;
     bool greenBackgroundLikely = false;
     bool largeSource = false;
@@ -297,7 +298,7 @@ class VersusApp {
     void removePeerSession(const std::shared_ptr<PeerSession> &peer, const char *reason);
     void clearPeerSessions();
     void emitRuntimeEvent(const std::string &message, bool fatal);
-    void handleVideoFrame(const versus::video::CapturedFrame &frame);
+    void handleVideoFrame(versus::video::CapturedFrame frame);
     void recordPeerEvent(const std::shared_ptr<PeerSession> &peer, const std::string &event) const;
     PeerCounts collectPeerCounts() const;
     VideoStateSnapshot buildVideoStateSnapshotLocked() const;

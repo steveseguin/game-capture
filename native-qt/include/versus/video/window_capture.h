@@ -33,7 +33,7 @@ struct CapturedFrame {
 
 class WindowCapture {
   public:
-    using FrameCallback = std::function<void(const CapturedFrame &)>;
+    using FrameCallback = std::function<void(CapturedFrame)>;
 
     WindowCapture();
     ~WindowCapture();

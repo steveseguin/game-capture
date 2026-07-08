@@ -24,6 +24,9 @@ struct BenchMode {
 
 struct BenchResult {
     std::string modeName;
+    std::string frameSource;
+    std::string codecName;
+    bool alphaMask = false;
     bool initOk = false;
     std::string activeEncoder;
     bool hardwareActive = false;
@@ -71,20 +74,86 @@ versus::video::CapturedFrame makeFrame(int width, int height, int frameIndex, in
     return frame;
 }
 
+versus::video::CapturedFrame makeGrayFrame(int width, int height, int frameIndex, int frameRate) {
+    versus::video::CapturedFrame frame;
+    frame.width = width;
+    frame.height = height;
+    frame.stride = width;
+    frame.timestamp = static_cast<std::int64_t>(frameIndex) * (10000000LL / std::max(1, frameRate));
+    frame.format = versus::video::CapturedFrame::Format::Gray;
+    frame.data.resize(static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height));
+
+    const int boxSize = std::max(16, std::min(width, height) / 4);
+    const int travel = std::max(1, width - boxSize);
+    const int boxX = (frameIndex * 5) % travel;
+    const int boxY = std::max(0, (height - boxSize) / 2);
+    for (int y = 0; y < height; ++y) {
+        std::uint8_t *row = frame.data.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
+        for (int x = 0; x < width; ++x) {
+            row[x] = (x >= boxX && x < boxX + boxSize && y >= boxY && y < boxY + boxSize) ? 255 : 0;
+        }
+    }
+
+    return frame;
+}
+
+const char *codecName(versus::video::VideoCodec codec) {
+    switch (codec) {
+        case versus::video::VideoCodec::VP8:
+            return "vp8";
+        case versus::video::VideoCodec::VP9:
+            return "vp9";
+        case versus::video::VideoCodec::AV1:
+            return "av1";
+        case versus::video::VideoCodec::H265:
+            return "h265";
+        case versus::video::VideoCodec::H264:
+        default:
+            return "h264";
+    }
+}
+
+versus::video::VideoCodec parseCodec(std::string value) {
+    value = lowerCopy(std::move(value));
+    if (value == "vp8") {
+        return versus::video::VideoCodec::VP8;
+    }
+    if (value == "vp9") {
+        return versus::video::VideoCodec::VP9;
+    }
+    if (value == "av1") {
+        return versus::video::VideoCodec::AV1;
+    }
+    if (value == "h265" || value == "hevc") {
+        return versus::video::VideoCodec::H265;
+    }
+    return versus::video::VideoCodec::H264;
+}
+
 BenchResult runBench(const BenchMode &mode,
                      int width,
                      int height,
                      int fps,
                      int frameCount,
                      int bitrateKbps,
-                     int progressEvery) {
+                     int progressEvery,
+                     bool reuseFrame,
+                     int precomputeFrames,
+                     versus::video::VideoCodec codec,
+                     bool alphaMask) {
     BenchResult result;
     result.modeName = mode.name;
+    result.frameSource = reuseFrame
+        ? "reuse"
+        : (precomputeFrames > 0 ? "precompute" : "generated");
+    result.codecName = codecName(codec);
+    result.alphaMask = alphaMask;
 
     versus::video::EncoderConfig config;
-    config.codec = versus::video::VideoCodec::H264;
+    config.codec = codec;
     config.preferredHardware = mode.preferredHardware;
     config.forceFfmpegNvenc = mode.forceFfmpegNvenc;
+    config.enableAlpha = alphaMask;
     config.width = width;
     config.height = height;
     config.frameRate = fps;
@@ -104,16 +173,34 @@ BenchResult runBench(const BenchMode &mode,
     result.activeEncoder = encoder.activeEncoderName();
     result.hardwareActive = encoder.isHardwareEncoderActive();
 
+    std::vector<versus::video::CapturedFrame> framePool;
+    if (reuseFrame) {
+        framePool.push_back(alphaMask ? makeGrayFrame(width, height, 0, fps) : makeFrame(width, height, 0, fps));
+    } else if (precomputeFrames > 0) {
+        framePool.reserve(static_cast<size_t>(precomputeFrames));
+        for (int i = 0; i < precomputeFrames; ++i) {
+            framePool.push_back(alphaMask ? makeGrayFrame(width, height, i, fps) : makeFrame(width, height, i, fps));
+        }
+    }
+
     const auto frameInterval = std::chrono::duration<double>(1.0 / static_cast<double>(std::max(1, fps)));
     auto nextFrameTime = Clock::now();
     const auto start = Clock::now();
 
     int consecutiveMisses = 0;
     for (int i = 0; i < frameCount; ++i) {
-        const auto frame = makeFrame(width, height, i, fps);
+        versus::video::CapturedFrame generatedFrame;
+        versus::video::CapturedFrame *frame = nullptr;
+        if (!framePool.empty()) {
+            frame = &framePool[static_cast<size_t>(i) % framePool.size()];
+            frame->timestamp = static_cast<std::int64_t>(i) * (10000000LL / std::max(1, fps));
+        } else {
+            generatedFrame = alphaMask ? makeGrayFrame(width, height, i, fps) : makeFrame(width, height, i, fps);
+            frame = &generatedFrame;
+        }
         versus::video::EncodedPacket packet;
         const auto callStart = Clock::now();
-        const bool ok = encoder.encode(frame, packet);
+        const bool ok = encoder.encode(*frame, packet);
         const double callMs = asSeconds(Clock::now() - callStart) * 1000.0;
         result.framesAttempted++;
         if (ok) {
@@ -154,6 +241,9 @@ void printResult(const BenchResult &r) {
 
     std::cout << "{"
               << "\"mode\":\"" << r.modeName << "\","
+              << "\"frameSource\":\"" << r.frameSource << "\","
+              << "\"codec\":\"" << r.codecName << "\","
+              << "\"alphaMask\":" << (r.alphaMask ? "true" : "false") << ","
               << "\"initOk\":" << (r.initOk ? "true" : "false") << ","
               << "\"activeEncoder\":\"" << r.activeEncoder << "\","
               << "\"hardwareActive\":" << (r.hardwareActive ? "true" : "false") << ","
@@ -176,6 +266,10 @@ int main(int argc, char **argv) {
     int bitrateKbps = 12000;
     bool includeSoftware = false;
     int progressEvery = 0;
+    bool reuseFrame = false;
+    int precomputeFrames = 0;
+    bool alphaMask = false;
+    versus::video::VideoCodec codec = versus::video::VideoCodec::H264;
     std::set<std::string> modeFilter;
 
     for (int i = 1; i < argc; ++i) {
@@ -190,6 +284,10 @@ int main(int argc, char **argv) {
             frameCount = std::max(60, std::stoi(arg.substr(9)));
         } else if (arg.rfind("--bitrate-kbps=", 0) == 0) {
             bitrateKbps = std::max(250, std::stoi(arg.substr(15)));
+        } else if (arg.rfind("--codec=", 0) == 0) {
+            codec = parseCodec(arg.substr(8));
+        } else if (arg == "--alpha-mask") {
+            alphaMask = true;
         } else if (arg == "--with-software") {
             includeSoftware = true;
         } else if (arg.rfind("--progress-every=", 0) == 0) {
@@ -207,6 +305,14 @@ int main(int argc, char **argv) {
                     break;
                 }
                 pos = comma + 1;
+            }
+        } else if (arg == "--reuse-frame") {
+            reuseFrame = true;
+            precomputeFrames = 0;
+        } else if (arg.rfind("--precompute-frames=", 0) == 0) {
+            precomputeFrames = std::clamp(std::stoi(arg.substr(20)), 0, 120);
+            if (precomputeFrames > 0) {
+                reuseFrame = false;
             }
         }
     }
@@ -233,7 +339,13 @@ int main(int argc, char **argv) {
               << " height=" << height
               << " fps=" << fps
               << " frames=" << frameCount
-              << " bitrateKbps=" << bitrateKbps;
+              << " bitrateKbps=" << bitrateKbps
+              << " codec=" << codecName(codec)
+              << " alphaMask=" << (alphaMask ? 1 : 0)
+              << " frameSource=" << (reuseFrame ? "reuse" : (precomputeFrames > 0 ? "precompute" : "generated"));
+    if (precomputeFrames > 0) {
+        std::cout << " precomputeFrames=" << precomputeFrames;
+    }
     if (!modeFilter.empty()) {
         std::cout << " modeFilter=";
         bool first = true;
@@ -254,7 +366,17 @@ int main(int argc, char **argv) {
     }
 
     for (const auto &mode : modes) {
-        const BenchResult result = runBench(mode, width, height, fps, frameCount, bitrateKbps, progressEvery);
+        const BenchResult result = runBench(mode,
+                                            width,
+                                            height,
+                                            fps,
+                                            frameCount,
+                                            bitrateKbps,
+                                            progressEvery,
+                                            reuseFrame,
+                                            precomputeFrames,
+                                            codec,
+                                            alphaMask);
         printResult(result);
     }
 

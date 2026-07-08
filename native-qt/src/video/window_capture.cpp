@@ -807,12 +807,11 @@ class WindowCapture::Impl {
             std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
         }
 
-        {
+        if (frameCallback_) {
+            frameCallback_(std::move(frame));
+        } else {
             std::lock_guard<std::mutex> lock(frameMutex_);
             latestFrame_ = std::move(frame);
-        }
-        if (frameCallback_) {
-            frameCallback_(latestFrame_);
         }
     }
 

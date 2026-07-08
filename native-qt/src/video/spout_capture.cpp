@@ -398,12 +398,11 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
             frame.format = CapturedFrame::Format::BGRA;
             frame.data = impl_->pixelBuffer;
 
-            {
-                std::lock_guard<std::mutex> lock(impl_->frameMutex);
-                impl_->latestFrame = frame;
-            }
             if (frameCallback_) {
-                frameCallback_(frame);
+                frameCallback_(std::move(frame));
+            } else {
+                std::lock_guard<std::mutex> lock(impl_->frameMutex);
+                impl_->latestFrame = std::move(frame);
             }
 
             receiver->HoldFps(impl_->targetFps);

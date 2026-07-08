@@ -678,6 +678,11 @@ std::pair<int, int> alphaTrackDimensions(const video::EncoderConfig &config, int
     const int64_t pixels = static_cast<int64_t>(width) * static_cast<int64_t>(height);
     if (config.codec == video::VideoCodec::H264 &&
         config.enableAlpha &&
+        pixels >= (3840LL * 2160LL)) {
+        width = std::max(2, (width / 4) & ~1);
+        height = std::max(2, (height / 4) & ~1);
+    } else if (config.codec == video::VideoCodec::H264 &&
+        config.enableAlpha &&
         config.frameRate >= 50 &&
         pixels > (1280LL * 720LL)) {
         width = std::max(2, (width / 2) & ~1);
@@ -942,8 +947,8 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     audioConfig.bitrate = audioEncoderBitrateKbps_.load(std::memory_order_relaxed);
     opusEncoder_.initialize(audioConfig);
 
-    const auto frameCallback = [this](const video::CapturedFrame &frame) {
-        handleVideoFrame(frame);
+    const auto frameCallback = [this](video::CapturedFrame frame) {
+        handleVideoFrame(std::move(frame));
     };
     windowCapture_.setFrameCallback(frameCallback);
     spoutCapture_.setFrameCallback(frameCallback);
@@ -1490,6 +1495,7 @@ void VersusApp::updateSourceHealthFromFrame(const video::CapturedFrame &frame) {
         sourceHealth_.translucentRatio = 0.0;
         sourceHealth_.opaqueRatio = 0.0;
         sourceHealth_.greenRatio = 0.0;
+        sourceHealth_.colorContentRatio = 0.0;
         sourceHealth_.alphaDetected = false;
         sourceHealth_.greenBackgroundLikely = false;
         return;
@@ -1502,6 +1508,7 @@ void VersusApp::updateSourceHealthFromFrame(const video::CapturedFrame &frame) {
     int translucent = 0;
     int opaque = 0;
     int green = 0;
+    int colorContent = 0;
 
     for (int y = 0; y < frame.height; y += stepY) {
         const uint8_t *row = frame.data.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
@@ -1522,6 +1529,9 @@ void VersusApp::updateSourceHealthFromFrame(const video::CapturedFrame &frame) {
             if (g > 150 && g > r + 40 && g > b + 40) {
                 green++;
             }
+            if (r > 16 || g > 16 || b > 16) {
+                colorContent++;
+            }
         }
     }
 
@@ -1530,6 +1540,7 @@ void VersusApp::updateSourceHealthFromFrame(const video::CapturedFrame &frame) {
     sourceHealth_.translucentRatio = total > 0 ? static_cast<double>(translucent) / total : 0.0;
     sourceHealth_.opaqueRatio = total > 0 ? static_cast<double>(opaque) / total : 0.0;
     sourceHealth_.greenRatio = total > 0 ? static_cast<double>(green) / total : 0.0;
+    sourceHealth_.colorContentRatio = total > 0 ? static_cast<double>(colorContent) / total : 0.0;
     sourceHealth_.alphaDetected =
         sourceHealth_.transparentRatio >= 0.01 ||
         sourceHealth_.translucentRatio >= 0.01;
@@ -1671,6 +1682,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"translucent_ratio", sourceHealth.translucentRatio},
         {"opaque_ratio", sourceHealth.opaqueRatio},
         {"green_ratio", sourceHealth.greenRatio},
+        {"color_content_ratio", sourceHealth.colorContentRatio},
         {"alpha_detected", sourceHealth.alphaDetected},
         {"green_background_likely", sourceHealth.greenBackgroundLikely},
         {"large_source", sourceHealth.largeSource}
@@ -4429,6 +4441,10 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         return false;
     }
 
+    const auto totalStart = std::chrono::steady_clock::now();
+    int64_t hqEncodeElapsedMs = 0;
+    int64_t lqEncodeElapsedMs = 0;
+    int64_t sendElapsedMs = 0;
     std::unique_lock<std::mutex> lock(videoSendMutex_);
     if (!live_) {
         return false;
@@ -4558,6 +4574,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         const auto encodeStart = std::chrono::steady_clock::now();
         const bool hardwareEncodingBefore = videoEncoder_.isHardwareEncoderActive();
         const bool encodeOk = videoEncoder_.encode(frame, hqPacket);
+        hqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::steady_clock::now() - encodeStart)
+                                 .count();
         video::EncodeFailureKind encodeFailureKind = videoEncoder_.lastEncodeFailureKind();
         if (!encodeOk && encodeFailureKind == video::EncodeFailureKind::None) {
             encodeFailureKind = video::EncodeFailureKind::Timeout;
@@ -4729,13 +4748,10 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
         if (encodeOk) {
             haveHqPacket = true;
-            const auto encodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                             std::chrono::steady_clock::now() - encodeStart)
-                                             .count();
             const bool softwareEncoding = !videoEncoder_.isHardwareEncoderActive();
             if (softwareEncoding) {
                 const int frameIntervalMs = std::max(1, 1000 / std::max(1, videoConfig_.frameRate));
-                if (encodeElapsedMs > (frameIntervalMs * 2)) {
+                if (hqEncodeElapsedMs > (frameIntervalMs * 2)) {
                     const int samples = softwareOverloadSamples_.fetch_add(1, std::memory_order_relaxed) + 1;
                     if (samples >= 20) {
                         const int64_t nowMsLocal = steadyNowMs();
@@ -4820,12 +4836,19 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             if (requestKeyframe) {
                 videoEncoderLq_.requestKeyframe();
             }
+            const auto lqEncodeStart = std::chrono::steady_clock::now();
             if (videoEncoderLq_.encode(frame, lqPacket)) {
+                lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now() - lqEncodeStart)
+                                        .count();
                 haveLqPacket = true;
                 if (requestKeyframe && !lqPacket.isKeyframe) {
                     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
             } else {
+                lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        std::chrono::steady_clock::now() - lqEncodeStart)
+                                        .count();
                 videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
                 if (requestKeyframe) {
                     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -4845,6 +4868,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     uint64_t videoBytesSentThisCall = 0;
     int sentWidth = 0;
     int sentHeight = 0;
+    const auto sendStart = std::chrono::steady_clock::now();
 
     if (haveHqPacket) {
         webrtc::EncodedVideoPacket packet;
@@ -4874,7 +4898,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     }
 
     // VP9 alpha: queue the alpha plane for a dedicated encoder thread and send
-    // the latest completed alpha packet without blocking primary video.
+    // the latest completed alpha packet without blocking primary video. The
+    // packet may be one frame behind, so stamp it to the primary frame it ships
+    // beside; the OBS receiver pairs tracks by RTP timestamp.
     if (haveHqPacket && usesVp9AlphaTrack(videoConfig_)) {
         const int primaryWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
         const int primaryHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
@@ -4887,7 +4913,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         if (takeLatestAlphaPacket(alphaPacket)) {
             webrtc::EncodedVideoPacket alphaVPacket;
             alphaVPacket.data = std::move(alphaPacket.data);
-            alphaVPacket.pts = alphaPacket.pts;
+            alphaVPacket.pts = hqPacket.pts;
             alphaVPacket.isKeyframe = alphaPacket.isKeyframe;
             for (const auto &peer : hqPeers) {
                 if (!peer || !peer->client) {
@@ -4935,6 +4961,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             }
         }
     }
+    sendElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::steady_clock::now() - sendStart)
+                        .count();
 
     if (sentAny) {
         videoBytesSent_.fetch_add(videoBytesSentThisCall, std::memory_order_relaxed);
@@ -4947,6 +4976,29 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         if (sentKeyframe) {
             lastKeyframeSendMs_.store(nowMs, std::memory_order_relaxed);
         }
+    }
+
+    const int frameIntervalMs = std::max(1, 1000 / std::max(1, videoConfig_.frameRate));
+    const int64_t totalElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                       std::chrono::steady_clock::now() - totalStart)
+                                       .count();
+    if (totalElapsedMs > frameIntervalMs * 2 || hqEncodeElapsedMs > frameIntervalMs * 2 ||
+        sendElapsedMs > frameIntervalMs * 2) {
+        static int slowVideoPathLogCount = 0;
+        if (slowVideoPathLogCount < 10 || (slowVideoPathLogCount % 600) == 0) {
+            spdlog::info("[VideoPath] slow frame total={}ms hqEncode={}ms lqEncode={}ms send={}ms hqBytes={} lqBytes={} hqPeers={} lqPeers={} keyframe={} sent={}",
+                         totalElapsedMs,
+                         hqEncodeElapsedMs,
+                         lqEncodeElapsedMs,
+                         sendElapsedMs,
+                         hqPacket.data.size(),
+                         lqPacket.data.size(),
+                         hqPeers.size(),
+                         lqPeers.size(),
+                         sentKeyframe,
+                         sentAny);
+        }
+        slowVideoPathLogCount++;
     }
     return sentAny;
 }
@@ -4986,7 +5038,7 @@ bool VersusApp::getCachedVideoFrame(video::CapturedFrame &frame) {
     return windowCapture_.getLatestFrame(frame);
 }
 
-void VersusApp::handleVideoFrame(const video::CapturedFrame &frame) {
+void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
     static int frameCount = 0;
     static auto lastLog = std::chrono::steady_clock::now();
     frameCount++;
@@ -5000,7 +5052,7 @@ void VersusApp::handleVideoFrame(const video::CapturedFrame &frame) {
         if (compositeAlphaBackground(frame, config, alphaCompositeBuffer_, compositedFrame)) {
             frameForEncoding = std::move(compositedFrame);
         } else {
-            frameForEncoding = frame;
+            frameForEncoding = std::move(frame);
         }
     }
 
@@ -5205,6 +5257,8 @@ void VersusApp::startVideoMaintenanceThread() {
                 video::CapturedFrame cached;
                 if (getCachedVideoFrame(cached)) {
                     encodeAndSendVideoFrame(cached, periodicKeyframeDue);
+                } else if (periodicKeyframeDue) {
+                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
             }
 

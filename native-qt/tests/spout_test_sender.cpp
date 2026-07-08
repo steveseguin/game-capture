@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
@@ -60,6 +61,13 @@ void drawFrame(std::vector<uint8_t> &pixels, int width, int height, int frameInd
     }
 }
 
+std::string lowerCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -71,6 +79,7 @@ int main(int argc, char **argv) {
     int resizeAfterMs = 0;
     int resizeWidth = 0;
     int resizeHeight = 0;
+    std::string pattern = "animated";
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -90,6 +99,8 @@ int main(int argc, char **argv) {
             resizeWidth = parseIntArg(arg.substr(15), resizeWidth);
         } else if (arg.rfind("--resize-height=", 0) == 0) {
             resizeHeight = parseIntArg(arg.substr(16), resizeHeight);
+        } else if (arg.rfind("--pattern=", 0) == 0) {
+            pattern = lowerCopy(arg.substr(10));
         }
     }
 
@@ -100,6 +111,10 @@ int main(int argc, char **argv) {
     resizeAfterMs = std::clamp(resizeAfterMs, 0, durationMs);
     resizeWidth = resizeWidth > 0 ? std::clamp(resizeWidth, 64, 3840) : width;
     resizeHeight = resizeHeight > 0 ? std::clamp(resizeHeight, 64, 2160) : height;
+    if (pattern != "animated" && pattern != "static") {
+        std::cerr << "Unknown --pattern value '" << pattern << "'; using animated\n";
+        pattern = "animated";
+    }
 
     SPOUTLIBRARY *sender = GetSpout();
     if (!sender) {
@@ -115,11 +130,13 @@ int main(int argc, char **argv) {
 
     sender->SetSenderName(name.c_str());
     std::vector<uint8_t> pixels(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+    bool redrawStaticPattern = true;
 
     std::cout << "SPOUT_TEST_SENDER_READY name=" << name
               << " width=" << width
               << " height=" << height
               << " fps=" << fps
+              << " pattern=" << pattern
               << std::endl;
 
     const auto start = std::chrono::steady_clock::now();
@@ -138,12 +155,21 @@ int main(int argc, char **argv) {
             height = resizeHeight;
             pixels.assign(static_cast<size_t>(width) * static_cast<size_t>(height) * 4, 0);
             resized = true;
+            redrawStaticPattern = true;
             std::cout << "SPOUT_TEST_SENDER_RESIZED name=" << name
                       << " width=" << width
                       << " height=" << height
                       << std::endl;
         }
-        drawFrame(pixels, width, height, frame++);
+        if (pattern == "static") {
+            if (redrawStaticPattern) {
+                drawFrame(pixels, width, height, 0);
+                redrawStaticPattern = false;
+            }
+            ++frame;
+        } else {
+            drawFrame(pixels, width, height, frame++);
+        }
         sender->SendImage(pixels.data(), static_cast<unsigned int>(width), static_cast<unsigned int>(height), GL_BGRA, false);
         nextFrameTime += std::chrono::duration_cast<std::chrono::steady_clock::duration>(frameInterval);
         std::this_thread::sleep_until(nextFrameTime);

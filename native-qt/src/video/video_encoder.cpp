@@ -3647,6 +3647,15 @@ class VideoEncoder::Impl {
     void convertBGRAtoRGB32(const uint8_t *bgra, int srcW, int srcH, int srcStride,
                             uint8_t *dst, int dstW, int dstH) {
         blitBgraAspectFit(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4, config_);
+        // H.264/H.265 MF encoders do not carry alpha. Some hardware MFTs still
+        // consult the RGB32 alpha byte during their internal color conversion,
+        // so make the primary color stream explicitly opaque.
+        for (int y = 0; y < dstH; ++y) {
+            uint8_t *row = dst + static_cast<size_t>(y) * static_cast<size_t>(dstW) * 4;
+            for (int x = 0; x < dstW; ++x) {
+                row[static_cast<size_t>(x) * 4 + 3] = 255;
+            }
+        }
     }
 
     EncoderConfig config_{};

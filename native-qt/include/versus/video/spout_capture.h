@@ -13,7 +13,7 @@ namespace versus::video {
 
 class SpoutCapture {
   public:
-    using FrameCallback = std::function<void(const CapturedFrame &)>;
+    using FrameCallback = std::function<void(CapturedFrame)>;
 
     SpoutCapture();
     ~SpoutCapture();
