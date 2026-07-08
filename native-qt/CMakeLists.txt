@@ -237,6 +237,26 @@ if(WIN32)
         dbghelp
         winhttp
     )
+
+    set(VERSUS_FFMPEG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg-win64" CACHE PATH "Optional staged FFmpeg bundle root; expected to contain bin/ffmpeg.exe")
+    set(VERSUS_BUNDLE_FFMPEG "" CACHE FILEPATH "Legacy optional ffmpeg.exe override copied to ffmpeg/bin/ffmpeg.exe")
+    if(EXISTS "${VERSUS_FFMPEG_ROOT}/bin/ffmpeg.exe")
+        message(STATUS "Staging FFmpeg bundle from ${VERSUS_FFMPEG_ROOT}")
+        add_custom_command(TARGET game-capture POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:game-capture>/ffmpeg"
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${VERSUS_FFMPEG_ROOT}"
+                "$<TARGET_FILE_DIR:game-capture>/ffmpeg")
+    elseif(VERSUS_BUNDLE_FFMPEG AND EXISTS "${VERSUS_BUNDLE_FFMPEG}")
+        message(STATUS "Staging legacy ffmpeg.exe from ${VERSUS_BUNDLE_FFMPEG}")
+        add_custom_command(TARGET game-capture POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:game-capture>/ffmpeg/bin"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${VERSUS_BUNDLE_FFMPEG}"
+                "$<TARGET_FILE_DIR:game-capture>/ffmpeg/bin/ffmpeg.exe")
+    else()
+        message(STATUS "FFmpeg bundle not staged; release packaging will fail unless native-qt/tools/fetch-ffmpeg-lgpl.ps1 is run or missing FFmpeg is explicitly allowed")
+    endif()
 endif()
 
 if(VERSUS_USE_NVENC)
@@ -283,22 +303,40 @@ if(VERSUS_BUILD_TESTS)
     enable_testing()
     find_package(Qt6 REQUIRED COMPONENTS Test Network)
 
-    # Ensure Qt platform plugins are found when running tests via ctest.
+    # Ensure Qt runtime DLLs and platform plugins are found when running tests via ctest.
     set(QT_PLUGIN_PATH_FOR_TESTS "")
+    set(QT_RUNTIME_PATH_FOR_TESTS "")
     foreach(QT6_ROOT_CANDIDATE "${Qt6_DIR}/../.." "${Qt6_DIR}/../../..")
         get_filename_component(QT6_PACKAGE_ROOT "${QT6_ROOT_CANDIDATE}" ABSOLUTE)
         if(EXISTS "${QT6_PACKAGE_ROOT}/Qt6/plugins")
             set(QT_PLUGIN_PATH_FOR_TESTS "${QT6_PACKAGE_ROOT}/Qt6/plugins")
+            if(EXISTS "${QT6_PACKAGE_ROOT}/bin")
+                set(QT_RUNTIME_PATH_FOR_TESTS "${QT6_PACKAGE_ROOT}/bin")
+            endif()
             break()
         endif()
         if(EXISTS "${QT6_PACKAGE_ROOT}/plugins")
             set(QT_PLUGIN_PATH_FOR_TESTS "${QT6_PACKAGE_ROOT}/plugins")
+            if(EXISTS "${QT6_PACKAGE_ROOT}/bin")
+                set(QT_RUNTIME_PATH_FOR_TESTS "${QT6_PACKAGE_ROOT}/bin")
+            endif()
             break()
         endif()
     endforeach()
     if(QT_PLUGIN_PATH_FOR_TESTS STREQUAL "")
         set(QT_PLUGIN_PATH_FOR_TESTS "${Qt6_DIR}")
     endif()
+    set(VERSUS_QT_TEST_ENVIRONMENT
+        "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS}"
+        "QT_QPA_PLATFORM=offscreen")
+    function(versus_set_qt_test_environment TEST_NAME)
+        set_tests_properties(${TEST_NAME} PROPERTIES
+            ENVIRONMENT "${VERSUS_QT_TEST_ENVIRONMENT}")
+        if(NOT QT_RUNTIME_PATH_FOR_TESTS STREQUAL "")
+            set_tests_properties(${TEST_NAME} PROPERTIES
+                ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${QT_RUNTIME_PATH_FOR_TESTS}")
+        endif()
+    endfunction()
 
     # Library target for testable code (without main.cpp)
     set(VERSUS_LIB_SOURCES
@@ -363,80 +401,70 @@ if(VERSUS_BUILD_TESTS)
     set_target_properties(test_window_list_widget PROPERTIES AUTOMOC ON)
     target_link_libraries(test_window_list_widget PRIVATE versus-lib Qt6::Test)
     add_test(NAME WindowListWidgetTest COMMAND test_window_list_widget)
-    set_tests_properties(WindowListWidgetTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(WindowListWidgetTest)
 
     # Test: WindowCapture
     add_executable(test_window_capture tests/test_window_capture.cpp)
     set_target_properties(test_window_capture PROPERTIES AUTOMOC ON)
     target_link_libraries(test_window_capture PRIVATE versus-lib Qt6::Test)
     add_test(NAME WindowCaptureTest COMMAND test_window_capture)
-    set_tests_properties(WindowCaptureTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(WindowCaptureTest)
 
     # Test: OpusEncoder
     add_executable(test_opus_encoder tests/test_opus_encoder.cpp)
     set_target_properties(test_opus_encoder PROPERTIES AUTOMOC ON)
     target_link_libraries(test_opus_encoder PRIVATE versus-lib Qt6::Test)
     add_test(NAME OpusEncoderTest COMMAND test_opus_encoder)
-    set_tests_properties(OpusEncoderTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(OpusEncoderTest)
 
     # Test: Dual-stream policy
     add_executable(test_dual_stream_policy tests/test_dual_stream_policy.cpp)
     set_target_properties(test_dual_stream_policy PROPERTIES AUTOMOC ON)
     target_link_libraries(test_dual_stream_policy PRIVATE versus-lib Qt6::Test)
     add_test(NAME DualStreamPolicyTest COMMAND test_dual_stream_policy)
-    set_tests_properties(DualStreamPolicyTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(DualStreamPolicyTest)
 
     # Test: VDO signaling helpers
     add_executable(test_vdo_signaling tests/test_vdo_signaling.cpp)
     set_target_properties(test_vdo_signaling PROPERTIES AUTOMOC ON)
     target_link_libraries(test_vdo_signaling PRIVATE versus-lib Qt6::Test)
     add_test(NAME VdoSignalingTest COMMAND test_vdo_signaling)
-    set_tests_properties(VdoSignalingTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(VdoSignalingTest)
 
     # Test: WebRTC client ordering helpers
     add_executable(test_webrtc_client tests/test_webrtc_client.cpp)
     set_target_properties(test_webrtc_client PROPERTIES AUTOMOC ON)
     target_link_libraries(test_webrtc_client PRIVATE versus-lib Qt6::Test)
     add_test(NAME WebRtcClientTest COMMAND test_webrtc_client)
-    set_tests_properties(WebRtcClientTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(WebRtcClientTest)
 
     # Test: ICE config helpers
     add_executable(test_ice_config tests/test_ice_config.cpp)
     set_target_properties(test_ice_config PROPERTIES AUTOMOC ON)
     target_link_libraries(test_ice_config PRIVATE versus-lib Qt6::Test)
     add_test(NAME IceConfigTest COMMAND test_ice_config)
-    set_tests_properties(IceConfigTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(IceConfigTest)
 
     # Test: StatsPanel
     add_executable(test_stats_panel tests/test_stats_panel.cpp)
     set_target_properties(test_stats_panel PROPERTIES AUTOMOC ON)
     target_link_libraries(test_stats_panel PRIVATE versus-lib Qt6::Test)
     add_test(NAME StatsPanelTest COMMAND test_stats_panel)
-    set_tests_properties(StatsPanelTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(StatsPanelTest)
 
     # Test: MainWindow
     add_executable(test_main_window tests/test_main_window.cpp)
     set_target_properties(test_main_window PROPERTIES AUTOMOC ON)
     target_link_libraries(test_main_window PRIVATE versus-lib Qt6::Test)
     add_test(NAME MainWindowTest COMMAND test_main_window)
-    set_tests_properties(MainWindowTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(MainWindowTest)
 
     # Test: LocalControlServer
     add_executable(test_local_control_server tests/test_local_control_server.cpp)
     set_target_properties(test_local_control_server PROPERTIES AUTOMOC ON)
     target_link_libraries(test_local_control_server PRIVATE versus-lib Qt6::Test Qt6::Network)
     add_test(NAME LocalControlServerTest COMMAND test_local_control_server)
-    set_tests_properties(LocalControlServerTest PROPERTIES
-        ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+    versus_set_qt_test_environment(LocalControlServerTest)
 
     # Test: crash reporter child-process artifact writing
     if(WIN32)
@@ -460,8 +488,7 @@ if(VERSUS_BUILD_TESTS)
         target_link_libraries(test_spout_capture PRIVATE versus-lib Qt6::Test SpoutLibrary_static)
         target_include_directories(test_spout_capture PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
         add_test(NAME SpoutCaptureTest COMMAND test_spout_capture)
-        set_tests_properties(SpoutCaptureTest PROPERTIES
-            ENVIRONMENT "QT_PLUGIN_PATH=${QT_PLUGIN_PATH_FOR_TESTS};QT_QPA_PLATFORM=offscreen")
+        versus_set_qt_test_environment(SpoutCaptureTest)
 
         add_executable(spout_test_sender tests/spout_test_sender.cpp)
         target_link_libraries(spout_test_sender PRIVATE SpoutLibrary_static)

@@ -147,7 +147,9 @@ See `docs/local-control-api.md` for the full contract.
 
 ## Known Game Capture Concerns
 
-- High-resolution Spout input plus software VP9 alpha can be expensive. The VTube Studio run exposed `2560x1351`; frame drops were observed under load. Test output caps such as `1280x720@30` and `1920x1080@30`.
+- High-resolution Spout input plus software VP9 alpha can be expensive. The VTube Studio run exposed `2560x1351`; frame drops were observed under load. Test output caps such as `1280x720@30`, `1920x1080@30`, and then `1920x1080@60` after watchdog changes.
+- True VP9 alpha requires the bundled or explicitly selected `ffmpeg.exe` with libvpx/VP9 support. Missing or incompatible FFmpeg should be visible in the UI and diagnostics, not only in logs.
+- For users who cannot run software VP9 alpha, use Game Capture's alpha background/chroma mode with H.264/NVENC and key that color in the receiver.
 - Current real-app coverage is VTube Studio plus the deterministic `spout_test_sender`. Add more real Spout sender apps only after the deterministic resize/restart and OBS alpha checks are stable.
 - Alpha should be pixel-verified over a bright OBS background before treating the workflow as visually proven. OBS log lines prove the native alpha path activated, but a screenshot pixel check proves transparent areas composite correctly instead of showing black or chroma fill. If a real VTube/VR sender fails with green fill while `-UseTestSpoutSender` passes, the likely issue is the sender scene/output configuration rather than Game Capture transport or the OBS plugin receiver.
 - VTube Studio API reachability has been confirmed, but live fuzzing of VTube state/output changes is still a separate robustness pass.

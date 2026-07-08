@@ -25,6 +25,22 @@ enum class HardwareEncoder {
     AMF
 };
 
+enum class AlphaBackgroundMode {
+    None,
+    Chroma,
+    Opaque
+};
+
+enum class EncodeFailureKind {
+    None,
+    Timeout,
+    Backpressure,
+    ProcessExited,
+    IoFailure,
+    InvalidInput,
+    Unsupported
+};
+
 struct EncoderConfig {
     VideoCodec codec = VideoCodec::H264;
     HardwareEncoder preferredHardware = HardwareEncoder::NVENC;
@@ -32,6 +48,10 @@ struct EncoderConfig {
     std::string ffmpegPath;
     std::string ffmpegOptions;
     bool enableAlpha = false;
+    AlphaBackgroundMode alphaBackgroundMode = AlphaBackgroundMode::None;
+    uint8_t alphaBackgroundRed = 0;
+    uint8_t alphaBackgroundGreen = 255;
+    uint8_t alphaBackgroundBlue = 0;
     int width = 1920;
     int height = 1080;
     int frameRate = 60;
@@ -51,6 +71,19 @@ struct EncodedPacket {
     VideoCodec codec = VideoCodec::H264;
 };
 
+struct FfmpegProbeInfo {
+    bool resolved = false;
+    bool bundled = false;
+    bool userOverride = false;
+    bool hasLibvpxVp9 = false;
+    bool gplEnabled = false;
+    bool nonfreeEnabled = false;
+    std::string path;
+    std::string version;
+    std::string configuration;
+    std::string error;
+};
+
 class VideoEncoder {
   public:
     VideoEncoder();
@@ -66,6 +99,10 @@ class VideoEncoder {
     std::string activeCodecName() const;
     std::string activeEncoderName() const;
     bool isHardwareEncoderActive() const;
+    EncodeFailureKind lastEncodeFailureKind() const;
+
+    static std::string resolveFfmpegPath(const std::string &configuredPath = {});
+    static FfmpegProbeInfo probeFfmpeg(const std::string &configuredPath = {});
 
     using PacketCallback = std::function<void(const EncodedPacket &)>;
     void setPacketCallback(PacketCallback cb) { packetCallback_ = std::move(cb); }

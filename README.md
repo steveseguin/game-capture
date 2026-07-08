@@ -35,13 +35,15 @@ For same-user automation and local issue collection, the compiled app can expose
 ## Alpha Workflow
 
 - For transparent playback in OBS, choose `VP9 (OBS Alpha Preview)` and enable the alpha workflow.
+- VP9 alpha requires `ffmpeg.exe` with libvpx/VP9 support. Windows releases include a pinned LGPL FFmpeg bundle under `ffmpeg/bin/ffmpeg.exe`; advanced users can override it with `--ffmpeg-path` or the FFmpeg Path setting.
 - Transparent playback in OBS requires the [VDO.Ninja OBS plugin](https://github.com/steveseguin/ninja-obs-plugin) with its native receiver path enabled. OBS Browser Sources and normal browser viewers do not composite the alpha track.
 - Compatible OBS VDO.Ninja native receivers automatically upgrade that stream to dual-track VP9 transparency.
 - Browser viewers remain compatible, but they stay standard color video.
+- For hardware encoding compatibility, leave VP9 alpha disabled and use `Alpha Background -> Chroma background`. Game Capture composites transparent Spout2/window pixels over the selected color before H.264/NVENC encode, so the receiver can chroma-key the feed.
 - If you need the broadest viewer compatibility, leave alpha disabled.
 - AV1 alpha-preserving encode remains experimental and is not the current OBS transparency path.
 
-VP9 alpha is software-heavy because Game Capture encodes both the color video and a second alpha video track. The default VP9 settings already use libvpx realtime mode with the fastest `-cpu-used 8` setting. For low frame rates, lower output resolution/FPS first. Advanced users can use `FFmpeg Options` to override output options; for example, `-g 30 -keyint_min 30` can reduce all-keyframe cost, but recovery after packet loss or late joins may be slower.
+VP9 alpha is CPU-encoded and software-heavy because Game Capture encodes both the color video and a second alpha video track. The default VP9 settings already use libvpx realtime mode with the fastest `-cpu-used 8` setting. If the encoder overloads, lower output resolution/FPS first; `1080p30` or `720p60` are safer starting points than `1080p60`. Advanced users can use `FFmpeg Options` to override output options; for example, `-g 30 -keyint_min 30` can reduce all-keyframe cost, but recovery after packet loss or late joins may be slower.
 
 Web landing/download page:
 - `docs/gamecapture.html`

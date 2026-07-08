@@ -23,13 +23,24 @@ function parseArgs(argv) {
     videoCodec: '',
     ffmpegPath: '',
     ffmpegOptions: '',
+    source: '',
+    spoutSender: '',
+    width: 0,
+    height: 0,
+    fps: 0,
+    bitrateKbps: 0,
     alphaWorkflow: false,
+    alphaBackground: '',
+    alphaBackgroundColor: '',
+    diagnosticsOut: '',
     timeoutMs: 90000,
     startupDelayMs: 5000,
     holdMs: 0,
     durationMs: 0,
     iterations: 1,
     viewerAttempts: 1,
+    viewerWidth: 1600,
+    viewerHeight: 900,
     headful: false,
     screenshotDir: path.resolve(__dirname, '../../.playwright-mcp'),
     publisherPath: '',
@@ -64,8 +75,26 @@ function parseArgs(argv) {
       args.ffmpegPath = arg.slice('--ffmpeg-path='.length);
     } else if (arg.startsWith('--ffmpeg-options=')) {
       args.ffmpegOptions = arg.slice('--ffmpeg-options='.length);
+    } else if (arg.startsWith('--source=')) {
+      args.source = arg.slice('--source='.length);
+    } else if (arg.startsWith('--spout-sender=')) {
+      args.spoutSender = arg.slice('--spout-sender='.length);
+    } else if (arg.startsWith('--width=')) {
+      args.width = Number(arg.slice('--width='.length)) || args.width;
+    } else if (arg.startsWith('--height=')) {
+      args.height = Number(arg.slice('--height='.length)) || args.height;
+    } else if (arg.startsWith('--fps=')) {
+      args.fps = Number(arg.slice('--fps='.length)) || args.fps;
+    } else if (arg.startsWith('--bitrate-kbps=')) {
+      args.bitrateKbps = Number(arg.slice('--bitrate-kbps='.length)) || args.bitrateKbps;
     } else if (arg === '--alpha-workflow') {
       args.alphaWorkflow = true;
+    } else if (arg.startsWith('--alpha-background=')) {
+      args.alphaBackground = arg.slice('--alpha-background='.length);
+    } else if (arg.startsWith('--alpha-background-color=')) {
+      args.alphaBackgroundColor = arg.slice('--alpha-background-color='.length);
+    } else if (arg.startsWith('--diagnostics-out=')) {
+      args.diagnosticsOut = path.resolve(arg.slice('--diagnostics-out='.length));
     } else if (arg.startsWith('--timeout-ms=')) {
       args.timeoutMs = Number(arg.slice('--timeout-ms='.length)) || args.timeoutMs;
     } else if (arg.startsWith('--startup-delay-ms=')) {
@@ -78,6 +107,10 @@ function parseArgs(argv) {
       args.iterations = Math.max(1, Number(arg.slice('--iterations='.length)) || args.iterations);
     } else if (arg.startsWith('--viewer-attempts=')) {
       args.viewerAttempts = Math.max(1, Number(arg.slice('--viewer-attempts='.length)) || args.viewerAttempts);
+    } else if (arg.startsWith('--viewer-width=')) {
+      args.viewerWidth = Math.max(320, Number(arg.slice('--viewer-width='.length)) || args.viewerWidth);
+    } else if (arg.startsWith('--viewer-height=')) {
+      args.viewerHeight = Math.max(240, Number(arg.slice('--viewer-height='.length)) || args.viewerHeight);
     } else if (arg.startsWith('--publisher-path=')) {
       args.publisherPath = arg.slice('--publisher-path='.length);
     } else if (arg.startsWith('--screenshot-dir=')) {
@@ -213,8 +246,35 @@ function spawnPublisher(config) {
     if (config.ffmpegOptions) {
       args.push(`--ffmpeg-options=${config.ffmpegOptions}`);
     }
+    if (config.source) {
+      args.push(`--source=${config.source}`);
+    }
+    if (config.spoutSender) {
+      args.push(`--spout-sender=${config.spoutSender}`);
+    }
+    if (config.width > 0) {
+      args.push(`--width=${config.width}`);
+    }
+    if (config.height > 0) {
+      args.push(`--height=${config.height}`);
+    }
+    if (config.fps > 0) {
+      args.push(`--fps=${config.fps}`);
+    }
+    if (config.bitrateKbps > 0) {
+      args.push(`--bitrate-kbps=${config.bitrateKbps}`);
+    }
     if (config.alphaWorkflow) {
       args.push('--alpha-workflow');
+    }
+    if (config.alphaBackground) {
+      args.push(`--alpha-background=${config.alphaBackground}`);
+    }
+    if (config.alphaBackgroundColor) {
+      args.push(`--alpha-background-color=${config.alphaBackgroundColor}`);
+    }
+    if (config.diagnosticsOut) {
+      args.push(`--diagnostics-out=${config.diagnosticsOut}`);
     }
 
     const qtPluginPath = detectQtPluginPath();
@@ -389,14 +449,14 @@ async function sendViewerInitIfConfigured(page, initOptions, timeoutMs) {
   return { ok: false, stage: 'send-init', state: lastSend };
 }
 
-async function runViewerCheck(viewerUrl, timeoutMs, holdMs, headful, screenshotDir, runId, initOptions) {
+async function runViewerCheck(viewerUrl, timeoutMs, holdMs, headful, screenshotDir, runId, initOptions, viewport) {
   const browser = await chromium.launch({
     headless: !headful,
     args: ['--autoplay-policy=no-user-gesture-required']
   });
 
   const context = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
+    viewport,
     ignoreHTTPSErrors: true
   });
 
@@ -481,7 +541,8 @@ async function runViewerCheckWithRetry(viewerUrl, timeoutMs, holdMs, headful, sc
       headful,
       screenshotDir,
       maxAttempts > 1 ? `${runId}-attempt${attempt}` : runId,
-      initOptions
+      initOptions,
+      { width: initOptions.viewerWidth || 1600, height: initOptions.viewerHeight || 900 }
     );
     if (result.ok) {
       if (attempt > 1) {
@@ -513,6 +574,18 @@ async function main() {
   if (config.videoEncoder) {
     console.log(`[E2E] Video encoder: ${config.videoEncoder}`);
   }
+  if (config.source) {
+    console.log(`[E2E] Capture source: ${config.source}${config.spoutSender ? ` (${config.spoutSender})` : ''}`);
+  }
+  if (config.width || config.height || config.fps) {
+    console.log(`[E2E] Requested capture/encode: ${config.width || '(default)'}x${config.height || '(default)'} @ ${config.fps || '(default)'}fps`);
+  }
+  if (config.alphaBackground) {
+    console.log(`[E2E] Alpha background: ${config.alphaBackground} ${config.alphaBackgroundColor || ''}`.trim());
+  }
+  if (config.diagnosticsOut) {
+    console.log(`[E2E] Diagnostics out: ${config.diagnosticsOut}`);
+  }
   if (config.ffmpegPath) {
     console.log(`[E2E] FFmpeg path override: ${config.ffmpegPath}`);
   }
@@ -521,6 +594,9 @@ async function main() {
   }
   if (config.viewerAttempts > 1) {
     console.log(`[E2E] Viewer attempts per iteration: ${config.viewerAttempts}`);
+  }
+  if (config.viewerWidth !== 1600 || config.viewerHeight !== 900) {
+    console.log(`[E2E] Viewer viewport: ${config.viewerWidth}x${config.viewerHeight}`);
   }
   if (config.initRole) {
     console.log(`[E2E] Data init role: ${config.initRole} (video=${config.initVideo}, audio=${config.initAudio})`);
@@ -559,7 +635,9 @@ async function main() {
           room: !!config.room,
           video: config.initVideo,
           audio: config.initAudio,
-          label: config.label
+          label: config.label,
+          viewerWidth: config.viewerWidth,
+          viewerHeight: config.viewerHeight
         },
         config.viewerAttempts
       );

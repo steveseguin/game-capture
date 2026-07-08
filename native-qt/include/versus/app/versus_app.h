@@ -56,7 +56,15 @@ struct StreamMetrics {
     uint64_t videoFramesDropped = 0;
     uint64_t audioPacketsSent = 0;
     uint64_t videoEncodeFailures = 0;
+    uint64_t videoEncodeTimeouts = 0;
+    uint64_t videoEncodeHardFailures = 0;
     uint64_t videoSendFailures = 0;
+    uint64_t alphaPacketsSent = 0;
+    uint64_t alphaEncodeFailures = 0;
+    uint64_t alphaEncodeTimeouts = 0;
+    uint64_t alphaFramesQueued = 0;
+    uint64_t alphaFramesDropped = 0;
+    uint64_t alphaSendFailures = 0;
     uint64_t audioSendFailures = 0;
 };
 
@@ -81,7 +89,15 @@ struct ConnectionHealth {
     uint64_t videoFramesSent = 0;
     uint64_t videoFramesDropped = 0;
     uint64_t videoEncodeFailures = 0;
+    uint64_t videoEncodeTimeouts = 0;
+    uint64_t videoEncodeHardFailures = 0;
     uint64_t videoSendFailures = 0;
+    uint64_t alphaPacketsSent = 0;
+    uint64_t alphaEncodeFailures = 0;
+    uint64_t alphaEncodeTimeouts = 0;
+    uint64_t alphaFramesQueued = 0;
+    uint64_t alphaFramesDropped = 0;
+    uint64_t alphaSendFailures = 0;
     uint64_t audioSendFailures = 0;
     double systemCpuPercent = -1.0;
     double systemMemoryPercent = -1.0;
@@ -222,6 +238,11 @@ class VersusApp {
     void stopVideoMaintenanceThread();
     void startEncodeThread();
     void stopEncodeThread();
+    void startAlphaEncodeThread();
+    void stopAlphaEncodeThread();
+    void clearAlphaEncodeQueues();
+    void queueAlphaEncodeFrame(int width, int height, int64_t timestamp, std::vector<uint8_t> gray);
+    bool takeLatestAlphaPacket(versus::video::EncodedPacket &packet);
     bool hasAnyActiveVideoTrack() const;
     bool hasAnyActiveAudioTrack() const;
     void sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet);
@@ -318,7 +339,15 @@ class VersusApp {
     std::atomic<uint64_t> videoFramesDropped_{0};
     std::atomic<uint64_t> audioPacketsSent_{0};
     std::atomic<uint64_t> videoEncodeFailures_{0};
+    std::atomic<uint64_t> videoEncodeTimeouts_{0};
+    std::atomic<uint64_t> videoEncodeHardFailures_{0};
     std::atomic<uint64_t> videoSendFailures_{0};
+    std::atomic<uint64_t> alphaPacketsSent_{0};
+    std::atomic<uint64_t> alphaEncodeFailures_{0};
+    std::atomic<uint64_t> alphaEncodeTimeouts_{0};
+    std::atomic<uint64_t> alphaFramesQueued_{0};
+    std::atomic<uint64_t> alphaFramesDropped_{0};
+    std::atomic<uint64_t> alphaSendFailures_{0};
     std::atomic<uint64_t> audioSendFailures_{0};
     std::atomic<int> audioEncoderBitrateKbps_{192};
     std::atomic<int64_t> metricsStartMs_{0};
@@ -329,6 +358,7 @@ class VersusApp {
     std::atomic<bool> remoteControlEnabled_{false};
     std::atomic<int64_t> lastRelayWarningMs_{0};
     std::atomic<int64_t> lastPacketLossWarningMs_{0};
+    std::atomic<int64_t> lastAlphaWarningMs_{0};
     std::atomic<int64_t> pliWindowStartMs_{0};
     std::atomic<int> pliWindowCount_{0};
     std::atomic<int64_t> lastCpuWarningMs_{0};
@@ -345,6 +375,22 @@ class VersusApp {
     std::mutex encodeNotifyMutex_;
     std::condition_variable encodeFrameCV_;
     bool encodeFrameReady_ = false;
+    struct AlphaEncodeJob {
+        std::vector<uint8_t> gray;
+        int width = 0;
+        int height = 0;
+        int64_t timestamp = 0;
+    };
+    std::thread alphaEncodeThread_;
+    std::atomic<bool> alphaEncodeThreadRunning_{false};
+    std::mutex alphaEncodeMutex_;
+    std::condition_variable alphaEncodeCV_;
+    AlphaEncodeJob pendingAlphaEncodeJob_;
+    bool pendingAlphaEncodeJobReady_ = false;
+    std::mutex alphaEncoderMutex_;
+    std::mutex alphaPacketMutex_;
+    versus::video::EncodedPacket latestAlphaPacket_;
+    bool latestAlphaPacketReady_ = false;
     mutable std::mutex peerSessionsMutex_;
     std::mutex peerShutdownTasksMutex_;
     mutable std::mutex signalingOpsMutex_;
@@ -470,6 +516,7 @@ class VersusApp {
     versus::video::VideoEncoder videoEncoderLq_;
     versus::video::VideoEncoder videoEncoderAlpha_;
     std::vector<uint8_t> alphaGrayBuffer_;
+    std::vector<uint8_t> alphaCompositeBuffer_;
     versus::audio::WindowAudioCaptureCore audioCapture_;
     versus::audio::WindowAudioCaptureCore microphoneAudioCapture_;
     versus::audio::OpusEncoder opusEncoder_;

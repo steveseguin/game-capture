@@ -339,10 +339,12 @@
           <h2>Alpha Workflow</h2>
           <ul class="list">
             <li>Use <strong>VP9 (OBS Alpha Preview)</strong> with alpha enabled for transparent OBS playback.</li>
+            <li>VP9 alpha requires the bundled LGPL FFmpeg/libvpx VP9 encoder and is CPU-encoded.</li>
             <li>Transparent OBS playback requires the <a href="https://github.com/steveseguin/ninja-obs-plugin">VDO.Ninja OBS plugin</a> with Native Receiver enabled.</li>
             <li>OBS Browser Sources and normal browser viewers receive standard color video instead of composited transparency.</li>
             <li>Compatible OBS VDO.Ninja native receivers upgrade that stream to transparency automatically.</li>
-            <li>VP9 alpha is CPU-heavy; lower output resolution/FPS first if frame rate drops.</li>
+            <li>For hardware encoding, use Alpha Background &rarr; Chroma background and key the selected color in the receiver.</li>
+            <li>VP9 alpha is CPU-heavy; try 1080p30 or 720p60 first if 1080p60 drops frames.</li>
             <li>Leave alpha off when you want the widest viewer compatibility.</li>
           </ul>
         </article>

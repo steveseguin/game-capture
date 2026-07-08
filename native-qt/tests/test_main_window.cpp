@@ -56,6 +56,8 @@ private slots:
     void testShareLinkButtonsExist();
     void testFfmpegAdvancedControls();
     void testCodecControls();
+    void testAlphaBackgroundControls();
+    void testFfmpegAlphaStatusMessaging();
     void testAlphaWorkflowMessaging();
 
 private:
@@ -347,7 +349,7 @@ void TestMainWindow::testSpoutSelectionPreviewMessaging() {
 
     QVERIFY(preview->text().contains("Spout2 sender selected"));
     QVERIFY(preview->text().contains("VTubeStudioSpout"));
-    QVERIFY(preview->text().contains("For transparency: VP9 + OBS alpha workflow"));
+    QVERIFY(preview->text().contains("For transparency: VP9 alpha or chroma background"));
     QVERIFY(preview->text().contains("Video only"));
     QVERIFY(preview->text().contains("selected stream resolution"));
 }
@@ -696,7 +698,8 @@ void TestMainWindow::testCodecControls() {
 
     auto *alphaCheck = window_->findChild<QCheckBox*>("alphaWorkflowCheck");
     QVERIFY(alphaCheck != nullptr);
-    QVERIFY(!alphaCheck->isEnabled());
+    QVERIFY(alphaCheck->isEnabled());
+    QVERIFY(alphaCheck->text().contains("H.264"));
 
     const int qsvIndex = encoderCombo->findData("qsv");
     QVERIFY(qsvIndex >= 0);
@@ -708,6 +711,54 @@ void TestMainWindow::testCodecControls() {
     QCOMPARE(encoderCombo->currentData().toString(), QString("qsv"));
     QVERIFY(ffmpegPathInput->isEnabled());
     QVERIFY(alphaCheck->isEnabled());
+}
+
+void TestMainWindow::testAlphaBackgroundControls() {
+    auto *codecCombo = window_->findChild<QComboBox*>("codecSelect");
+    auto *alphaCheck = window_->findChild<QCheckBox*>("alphaWorkflowCheck");
+    auto *modeCombo = window_->findChild<QComboBox*>("alphaBackgroundModeSelect");
+    auto *colorButton = window_->findChild<QPushButton*>("alphaBackgroundColorButton");
+    QVERIFY(codecCombo != nullptr);
+    QVERIFY(alphaCheck != nullptr);
+    QVERIFY(modeCombo != nullptr);
+    QVERIFY(colorButton != nullptr);
+
+    QVERIFY(modeCombo->findData("none") >= 0);
+    QVERIFY(modeCombo->findData("chroma") >= 0);
+    QVERIFY(modeCombo->findData("opaque") >= 0);
+    QCOMPARE(modeCombo->currentData().toString(), QString("none"));
+    QVERIFY(!colorButton->isEnabled());
+
+    const int chromaIndex = modeCombo->findData("chroma");
+    QVERIFY(chromaIndex >= 0);
+    modeCombo->setCurrentIndex(chromaIndex);
+    QVERIFY(colorButton->isEnabled());
+    QVERIFY(colorButton->text().contains("#00FF00"));
+
+    const int vp9Index = codecCombo->findData("vp9");
+    QVERIFY(vp9Index >= 0);
+    codecCombo->setCurrentIndex(vp9Index);
+    alphaCheck->setChecked(true);
+    QVERIFY(!modeCombo->isEnabled());
+}
+
+void TestMainWindow::testFfmpegAlphaStatusMessaging() {
+    auto *codecCombo = window_->findChild<QComboBox*>("codecSelect");
+    auto *alphaCheck = window_->findChild<QCheckBox*>("alphaWorkflowCheck");
+    auto *statusLabel = window_->findChild<QLabel*>("ffmpegStatusLabel");
+    QVERIFY(codecCombo != nullptr);
+    QVERIFY(alphaCheck != nullptr);
+    QVERIFY(statusLabel != nullptr);
+
+    const int vp9Index = codecCombo->findData("vp9");
+    QVERIFY(vp9Index >= 0);
+    codecCombo->setCurrentIndex(vp9Index);
+    alphaCheck->setChecked(true);
+
+    QVERIFY(statusLabel->text().contains("ffmpeg.exe", Qt::CaseInsensitive));
+    QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive));
+    QVERIFY(statusLabel->text().contains("FFmpeg/libvpx", Qt::CaseInsensitive) ||
+            statusLabel->text().contains("using", Qt::CaseInsensitive));
 }
 
 void TestMainWindow::testAlphaWorkflowMessaging() {
@@ -727,6 +778,13 @@ void TestMainWindow::testAlphaWorkflowMessaging() {
     QVERIFY(alphaCheck->toolTip().contains("Native Receiver"));
     QVERIFY(alphaCheck->toolTip().contains("Browser viewers", Qt::CaseInsensitive));
     QVERIFY(codecCombo->toolTip().contains("transparency", Qt::CaseInsensitive));
+
+    const int h264Index = codecCombo->findData("h264");
+    QVERIFY(h264Index >= 0);
+    codecCombo->setCurrentIndex(h264Index);
+    QVERIFY(alphaCheck->isEnabled());
+    QVERIFY(alphaCheck->text().contains("H.264"));
+    QVERIFY(alphaCheck->toolTip().contains("VP9 alpha mask"));
 
     const int av1Index = codecCombo->findData("av1");
     QVERIFY(av1Index >= 0);

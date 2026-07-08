@@ -14,6 +14,7 @@
 #include <QCloseEvent>
 #include <QFuture>
 #include <QIcon>
+#include <QColor>
 
 #include "versus/app/versus_app.h"
 #include "versus/ui/window_list_widget.h"
@@ -61,6 +62,9 @@ class MainWindow : public QMainWindow {
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
     void refreshSelectedWindowPreview();
     void syncCodecUiState();
+    void updateAlphaBackgroundColorButton();
+    void chooseAlphaBackgroundColor();
+    void refreshFfmpegStatus();
     bool hasPendingAsyncOperation() const;
     void loadPersistedSettings();
     void showFirewallWarningIfNeeded();
@@ -103,6 +107,9 @@ class MainWindow : public QMainWindow {
     QComboBox *encoderSelect_ = nullptr;
     QComboBox *codecSelect_ = nullptr;
     QCheckBox *alphaWorkflowCheck_ = nullptr;
+    QComboBox *alphaBackgroundModeSelect_ = nullptr;
+    QPushButton *alphaBackgroundColorButton_ = nullptr;
+    QLabel *ffmpegStatusLabel_ = nullptr;
     QComboBox *audioSourceSelect_ = nullptr;
     QCheckBox *includeMicrophoneCheck_ = nullptr;
     QComboBox *microphoneDeviceSelect_ = nullptr;
@@ -166,6 +173,7 @@ class MainWindow : public QMainWindow {
     QFuture<void> startFuture_;
     QFuture<void> stopFuture_;
     QString selectedWindowId_;
+    QColor alphaBackgroundColor_ = QColor(0, 255, 0);
 };
 
 }  // namespace versus::ui

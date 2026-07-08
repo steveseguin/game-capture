@@ -98,6 +98,11 @@ Section "Install"
     File /nonfatal "${BUILD_BIN_DIR}\vdoninja.ico"
     File /nonfatal "${BUILD_BIN_DIR}\RELEASE-NOTES.txt"
 
+    ; Bundled FFmpeg - isolated under $INSTDIR\ffmpeg, never added to PATH.
+    SetOutPath "$INSTDIR\ffmpeg"
+    File /nonfatal /r "${BUILD_BIN_DIR}\ffmpeg\*.*"
+    SetOutPath "$INSTDIR"
+
     Call AddFirewallRules
 
     ; Qt plugins - platforms
@@ -158,6 +163,7 @@ Section "Uninstall"
     RMDir /r "$INSTDIR\imageformats"
     RMDir /r "$INSTDIR\networkinformation"
     RMDir /r "$INSTDIR\tls"
+    RMDir /r "$INSTDIR\ffmpeg"
     Delete "$INSTDIR\uninstall.exe"
 
     ; Remove directories

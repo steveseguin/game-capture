@@ -7,7 +7,9 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -114,6 +116,33 @@ bool boolEnvEnabled(const char *value) {
     return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
 }
 
+std::optional<std::array<uint8_t, 3>> parseRgbColor(std::string value) {
+    if (!value.empty() && value[0] == '#') {
+        value.erase(value.begin());
+    }
+    if (value.size() != 6) {
+        return std::nullopt;
+    }
+    auto hexByte = [](const std::string &part) -> std::optional<uint8_t> {
+        try {
+            size_t parsed = 0;
+            const int result = std::stoi(part, &parsed, 16);
+            if (parsed == part.size() && result >= 0 && result <= 255) {
+                return static_cast<uint8_t>(result);
+            }
+        } catch (...) {
+        }
+        return std::nullopt;
+    };
+    const auto r = hexByte(value.substr(0, 2));
+    const auto g = hexByte(value.substr(2, 2));
+    const auto b = hexByte(value.substr(4, 2));
+    if (!r || !g || !b) {
+        return std::nullopt;
+    }
+    return std::array<uint8_t, 3>{*r, *g, *b};
+}
+
 QJsonArray sourceListToJson(const std::vector<versus::video::WindowInfo> &sources) {
     QJsonArray items;
     for (const auto &source : sources) {
@@ -174,6 +203,9 @@ int main(int argc, char *argv[]) {
     bool remoteControlEnabled = false;
     std::string remoteControlToken;
     bool alphaWorkflowEnabled = false;
+    bool alphaBackgroundConfigured = false;
+    versus::video::AlphaBackgroundMode alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
+    std::array<uint8_t, 3> alphaBackgroundColor = {0, 255, 0};
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
     std::string diagnosticsOutArg;
@@ -323,6 +355,27 @@ int main(int argc, char *argv[]) {
             diagnosticsOutArg = arg.substr(18);
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
+        } else if (arg.find("--alpha-background=") == 0) {
+            std::string normalized = arg.substr(19);
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+            alphaBackgroundConfigured = true;
+            if (normalized == "chroma" || normalized == "green" || normalized == "greenscreen") {
+                alphaBackgroundMode = versus::video::AlphaBackgroundMode::Chroma;
+            } else if (normalized == "opaque" || normalized == "solid" || normalized == "background") {
+                alphaBackgroundMode = versus::video::AlphaBackgroundMode::Opaque;
+            } else {
+                alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
+            }
+        } else if (arg.find("--alpha-background-color=") == 0) {
+            const auto parsed = parseRgbColor(arg.substr(25));
+            if (parsed) {
+                alphaBackgroundColor = *parsed;
+                alphaBackgroundConfigured = true;
+            } else {
+                spdlog::warn("[Main] Ignoring invalid --alpha-background-color value '{}'", arg.substr(25));
+            }
         } else if (arg == "--local-control") {
             localControlEnabled = true;
         } else if (arg.find("--local-control-port=") == 0) {
@@ -435,7 +488,7 @@ int main(int argc, char *argv[]) {
             spdlog::warn("[Runtime] {}", message);
         }
         if (headless && fatal) {
-            QMetaObject::invokeMethod(qApp, []() { QApplication::quit(); }, Qt::QueuedConnection);
+            QMetaObject::invokeMethod(qApp, []() { QApplication::exit(3); }, Qt::QueuedConnection);
         }
     });
 
@@ -536,6 +589,16 @@ int main(int argc, char *argv[]) {
         encoderOverride.enableAlpha = true;
         hasVideoConfigOverride = true;
     }
+    if (alphaBackgroundConfigured) {
+        encoderOverride.alphaBackgroundMode = alphaBackgroundMode;
+        encoderOverride.alphaBackgroundRed = alphaBackgroundColor[0];
+        encoderOverride.alphaBackgroundGreen = alphaBackgroundColor[1];
+        encoderOverride.alphaBackgroundBlue = alphaBackgroundColor[2];
+        if (alphaBackgroundMode != versus::video::AlphaBackgroundMode::None) {
+            encoderOverride.enableAlpha = false;
+        }
+        hasVideoConfigOverride = true;
+    }
 
     if (width > 0) {
         encoderOverride.width = width;
@@ -565,14 +628,15 @@ int main(int argc, char *argv[]) {
     }
 
     if (hasVideoConfigOverride) {
-        spdlog::info("[Main] Applying video config override: encoder={} codec={} resolution={}x{} fps={} bitrate={}kbps alpha={}",
+        spdlog::info("[Main] Applying video config override: encoder={} codec={} resolution={}x{} fps={} bitrate={}kbps alpha={} alphaBackground={}",
                      videoEncoderArg.empty() ? "default" : videoEncoderArg,
                      videoCodecArg.empty() ? "default" : videoCodecArg,
                      encoderOverride.width,
                      encoderOverride.height,
                      encoderOverride.frameRate,
                      encoderOverride.bitrate,
-                     encoderOverride.enableAlpha);
+                     encoderOverride.enableAlpha,
+                     static_cast<int>(encoderOverride.alphaBackgroundMode));
         core.setVideoConfig(encoderOverride);
     }
     core.setAudioSourceMode(audioSourceMode);
@@ -624,7 +688,7 @@ int main(int argc, char *argv[]) {
                 if (senders.empty()) {
                     spdlog::warn("[Headless] No Spout2 senders found for capture!");
                     spdlog::default_logger()->flush();
-                    QApplication::quit();
+                    QApplication::exit(2);
                     return;
                 }
 
@@ -636,7 +700,7 @@ int main(int argc, char *argv[]) {
                                       spoutSenderArg,
                                       senders.size());
                         spdlog::default_logger()->flush();
-                        QApplication::quit();
+                        QApplication::exit(2);
                         return;
                     }
                 } else {
@@ -652,7 +716,7 @@ int main(int argc, char *argv[]) {
                 if (!core.startCapture(versus::app::VideoSourceMode::Spout, selected->id)) {
                     spdlog::error("[Headless] Spout startCapture failed");
                     spdlog::default_logger()->flush();
-                    QApplication::quit();
+                    QApplication::exit(3);
                     return;
                 }
             } else {
@@ -668,7 +732,7 @@ int main(int argc, char *argv[]) {
                                           windowFilterArg,
                                           windows.size());
                             spdlog::default_logger()->flush();
-                            QApplication::quit();
+                            QApplication::exit(2);
                             return;
                         }
                     } else {
@@ -684,13 +748,13 @@ int main(int argc, char *argv[]) {
                     if (!core.startCapture(selected->id)) {
                         spdlog::error("[Headless] startCapture failed");
                         spdlog::default_logger()->flush();
-                        QApplication::quit();
+                        QApplication::exit(3);
                         return;
                     }
                 } else {
                     spdlog::warn("[Headless] No windows found for capture!");
                     spdlog::default_logger()->flush();
-                    QApplication::quit();
+                    QApplication::exit(2);
                     return;
                 }
             }
@@ -700,7 +764,7 @@ int main(int argc, char *argv[]) {
             if (!core.goLive(options)) {
                 spdlog::error("[Headless] goLive failed!");
                 spdlog::default_logger()->flush();
-                QApplication::quit();
+                QApplication::exit(3);
                 return;
             }
             spdlog::info("[Headless] Stream started, waiting for connections...");

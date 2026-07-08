@@ -2,6 +2,8 @@
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
     [string]$Version = "0.2.41",
+    [string]$FfmpegBundleRoot = "",
+    [switch]$AllowMissingFfmpeg = $false,
     [switch]$SkipVirusTotal = $false
 )
 
@@ -98,8 +100,52 @@ function Resolve-RuntimeDll([string]$Name) {
     return ""
 }
 
+function Test-TextContains([string]$Text, [string]$Needle) {
+    return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Assert-FfmpegBundle([string]$BundleRoot) {
+    $ffmpegExe = Join-Path $BundleRoot "bin\ffmpeg.exe"
+    $manifestPath = Join-Path $BundleRoot "bundle-manifest.json"
+    if (-not (Test-Path $ffmpegExe)) {
+        throw "FFmpeg bundle missing bin\ffmpeg.exe: $BundleRoot"
+    }
+    if (-not (Test-Path $manifestPath)) {
+        throw "FFmpeg bundle missing bundle-manifest.json: $BundleRoot"
+    }
+
+    $manifest = Get-Content -Path $manifestPath -Raw | ConvertFrom-Json
+    $configText = [string]$manifest.configuration
+    if (Test-TextContains -Text $configText -Needle "--enable-gpl") {
+        throw "Bundled FFmpeg manifest is GPL-enabled; refusing release package."
+    }
+    if (Test-TextContains -Text $configText -Needle "--enable-nonfree") {
+        throw "Bundled FFmpeg manifest is nonfree-enabled; refusing release package."
+    }
+    if (-not [bool]$manifest.has_libvpx_vp9) {
+        throw "Bundled FFmpeg manifest does not confirm libvpx-vp9."
+    }
+
+    $versionOutput = (& $ffmpegExe -hide_banner -version 2>&1) -join "`n"
+    $encoderOutput = (& $ffmpegExe -hide_banner -encoders 2>&1) -join "`n"
+    if (Test-TextContains -Text $versionOutput -Needle "--enable-gpl") {
+        throw "Bundled FFmpeg runtime reports --enable-gpl; refusing release package."
+    }
+    if (Test-TextContains -Text $versionOutput -Needle "--enable-nonfree") {
+        throw "Bundled FFmpeg runtime reports --enable-nonfree; refusing release package."
+    }
+    if (-not (Test-TextContains -Text $encoderOutput -Needle "libvpx-vp9")) {
+        throw "Bundled FFmpeg runtime does not expose libvpx-vp9 encoder."
+    }
+    return $manifest
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+
+if ([string]::IsNullOrWhiteSpace($FfmpegBundleRoot)) {
+    $FfmpegBundleRoot = Join-Path $repoRoot "third_party\ffmpeg-win64"
+}
 
 $exePath = Resolve-ExecutablePath -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration
 if (-not $exePath) {
@@ -118,6 +164,8 @@ $installerVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-setup.ex
 $installerStablePath = Join-Path $distRoot "$artifactPrefix-setup.exe"
 $portableVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-portable.exe"
 $portableStablePath = Join-Path $distRoot "$artifactPrefix-portable.exe"
+$ffmpegSourceInfoVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-ffmpeg-source-info.zip"
+$ffmpegSourceInfoStablePath = Join-Path $distRoot "$artifactPrefix-ffmpeg-source-info.zip"
 
 Write-Step "Stage Artifacts"
 if (Test-Path $stageDir) {
@@ -218,6 +266,24 @@ foreach ($dll in $runtimeDlls) {
     }
 }
 
+Write-Step "FFmpeg Bundle"
+$ffmpegManifest = $null
+$ffmpegStageDir = Join-Path $stageDir "ffmpeg"
+if (Test-Path (Join-Path $FfmpegBundleRoot "bin\ffmpeg.exe")) {
+    $ffmpegManifest = Assert-FfmpegBundle -BundleRoot $FfmpegBundleRoot
+    if (Test-Path $ffmpegStageDir) {
+        Remove-Item -Recurse -Force $ffmpegStageDir
+    }
+    New-Item -ItemType Directory -Path $ffmpegStageDir -Force | Out-Null
+    Copy-Item -Path (Join-Path $FfmpegBundleRoot "*") -Destination $ffmpegStageDir -Recurse -Force
+    Write-Host "Staged FFmpeg: $ffmpegStageDir"
+    Write-Host "FFmpeg: $($ffmpegManifest.ffmpeg_version)"
+} elseif ($AllowMissingFfmpeg) {
+    Write-Warning "FFmpeg bundle missing; continuing because -AllowMissingFfmpeg was set."
+} else {
+    throw "FFmpeg bundle missing. Run native-qt/tools/fetch-ffmpeg-lgpl.ps1 before release packaging, or pass -AllowMissingFfmpeg for dev-only packaging."
+}
+
 $reportDir = Join-Path $repoRoot "qa/reports"
 $latestReport = Get-ChildItem -Path $reportDir -Filter "release-readiness-*.md" -ErrorAction SilentlyContinue |
     Sort-Object LastWriteTime -Descending |
@@ -239,8 +305,37 @@ $notes += "Contents:"
 $notes += "- game-capture.exe"
 $notes += "- Qt runtime files (if windeployqt is available)"
 $notes += "- vdoninja.ico"
+if ($ffmpegManifest) {
+    $notes += "- FFmpeg LGPL shared bundle ($($ffmpegManifest.ffmpeg_version))"
+    $notes += "- FFmpeg source/build info archive: $artifactPrefix-$Version-ffmpeg-source-info.zip"
+}
 
 Set-Content -Path (Join-Path $stageDir "RELEASE-NOTES.txt") -Value $notes -Encoding UTF8
+
+if ($ffmpegManifest) {
+    Write-Step "FFmpeg Source/Build Info Archive"
+    $sourceInfoDir = Join-Path $distRoot "$artifactPrefix-$Version-ffmpeg-source-info"
+    if (Test-Path $sourceInfoDir) {
+        Remove-Item -Recurse -Force $sourceInfoDir
+    }
+    New-Item -ItemType Directory -Path $sourceInfoDir -Force | Out-Null
+    foreach ($name in @("bundle-manifest.json", "BUILDINFO.txt", "SOURCES.txt", "SHA256SUMS.txt", "README.txt", "LICENSE.txt", "VERSION.txt")) {
+        $source = Join-Path $FfmpegBundleRoot $name
+        if (Test-Path $source) {
+            Copy-Item -Path $source -Destination (Join-Path $sourceInfoDir $name) -Force
+        }
+    }
+    $licensesSource = Join-Path $FfmpegBundleRoot "licenses"
+    if (Test-Path $licensesSource) {
+        Copy-Item -Path $licensesSource -Destination (Join-Path $sourceInfoDir "licenses") -Recurse -Force
+    }
+    if (Test-Path $ffmpegSourceInfoVersionedPath) {
+        Remove-Item -Force $ffmpegSourceInfoVersionedPath
+    }
+    Compress-Archive -Path (Join-Path $sourceInfoDir "*") -DestinationPath $ffmpegSourceInfoVersionedPath -Force
+    Copy-Item -Path $ffmpegSourceInfoVersionedPath -Destination $ffmpegSourceInfoStablePath -Force
+    Remove-Item -Recurse -Force $sourceInfoDir
+}
 
 Write-Step "Code Signing (Best Effort - Staged Binary)"
 $signScript = Join-Path $PSScriptRoot "sign-artifacts.ps1"
@@ -364,5 +459,8 @@ if (Test-Path $installerVersionedPath) {
 }
 if (Test-Path $portableVersionedPath) {
     Write-Host "Release portable: $portableVersionedPath"
+}
+if (Test-Path $ffmpegSourceInfoVersionedPath) {
+    Write-Host "FFmpeg source/build info: $ffmpegSourceInfoVersionedPath"
 }
 

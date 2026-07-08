@@ -4,6 +4,8 @@ param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
     [string]$Repo = "steveseguin/game-capture",
+    [string]$FfmpegBundleRoot = "",
+    [switch]$AllowMissingFfmpeg = $false,
     [switch]$SkipFastGate = $false,
     [switch]$SkipVirusTotal = $false
 )
@@ -43,6 +45,12 @@ $buildArgs = @(
     "-Configuration", $Configuration,
     "-Version", $Version
 )
+if ($FfmpegBundleRoot) {
+    $buildArgs += @("-FfmpegBundleRoot", $FfmpegBundleRoot)
+}
+if ($AllowMissingFfmpeg) {
+    $buildArgs += "-AllowMissingFfmpeg"
+}
 if ($SkipVirusTotal) {
     $buildArgs += "-SkipVirusTotal"
 }
@@ -55,11 +63,16 @@ $distRoot = Join-Path $repoRoot "native-qt\dist"
 $versionedSetup = Join-Path $distRoot "game-capture-$Version-setup.exe"
 $versionedPortable = Join-Path $distRoot "game-capture-$Version-portable.exe"
 $versionedZip = Join-Path $distRoot "game-capture-$Version-win64.zip"
+$versionedFfmpegSourceInfo = Join-Path $distRoot "game-capture-$Version-ffmpeg-source-info.zip"
 $stableSetup = Join-Path $distRoot "game-capture-setup.exe"
 $stablePortable = Join-Path $distRoot "game-capture-portable.exe"
 $stableZip = Join-Path $distRoot "game-capture-win64.zip"
+$stableFfmpegSourceInfo = Join-Path $distRoot "game-capture-ffmpeg-source-info.zip"
 
 $required = @($versionedSetup, $versionedPortable, $versionedZip, $stableSetup, $stablePortable, $stableZip)
+if (-not $AllowMissingFfmpeg) {
+    $required += @($versionedFfmpegSourceInfo, $stableFfmpegSourceInfo)
+}
 foreach ($path in $required) {
     if (-not (Test-Path $path)) {
         throw "Missing release artifact: $path"
@@ -75,6 +88,7 @@ $notes = @"
 Automated release from native QA flow:
 - Fast gate (unless skipped)
 - Build/package
+- FFmpeg source/build info archive (when bundled)
 - Code signing (best effort)
 - VirusTotal submission (best effort)
 "@
@@ -92,10 +106,24 @@ try {
 }
 
 if ($releaseExists) {
-    gh release upload $tag $versionedSetup $versionedPortable $versionedZip $stableSetup $stablePortable $stableZip --clobber --repo $Repo
+    $uploadAssets = @($versionedSetup, $versionedPortable, $versionedZip, $stableSetup, $stablePortable, $stableZip)
+    if (Test-Path $versionedFfmpegSourceInfo) {
+        $uploadAssets += $versionedFfmpegSourceInfo
+    }
+    if (Test-Path $stableFfmpegSourceInfo) {
+        $uploadAssets += $stableFfmpegSourceInfo
+    }
+    gh release upload $tag @uploadAssets --clobber --repo $Repo
     gh release edit $tag --repo $Repo --title $title --notes-file $notesPath --latest
 } else {
-    gh release create $tag $versionedSetup $versionedPortable $versionedZip $stableSetup $stablePortable $stableZip --repo $Repo --target main --title $title --notes-file $notesPath --latest
+    $uploadAssets = @($versionedSetup, $versionedPortable, $versionedZip, $stableSetup, $stablePortable, $stableZip)
+    if (Test-Path $versionedFfmpegSourceInfo) {
+        $uploadAssets += $versionedFfmpegSourceInfo
+    }
+    if (Test-Path $stableFfmpegSourceInfo) {
+        $uploadAssets += $stableFfmpegSourceInfo
+    }
+    gh release create $tag @uploadAssets --repo $Repo --target main --title $title --notes-file $notesPath --latest
 }
 
 Remove-Item -Path $notesPath -Force -ErrorAction SilentlyContinue

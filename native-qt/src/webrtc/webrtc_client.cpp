@@ -462,7 +462,7 @@ struct WebRtcClient::Impl {
     // Alpha track must be added AFTER the primary video track so it occupies m-line 1 in SDP.
     // The OBS VDO.Ninja plugin identifies the alpha track by SDP m-line position (not mid name).
     bool ensureAlphaVideoTrack() {
-        if (!pc || videoCodec != PeerConfig::VideoCodec::VP9) {
+        if (!pc || !enableAlphaTrack) {
             return false;
         }
         if (alphaVideoTrack) {

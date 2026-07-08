@@ -7,8 +7,9 @@ Use this every time so `releases/latest/download/...` links keep working.
 - `game-capture-setup.exe`
 - `game-capture-portable.exe`
 - `game-capture-win64.zip`
+- `game-capture-ffmpeg-source-info.zip`
 
-Versioned files can change per release, but these three stable aliases must always be uploaded.
+Versioned files can change per release, but these stable aliases must always be uploaded.
 
 ## Preferred one-command flow
 
@@ -20,6 +21,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\release-and-p
 
 This runs:
 - build/package
+- FFmpeg bundle validation/source-info packaging
 - signing step
 - VirusTotal submission step
 - release create/update
@@ -41,6 +43,14 @@ If your local `build-review2` was ever used by another repo, reconfigure it once
 
 ## 1) Build release artifacts
 
+Refresh the pinned LGPL FFmpeg bundle before packaging:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\tools\fetch-ffmpeg-lgpl.ps1 -Force
+```
+
+Release packaging fails if the FFmpeg bundle is missing, GPL/nonfree, or lacks `libvpx-vp9`.
+
 From repo root:
 
 ```powershell
@@ -59,9 +69,11 @@ Expected outputs in `native-qt/dist`:
 - `game-capture-<version>-setup.exe`
 - `game-capture-<version>-portable.exe`
 - `game-capture-<version>-win64.zip`
+- `game-capture-<version>-ffmpeg-source-info.zip`
 - `game-capture-setup.exe`
 - `game-capture-portable.exe`
 - `game-capture-win64.zip`
+- `game-capture-ffmpeg-source-info.zip`
 
 ## 2) Run fast gate before upload
 
@@ -106,9 +118,11 @@ gh release upload <tag> `
   .\native-qt\dist\game-capture-<version>-setup.exe `
   .\native-qt\dist\game-capture-<version>-portable.exe `
   .\native-qt\dist\game-capture-<version>-win64.zip `
+  .\native-qt\dist\game-capture-<version>-ffmpeg-source-info.zip `
   .\native-qt\dist\game-capture-setup.exe `
   .\native-qt\dist\game-capture-portable.exe `
   .\native-qt\dist\game-capture-win64.zip `
+  .\native-qt\dist\game-capture-ffmpeg-source-info.zip `
   --clobber --repo steveseguin/game-capture
 ```
 
@@ -123,6 +137,7 @@ gh release edit <tag> --draft=false --repo steveseguin/game-capture
 - `https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe`
 - `https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-portable.exe`
 - `https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-win64.zip`
+- `https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-ffmpeg-source-info.zip`
 
 ## Troubleshooting
 

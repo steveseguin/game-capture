@@ -123,7 +123,8 @@ int main(int argc, char **argv) {
               << std::endl;
 
     const auto start = std::chrono::steady_clock::now();
-    const auto frameInterval = std::chrono::milliseconds(std::max(1, 1000 / fps));
+    const auto frameInterval = std::chrono::duration<double>(1.0 / static_cast<double>(std::max(1, fps)));
+    auto nextFrameTime = std::chrono::steady_clock::now();
     int frame = 0;
     bool resized = false;
     while (std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -144,8 +145,8 @@ int main(int argc, char **argv) {
         }
         drawFrame(pixels, width, height, frame++);
         sender->SendImage(pixels.data(), static_cast<unsigned int>(width), static_cast<unsigned int>(height), GL_BGRA, false);
-        sender->HoldFps(fps);
-        std::this_thread::sleep_for(frameInterval);
+        nextFrameTime += std::chrono::duration_cast<std::chrono::steady_clock::duration>(frameInterval);
+        std::this_thread::sleep_until(nextFrameTime);
     }
 
     sender->ReleaseSender();

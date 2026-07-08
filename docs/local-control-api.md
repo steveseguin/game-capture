@@ -91,6 +91,16 @@ Authorization: Bearer <token>
 
 Local tools should show these as plain status, for example: transparency detected, green background detected, large source may lower FPS, or sender resized during capture.
 
+`GET /diagnostics` also includes video alpha/encoder fields:
+
+- `ffmpeg_resolved`, `ffmpeg_resolved_path`, `ffmpeg_configured_path`
+- `ffmpeg_version`, `ffmpeg_configuration`, `ffmpeg_has_libvpx_vp9`
+- `ffmpeg_is_bundled`, `ffmpeg_is_user_override`, `ffmpeg_gpl_enabled`, `ffmpeg_nonfree_enabled`, `ffmpeg_probe_error`
+- `alpha_enabled`, `alpha_background_mode`, `alpha_background_color_rgb`
+- `encode_timeouts`, `encode_hard_failures`
+- `alpha_packets_sent`, `alpha_encode_failures`, `alpha_encode_timeouts`, `alpha_send_failures`
+- `alpha_frames_queued`, `alpha_frames_dropped`
+
 ## Commands
 
 Stop capture and streaming without closing the app:

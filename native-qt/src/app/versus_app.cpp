@@ -16,6 +16,7 @@
 #include <limits>
 #include <sstream>
 #include <thread>
+#include <utility>
 
 #ifdef _WIN32
 #include <windows.h>
@@ -369,7 +370,7 @@ bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
         return false;
     }
 
-    out.assign(static_cast<size_t>(dstW) * static_cast<size_t>(dstH), 0);
+    const size_t outputSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH);
     const video::AspectFitRect fit = video::computeAspectFitRect(frame.width, frame.height, dstW, dstH);
     if (fit.width <= 0 || fit.height <= 0) {
         return false;
@@ -379,6 +380,7 @@ bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
     if (fit.x == 0 && fit.y == 0 &&
         fit.width == dstW && fit.height == dstH &&
         frame.width == dstW && frame.height == dstH) {
+        out.resize(outputSize);
         for (int y = 0; y < dstH; ++y) {
             const size_t srcRow = static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
             const size_t dstRow = static_cast<size_t>(y) * static_cast<size_t>(dstW);
@@ -390,6 +392,7 @@ bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
         return true;
     }
 
+    out.assign(outputSize, 0);
     for (int y = 0; y < fit.height; ++y) {
         const int srcY = (y * frame.height) / fit.height;
         const size_t srcRow = static_cast<size_t>(srcY) * static_cast<size_t>(frame.stride);
@@ -401,6 +404,60 @@ bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
                 src[srcRow + static_cast<size_t>(srcX) * 4 + 3];
         }
     }
+    return true;
+}
+
+bool compositeAlphaBackground(const video::CapturedFrame &frame,
+                              const video::EncoderConfig &config,
+                              std::vector<uint8_t> &scratch,
+                              video::CapturedFrame &out) {
+    if (config.alphaBackgroundMode == video::AlphaBackgroundMode::None ||
+        config.enableAlpha ||
+        frame.format != video::CapturedFrame::Format::BGRA ||
+        frame.width <= 0 ||
+        frame.height <= 0 ||
+        frame.stride < frame.width * 4 ||
+        frame.data.size() < static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height)) {
+        return false;
+    }
+
+    const size_t outputStride = static_cast<size_t>(frame.width) * 4;
+    const size_t outputSize = outputStride * static_cast<size_t>(frame.height);
+    scratch.resize(outputSize);
+
+    const int bgR = std::clamp<int>(config.alphaBackgroundRed, 0, 255);
+    const int bgG = std::clamp<int>(config.alphaBackgroundGreen, 0, 255);
+    const int bgB = std::clamp<int>(config.alphaBackgroundBlue, 0, 255);
+
+    for (int y = 0; y < frame.height; ++y) {
+        const uint8_t *srcRow = frame.data.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
+        uint8_t *dstRow = scratch.data() + static_cast<size_t>(y) * outputStride;
+        for (int x = 0; x < frame.width; ++x) {
+            const uint8_t *src = srcRow + static_cast<size_t>(x) * 4;
+            uint8_t *dst = dstRow + static_cast<size_t>(x) * 4;
+            const int a = src[3];
+            if (a >= 255) {
+                dst[0] = src[0];
+                dst[1] = src[1];
+                dst[2] = src[2];
+            } else if (a <= 0) {
+                dst[0] = static_cast<uint8_t>(bgB);
+                dst[1] = static_cast<uint8_t>(bgG);
+                dst[2] = static_cast<uint8_t>(bgR);
+            } else {
+                const int invA = 255 - a;
+                dst[0] = static_cast<uint8_t>((static_cast<int>(src[0]) * a + bgB * invA + 127) / 255);
+                dst[1] = static_cast<uint8_t>((static_cast<int>(src[1]) * a + bgG * invA + 127) / 255);
+                dst[2] = static_cast<uint8_t>((static_cast<int>(src[2]) * a + bgR * invA + 127) / 255);
+            }
+            dst[3] = 255;
+        }
+    }
+
+    out = frame;
+    out.data = scratch;
+    out.stride = static_cast<int>(outputStride);
+    out.format = video::CapturedFrame::Format::BGRA;
     return true;
 }
 
@@ -449,6 +506,18 @@ const char *videoCodecName(video::VideoCodec codec) {
             return "AV1";
         default:
             return "Unknown";
+    }
+}
+
+const char *alphaBackgroundModeName(video::AlphaBackgroundMode mode) {
+    switch (mode) {
+        case video::AlphaBackgroundMode::Chroma:
+            return "chroma";
+        case video::AlphaBackgroundMode::Opaque:
+            return "opaque";
+        case video::AlphaBackgroundMode::None:
+        default:
+            return "none";
     }
 }
 
@@ -595,16 +664,43 @@ webrtc::PeerConfig::VideoCodec toPeerVideoCodec(video::VideoCodec codec) {
     }
 }
 
+bool supportsVp9AlphaTrack(video::VideoCodec codec) {
+    return codec == video::VideoCodec::H264 || codec == video::VideoCodec::VP9;
+}
+
+bool usesVp9AlphaTrack(const video::EncoderConfig &config) {
+    return config.enableAlpha && supportsVp9AlphaTrack(config.codec);
+}
+
+std::pair<int, int> alphaTrackDimensions(const video::EncoderConfig &config, int primaryWidth, int primaryHeight) {
+    int width = std::max(2, primaryWidth & ~1);
+    int height = std::max(2, primaryHeight & ~1);
+    const int64_t pixels = static_cast<int64_t>(width) * static_cast<int64_t>(height);
+    if (config.codec == video::VideoCodec::H264 &&
+        config.enableAlpha &&
+        config.frameRate >= 50 &&
+        pixels > (1280LL * 720LL)) {
+        width = std::max(2, (width / 2) & ~1);
+        height = std::max(2, (height / 2) & ~1);
+    }
+    return {width, height};
+}
+
 video::EncoderConfig primaryVideoEncoderConfig(video::EncoderConfig config) {
-    if (config.codec == video::VideoCodec::VP9) {
-        // Dual-track VP9 alpha sends color and alpha through separate encoders.
+    if (usesVp9AlphaTrack(config)) {
+        // Dual-track alpha sends color and alpha through separate encoders.
+        // The primary can be VP9 or H.264; the alpha mask is always VP9.
         config.enableAlpha = false;
     }
     return config;
 }
 
 video::EncoderConfig alphaVideoEncoderConfig(video::EncoderConfig config) {
+    const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(config, config.width, config.height);
+    config.codec = video::VideoCodec::VP9;
     config.enableAlpha = true;
+    config.width = alphaWidth;
+    config.height = alphaHeight;
     config.bitrate = std::max(500, config.bitrate / 4);
     config.minBitrate = std::max(250, config.bitrate / 2);
     config.maxBitrate = std::max(config.bitrate + 1000, (config.bitrate * 3) / 2);
@@ -664,7 +760,15 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     videoFramesDropped_.store(0, std::memory_order_relaxed);
     audioPacketsSent_.store(0, std::memory_order_relaxed);
     videoEncodeFailures_.store(0, std::memory_order_relaxed);
+    videoEncodeTimeouts_.store(0, std::memory_order_relaxed);
+    videoEncodeHardFailures_.store(0, std::memory_order_relaxed);
     videoSendFailures_.store(0, std::memory_order_relaxed);
+    alphaPacketsSent_.store(0, std::memory_order_relaxed);
+    alphaEncodeFailures_.store(0, std::memory_order_relaxed);
+    alphaEncodeTimeouts_.store(0, std::memory_order_relaxed);
+    alphaFramesQueued_.store(0, std::memory_order_relaxed);
+    alphaFramesDropped_.store(0, std::memory_order_relaxed);
+    alphaSendFailures_.store(0, std::memory_order_relaxed);
     audioSendFailures_.store(0, std::memory_order_relaxed);
     const int64_t metricsStartMs = steadyNowMs();
     metricsStartMs_.store(metricsStartMs, std::memory_order_relaxed);
@@ -751,6 +855,15 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         if (!videoEncoder_.initialize(primaryConfig)) {
+            if (usesVp9AlphaTrack(config)) {
+                spdlog::error("[App] Primary encoder failed to initialize for explicit VP9 alpha workflow");
+                emitRuntimeEvent(
+                    "Primary encoder failed to initialize for VP9 alpha workflow. Use bundled FFmpeg/libvpx, lower FPS/resolution, or use chroma background mode.",
+                    true);
+                windowCapture_.stopCapture();
+                spoutCapture_.stopCapture();
+                return false;
+            }
             if (config.codec == video::VideoCodec::H264) {
                 windowCapture_.stopCapture();
                 spoutCapture_.stopCapture();
@@ -790,10 +903,14 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         activeHardwareEncoder = videoEncoder_.isHardwareEncoderActive();
 
         // VP9 alpha: initialize a separate encoder instance for the alpha (gray) track.
-        videoEncoderAlpha_.shutdown();
-        if (config.codec == video::VideoCodec::VP9 && config.enableAlpha) {
-            alphaEncoderOk = videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(config));
+        {
+            std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
+            videoEncoderAlpha_.shutdown();
+            if (usesVp9AlphaTrack(config)) {
+                alphaEncoderOk = videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(config));
+            }
         }
+        clearAlphaEncodeQueues();
         publishVideoStateSnapshotLocked();
     }
     if (activeEncoderName.empty()) {
@@ -804,11 +921,18 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     spdlog::info("[App] Video encoder active: {} (hardware={})",
                  activeEncoderName, activeHardwareEncoder);
 
-    if (config.codec == video::VideoCodec::VP9 && config.enableAlpha) {
+    if (usesVp9AlphaTrack(config)) {
         if (!alphaEncoderOk) {
             spdlog::warn("[App] VP9 alpha encoder init failed; streaming without alpha channel");
+            emitRuntimeEvent(
+                "VP9 alpha track encoder failed to initialize. Transparency is not being sent; use bundled FFmpeg/libvpx, lower FPS/resolution, or use chroma background mode.",
+                false);
         } else {
-            spdlog::info("[App] VP9 alpha encoder active: {} kbps", std::max(500, config.bitrate / 4));
+            const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(config, config.width, config.height);
+            spdlog::info("[App] VP9 alpha encoder active: {} kbps {}x{}",
+                         std::max(500, config.bitrate / 4),
+                         alphaWidth,
+                         alphaHeight);
         }
     }
 
@@ -842,7 +966,11 @@ void VersusApp::stopCapture() {
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         videoEncoder_.shutdown();
-        videoEncoderAlpha_.shutdown();
+        {
+            std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
+            videoEncoderAlpha_.shutdown();
+        }
+        clearAlphaEncodeQueues();
         shutdownLqEncoderLocked();
         activeHqWidth_ = 0;
         activeHqHeight_ = 0;
@@ -939,6 +1067,7 @@ bool VersusApp::goLive(const StartOptions &options) {
     lastKeyframeSendMs_.store(0);
     lastRelayWarningMs_.store(0, std::memory_order_relaxed);
     lastPacketLossWarningMs_.store(0, std::memory_order_relaxed);
+    lastAlphaWarningMs_.store(0, std::memory_order_relaxed);
     pliWindowStartMs_.store(0, std::memory_order_relaxed);
     pliWindowCount_.store(0, std::memory_order_relaxed);
     lastCpuWarningMs_.store(0, std::memory_order_relaxed);
@@ -956,7 +1085,15 @@ bool VersusApp::goLive(const StartOptions &options) {
     videoFramesDropped_.store(0, std::memory_order_relaxed);
     audioPacketsSent_.store(0, std::memory_order_relaxed);
     videoEncodeFailures_.store(0, std::memory_order_relaxed);
+    videoEncodeTimeouts_.store(0, std::memory_order_relaxed);
+    videoEncodeHardFailures_.store(0, std::memory_order_relaxed);
     videoSendFailures_.store(0, std::memory_order_relaxed);
+    alphaPacketsSent_.store(0, std::memory_order_relaxed);
+    alphaEncodeFailures_.store(0, std::memory_order_relaxed);
+    alphaEncodeTimeouts_.store(0, std::memory_order_relaxed);
+    alphaFramesQueued_.store(0, std::memory_order_relaxed);
+    alphaFramesDropped_.store(0, std::memory_order_relaxed);
+    alphaSendFailures_.store(0, std::memory_order_relaxed);
     audioSendFailures_.store(0, std::memory_order_relaxed);
     const int64_t metricsStartMs = steadyNowMs();
     metricsStartMs_.store(metricsStartMs, std::memory_order_relaxed);
@@ -1296,7 +1433,15 @@ StreamMetrics VersusApp::buildStreamMetricsSnapshot(bool updateRecentWindow) con
     metrics.videoFramesDropped = droppedFrames;
     metrics.audioPacketsSent = audioPacketsSent_.load(std::memory_order_relaxed);
     metrics.videoEncodeFailures = videoEncodeFailures_.load(std::memory_order_relaxed);
+    metrics.videoEncodeTimeouts = videoEncodeTimeouts_.load(std::memory_order_relaxed);
+    metrics.videoEncodeHardFailures = videoEncodeHardFailures_.load(std::memory_order_relaxed);
     metrics.videoSendFailures = videoSendFailures_.load(std::memory_order_relaxed);
+    metrics.alphaPacketsSent = alphaPacketsSent_.load(std::memory_order_relaxed);
+    metrics.alphaEncodeFailures = alphaEncodeFailures_.load(std::memory_order_relaxed);
+    metrics.alphaEncodeTimeouts = alphaEncodeTimeouts_.load(std::memory_order_relaxed);
+    metrics.alphaFramesQueued = alphaFramesQueued_.load(std::memory_order_relaxed);
+    metrics.alphaFramesDropped = alphaFramesDropped_.load(std::memory_order_relaxed);
+    metrics.alphaSendFailures = alphaSendFailures_.load(std::memory_order_relaxed);
     metrics.audioSendFailures = audioSendFailures_.load(std::memory_order_relaxed);
     return metrics;
 }
@@ -1458,7 +1603,15 @@ ConnectionHealth VersusApp::getConnectionHealth() const {
     health.videoFramesSent = metrics.videoFramesSent;
     health.videoFramesDropped = metrics.videoFramesDropped;
     health.videoEncodeFailures = metrics.videoEncodeFailures;
+    health.videoEncodeTimeouts = metrics.videoEncodeTimeouts;
+    health.videoEncodeHardFailures = metrics.videoEncodeHardFailures;
     health.videoSendFailures = metrics.videoSendFailures;
+    health.alphaPacketsSent = metrics.alphaPacketsSent;
+    health.alphaEncodeFailures = metrics.alphaEncodeFailures;
+    health.alphaEncodeTimeouts = metrics.alphaEncodeTimeouts;
+    health.alphaFramesQueued = metrics.alphaFramesQueued;
+    health.alphaFramesDropped = metrics.alphaFramesDropped;
+    health.alphaSendFailures = metrics.alphaSendFailures;
     health.audioSendFailures = metrics.audioSendFailures;
     populateSystemResourceUsage(health);
     {
@@ -1497,6 +1650,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
     populateSystemResourceUsage(health);
     const VideoStateSnapshot videoState = videoStateSnapshot();
     const PeerCounts counts = collectPeerCounts();
+    const video::FfmpegProbeInfo ffmpegInfo = video::VideoEncoder::probeFfmpeg(videoState.config.ffmpegPath);
 
     root["app"] = {
         {"live", live_.load(std::memory_order_relaxed)},
@@ -1545,6 +1699,23 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"encoder", videoState.encoderName},
         {"hardware_encoder", videoState.hardwareEncoder},
         {"alpha_enabled", videoState.config.enableAlpha},
+        {"alpha_background_mode", alphaBackgroundModeName(videoState.config.alphaBackgroundMode)},
+        {"alpha_background_color_rgb", {
+            static_cast<int>(videoState.config.alphaBackgroundRed),
+            static_cast<int>(videoState.config.alphaBackgroundGreen),
+            static_cast<int>(videoState.config.alphaBackgroundBlue)
+        }},
+        {"ffmpeg_configured_path", videoState.config.ffmpegPath},
+        {"ffmpeg_resolved", ffmpegInfo.resolved},
+        {"ffmpeg_resolved_path", ffmpegInfo.path},
+        {"ffmpeg_version", ffmpegInfo.version},
+        {"ffmpeg_configuration", ffmpegInfo.configuration},
+        {"ffmpeg_has_libvpx_vp9", ffmpegInfo.hasLibvpxVp9},
+        {"ffmpeg_is_bundled", ffmpegInfo.bundled},
+        {"ffmpeg_is_user_override", ffmpegInfo.userOverride},
+        {"ffmpeg_gpl_enabled", ffmpegInfo.gplEnabled},
+        {"ffmpeg_nonfree_enabled", ffmpegInfo.nonfreeEnabled},
+        {"ffmpeg_probe_error", ffmpegInfo.error},
         {"hq_width", videoState.hqWidth},
         {"hq_height", videoState.hqHeight},
         {"lq_encoder_initialized", videoState.lqEncoderInitialized},
@@ -1556,7 +1727,15 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"pending_global_keyframe", pendingGlobalKeyframe_.load(std::memory_order_relaxed)},
         {"video_track_active", videoTrackActive_.load(std::memory_order_relaxed)},
         {"encode_failures", videoEncodeFailures_.load(std::memory_order_relaxed)},
+        {"encode_timeouts", videoEncodeTimeouts_.load(std::memory_order_relaxed)},
+        {"encode_hard_failures", videoEncodeHardFailures_.load(std::memory_order_relaxed)},
         {"send_failures", videoSendFailures_.load(std::memory_order_relaxed)},
+        {"alpha_packets_sent", alphaPacketsSent_.load(std::memory_order_relaxed)},
+        {"alpha_encode_failures", alphaEncodeFailures_.load(std::memory_order_relaxed)},
+        {"alpha_encode_timeouts", alphaEncodeTimeouts_.load(std::memory_order_relaxed)},
+        {"alpha_frames_queued", alphaFramesQueued_.load(std::memory_order_relaxed)},
+        {"alpha_frames_dropped", alphaFramesDropped_.load(std::memory_order_relaxed)},
+        {"alpha_send_failures", alphaSendFailures_.load(std::memory_order_relaxed)},
         {"frames_captured", videoFramesCaptured_.load(std::memory_order_relaxed)},
         {"frames_sent", videoFramesSent_.load(std::memory_order_relaxed)},
         {"frames_dropped", videoFramesDropped_.load(std::memory_order_relaxed)},
@@ -1606,7 +1785,15 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"video_frames_dropped", metrics.videoFramesDropped},
         {"audio_packets_sent", metrics.audioPacketsSent},
         {"video_encode_failures", metrics.videoEncodeFailures},
+        {"video_encode_timeouts", metrics.videoEncodeTimeouts},
+        {"video_encode_hard_failures", metrics.videoEncodeHardFailures},
         {"video_send_failures", metrics.videoSendFailures},
+        {"alpha_packets_sent", metrics.alphaPacketsSent},
+        {"alpha_encode_failures", metrics.alphaEncodeFailures},
+        {"alpha_encode_timeouts", metrics.alphaEncodeTimeouts},
+        {"alpha_frames_queued", metrics.alphaFramesQueued},
+        {"alpha_frames_dropped", metrics.alphaFramesDropped},
+        {"alpha_send_failures", metrics.alphaSendFailures},
         {"audio_send_failures", metrics.audioSendFailures}
     };
     root["system"] = {
@@ -2242,8 +2429,7 @@ void VersusApp::setupSignalingCallbacks() {
         }
         const VideoStateSnapshot videoState = videoStateSnapshot();
         peerConfig.videoCodec = toPeerVideoCodec(videoState.config.codec);
-        peerConfig.enableAlphaTrack =
-            (videoState.config.codec == video::VideoCodec::VP9 && videoState.config.enableAlpha);
+        peerConfig.enableAlphaTrack = usesVp9AlphaTrack(videoState.config);
         // Always negotiate VDO.Ninja's sendChannel so both sides can exchange
         // the standard info handshake, even for direct VP9/alpha viewers.
         peerConfig.enableDataChannel = true;
@@ -2703,15 +2889,25 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         videoEncoder_.setBitrate(nextConfig.bitrate);
     }
 
-    if (nextConfig.codec == video::VideoCodec::VP9 && nextConfig.enableAlpha && (requiresReinit || bitrateChanged)) {
-        videoEncoderAlpha_.shutdown();
-        if (!videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(nextConfig))) {
-            spdlog::warn("[App] VP9 alpha encoder reconfigure failed; continuing without alpha channel");
-            nextConfig.enableAlpha = false;
+    if (usesVp9AlphaTrack(nextConfig) && (requiresReinit || bitrateChanged)) {
+        clearAlphaEncodeQueues();
+        {
+            std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
+            videoEncoderAlpha_.shutdown();
+            if (!videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(nextConfig))) {
+                spdlog::warn("[App] VP9 alpha encoder reconfigure failed; continuing without alpha channel");
+                nextConfig.enableAlpha = false;
+                videoEncoderAlpha_.shutdown();
+            }
+        }
+        clearAlphaEncodeQueues();
+    } else if (!usesVp9AlphaTrack(nextConfig)) {
+        clearAlphaEncodeQueues();
+        {
+            std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
             videoEncoderAlpha_.shutdown();
         }
-    } else if (nextConfig.codec != video::VideoCodec::VP9 || !nextConfig.enableAlpha) {
-        videoEncoderAlpha_.shutdown();
+        clearAlphaEncodeQueues();
     }
 
     videoConfig_ = nextConfig;
@@ -3089,7 +3285,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     if (!peer->systemBrowser.empty()) {
         info["system_browser"] = peer->systemBrowser;
     }
-    if (videoState.config.codec == video::VideoCodec::VP9 && videoState.config.enableAlpha) {
+    if (usesVp9AlphaTrack(videoState.config)) {
         info["alpha_send"] = "vp9-dualtrack-v1";
         info["alpha_active"] = peer->alphaAllowed.load(std::memory_order_relaxed);
     }
@@ -4267,13 +4463,18 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             if (requestedVideoBitrate == 0) {
                 continue;
             }
+            const bool alphaReceiverNeedsHq =
+                usesVp9AlphaTrack(videoConfig_) &&
+                peer->alphaAllowed.load(std::memory_order_relaxed);
             const StreamTier tier = assignStreamTier(
                 route.roomMode,
                 route.roomModeLqEnabled,
                 route.roleValid,
                 route.role);
             peer->assignedTier.store(tier, std::memory_order_relaxed);
-            if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
+            if (alphaReceiverNeedsHq) {
+                hqPeers.push_back(peer);
+            } else if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
                 lqPeers.push_back(peer);
             } else if (tier == StreamTier::HQ) {
                 hqPeers.push_back(peer);
@@ -4310,6 +4511,20 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             if (videoEncoder_.activeCodec() == video::VideoCodec::H264) {
                 return false;
             }
+            if (usesVp9AlphaTrack(videoConfig_)) {
+                const int64_t warnNowMs = steadyNowMs();
+                const int64_t lastWarnMs = lastAlphaWarningMs_.load(std::memory_order_relaxed);
+                if (lastWarnMs == 0 || (warnNowMs - lastWarnMs) > 15000) {
+                    lastAlphaWarningMs_.store(warnNowMs, std::memory_order_relaxed);
+                    emitRuntimeEvent(
+                        "VP9 alpha encoder failed. Transparency was kept enabled; lower FPS/resolution or use chroma background mode.",
+                        false);
+                }
+                softwareExternalEncodeFailCount_ = 0;
+                softwareExternalFailWindowStartMs_ = 0;
+                spdlog::warn("[App] {}. Keeping VP9 alpha enabled instead of falling back to H.264", reason);
+                return false;
+            }
 
             video::EncoderConfig fallbackConfig = videoConfig_;
             fallbackConfig.codec = video::VideoCodec::H264;
@@ -4343,8 +4558,18 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         const auto encodeStart = std::chrono::steady_clock::now();
         const bool hardwareEncodingBefore = videoEncoder_.isHardwareEncoderActive();
         const bool encodeOk = videoEncoder_.encode(frame, hqPacket);
+        video::EncodeFailureKind encodeFailureKind = videoEncoder_.lastEncodeFailureKind();
+        if (!encodeOk && encodeFailureKind == video::EncodeFailureKind::None) {
+            encodeFailureKind = video::EncodeFailureKind::Timeout;
+        }
         if (!encodeOk) {
-            videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+            if (encodeFailureKind == video::EncodeFailureKind::Timeout ||
+                encodeFailureKind == video::EncodeFailureKind::Backpressure) {
+                videoEncodeTimeouts_.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                videoEncodeHardFailures_.fetch_add(1, std::memory_order_relaxed);
+            }
         }
 
         if (hardwareEncodingBefore && !externalFfmpegEncoder) {
@@ -4545,9 +4770,13 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
         } else {
+            const bool transientExternalFailure =
+                encodeFailureKind == video::EncodeFailureKind::Timeout ||
+                encodeFailureKind == video::EncodeFailureKind::Backpressure;
             if (externalFfmpegEncoder &&
                 !hardwareEncodingBefore &&
-                videoEncoder_.activeCodec() != video::VideoCodec::H264) {
+                videoEncoder_.activeCodec() != video::VideoCodec::H264 &&
+                !transientExternalFailure) {
                 const int64_t failNowMs = steadyNowMs();
                 if (softwareExternalFailWindowStartMs_ == 0 ||
                     (failNowMs - softwareExternalFailWindowStartMs_) > 15000) {
@@ -4559,6 +4788,16 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                     if (fallbackUnstableSoftwareCodec("Software external encoder repeatedly failed to encode")) {
                         renegotiateH264CodecFallback = true;
                     }
+                }
+            } else if (transientExternalFailure) {
+                const int64_t warnNowMs = steadyNowMs();
+                const int64_t lastWarnMs = lastAlphaWarningMs_.load(std::memory_order_relaxed);
+                if (usesVp9AlphaTrack(videoConfig_) &&
+                    (lastWarnMs == 0 || (warnNowMs - lastWarnMs) > 15000)) {
+                    lastAlphaWarningMs_.store(warnNowMs, std::memory_order_relaxed);
+                    emitRuntimeEvent(
+                        "VP9 alpha encoder is overloaded. Try 30 FPS, lower resolution, or chroma background mode.",
+                        false);
                 }
             } else {
                 softwareExternalEncodeFailCount_ = 0;
@@ -4634,37 +4873,36 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         }
     }
 
-    // VP9 alpha: encode the alpha (gray) plane and send on alpha tracks of HQ peers.
-    if (haveHqPacket && videoConfig_.codec == video::VideoCodec::VP9 && videoConfig_.enableAlpha) {
-        const int alphaWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
-        const int alphaHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+    // VP9 alpha: queue the alpha plane for a dedicated encoder thread and send
+    // the latest completed alpha packet without blocking primary video.
+    if (haveHqPacket && usesVp9AlphaTrack(videoConfig_)) {
+        const int primaryWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
+        const int primaryHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+        const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(videoConfig_, primaryWidth, primaryHeight);
         if (buildAspectFitAlphaPlane(frame, alphaWidth, alphaHeight, alphaGrayBuffer_)) {
+            queueAlphaEncodeFrame(alphaWidth, alphaHeight, frame.timestamp, std::move(alphaGrayBuffer_));
+        }
 
-            video::CapturedFrame alphaFrame;
-            alphaFrame.format = video::CapturedFrame::Format::Gray;
-            alphaFrame.width = alphaWidth;
-            alphaFrame.height = alphaHeight;
-            alphaFrame.stride = alphaWidth;
-            alphaFrame.timestamp = frame.timestamp;
-            alphaFrame.data = alphaGrayBuffer_;
-
-            video::EncodedPacket alphaPacket;
-            if (videoEncoderAlpha_.encode(alphaFrame, alphaPacket)) {
-                webrtc::EncodedVideoPacket alphaVPacket;
-                alphaVPacket.data = alphaPacket.data;
-                alphaVPacket.pts = alphaPacket.pts;
-                alphaVPacket.isKeyframe = alphaPacket.isKeyframe;
-                for (const auto &peer : hqPeers) {
-                    if (!peer || !peer->client) {
-                        continue;
-                    }
-                    if (!peer->alphaAllowed.load(std::memory_order_relaxed)) {
-                        continue;
-                    }
-                    if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !alphaVPacket.isKeyframe) {
-                        continue;
-                    }
-                    peer->client->sendAlphaVideo(alphaVPacket);
+        video::EncodedPacket alphaPacket;
+        if (takeLatestAlphaPacket(alphaPacket)) {
+            webrtc::EncodedVideoPacket alphaVPacket;
+            alphaVPacket.data = std::move(alphaPacket.data);
+            alphaVPacket.pts = alphaPacket.pts;
+            alphaVPacket.isKeyframe = alphaPacket.isKeyframe;
+            for (const auto &peer : hqPeers) {
+                if (!peer || !peer->client) {
+                    continue;
+                }
+                if (!peer->alphaAllowed.load(std::memory_order_relaxed)) {
+                    continue;
+                }
+                if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !alphaVPacket.isKeyframe) {
+                    continue;
+                }
+                if (peer->client->sendAlphaVideo(alphaVPacket)) {
+                    alphaPacketsSent_.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    alphaSendFailures_.fetch_add(1, std::memory_order_relaxed);
                 }
             }
         }
@@ -4755,9 +4993,20 @@ void VersusApp::handleVideoFrame(const video::CapturedFrame &frame) {
     videoFramesCaptured_.fetch_add(1, std::memory_order_relaxed);
     updateSourceHealthFromFrame(frame);
 
+    video::CapturedFrame frameForEncoding;
+    {
+        const video::EncoderConfig config = videoStateSnapshot().config;
+        video::CapturedFrame compositedFrame;
+        if (compositeAlphaBackground(frame, config, alphaCompositeBuffer_, compositedFrame)) {
+            frameForEncoding = std::move(compositedFrame);
+        } else {
+            frameForEncoding = frame;
+        }
+    }
+
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        latestVideoFrame_ = frame;
+        latestVideoFrame_ = std::move(frameForEncoding);
         hasLatestVideoFrame_ = true;
     }
 
@@ -4976,10 +5225,151 @@ void VersusApp::stopVideoMaintenanceThread() {
     videoMaintenanceThread_.join();
 }
 
+void VersusApp::startAlphaEncodeThread() {
+    if (alphaEncodeThreadRunning_.exchange(true, std::memory_order_acq_rel)) {
+        return;
+    }
+
+    alphaEncodeThread_ = std::thread([this]() {
+        spdlog::info("[AlphaEncodeThread] Started");
+        while (alphaEncodeThreadRunning_.load(std::memory_order_acquire)) {
+            AlphaEncodeJob job;
+            {
+                std::unique_lock<std::mutex> lock(alphaEncodeMutex_);
+                alphaEncodeCV_.wait(lock, [this]() {
+                    return !alphaEncodeThreadRunning_.load(std::memory_order_acquire) ||
+                           pendingAlphaEncodeJobReady_;
+                });
+                if (!alphaEncodeThreadRunning_.load(std::memory_order_acquire)) {
+                    break;
+                }
+                if (!pendingAlphaEncodeJobReady_) {
+                    continue;
+                }
+                job = std::move(pendingAlphaEncodeJob_);
+                pendingAlphaEncodeJob_ = AlphaEncodeJob{};
+                pendingAlphaEncodeJobReady_ = false;
+            }
+
+            if (job.gray.empty() || job.width <= 0 || job.height <= 0) {
+                continue;
+            }
+
+            video::CapturedFrame alphaFrame;
+            alphaFrame.format = video::CapturedFrame::Format::Gray;
+            alphaFrame.width = job.width;
+            alphaFrame.height = job.height;
+            alphaFrame.stride = job.width;
+            alphaFrame.timestamp = job.timestamp;
+            alphaFrame.data = std::move(job.gray);
+
+            video::EncodedPacket alphaPacket;
+            bool encoded = false;
+            video::EncodeFailureKind failureKind = video::EncodeFailureKind::None;
+            {
+                std::lock_guard<std::mutex> encoderLock(alphaEncoderMutex_);
+                encoded = videoEncoderAlpha_.encode(alphaFrame, alphaPacket);
+                failureKind = videoEncoderAlpha_.lastEncodeFailureKind();
+            }
+            if (!encoded && failureKind == video::EncodeFailureKind::None) {
+                failureKind = video::EncodeFailureKind::Timeout;
+            }
+
+            if (encoded) {
+                std::lock_guard<std::mutex> packetLock(alphaPacketMutex_);
+                latestAlphaPacket_ = std::move(alphaPacket);
+                latestAlphaPacketReady_ = true;
+                continue;
+            }
+
+            alphaEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+            if (failureKind == video::EncodeFailureKind::Timeout ||
+                failureKind == video::EncodeFailureKind::Backpressure) {
+                alphaEncodeTimeouts_.fetch_add(1, std::memory_order_relaxed);
+            }
+
+            const int64_t warnNowMs = steadyNowMs();
+            const int64_t lastWarnMs = lastAlphaWarningMs_.load(std::memory_order_relaxed);
+            if (lastWarnMs == 0 || (warnNowMs - lastWarnMs) > 15000) {
+                lastAlphaWarningMs_.store(warnNowMs, std::memory_order_relaxed);
+                emitRuntimeEvent(
+                    "VP9 alpha track encoder is overloaded. Transparency is being preserved, but alpha frames may be dropped; try 30 FPS, lower resolution, or chroma background mode.",
+                    false);
+            }
+        }
+        spdlog::info("[AlphaEncodeThread] Stopped");
+    });
+}
+
+void VersusApp::stopAlphaEncodeThread() {
+    alphaEncodeThreadRunning_.store(false, std::memory_order_release);
+    alphaEncodeCV_.notify_all();
+    if (alphaEncodeThread_.joinable()) {
+        if (alphaEncodeThread_.get_id() == std::this_thread::get_id()) {
+            alphaEncodeThread_.detach();
+        } else {
+            alphaEncodeThread_.join();
+        }
+    }
+    clearAlphaEncodeQueues();
+}
+
+void VersusApp::clearAlphaEncodeQueues() {
+    {
+        std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
+        pendingAlphaEncodeJob_ = AlphaEncodeJob{};
+        pendingAlphaEncodeJobReady_ = false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(alphaPacketMutex_);
+        latestAlphaPacket_ = video::EncodedPacket{};
+        latestAlphaPacketReady_ = false;
+    }
+}
+
+void VersusApp::queueAlphaEncodeFrame(int width,
+                                      int height,
+                                      int64_t timestamp,
+                                      std::vector<uint8_t> gray) {
+    if (!alphaEncodeThreadRunning_.load(std::memory_order_acquire) ||
+        gray.empty() ||
+        width <= 0 ||
+        height <= 0) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
+        if (pendingAlphaEncodeJobReady_) {
+            alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+        }
+        pendingAlphaEncodeJob_.gray = std::move(gray);
+        pendingAlphaEncodeJob_.width = width;
+        pendingAlphaEncodeJob_.height = height;
+        pendingAlphaEncodeJob_.timestamp = timestamp;
+        pendingAlphaEncodeJobReady_ = true;
+        alphaFramesQueued_.fetch_add(1, std::memory_order_relaxed);
+    }
+    alphaEncodeCV_.notify_one();
+}
+
+bool VersusApp::takeLatestAlphaPacket(video::EncodedPacket &packet) {
+    std::lock_guard<std::mutex> lock(alphaPacketMutex_);
+    if (!latestAlphaPacketReady_ || latestAlphaPacket_.data.empty()) {
+        return false;
+    }
+    packet = std::move(latestAlphaPacket_);
+    latestAlphaPacket_ = video::EncodedPacket{};
+    latestAlphaPacketReady_ = false;
+    return true;
+}
+
 void VersusApp::startEncodeThread() {
     if (encodeThreadRunning_.exchange(true)) {
         return;
     }
+
+    startAlphaEncodeThread();
 
     encodeThread_ = std::thread([this]() {
         spdlog::info("[EncodeThread] Started");
@@ -5015,7 +5405,8 @@ void VersusApp::startEncodeThread() {
             video::CapturedFrame frame;
             {
                 std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-                frame = latestVideoFrame_;
+                frame = std::move(latestVideoFrame_);
+                hasLatestVideoFrame_ = false;
             }
 
             if (frame.data.empty()) {
@@ -5036,14 +5427,14 @@ void VersusApp::startEncodeThread() {
 void VersusApp::stopEncodeThread() {
     encodeThreadRunning_.store(false);
     encodeFrameCV_.notify_one();
-    if (!encodeThread_.joinable()) {
-        return;
+    if (encodeThread_.joinable()) {
+        if (encodeThread_.get_id() == std::this_thread::get_id()) {
+            encodeThread_.detach();
+        } else {
+            encodeThread_.join();
+        }
     }
-    if (encodeThread_.get_id() == std::this_thread::get_id()) {
-        encodeThread_.detach();
-        return;
-    }
-    encodeThread_.join();
+    stopAlphaEncodeThread();
 }
 
 bool VersusApp::hasAnyActiveVideoTrack() const {
@@ -5325,8 +5716,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
         const bool wantAudio = peer->audioEnabled.load(std::memory_order_relaxed);
         const VideoStateSnapshot videoState = videoStateSnapshot();
         const bool wantAlpha = wantVideo &&
-            videoState.config.codec == video::VideoCodec::VP9 &&
-            videoState.config.enableAlpha &&
+            usesVp9AlphaTrack(videoState.config) &&
             peer->alphaAllowed.load(std::memory_order_relaxed);
 
         spdlog::info("[App] Rebuilding peer connection {}:{} reason={} media video={} audio={} alpha={}",
@@ -5491,7 +5881,12 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
         fallbackConfig.forceFfmpegNvenc = false;
 
         videoEncoder_.shutdown();
-        videoEncoderAlpha_.shutdown();
+        clearAlphaEncodeQueues();
+        {
+            std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
+            videoEncoderAlpha_.shutdown();
+        }
+        clearAlphaEncodeQueues();
         shutdownLqEncoderLocked();
         if (!videoEncoder_.initialize(fallbackConfig)) {
             spdlog::error("[App] Remote rejected {} video but H.264 fallback initialization failed",
@@ -5654,8 +6049,7 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
     const bool wantAudio = initReceived && peer->audioEnabled.load(std::memory_order_relaxed);
     const VideoStateSnapshot videoState = videoStateSnapshot();
     const bool wantAlpha = wantVideo &&
-        videoState.config.codec == video::VideoCodec::VP9 &&
-        videoState.config.enableAlpha &&
+        usesVp9AlphaTrack(videoState.config) &&
         peer->alphaAllowed.load(std::memory_order_relaxed);
 
     {

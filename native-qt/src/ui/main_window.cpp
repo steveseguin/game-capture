@@ -3,6 +3,7 @@
 #include <QAbstractItemView>
 #include <QApplication>
 #include <QClipboard>
+#include <QColorDialog>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -103,7 +104,9 @@ bool codecUsesExternalFfmpeg(versus::video::VideoCodec codec) {
 }
 
 bool codecSupportsAlphaWorkflow(versus::video::VideoCodec codec) {
-    return codec == versus::video::VideoCodec::AV1 || codec == versus::video::VideoCodec::VP9;
+    return codec == versus::video::VideoCodec::H264 ||
+           codec == versus::video::VideoCodec::AV1 ||
+           codec == versus::video::VideoCodec::VP9;
 }
 
 QString codecTooltipFor(versus::video::VideoCodec codec) {
@@ -121,10 +124,17 @@ QString codecTooltipFor(versus::video::VideoCodec codec) {
                "encode stability fails. Transparency in OBS requires the VDO.Ninja OBS plugin native receiver; "
                "browser viewers stay standard color video.";
     }
+    if (codec == versus::video::VideoCodec::H264) {
+        return "H.264 supports hardware encoding. With alpha workflow enabled, Game Capture sends H.264 color plus a "
+               "separate CPU-encoded VP9 alpha mask for the OBS native receiver.";
+    }
     return QString();
 }
 
 QString alphaWorkflowTextFor(versus::video::VideoCodec codec) {
+    if (codec == versus::video::VideoCodec::H264) {
+        return "Enable OBS alpha workflow (H.264 + VP9 mask)";
+    }
     if (codec == versus::video::VideoCodec::VP9) {
         return "Enable OBS alpha workflow (preview)";
     }
@@ -135,6 +145,10 @@ QString alphaWorkflowTextFor(versus::video::VideoCodec codec) {
 }
 
 QString alphaWorkflowTooltipFor(versus::video::VideoCodec codec) {
+    if (codec == versus::video::VideoCodec::H264) {
+        return "Requires the VDO.Ninja OBS plugin with Native Receiver enabled. Color uses the selected H.264 encoder "
+               "and transparency uses a separate CPU-encoded VP9 alpha mask, so bundled FFmpeg/libvpx is still required.";
+    }
     if (codec == versus::video::VideoCodec::VP9) {
         return "Requires the VDO.Ninja OBS plugin with Native Receiver enabled. Browser Sources and normal browser "
                "viewers do not composite this alpha track. VP9 alpha uses software libvpx in realtime mode with the "
@@ -145,6 +159,22 @@ QString alphaWorkflowTooltipFor(versus::video::VideoCodec codec) {
                "workflow, use VP9 with alpha enabled.";
     }
     return "Alpha workflow is only available with codecs that preserve alpha data.";
+}
+
+versus::video::AlphaBackgroundMode alphaBackgroundModeFromUiValue(const QString &value) {
+    if (value == "chroma") {
+        return versus::video::AlphaBackgroundMode::Chroma;
+    }
+    if (value == "opaque") {
+        return versus::video::AlphaBackgroundMode::Opaque;
+    }
+    return versus::video::AlphaBackgroundMode::None;
+}
+
+QString colorToHex(const QColor &color) {
+    return color.isValid()
+        ? color.name(QColor::HexRgb).toUpper()
+        : QStringLiteral("#00FF00");
 }
 
 versus::webrtc::IceMode iceModeFromUiValue(const QString &value) {
@@ -808,6 +838,14 @@ void MainWindow::loadPersistedSettings() {
     if (alphaWorkflowCheck_) {
         alphaWorkflowCheck_->setChecked(settings.value("video/alphaWorkflow", false).toBool());
     }
+    if (alphaBackgroundModeSelect_) {
+        restoreComboByData(alphaBackgroundModeSelect_, settings.value("video/alphaBackgroundMode", "none"));
+    }
+    alphaBackgroundColor_ = QColor(settings.value("video/alphaBackgroundColor", "#00FF00").toString());
+    if (!alphaBackgroundColor_.isValid()) {
+        alphaBackgroundColor_ = QColor(0, 255, 0);
+    }
+    updateAlphaBackgroundColorButton();
 
     minimizeToTrayOnClose_ = settings.value("ui/minimizeToTrayOnClose", true).toBool();
     if (minimizeToTrayOnCloseAction_) {
@@ -842,6 +880,8 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
     settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     settings.setValue("video/alphaWorkflow", alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false);
+    settings.setValue("video/alphaBackgroundMode", alphaBackgroundModeSelect_ ? alphaBackgroundModeSelect_->currentData().toString() : QString("none"));
+    settings.setValue("video/alphaBackgroundColor", colorToHex(alphaBackgroundColor_));
     settings.setValue("video/ffmpegPath", ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString());
     settings.setValue("video/ffmpegOptions", ffmpegOptionsInput_ ? ffmpegOptionsInput_->text() : QString());
     settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
@@ -932,6 +972,9 @@ void MainWindow::connectPersistedSettingSignals() {
     }
     if (alphaWorkflowCheck_) {
         connect(alphaWorkflowCheck_, &QCheckBox::toggled, this, saveNow);
+    }
+    if (alphaBackgroundModeSelect_) {
+        connect(alphaBackgroundModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
     if (ffmpegPathInput_) {
         connect(ffmpegPathInput_, &QLineEdit::textChanged, this, saveNow);
@@ -1332,11 +1375,36 @@ void MainWindow::setupUI() {
     alphaWorkflowCheck_->setEnabled(false);
     advancedForm->addRow("Alpha", alphaWorkflowCheck_);
 
+    alphaBackgroundModeSelect_ = new QComboBox(this);
+    alphaBackgroundModeSelect_->setObjectName("alphaBackgroundModeSelect");
+    alphaBackgroundModeSelect_->addItem("No background fill", QVariant("none"));
+    alphaBackgroundModeSelect_->addItem("Chroma background", QVariant("chroma"));
+    alphaBackgroundModeSelect_->addItem("Opaque background", QVariant("opaque"));
+    alphaBackgroundModeSelect_->setToolTip(
+        "Composites transparent BGRA/Spout2 pixels over a solid color before encoding. "
+        "Use chroma background with H.264/NVENC when true VP9 alpha is too CPU-heavy.");
+    installComboWheelGuard(alphaBackgroundModeSelect_);
+    advancedForm->addRow("Alpha Background", alphaBackgroundModeSelect_);
+
+    alphaBackgroundColorButton_ = new QPushButton(this);
+    alphaBackgroundColorButton_->setObjectName("alphaBackgroundColorButton");
+    alphaBackgroundColorButton_->setToolTip("Choose the solid background color used for chroma or opaque alpha background mode.");
+    alphaBackgroundColorButton_->setMinimumHeight(34);
+    updateAlphaBackgroundColorButton();
+    connect(alphaBackgroundColorButton_, &QPushButton::clicked, this, &MainWindow::chooseAlphaBackgroundColor);
+    advancedForm->addRow("Background Color", alphaBackgroundColorButton_);
+
     ffmpegPathInput_ = new QLineEdit(this);
     ffmpegPathInput_->setObjectName("ffmpegPathInput");
     ffmpegPathInput_->setPlaceholderText("Optional ffmpeg path (auto-discovered if empty)");
     ffmpegPathInput_->setEnabled(false);
     advancedForm->addRow("FFmpeg Path", ffmpegPathInput_);
+
+    ffmpegStatusLabel_ = new QLabel(this);
+    ffmpegStatusLabel_->setObjectName("ffmpegStatusLabel");
+    ffmpegStatusLabel_->setWordWrap(true);
+    ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+    advancedForm->addRow("FFmpeg Status", ffmpegStatusLabel_);
 
     ffmpegOptionsInput_ = new QLineEdit(this);
     ffmpegOptionsInput_->setObjectName("ffmpegOptionsInput");
@@ -1353,6 +1421,15 @@ void MainWindow::setupUI() {
     });
     connect(codecSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         syncCodecUiState();
+    });
+    connect(alphaBackgroundModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        syncCodecUiState();
+    });
+    connect(alphaWorkflowCheck_, &QCheckBox::toggled, this, [this](bool) {
+        syncCodecUiState();
+    });
+    connect(ffmpegPathInput_, &QLineEdit::textChanged, this, [this]() {
+        refreshFfmpegStatus();
     });
     syncCodecUiState();
 
@@ -2003,9 +2080,20 @@ void MainWindow::onGoLiveClicked() {
         config.maxBitrate = std::max(config.bitrate + 4000, (config.bitrate * 3) / 2);
         config.ffmpegPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed().toStdString() : std::string();
         config.ffmpegOptions = ffmpegOptionsInput_ ? ffmpegOptionsInput_->text().toStdString() : std::string();
+        config.alphaBackgroundMode = alphaBackgroundModeFromUiValue(
+            alphaBackgroundModeSelect_ ? alphaBackgroundModeSelect_->currentData().toString() : QString("none"));
+        config.alphaBackgroundRed = static_cast<uint8_t>(std::clamp(alphaBackgroundColor_.red(), 0, 255));
+        config.alphaBackgroundGreen = static_cast<uint8_t>(std::clamp(alphaBackgroundColor_.green(), 0, 255));
+        config.alphaBackgroundBlue = static_cast<uint8_t>(std::clamp(alphaBackgroundColor_.blue(), 0, 255));
 
         if (config.enableAlpha && !codecSupportsAlphaWorkflow(config.codec)) {
             config.enableAlpha = false;
+        }
+        if (config.enableAlpha) {
+            config.alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
+        } else if (config.alphaBackgroundMode != versus::video::AlphaBackgroundMode::None &&
+                   config.codec == versus::video::VideoCodec::VP9) {
+            spdlog::info("[UI] VP9 selected with alpha background mode; true alpha track is disabled");
         }
 
         const QString encoderMode = encoderSelect_->currentData().toString();
@@ -2040,14 +2128,47 @@ void MainWindow::onGoLiveClicked() {
         } else {
             config.preferredHardware = versus::video::HardwareEncoder::NVENC;
         }
-        spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={}",
+        spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={} alphaBackground={}",
                      config.width,
                      config.height,
                      config.frameRate,
                      config.bitrate,
                      encoderMode.toStdString(),
                      codecValue.toStdString(),
-                     config.enableAlpha);
+                     config.enableAlpha,
+                     static_cast<int>(config.alphaBackgroundMode));
+
+        const bool requiresFfmpeg =
+            codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha;
+        const versus::video::FfmpegProbeInfo ffmpegInfo =
+            versus::video::VideoEncoder::probeFfmpeg(config.ffmpegPath);
+        if (requiresFfmpeg && !ffmpegInfo.resolved) {
+            updateStatus("ffmpeg.exe not found", "error");
+            QMessageBox::warning(
+                this,
+                "FFmpeg Required",
+                "VP9/AV1/H.265, FFmpeg NVENC, and the OBS alpha workflow require ffmpeg.exe. Use a bundled release, repair/reinstall Game Capture, or choose a custom FFmpeg path.");
+            refreshFfmpegStatus();
+            return;
+        }
+        if (requiresFfmpeg && ffmpegInfo.bundled && (ffmpegInfo.gplEnabled || ffmpegInfo.nonfreeEnabled)) {
+            updateStatus("Bundled FFmpeg rejected", "error");
+            QMessageBox::warning(
+                this,
+                "FFmpeg Rejected",
+                "The bundled FFmpeg reports GPL or nonfree configure flags. This release package should be rebuilt with the pinned LGPL bundle.");
+            refreshFfmpegStatus();
+            return;
+        }
+        if ((config.codec == versus::video::VideoCodec::VP9 || config.enableAlpha) && !ffmpegInfo.hasLibvpxVp9) {
+            updateStatus("FFmpeg lacks libvpx-vp9", "error");
+            QMessageBox::warning(
+                this,
+                "FFmpeg VP9 Encoder Missing",
+                "The OBS alpha workflow requires FFmpeg with libvpx-vp9. Use the bundled release FFmpeg or choose a compatible custom FFmpeg path.");
+            refreshFfmpegStatus();
+            return;
+        }
 
         versus::app::StartOptions options;
         const QString streamTargetRaw = streamIdInput_->text().trimmed();
@@ -2474,7 +2595,8 @@ void MainWindow::syncCodecUiState() {
     const versus::video::VideoCodec selectedCodec = codecFromUiValue(codecSelect_->currentData().toString());
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
-    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || usesExternalFfmpeg;
+    const bool alphaWorkflowSelected = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || usesExternalFfmpeg || alphaWorkflowSelected;
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(enableFfmpegFields);
     }
@@ -2491,10 +2613,97 @@ void MainWindow::syncCodecUiState() {
         alphaWorkflowCheck_->setText(alphaWorkflowTextFor(selectedCodec));
         alphaWorkflowCheck_->setToolTip(alphaWorkflowTooltipFor(selectedCodec));
     }
+    const bool alphaWorkflowEnabled =
+        alphaWorkflowCheck_ &&
+        alphaWorkflowCheck_->isChecked();
+    if (alphaBackgroundModeSelect_) {
+        alphaBackgroundModeSelect_->setEnabled(!alphaWorkflowEnabled);
+        alphaBackgroundModeSelect_->setToolTip(alphaWorkflowEnabled
+            ? "Alpha-preserving encode is enabled, so Game Capture keeps the source alpha instead of compositing a background."
+            : "Composites transparent BGRA/Spout2 pixels over a solid color before encoding. Use chroma background with H.264/NVENC when true VP9 alpha is too CPU-heavy.");
+    }
+    if (alphaBackgroundColorButton_) {
+        const bool backgroundEnabled = alphaBackgroundModeSelect_ &&
+            alphaBackgroundModeSelect_->currentData().toString() != "none" &&
+            !alphaWorkflowEnabled;
+        alphaBackgroundColorButton_->setEnabled(backgroundEnabled);
+    }
 
     if (codecSelect_) {
         codecSelect_->setToolTip(codecTooltipFor(selectedCodec));
     }
+    refreshFfmpegStatus();
+}
+
+void MainWindow::updateAlphaBackgroundColorButton() {
+    if (!alphaBackgroundColorButton_) {
+        return;
+    }
+    const QString hex = colorToHex(alphaBackgroundColor_);
+    alphaBackgroundColorButton_->setText(hex);
+    alphaBackgroundColorButton_->setStyleSheet(QString(
+        "QPushButton { background-color: %1; color: %2; border: 1px solid #2a4158; border-radius: 6px; font-weight: 700; }"
+        "QPushButton:disabled { background-color: #172330; color: #6f849a; }")
+        .arg(hex, alphaBackgroundColor_.lightness() > 140 ? "#07111b" : "#ffffff"));
+}
+
+void MainWindow::chooseAlphaBackgroundColor() {
+    const QColor chosen = QColorDialog::getColor(alphaBackgroundColor_, this, "Choose Alpha Background Color");
+    if (!chosen.isValid()) {
+        return;
+    }
+    alphaBackgroundColor_ = chosen;
+    updateAlphaBackgroundColorButton();
+    savePersistedSettings();
+}
+
+void MainWindow::refreshFfmpegStatus() {
+    if (!ffmpegStatusLabel_) {
+        return;
+    }
+    const QString configuredPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString();
+    const versus::video::FfmpegProbeInfo info =
+        versus::video::VideoEncoder::probeFfmpeg(configuredPath.toStdString());
+    const bool needsFfmpeg =
+        codecSelect_ &&
+        (codecUsesExternalFfmpeg(codecFromUiValue(codecSelect_->currentData().toString())) ||
+         (encoderSelect_ && encoderSelect_->currentData().toString() == "ffmpeg_nvenc"));
+    if (!needsFfmpeg) {
+        ffmpegStatusLabel_->setText("Only needed for VP9/AV1/H.265 or FFmpeg NVENC.");
+        ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+        return;
+    }
+    if (!info.resolved) {
+        ffmpegStatusLabel_->setText("ffmpeg.exe not found. VP9 alpha requires the bundled FFmpeg/libvpx or a compatible custom path.");
+        ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
+        return;
+    }
+    const bool selectedVp9 = codecSelect_ &&
+        codecFromUiValue(codecSelect_->currentData().toString()) == versus::video::VideoCodec::VP9;
+    const QString source = info.userOverride
+        ? QStringLiteral("custom")
+        : (info.bundled ? QStringLiteral("bundled") : QStringLiteral("development"));
+    QString status = QString("Using %1 FFmpeg: %2").arg(source, QString::fromStdString(info.path));
+    if (!info.version.empty()) {
+        status += QString("\n%1").arg(QString::fromStdString(info.version));
+    }
+    if (info.gplEnabled || info.nonfreeEnabled) {
+        status += "\nWarning: GPL/nonfree flags detected.";
+        ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
+        ffmpegStatusLabel_->setText(status);
+        return;
+    }
+    if (selectedVp9 && !info.hasLibvpxVp9) {
+        status += "\nMissing libvpx-vp9; VP9 alpha will not start.";
+        ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
+        ffmpegStatusLabel_->setText(status);
+        return;
+    }
+    if (selectedVp9) {
+        status += "\nlibvpx-vp9 available; VP9 alpha is CPU encoded.";
+    }
+    ffmpegStatusLabel_->setText(status);
+    ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
 }
 
 int MainWindow::selectedBitrateKbps() const {
@@ -2635,12 +2844,13 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
         connectionIssueLabel_->setText(QString("Drops/encode/video/audio send: %1 (%2/s) / %3 / %4 / %5 | Last disconnect: %6")
             .arg(static_cast<qulonglong>(health.videoFramesDropped))
             .arg(health.droppedFrameRate, 0, 'f', 1)
-            .arg(static_cast<qulonglong>(health.videoEncodeFailures))
+            .arg(static_cast<qulonglong>(health.videoEncodeFailures + health.videoEncodeTimeouts))
             .arg(static_cast<qulonglong>(health.videoSendFailures))
             .arg(static_cast<qulonglong>(health.audioSendFailures))
             .arg(lastDisconnect));
         const bool hasFailures = health.videoFramesDropped > 0 ||
                                  health.videoEncodeFailures > 0 ||
+                                 health.videoEncodeTimeouts > 0 ||
                                  health.videoSendFailures > 0 ||
                                  health.audioSendFailures > 0;
         connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(hasFailures ? COLOR_YELLOW : COLOR_TEXT_DIM));
@@ -2743,6 +2953,16 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
         alphaWorkflowCheck_->setEnabled(enabled && codecSupportsAlphaWorkflow(
             codecFromUiValue(codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"))));
     }
+    if (alphaBackgroundModeSelect_) {
+        const bool alphaWorkflowEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+        alphaBackgroundModeSelect_->setEnabled(enabled && !alphaWorkflowEnabled);
+    }
+    if (alphaBackgroundColorButton_) {
+        const bool backgroundSelected = alphaBackgroundModeSelect_ &&
+            alphaBackgroundModeSelect_->currentData().toString() != "none";
+        const bool alphaWorkflowEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+        alphaBackgroundColorButton_->setEnabled(enabled && backgroundSelected && !alphaWorkflowEnabled);
+    }
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(enabled);
     }
@@ -2819,9 +3039,15 @@ void MainWindow::refreshSelectedWindowPreview() {
 
         const bool vp9Selected = codecSelect_ && codecSelect_->currentData().toString() == "vp9";
         const bool alphaEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+        const bool chromaBackground =
+            alphaBackgroundModeSelect_ &&
+            alphaBackgroundModeSelect_->currentData().toString() == "chroma" &&
+            !alphaEnabled;
         lines << (vp9Selected && alphaEnabled
-            ? "OBS alpha requires VDO.Ninja OBS plugin"
-            : "For transparency: VP9 + OBS alpha workflow + OBS plugin");
+            ? "True alpha requires VDO.Ninja OBS plugin"
+            : (chromaBackground
+                ? QString("Chroma output over %1").arg(colorToHex(alphaBackgroundColor_))
+                : "For transparency: VP9 alpha or chroma background"));
         lines << "Video only; choose audio separately";
         lines << "Output uses selected stream resolution";
         previewLabel_->setText(lines.join('\n'));

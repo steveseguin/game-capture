@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
+#include <cwctype>
 #include <deque>
 #include <filesystem>
 #include <mutex>
@@ -22,6 +23,10 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #ifdef VERSUS_HAS_FFMPEG
 extern "C" {
@@ -34,7 +39,6 @@ extern "C" {
 #else
 // Windows Media Foundation H264 encoder fallback
 #ifdef _WIN32
-#include <windows.h>
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
@@ -73,7 +77,306 @@ const char *videoCodecName(VideoCodec codec) {
     }
 }
 
-void fillBgraOpaqueBlack(uint8_t *dst, int dstW, int dstH, int dstStride) {
+std::string trimCopyForPath(const std::string &value) {
+    size_t begin = 0;
+    while (begin < value.size() && std::isspace(static_cast<unsigned char>(value[begin])) != 0) {
+        ++begin;
+    }
+    size_t end = value.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(value[end - 1])) != 0) {
+        --end;
+    }
+    return value.substr(begin, end - begin);
+}
+
+std::string toLowerCopy(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value;
+}
+
+bool textContainsInsensitive(const std::string &text, const std::string &needle) {
+    return toLowerCopy(text).find(toLowerCopy(needle)) != std::string::npos;
+}
+
+int recommendedRealtimeVp9Threads(int width, int height) {
+    const unsigned int cores = std::max(1u, std::thread::hardware_concurrency());
+    int threads = cores <= 2 ? 1 : std::clamp(static_cast<int>(cores / 2), 2, 8);
+    const int64_t pixels = static_cast<int64_t>(std::max(1, width)) * static_cast<int64_t>(std::max(1, height));
+    if (pixels <= 1280LL * 720LL) {
+        threads = std::min(threads, 4);
+    }
+    return std::max(1, threads);
+}
+
+std::filesystem::path normalizeFfmpegCandidate(std::filesystem::path candidate) {
+    if (candidate.empty()) {
+        return {};
+    }
+    std::error_code ec;
+    if (std::filesystem::is_directory(candidate, ec)) {
+        candidate /= "ffmpeg.exe";
+    }
+    if (!candidate.has_extension() &&
+        (candidate.filename().string() == "ffmpeg" ||
+         candidate.filename().string() == "ffmpeg.exe")) {
+#ifdef _WIN32
+        candidate += ".exe";
+#endif
+    }
+    if (!candidate.is_absolute()) {
+        candidate = std::filesystem::absolute(candidate, ec);
+    }
+    return candidate;
+}
+
+bool existingRegularFile(const std::filesystem::path &path) {
+    std::error_code ec;
+    return !path.empty() &&
+           std::filesystem::exists(path, ec) &&
+           std::filesystem::is_regular_file(path, ec);
+}
+
+std::filesystem::path firstExistingFfmpegPath(const std::vector<std::filesystem::path> &candidates) {
+    std::vector<std::string> seen;
+    for (const auto &rawCandidate : candidates) {
+        const std::filesystem::path candidate = normalizeFfmpegCandidate(rawCandidate);
+        if (candidate.empty()) {
+            continue;
+        }
+        std::string key = candidate.lexically_normal().string();
+        std::transform(key.begin(), key.end(), key.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (std::find(seen.begin(), seen.end(), key) != seen.end()) {
+            continue;
+        }
+        seen.push_back(key);
+        if (existingRegularFile(candidate)) {
+            return candidate;
+        }
+    }
+    return {};
+}
+
+std::filesystem::path executableDirectory() {
+#ifdef _WIN32
+    wchar_t modulePathWide[MAX_PATH] = {};
+    const DWORD modulePathLen = GetModuleFileNameW(nullptr, modulePathWide, MAX_PATH);
+    if (modulePathLen > 0 && modulePathLen < MAX_PATH) {
+        return std::filesystem::path(modulePathWide).parent_path();
+    }
+#endif
+    std::error_code ec;
+    return std::filesystem::current_path(ec);
+}
+
+bool envFlagEnabled(const char *name) {
+    const char *value = std::getenv(name);
+    if (!value || !*value) {
+        return false;
+    }
+    const std::string lower = toLowerCopy(trimCopyForPath(value));
+    return lower == "1" || lower == "true" || lower == "yes" || lower == "on";
+}
+
+std::filesystem::path resolveFfmpegPathImpl(const std::string &configuredPath) {
+    const std::string configured = trimCopyForPath(configuredPath);
+    if (!configured.empty()) {
+        return firstExistingFfmpegPath({configured});
+    }
+
+    const std::filesystem::path moduleDir = executableDirectory();
+    std::filesystem::path bundled = firstExistingFfmpegPath({
+        moduleDir / "ffmpeg" / "bin" / "ffmpeg.exe",
+        moduleDir / "ffmpeg.exe"
+    });
+    if (!bundled.empty()) {
+        return bundled;
+    }
+
+    const char *envPath = std::getenv("VERSUS_FFMPEG_PATH");
+    if (envPath && *envPath) {
+        std::filesystem::path envCandidate = firstExistingFfmpegPath({envPath});
+        if (!envCandidate.empty()) {
+            return envCandidate;
+        }
+    }
+
+    if (!envFlagEnabled("VERSUS_ALLOW_SYSTEM_FFMPEG")) {
+        return {};
+    }
+
+    envPath = std::getenv("FFMPEG_PATH");
+    if (envPath && *envPath) {
+        std::filesystem::path envCandidate = firstExistingFfmpegPath({envPath});
+        if (!envCandidate.empty()) {
+            return envCandidate;
+        }
+    }
+    envPath = std::getenv("FFMPEG_EXE");
+    if (envPath && *envPath) {
+        std::filesystem::path envCandidate = firstExistingFfmpegPath({envPath});
+        if (!envCandidate.empty()) {
+            return envCandidate;
+        }
+    }
+#ifdef _WIN32
+    wchar_t searchResult[MAX_PATH] = {};
+    const DWORD searchLen = SearchPathW(nullptr, L"ffmpeg.exe", nullptr, MAX_PATH, searchResult, nullptr);
+    if (searchLen > 0 && searchLen < MAX_PATH) {
+        return firstExistingFfmpegPath({std::filesystem::path(searchResult)});
+    }
+#endif
+    return {};
+}
+
+bool isBundledFfmpegPath(const std::filesystem::path &path) {
+    if (path.empty()) {
+        return false;
+    }
+    const std::filesystem::path moduleDir = executableDirectory();
+    const std::string normalized = toLowerCopy(path.lexically_normal().string());
+    return normalized == toLowerCopy((moduleDir / "ffmpeg" / "bin" / "ffmpeg.exe").lexically_normal().string()) ||
+           normalized == toLowerCopy((moduleDir / "ffmpeg.exe").lexically_normal().string());
+}
+
+#ifdef _WIN32
+std::wstring utf8ToWideForCommand(const std::string &value) {
+    if (value.empty()) {
+        return {};
+    }
+    const int len = MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, nullptr, 0);
+    if (len <= 0) {
+        return std::wstring(value.begin(), value.end());
+    }
+    std::wstring wide(static_cast<size_t>(len - 1), L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, value.c_str(), -1, wide.data(), len);
+    return wide;
+}
+
+std::wstring quoteCommandArgForShell(const std::wstring &arg) {
+    if (arg.empty()) {
+        return L"\"\"";
+    }
+    bool needsQuotes = false;
+    for (wchar_t ch : arg) {
+        if (std::iswspace(ch) || ch == L'"') {
+            needsQuotes = true;
+            break;
+        }
+    }
+    if (!needsQuotes) {
+        return arg;
+    }
+    std::wstring quoted = L"\"";
+    int backslashes = 0;
+    for (wchar_t ch : arg) {
+        if (ch == L'\\') {
+            ++backslashes;
+            continue;
+        }
+        if (ch == L'"') {
+            quoted.append(static_cast<size_t>(backslashes * 2 + 1), L'\\');
+            quoted.push_back(L'"');
+            backslashes = 0;
+            continue;
+        }
+        if (backslashes > 0) {
+            quoted.append(static_cast<size_t>(backslashes), L'\\');
+            backslashes = 0;
+        }
+        quoted.push_back(ch);
+    }
+    if (backslashes > 0) {
+        quoted.append(static_cast<size_t>(backslashes * 2), L'\\');
+    }
+    quoted.push_back(L'"');
+    return quoted;
+}
+
+std::string runCommandCapture(const std::filesystem::path &exe, const std::vector<std::string> &args) {
+    std::wstring command = quoteCommandArgForShell(exe.wstring());
+    for (const auto &arg : args) {
+        command.push_back(L' ');
+        command += quoteCommandArgForShell(utf8ToWideForCommand(arg));
+    }
+    command += L" 2>&1";
+
+    FILE *pipe = _wpopen(command.c_str(), L"r");
+    if (!pipe) {
+        return {};
+    }
+    std::string output;
+    std::array<char, 4096> buffer = {};
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+        output += buffer.data();
+    }
+    _pclose(pipe);
+    return output;
+}
+#else
+std::string runCommandCapture(const std::filesystem::path &, const std::vector<std::string> &) {
+    return {};
+}
+#endif
+
+FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
+    FfmpegProbeInfo info;
+    const std::filesystem::path resolved = resolveFfmpegPathImpl(configuredPath);
+    info.userOverride = !trimCopyForPath(configuredPath).empty();
+    if (resolved.empty()) {
+        info.error = info.userOverride
+            ? "Configured FFmpeg path was not found"
+            : "FFmpeg was not found";
+        return info;
+    }
+
+    info.resolved = true;
+    info.path = resolved.string();
+    info.bundled = isBundledFfmpegPath(resolved);
+
+    const std::string versionOutput = runCommandCapture(resolved, {"-hide_banner", "-version"});
+    const std::string encoderOutput = runCommandCapture(resolved, {"-hide_banner", "-encoders"});
+    if (versionOutput.empty()) {
+        info.error = "FFmpeg probe failed";
+        return info;
+    }
+
+    std::istringstream versionStream(versionOutput);
+    std::string line;
+    if (std::getline(versionStream, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.pop_back();
+        }
+        info.version = line;
+    }
+    versionStream.clear();
+    versionStream.str(versionOutput);
+    while (std::getline(versionStream, line)) {
+        if (line.rfind("configuration:", 0) == 0) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+                line.pop_back();
+            }
+            info.configuration = line;
+            break;
+        }
+    }
+
+    info.hasLibvpxVp9 = textContainsInsensitive(encoderOutput, "libvpx-vp9");
+    info.gplEnabled = textContainsInsensitive(info.configuration, "--enable-gpl");
+    info.nonfreeEnabled = textContainsInsensitive(info.configuration, "--enable-nonfree");
+    return info;
+}
+
+void fillBgraOpaqueColor(uint8_t *dst,
+                         int dstW,
+                         int dstH,
+                         int dstStride,
+                         uint8_t blue,
+                         uint8_t green,
+                         uint8_t red) {
     if (!dst || dstW <= 0 || dstH <= 0 || dstStride < (dstW * 4)) {
         return;
     }
@@ -81,27 +384,51 @@ void fillBgraOpaqueBlack(uint8_t *dst, int dstW, int dstH, int dstStride) {
     const size_t rowSize = static_cast<size_t>(dstW) * 4;
     for (int y = 0; y < dstH; ++y) {
         uint8_t *row = dst + static_cast<size_t>(y) * dstStride;
-        std::memset(row, 0, rowSize);
         for (int x = 0; x < dstW; ++x) {
+            row[x * 4 + 0] = blue;
+            row[x * 4 + 1] = green;
+            row[x * 4 + 2] = red;
             row[x * 4 + 3] = 255;
         }
     }
 }
 
+void fillBgraOpaqueBlack(uint8_t *dst, int dstW, int dstH, int dstStride) {
+    fillBgraOpaqueColor(dst, dstW, dstH, dstStride, 0, 0, 0);
+}
+
+void getAspectPaddingColor(const EncoderConfig &config, uint8_t &blue, uint8_t &green, uint8_t &red) {
+    if (config.alphaBackgroundMode == AlphaBackgroundMode::None) {
+        blue = 0;
+        green = 0;
+        red = 0;
+        return;
+    }
+    blue = config.alphaBackgroundBlue;
+    green = config.alphaBackgroundGreen;
+    red = config.alphaBackgroundRed;
+}
+
 void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
-                       uint8_t *dst, int dstW, int dstH, int dstStride) {
+                       uint8_t *dst, int dstW, int dstH, int dstStride,
+                       const EncoderConfig &config) {
+    uint8_t padB = 0;
+    uint8_t padG = 0;
+    uint8_t padR = 0;
+    getAspectPaddingColor(config, padB, padG, padR);
+
     if (!dst || dstW <= 0 || dstH <= 0 || dstStride < (dstW * 4)) {
         return;
     }
 
     if (!src || srcW <= 0 || srcH <= 0 || srcStride < (srcW * 4)) {
-        fillBgraOpaqueBlack(dst, dstW, dstH, dstStride);
+        fillBgraOpaqueColor(dst, dstW, dstH, dstStride, padB, padG, padR);
         return;
     }
 
     const AspectFitRect fit = computeAspectFitRect(srcW, srcH, dstW, dstH);
     if (fit.width <= 0 || fit.height <= 0) {
-        fillBgraOpaqueBlack(dst, dstW, dstH, dstStride);
+        fillBgraOpaqueColor(dst, dstW, dstH, dstStride, padB, padG, padR);
         return;
     }
 
@@ -117,7 +444,7 @@ void blitBgraAspectFit(const uint8_t *src, int srcW, int srcH, int srcStride,
         return;
     }
 
-    fillBgraOpaqueBlack(dst, dstW, dstH, dstStride);
+    fillBgraOpaqueColor(dst, dstW, dstH, dstStride, padB, padG, padR);
 
     // Downscaling gameplay/text with nearest-neighbor produces visible aliasing.
     // Fit the full source into the target so aspect-ratio changes do not crop gameplay.
@@ -204,6 +531,7 @@ class VideoEncoder::Impl {
   public:
     bool initialize(const EncoderConfig &config) {
         config_ = config;
+        lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         return tryInitEncoder(config_.preferredHardware);
     }
 
@@ -234,22 +562,30 @@ class VideoEncoder::Impl {
         initialized_ = false;
         setActiveEncoderName("");
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
+        lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
     }
 
     bool encode(const CapturedFrame &input, EncodedPacket &output) {
         std::lock_guard<std::mutex> lock(mutex_);
+        lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         if (!initialized_) {
+            lastEncodeFailureKind_.store(EncodeFailureKind::InvalidInput, std::memory_order_relaxed);
             return false;
         }
         if (!prepareFrame(input)) {
+            lastEncodeFailureKind_.store(EncodeFailureKind::InvalidInput, std::memory_order_relaxed);
             return false;
         }
         int ret = avcodec_send_frame(codecCtx_, useHardware_ ? hwFrame_ : frame_);
         if (ret < 0 && ret != AVERROR(EAGAIN)) {
+            lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
             return false;
         }
         ret = avcodec_receive_packet(codecCtx_, packet_);
         if (ret < 0) {
+            lastEncodeFailureKind_.store(ret == AVERROR(EAGAIN) ? EncodeFailureKind::Timeout
+                                                               : EncodeFailureKind::IoFailure,
+                                         std::memory_order_relaxed);
             return false;
         }
         output.data.assign(packet_->data, packet_->data + packet_->size);
@@ -277,6 +613,9 @@ class VideoEncoder::Impl {
     VideoCodec activeCodec() const { return activeCodec_.load(std::memory_order_relaxed); }
     std::string activeCodecName() const { return videoCodecName(activeCodec()); }
     bool isHardwareEncoder() const { return useHardware_.load(std::memory_order_relaxed); }
+    EncodeFailureKind lastEncodeFailureKind() const {
+        return lastEncodeFailureKind_.load(std::memory_order_relaxed);
+    }
 
   private:
     void setActiveEncoderName(std::string name) {
@@ -382,7 +721,7 @@ class VideoEncoder::Impl {
             aspectFitInputBuffer_.resize(paddedSize);
         }
         blitBgraAspectFit(input.data.data(), input.width, input.height, input.stride,
-                          aspectFitInputBuffer_.data(), swsSrcW, swsSrcH, swsSrcW * 4);
+                          aspectFitInputBuffer_.data(), swsSrcW, swsSrcH, swsSrcW * 4, config_);
 
         if (!swsCtx_ || lastWidth_ != swsSrcW || lastHeight_ != swsSrcH) {
             if (swsCtx_) {
@@ -439,6 +778,7 @@ class VideoEncoder::Impl {
     mutable std::mutex activeEncoderNameMutex_;
     std::string activeEncoderName_;
     std::atomic<VideoCodec> activeCodec_{VideoCodec::H264};
+    std::atomic<EncodeFailureKind> lastEncodeFailureKind_{EncodeFailureKind::None};
 };
 
 #else
@@ -456,12 +796,16 @@ class VideoEncoder::Impl {
     VideoCodec activeCodec() const { return activeCodec_.load(std::memory_order_relaxed); }
     std::string activeCodecName() const { return videoCodecName(activeCodec()); }
     bool isHardwareEncoder() const { return usingHardware_.load(std::memory_order_relaxed); }
+    EncodeFailureKind lastEncodeFailureKind() const {
+        return lastEncodeFailureKind_.load(std::memory_order_relaxed);
+    }
 
     bool initialize(const EncoderConfig &config) {
         config_ = config;
         spdlog::info("[VideoEncoder] Initializing MF encoder {}x{} @{}kbps", config.width, config.height, config.bitrate);
         frameCount_ = 0;
         lastInputTimestamp_ = 0;
+        lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
 
         const bool requireExternalFfmpeg =
@@ -607,15 +951,17 @@ class VideoEncoder::Impl {
     }
 
     bool encode(const CapturedFrame &input, EncodedPacket &output) {
+        lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         if (usingExternalFfmpeg_) {
             return encodeExternalFfmpegNvenc(input, output);
         }
 
         if (!initialized_ || !transform_) {
+            lastEncodeFailureKind_.store(EncodeFailureKind::InvalidInput, std::memory_order_relaxed);
             return false;
         }
 
-        std::vector<uint8_t> inputData;
+        std::vector<uint8_t> &inputData = mfInputBuffer_;
         if (!prepareInputBuffer(input, inputData)) {
             return false;
         }
@@ -940,7 +1286,7 @@ class VideoEncoder::Impl {
     void setBitrate(int kbps) {
         config_.bitrate = kbps;
         if (usingExternalFfmpeg_) {
-            restartExternalFfmpegNvenc();
+            restartExternalFfmpegNvenc(true);
             return;
         }
         if (!codecApi_) {
@@ -1080,105 +1426,24 @@ class VideoEncoder::Impl {
     }
 
     std::filesystem::path resolveExternalFfmpegPath() const {
-        std::vector<std::filesystem::path> candidates;
-        std::vector<std::string> seen;
-
-        auto normalizeKey = [](const std::filesystem::path &path) {
-            std::string key = path.lexically_normal().string();
-            std::transform(key.begin(), key.end(), key.begin(), [](unsigned char ch) {
-                return static_cast<char>(std::tolower(ch));
-            });
-            return key;
-        };
-
-        auto pushCandidate = [&](std::filesystem::path candidate) {
-            if (candidate.empty()) {
-                return;
-            }
-            std::error_code ec;
-            if (std::filesystem::is_directory(candidate, ec)) {
-                candidate /= "ffmpeg.exe";
-            }
-            if (!candidate.has_extension() &&
-                candidate.filename().string() == "ffmpeg") {
-                candidate += ".exe";
-            }
-            if (!candidate.is_absolute()) {
-                candidate = std::filesystem::absolute(candidate, ec);
-            }
-            if (candidate.empty()) {
-                return;
-            }
-            const std::string key = normalizeKey(candidate);
-            if (std::find(seen.begin(), seen.end(), key) != seen.end()) {
-                return;
-            }
-            seen.push_back(key);
-            candidates.push_back(candidate);
-        };
-
-        const std::string configuredPath = trimCopy(config_.ffmpegPath);
-        if (!configuredPath.empty()) {
-            pushCandidate(configuredPath);
-        }
-
-        const char *envPath = std::getenv("VERSUS_FFMPEG_PATH");
-        if (envPath && *envPath) {
-            pushCandidate(envPath);
-        }
-        envPath = std::getenv("FFMPEG_PATH");
-        if (envPath && *envPath) {
-            pushCandidate(envPath);
-        }
-        envPath = std::getenv("FFMPEG_EXE");
-        if (envPath && *envPath) {
-            pushCandidate(envPath);
-        }
-
-        wchar_t modulePathWide[MAX_PATH] = {};
-        const DWORD modulePathLen = GetModuleFileNameW(nullptr, modulePathWide, MAX_PATH);
-        if (modulePathLen > 0 && modulePathLen < MAX_PATH) {
-            const std::filesystem::path modulePath(modulePathWide);
-            const std::filesystem::path moduleDir = modulePath.parent_path();
-            pushCandidate(moduleDir / "ffmpeg.exe");
-            pushCandidate(moduleDir / "ffmpeg" / "ffmpeg.exe");
-            pushCandidate(moduleDir.parent_path() / "ffmpeg.exe");
-            pushCandidate(moduleDir.parent_path().parent_path() / "ffmpeg.exe");
-            pushCandidate(moduleDir.parent_path() / "tools" / "ffmpeg.exe");
-        }
-
-        std::error_code ec;
-        pushCandidate(std::filesystem::current_path(ec) / "ffmpeg.exe");
-        pushCandidate(std::filesystem::current_path(ec) / "tools" / "ffmpeg.exe");
-
-        const char *userProfile = std::getenv("USERPROFILE");
-        if (userProfile && *userProfile) {
-            const std::filesystem::path userCodeDir = std::filesystem::path(userProfile) / "code";
-            pushCandidate(userCodeDir / "obs-studio" / ".deps" / "obs-deps-2025-08-23-x64" / "bin" / "ffmpeg.exe");
-            pushCandidate(userCodeDir / "ninjasdk" / "ffmpeg.exe");
-        }
-
-        wchar_t searchResult[MAX_PATH] = {};
-        const DWORD searchLen = SearchPathW(nullptr, L"ffmpeg.exe", nullptr, MAX_PATH, searchResult, nullptr);
-        if (searchLen > 0 && searchLen < MAX_PATH) {
-            pushCandidate(std::filesystem::path(searchResult));
-        }
-
-        for (const auto &candidate : candidates) {
-            if (std::filesystem::exists(candidate, ec) &&
-                std::filesystem::is_regular_file(candidate, ec)) {
-                return candidate;
-            }
-        }
-
-        return {};
+        return resolveFfmpegPathImpl(config_.ffmpegPath);
     }
 
     bool initializeExternalFfmpegNvenc() {
         shutdownExternalFfmpegNvenc();
         externalFfmpegPath_ = resolveExternalFfmpegPath();
         if (externalFfmpegPath_.empty()) {
-            spdlog::warn("[FFmpegEncoder] ffmpeg.exe not found (set --ffmpeg-path or VERSUS_FFMPEG_PATH)");
+            spdlog::warn("[FFmpegEncoder] ffmpeg.exe not found (use bundled FFmpeg, --ffmpeg-path, or VERSUS_FFMPEG_PATH for development)");
+            return false;
+        }
+        const FfmpegProbeInfo ffmpegInfo = probeFfmpegImpl(config_.ffmpegPath);
+        if (ffmpegInfo.bundled && (ffmpegInfo.gplEnabled || ffmpegInfo.nonfreeEnabled)) {
+            spdlog::warn("[FFmpegEncoder] Bundled FFmpeg has GPL/nonfree flags; refusing to use bundled binary");
+            return false;
+        }
+        if (config_.codec == VideoCodec::VP9 && !ffmpegInfo.hasLibvpxVp9) {
+            spdlog::warn("[FFmpegEncoder] VP9 requires FFmpeg with libvpx-vp9 encoder; resolved path='{}'",
+                         externalFfmpegPath_.string());
             return false;
         }
         if (config_.codec == VideoCodec::VP8) {
@@ -1321,16 +1586,25 @@ class VideoEncoder::Impl {
             // Real-time low-latency VP9 settings.
             // Use all-keyframes so viewers can recover without relying on RTCP PLI handling.
             // -minrate = bitrate: force CBR (VP9 VBR by default).
+            const int vp9Threads = recommendedRealtimeVp9Threads(width, height);
+            spdlog::info("[FFmpegEncoder] libvpx-vp9 realtime threads={} row-mt=1 tile-columns=2 tile-rows=1 frame-parallel=1",
+                         vp9Threads);
             args.push_back("-deadline");
             args.push_back("realtime");
             args.push_back("-cpu-used");
             args.push_back("8");
+            args.push_back("-threads");
+            args.push_back(std::to_string(vp9Threads));
             args.push_back("-lag-in-frames");
             args.push_back("0");
             args.push_back("-row-mt");
             args.push_back("1");
             args.push_back("-tile-columns");
             args.push_back("2");
+            args.push_back("-tile-rows");
+            args.push_back("1");
+            args.push_back("-frame-parallel");
+            args.push_back("1");
             args.push_back("-g");
             args.push_back("1");
             args.push_back("-keyint_min");
@@ -1406,7 +1680,9 @@ class VideoEncoder::Impl {
         HANDLE childStdInWrite = nullptr;
         HANDLE childStdOutRead = nullptr;
         HANDLE childStdOutWrite = nullptr;
-        HANDLE childStdErr = nullptr;
+        HANDLE childStdErrRead = nullptr;
+        HANDLE childStdErrWrite = nullptr;
+        HANDLE childStdErrFallback = nullptr;
 
         if (!CreatePipe(&childStdInRead, &childStdInWrite, &sa, 0) ||
             !SetHandleInformation(childStdInWrite, HANDLE_FLAG_INHERIT, 0)) {
@@ -1426,15 +1702,23 @@ class VideoEncoder::Impl {
             return false;
         }
 
-        childStdErr = CreateFileW(L"NUL",
-                                  FILE_GENERIC_WRITE,
-                                  FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                  &sa,
-                                  OPEN_EXISTING,
-                                  FILE_ATTRIBUTE_NORMAL,
-                                  nullptr);
-        if (childStdErr == INVALID_HANDLE_VALUE) {
-            childStdErr = nullptr;
+        if (!CreatePipe(&childStdErrRead, &childStdErrWrite, &sa, 0) ||
+            !SetHandleInformation(childStdErrRead, HANDLE_FLAG_INHERIT, 0)) {
+            if (childStdErrRead) CloseHandle(childStdErrRead);
+            if (childStdErrWrite) CloseHandle(childStdErrWrite);
+            childStdErrRead = nullptr;
+            childStdErrWrite = nullptr;
+            childStdErrFallback = CreateFileW(L"NUL",
+                                              FILE_GENERIC_WRITE,
+                                              FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                              &sa,
+                                              OPEN_EXISTING,
+                                              FILE_ATTRIBUTE_NORMAL,
+                                              nullptr);
+            if (childStdErrFallback == INVALID_HANDLE_VALUE) {
+                childStdErrFallback = nullptr;
+            }
+            spdlog::warn("[FFmpegEncoder] Failed to create stderr pipe; FFmpeg stderr will not be captured");
         }
 
         STARTUPINFOW startupInfo = {};
@@ -1442,7 +1726,7 @@ class VideoEncoder::Impl {
         startupInfo.dwFlags = STARTF_USESTDHANDLES;
         startupInfo.hStdInput = childStdInRead;
         startupInfo.hStdOutput = childStdOutWrite;
-        startupInfo.hStdError = childStdErr ? childStdErr : childStdOutWrite;
+        startupInfo.hStdError = childStdErrWrite ? childStdErrWrite : childStdErrFallback;
 
         PROCESS_INFORMATION processInfo = {};
         std::vector<wchar_t> mutableCommand(command.begin(), command.end());
@@ -1461,19 +1745,28 @@ class VideoEncoder::Impl {
 
         CloseHandle(childStdInRead);
         CloseHandle(childStdOutWrite);
-        if (childStdErr) {
-            CloseHandle(childStdErr);
+        if (childStdErrWrite) {
+            CloseHandle(childStdErrWrite);
+            childStdErrWrite = nullptr;
+        }
+        if (childStdErrFallback) {
+            CloseHandle(childStdErrFallback);
+            childStdErrFallback = nullptr;
         }
 
         if (!spawned) {
             CloseHandle(childStdInWrite);
             CloseHandle(childStdOutRead);
+            if (childStdErrRead) {
+                CloseHandle(childStdErrRead);
+            }
             spdlog::warn("[FFmpegEncoder] CreateProcess failed for '{}'", externalFfmpegPath_.string());
             return false;
         }
 
         externalStdInWrite_ = childStdInWrite;
         externalStdOutRead_ = childStdOutRead;
+        externalStdErrRead_ = childStdErrRead;
         externalProcess_ = processInfo.hProcess;
         externalThread_ = processInfo.hThread;
         externalFfmpegArgs_ = args;
@@ -1545,11 +1838,24 @@ class VideoEncoder::Impl {
             CloseHandle(stdOutRead);
         }
 
+        HANDLE stdErrRead = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
+            stdErrRead = externalStdErrRead_;
+            externalStdErrRead_ = nullptr;
+        }
+        if (stdErrRead) {
+            CloseHandle(stdErrRead);
+        }
+
         if (externalWriterThread_.joinable()) {
             externalWriterThread_.join();
         }
         if (externalReaderThread_.joinable()) {
             externalReaderThread_.join();
+        }
+        if (externalStderrThread_.joinable()) {
+            externalStderrThread_.join();
         }
 
         if (externalThread_) {
@@ -1563,6 +1869,7 @@ class VideoEncoder::Impl {
 
         externalOutputBuffer_.clear();
         externalInputBuffer_.clear();
+        externalReusableInputBuffers_.clear();
         externalFfmpegArgs_.clear();
         externalFramesSubmitted_ = 0;
         externalPacketCount_ = 0;
@@ -1575,6 +1882,7 @@ class VideoEncoder::Impl {
         externalIoStopRequested_ = false;
         externalWriterFailed_ = false;
         externalReaderFailed_ = false;
+        externalStdErrRead_ = nullptr;
         externalPendingInputBytes_ = 0;
         externalFramesWritten_ = 0;
         externalEncoderName_.clear();
@@ -1582,15 +1890,24 @@ class VideoEncoder::Impl {
         usingExternalFfmpeg_ = false;
     }
 
-    void restartExternalFfmpegNvenc() {
+    bool restartExternalFfmpegNvenc(bool runWarmup) {
         if (!usingExternalFfmpeg_) {
-            return;
+            return false;
         }
         spdlog::info("[FFmpegEncoder] Restarting FFmpeg pipeline");
         shutdownExternalFfmpegNvenc();
         if (!initializeExternalFfmpegNvenc()) {
             spdlog::warn("[FFmpegEncoder] Failed to restart FFmpeg pipeline");
+            lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
+            return false;
         }
+        if (runWarmup && !runWarmupProbe()) {
+            spdlog::warn("[FFmpegEncoder] Restarted FFmpeg pipeline failed warm-up probe");
+            lastEncodeFailureKind_.store(EncodeFailureKind::Timeout, std::memory_order_relaxed);
+            return false;
+        }
+        lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
+        return true;
     }
 
     bool startExternalIoWorkers() {
@@ -1600,6 +1917,7 @@ class VideoEncoder::Impl {
             externalWriterFailed_ = false;
             externalReaderFailed_ = false;
             externalInputQueue_.clear();
+            externalReusableInputBuffers_.clear();
             externalPendingOutputPts_.clear();
             externalOutputBuffer_.clear();
             externalPendingInputBytes_ = 0;
@@ -1609,6 +1927,9 @@ class VideoEncoder::Impl {
         try {
             externalWriterThread_ = std::thread([this]() { externalWriterLoop(); });
             externalReaderThread_ = std::thread([this]() { externalReaderLoop(); });
+            if (externalStdErrRead_) {
+                externalStderrThread_ = std::thread([this]() { externalStderrLoop(); });
+            }
         } catch (const std::exception &e) {
             spdlog::warn("[FFmpegEncoder] Failed to start IO worker thread: {}", e.what());
             {
@@ -1621,6 +1942,9 @@ class VideoEncoder::Impl {
             }
             if (externalReaderThread_.joinable()) {
                 externalReaderThread_.join();
+            }
+            if (externalStderrThread_.joinable()) {
+                externalStderrThread_.join();
             }
             return false;
         } catch (...) {
@@ -1636,9 +1960,21 @@ class VideoEncoder::Impl {
             if (externalReaderThread_.joinable()) {
                 externalReaderThread_.join();
             }
+            if (externalStderrThread_.joinable()) {
+                externalStderrThread_.join();
+            }
             return false;
         }
         return true;
+    }
+
+    static void logFfmpegStderrLine(std::string line) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
+            line.pop_back();
+        }
+        if (!line.empty()) {
+            spdlog::warn("[FFmpegEncoder] stderr: {}", line);
+        }
     }
 
     void externalWriterLoop() {
@@ -1708,6 +2044,10 @@ class VideoEncoder::Impl {
             {
                 std::lock_guard<std::mutex> lock(externalIoMutex_);
                 externalFramesWritten_++;
+                if (!externalIoStopRequested_ && externalReusableInputBuffers_.size() < 4) {
+                    frame.clear();
+                    externalReusableInputBuffers_.push_back(std::move(frame));
+                }
             }
             externalIoCv_.notify_all();
         }
@@ -1753,46 +2093,105 @@ class VideoEncoder::Impl {
         }
     }
 
-    bool enqueueExternalInputFrame(std::vector<uint8_t> frame, int64_t timestamp) {
+    void externalStderrLoop() {
+        std::array<char, 4096> chunk = {};
+        std::string pending;
+        for (;;) {
+            HANDLE stdErrHandle = nullptr;
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                if (externalIoStopRequested_) {
+                    break;
+                }
+                stdErrHandle = externalStdErrRead_;
+            }
+
+            if (!stdErrHandle) {
+                break;
+            }
+
+            DWORD bytesRead = 0;
+            const BOOL readOk = ReadFile(stdErrHandle, chunk.data(), static_cast<DWORD>(chunk.size()), &bytesRead, nullptr);
+            if (!readOk || bytesRead == 0) {
+                break;
+            }
+
+            pending.append(chunk.data(), bytesRead);
+            size_t lineStart = 0;
+            for (;;) {
+                const size_t lineEnd = pending.find('\n', lineStart);
+                if (lineEnd == std::string::npos) {
+                    break;
+                }
+                logFfmpegStderrLine(pending.substr(lineStart, lineEnd - lineStart + 1));
+                lineStart = lineEnd + 1;
+            }
+            if (lineStart > 0) {
+                pending.erase(0, lineStart);
+            }
+            if (pending.size() > 8192) {
+                logFfmpegStderrLine(pending);
+                pending.clear();
+            }
+        }
+
+        logFfmpegStderrLine(pending);
+    }
+
+    enum class ExternalEnqueueResult {
+        Queued,
+        InvalidInput,
+        Backpressure,
+        IoFailure
+    };
+
+    ExternalEnqueueResult enqueueExternalInputFrame(std::vector<uint8_t> frame, int64_t timestamp) {
         constexpr size_t kMaxQueuedFrames = 3;
         constexpr size_t kMaxQueuedBytes = 64 * 1024 * 1024;
 
         if (frame.empty()) {
-            return false;
+            return ExternalEnqueueResult::InvalidInput;
         }
 
         std::unique_lock<std::mutex> lock(externalIoMutex_);
         if (externalWriterFailed_ || externalReaderFailed_ || externalIoStopRequested_) {
-            return false;
+            return ExternalEnqueueResult::IoFailure;
         }
 
-        const auto enqueueDeadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(150);
-        while (!externalIoStopRequested_ &&
-               !externalWriterFailed_ &&
-               !externalReaderFailed_ &&
-               externalInputQueue_.size() >= kMaxQueuedFrames) {
-            if (!externalIoCv_.wait_until(lock, enqueueDeadline, [this]() {
-                    return externalIoStopRequested_ ||
-                           externalWriterFailed_ ||
-                           externalReaderFailed_ ||
-                           externalInputQueue_.size() < kMaxQueuedFrames;
-                })) {
-                return false;
-            }
+        if (externalInputQueue_.size() >= kMaxQueuedFrames) {
+            return ExternalEnqueueResult::Backpressure;
         }
 
         if (externalWriterFailed_ || externalReaderFailed_ || externalIoStopRequested_) {
-            return false;
+            return ExternalEnqueueResult::IoFailure;
         }
         if ((externalPendingInputBytes_ + frame.size()) > kMaxQueuedBytes) {
-            return false;
+            return ExternalEnqueueResult::Backpressure;
         }
 
         externalPendingInputBytes_ += frame.size();
         externalInputQueue_.push_back(std::move(frame));
         externalPendingOutputPts_.push_back(timestamp);
         externalIoCv_.notify_all();
-        return true;
+        return ExternalEnqueueResult::Queued;
+    }
+
+    void resizeExternalInputBuffer(size_t frameSize) {
+        if (externalInputBuffer_.capacity() < frameSize) {
+            std::lock_guard<std::mutex> lock(externalIoMutex_);
+            auto best = externalReusableInputBuffers_.end();
+            for (auto it = externalReusableInputBuffers_.begin(); it != externalReusableInputBuffers_.end(); ++it) {
+                if (it->capacity() >= frameSize &&
+                    (best == externalReusableInputBuffers_.end() || it->capacity() < best->capacity())) {
+                    best = it;
+                }
+            }
+            if (best != externalReusableInputBuffers_.end()) {
+                externalInputBuffer_ = std::move(*best);
+                externalReusableInputBuffers_.erase(best);
+            }
+        }
+        externalInputBuffer_.resize(frameSize);
     }
 
     bool prepareExternalInputFrame(const CapturedFrame &input) {
@@ -1810,7 +2209,7 @@ class VideoEncoder::Impl {
                 return false;
             }
             const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH);
-            externalInputBuffer_.resize(frameSize);
+            resizeExternalInputBuffer(frameSize);
             if (input.width == dstW && input.height == dstH &&
                 input.data.size() >= frameSize) {
                 std::memcpy(externalInputBuffer_.data(), input.data.data(), frameSize);
@@ -1842,7 +2241,7 @@ class VideoEncoder::Impl {
 
         if (externalInputIsNv12_) {
             const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH) * 3 / 2;
-            externalInputBuffer_.resize(frameSize);
+            resizeExternalInputBuffer(frameSize);
             convertBGRAtoNV12(input.data.data(),
                               input.width,
                               input.height,
@@ -1854,7 +2253,7 @@ class VideoEncoder::Impl {
         }
 
         const size_t frameSize = static_cast<size_t>(dstW) * static_cast<size_t>(dstH) * 4;
-        externalInputBuffer_.resize(frameSize);
+        resizeExternalInputBuffer(frameSize);
         if (input.width == dstW &&
             input.height == dstH &&
             input.stride == dstW * 4 &&
@@ -2137,13 +2536,15 @@ class VideoEncoder::Impl {
 
     bool encodeExternalFfmpegNvenc(const CapturedFrame &input, EncodedPacket &output) {
         if (!usingExternalFfmpeg_ || !externalStdInWrite_ || !externalStdOutRead_ || !externalProcess_) {
+            lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             return false;
         }
 
         if (externalForceKeyframeRequested_) {
             externalForceKeyframeRequested_ = false;
-            restartExternalFfmpegNvenc();
+            restartExternalFfmpegNvenc(true);
             if (!usingExternalFfmpeg_) {
+                lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
                 return false;
             }
         }
@@ -2152,22 +2553,40 @@ class VideoEncoder::Impl {
             DWORD exitCode = 0;
             GetExitCodeProcess(externalProcess_, &exitCode);
             spdlog::warn("[FFmpegEncoder] ffmpeg process exited unexpectedly (code={})", exitCode);
+            lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             shutdownExternalFfmpegNvenc();
             return false;
         }
 
         if (!prepareExternalInputFrame(input)) {
+            lastEncodeFailureKind_.store(EncodeFailureKind::InvalidInput, std::memory_order_relaxed);
             return false;
         }
 
-        if (!enqueueExternalInputFrame(std::move(externalInputBuffer_), input.timestamp)) {
-            spdlog::warn("[FFmpegEncoder] Failed to queue frame for FFmpeg pipeline; restarting");
-            restartExternalFfmpegNvenc();
+        const ExternalEnqueueResult enqueueResult =
+            enqueueExternalInputFrame(std::move(externalInputBuffer_), input.timestamp);
+        if (enqueueResult != ExternalEnqueueResult::Queued) {
+            if (enqueueResult == ExternalEnqueueResult::IoFailure) {
+                spdlog::warn("[FFmpegEncoder] FFmpeg IO worker rejected input; restarting pipeline");
+                lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
+                restartExternalFfmpegNvenc(true);
+            } else if (enqueueResult == ExternalEnqueueResult::Backpressure) {
+                spdlog::warn("[FFmpegEncoder] FFmpeg input queue is full; skipping frame while encoder catches up");
+                lastEncodeFailureKind_.store(EncodeFailureKind::Backpressure, std::memory_order_relaxed);
+            } else {
+                lastEncodeFailureKind_.store(EncodeFailureKind::InvalidInput, std::memory_order_relaxed);
+            }
             return false;
         }
         externalFramesSubmitted_++;
 
-        const int waitBudgetMs = std::max(10, (3000 / std::max(1, config_.frameRate)));
+        int waitBudgetMs = std::max(10, (3000 / std::max(1, config_.frameRate)));
+        if (config_.codec == VideoCodec::VP9) {
+            waitBudgetMs = std::max(waitBudgetMs, std::max(100, (6000 / std::max(1, config_.frameRate))));
+            if (!externalFirstPacketLogged_) {
+                waitBudgetMs = std::max(waitBudgetMs, 500);
+            }
+        }
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitBudgetMs);
         while (std::chrono::steady_clock::now() < deadline) {
             {
@@ -2202,7 +2621,8 @@ class VideoEncoder::Impl {
         }
         if (ioWorkerFailed) {
             spdlog::warn("[FFmpegEncoder] FFmpeg IO worker failure detected; restarting pipeline");
-            restartExternalFfmpegNvenc();
+            lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
+            restartExternalFfmpegNvenc(true);
             return false;
         }
 
@@ -2210,10 +2630,12 @@ class VideoEncoder::Impl {
             DWORD exitCode = 0;
             GetExitCodeProcess(externalProcess_, &exitCode);
             spdlog::warn("[FFmpegEncoder] ffmpeg process exited during encode wait (code={})", exitCode);
+            lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             shutdownExternalFfmpegNvenc();
             return false;
         }
 
+        lastEncodeFailureKind_.store(EncodeFailureKind::Timeout, std::memory_order_relaxed);
         return false;
     }
 
@@ -2305,9 +2727,9 @@ class VideoEncoder::Impl {
                                 encoderLower.find("nvenc") != std::string::npos ||
                                 encoderLower.find("geforce") != std::string::npos;
         if (nvidiaLike) {
-            // On recent NVIDIA MFT builds, RGB32 input can become unstable under sustained real-time screen capture
-            // (frequent ProcessOutput/ProcessInput failures). Prefer NV12 for reliability.
-            return false;
+            // Avoid a CPU BGRA->NV12 conversion on the 1080p60 hot path when
+            // NVIDIA's MFT accepts ARGB32 directly.
+            return true;
         }
 
         return false;
@@ -3117,7 +3539,7 @@ class VideoEncoder::Impl {
             conversionScratchBgra_.resize(scratchSize);
         }
         blitBgraAspectFit(bgra, srcW, srcH, srcStride,
-                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
+                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4, config_);
 
         uint8_t* yPlane = nv12;
         uint8_t* uvPlane = nv12 + dstW * dstH;
@@ -3174,7 +3596,7 @@ class VideoEncoder::Impl {
             conversionScratchBgra_.resize(scratchSize);
         }
         blitBgraAspectFit(bgra, srcW, srcH, srcStride,
-                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4);
+                          conversionScratchBgra_.data(), dstW, dstH, dstW * 4, config_);
 
         if ((dstW & 1) != 0 || (dstH & 1) != 0) {
             std::fill(uPlane, uPlane + (dstW * dstH / 4), static_cast<uint8_t>(128));
@@ -3224,7 +3646,7 @@ class VideoEncoder::Impl {
 
     void convertBGRAtoRGB32(const uint8_t *bgra, int srcW, int srcH, int srcStride,
                             uint8_t *dst, int dstW, int dstH) {
-        blitBgraAspectFit(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4);
+        blitBgraAspectFit(bgra, srcW, srcH, srcStride, dst, dstW, dstH, dstW * 4, config_);
     }
 
     EncoderConfig config_{};
@@ -3260,20 +3682,25 @@ class VideoEncoder::Impl {
     std::vector<std::string> externalFfmpegArgs_;
     std::vector<uint8_t> externalInputBuffer_;
     std::vector<uint8_t> externalOutputBuffer_;
+    std::vector<uint8_t> mfInputBuffer_;
     std::vector<uint8_t> conversionScratchBgra_;
     std::mutex externalIoMutex_;
     std::condition_variable externalIoCv_;
     std::deque<std::vector<uint8_t>> externalInputQueue_;
+    std::deque<std::vector<uint8_t>> externalReusableInputBuffers_;
     std::deque<int64_t> externalPendingOutputPts_;
     std::thread externalWriterThread_;
     std::thread externalReaderThread_;
+    std::thread externalStderrThread_;
     bool externalIoStopRequested_ = false;
     bool externalWriterFailed_ = false;
     bool externalReaderFailed_ = false;
     size_t externalPendingInputBytes_ = 0;
     int64_t externalFramesWritten_ = 0;
+    std::atomic<EncodeFailureKind> lastEncodeFailureKind_{EncodeFailureKind::None};
     HANDLE externalStdInWrite_ = nullptr;
     HANDLE externalStdOutRead_ = nullptr;
+    HANDLE externalStdErrRead_ = nullptr;
     HANDLE externalProcess_ = nullptr;
     HANDLE externalThread_ = nullptr;
     std::string externalEncoderName_;
@@ -3295,6 +3722,7 @@ class VideoEncoder::Impl {
     std::string activeCodecName() const { return "H.264"; }
     std::string activeEncoderName() const { return "unavailable"; }
     bool isHardwareEncoder() const { return false; }
+    EncodeFailureKind lastEncodeFailureKind() const { return EncodeFailureKind::Unsupported; }
 };
 #endif
 
@@ -3348,6 +3776,18 @@ std::string VideoEncoder::activeEncoderName() const {
 
 bool VideoEncoder::isHardwareEncoderActive() const {
     return impl_->isHardwareEncoder();
+}
+
+EncodeFailureKind VideoEncoder::lastEncodeFailureKind() const {
+    return impl_->lastEncodeFailureKind();
+}
+
+std::string VideoEncoder::resolveFfmpegPath(const std::string &configuredPath) {
+    return resolveFfmpegPathImpl(configuredPath).string();
+}
+
+FfmpegProbeInfo VideoEncoder::probeFfmpeg(const std::string &configuredPath) {
+    return probeFfmpegImpl(configuredPath);
 }
 
 }  // namespace versus::video
