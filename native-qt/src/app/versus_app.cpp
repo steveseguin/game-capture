@@ -1709,6 +1709,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"configured_codec", videoCodecName(videoState.config.codec)},
         {"active_codec", videoState.codecName},
         {"encoder", videoState.encoderName},
+        {"encoder_input_format", videoState.encoderInputFormat},
         {"hardware_encoder", videoState.hardwareEncoder},
         {"alpha_enabled", videoState.config.enableAlpha},
         {"alpha_background_mode", alphaBackgroundModeName(videoState.config.alphaBackgroundMode)},
@@ -2808,20 +2809,33 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
 
         const int aspectWidth = std::max(2, ((captureWidth > 0 ? captureWidth : videoConfig_.width) & ~1));
         const int aspectHeight = std::max(2, ((captureHeight > 0 ? captureHeight : videoConfig_.height) & ~1));
+        const bool vdoRequestAtOrAboveCurrent =
+            vdoScaleResolutionRequest &&
+            (requestedWidth <= 0 || requestedWidth >= videoConfig_.width) &&
+            (requestedHeight <= 0 || requestedHeight >= videoConfig_.height);
         const CompletedResolution resolvedResolution =
-            vdoScaleResolutionRequest
-                ? completeVdoScaleResolutionRequest(width,
-                                                    height,
-                                                    vdoScaleResolutionCover,
-                                                    aspectWidth,
-                                                    aspectHeight)
-                : completeResolutionRequest(width, height, aspectWidth, aspectHeight);
+            vdoRequestAtOrAboveCurrent
+                ? CompletedResolution{videoConfig_.width, videoConfig_.height}
+                : (vdoScaleResolutionRequest
+                       ? completeVdoScaleResolutionRequest(width,
+                                                           height,
+                                                           vdoScaleResolutionCover,
+                                                           aspectWidth,
+                                                           aspectHeight)
+                       : completeResolutionRequest(width, height, aspectWidth, aspectHeight));
         if (resolvedResolution.width <= 0 || resolvedResolution.height <= 0) {
             return false;
         }
         nextConfig.width = resolvedResolution.width;
         nextConfig.height = resolvedResolution.height;
-        if (vdoScaleResolutionRequest) {
+        if (vdoRequestAtOrAboveCurrent) {
+            spdlog::info("[App] Ignoring VDO runtime resolution request {}x{} cover={} because current output is already {}x{}",
+                         requestedWidth,
+                         requestedHeight,
+                         vdoScaleResolutionCover,
+                         nextConfig.width,
+                         nextConfig.height);
+        } else if (vdoScaleResolutionRequest) {
             spdlog::info("[App] Resolved VDO runtime resolution request {}x{} cover={} using source {}x{} -> {}x{}",
                          requestedWidth,
                          requestedHeight,
@@ -2901,7 +2915,7 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         videoEncoder_.setBitrate(nextConfig.bitrate);
     }
 
-    if (usesVp9AlphaTrack(nextConfig) && (requiresReinit || bitrateChanged)) {
+    if (usesVp9AlphaTrack(nextConfig) && requiresReinit) {
         clearAlphaEncodeQueues();
         {
             std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
@@ -2913,6 +2927,8 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
             }
         }
         clearAlphaEncodeQueues();
+    } else if (usesVp9AlphaTrack(nextConfig) && bitrateChanged) {
+        spdlog::info("[App] Keeping VP9 alpha encoder running during bitrate-only update");
     } else if (!usesVp9AlphaTrack(nextConfig)) {
         clearAlphaEncodeQueues();
         {
@@ -3250,6 +3266,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     } else {
         info["video_encoder"] = videoState.encoderName;
         info["video_codec"] = videoState.codecName;
+        info["video_encoder_input_format"] = videoState.encoderInputFormat;
         info["hardware_encoder"] = videoState.hardwareEncoder;
     }
     info["room_init"] = !room_.empty();
@@ -3368,6 +3385,7 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
     stats["resolution"] = resolutionLabel(width, height);
     stats["video_encoder"] = videoState.encoderName;
     stats["video_codec"] = videoState.codecName;
+    stats["video_encoder_input_format"] = videoState.encoderInputFormat;
     stats["fps"] = streamMetrics.frameRate;
     stats["video_frames_dropped"] = streamMetrics.videoFramesDropped;
     stats["dropped_frame_rate"] = streamMetrics.droppedFrameRate;
@@ -4442,10 +4460,14 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     }
 
     const auto totalStart = std::chrono::steady_clock::now();
+    int64_t lockWaitElapsedMs = 0;
     int64_t hqEncodeElapsedMs = 0;
     int64_t lqEncodeElapsedMs = 0;
     int64_t sendElapsedMs = 0;
     std::unique_lock<std::mutex> lock(videoSendMutex_);
+    lockWaitElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - totalStart)
+                            .count();
     if (!live_) {
         return false;
     }
@@ -4986,8 +5008,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         sendElapsedMs > frameIntervalMs * 2) {
         static int slowVideoPathLogCount = 0;
         if (slowVideoPathLogCount < 10 || (slowVideoPathLogCount % 600) == 0) {
-            spdlog::info("[VideoPath] slow frame total={}ms hqEncode={}ms lqEncode={}ms send={}ms hqBytes={} lqBytes={} hqPeers={} lqPeers={} keyframe={} sent={}",
+            spdlog::info("[VideoPath] slow frame total={}ms lockWait={}ms hqEncode={}ms lqEncode={}ms send={}ms hqBytes={} lqBytes={} hqPeers={} lqPeers={} keyframe={} sent={}",
                          totalElapsedMs,
+                         lockWaitElapsedMs,
                          hqEncodeElapsedMs,
                          lqEncodeElapsedMs,
                          sendElapsedMs,
@@ -5593,6 +5616,7 @@ VersusApp::VideoStateSnapshot VersusApp::buildVideoStateSnapshotLocked() const {
     snapshot.hqHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
     snapshot.encoderName = videoEncoder_.activeEncoderName();
     snapshot.codecName = videoEncoder_.activeCodecName();
+    snapshot.encoderInputFormat = videoEncoder_.activeInputFormatName();
     snapshot.hardwareEncoder = videoEncoder_.isHardwareEncoderActive();
     snapshot.lqEncoderInitialized = lqEncoderInitialized_.load(std::memory_order_relaxed);
     if (snapshot.lqEncoderInitialized) {

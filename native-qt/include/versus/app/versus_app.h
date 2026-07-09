@@ -204,6 +204,7 @@ class VersusApp {
         int hqHeight = 0;
         std::string encoderName;
         std::string codecName;
+        std::string encoderInputFormat;
         bool hardwareEncoder = false;
         bool lqEncoderInitialized = false;
         std::string lqEncoderName;

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <iostream>
@@ -35,6 +36,9 @@ struct BenchResult {
     int maxConsecutiveMisses = 0;
     std::uint64_t encodedBytes = 0;
     double elapsedSeconds = 0.0;
+    double callMsTotal = 0.0;
+    double callMsMax = 0.0;
+    std::vector<double> callMsSamples;
 };
 
 std::string lowerCopy(std::string value) {
@@ -186,6 +190,7 @@ BenchResult runBench(const BenchMode &mode,
     const auto frameInterval = std::chrono::duration<double>(1.0 / static_cast<double>(std::max(1, fps)));
     auto nextFrameTime = Clock::now();
     const auto start = Clock::now();
+    result.callMsSamples.reserve(static_cast<size_t>(frameCount));
 
     int consecutiveMisses = 0;
     for (int i = 0; i < frameCount; ++i) {
@@ -202,6 +207,9 @@ BenchResult runBench(const BenchMode &mode,
         const auto callStart = Clock::now();
         const bool ok = encoder.encode(*frame, packet);
         const double callMs = asSeconds(Clock::now() - callStart) * 1000.0;
+        result.callMsTotal += callMs;
+        result.callMsMax = std::max(result.callMsMax, callMs);
+        result.callMsSamples.push_back(callMs);
         result.framesAttempted++;
         if (ok) {
             result.framesEncoded++;
@@ -238,6 +246,17 @@ void printResult(const BenchResult &r) {
     const double avgKbitsPerFrame = (r.framesEncoded > 0)
         ? (8.0 * static_cast<double>(r.encodedBytes) / 1000.0) / static_cast<double>(r.framesEncoded)
         : 0.0;
+    const double avgCallMs = (r.framesAttempted > 0)
+        ? r.callMsTotal / static_cast<double>(r.framesAttempted)
+        : 0.0;
+    double p95CallMs = 0.0;
+    if (!r.callMsSamples.empty()) {
+        std::vector<double> samples = r.callMsSamples;
+        std::sort(samples.begin(), samples.end());
+        const size_t idx = std::min(samples.size() - 1,
+                                    static_cast<size_t>(std::ceil(static_cast<double>(samples.size()) * 0.95)) - 1);
+        p95CallMs = samples[idx];
+    }
 
     std::cout << "{"
               << "\"mode\":\"" << r.modeName << "\","
@@ -252,7 +271,10 @@ void printResult(const BenchResult &r) {
               << "\"successPct\":" << std::fixed << std::setprecision(2) << successPct << ","
               << "\"encodedFps\":" << std::fixed << std::setprecision(2) << encodedFps << ","
               << "\"maxConsecutiveMisses\":" << r.maxConsecutiveMisses << ","
-              << "\"avgKbitsPerFrame\":" << std::fixed << std::setprecision(2) << avgKbitsPerFrame
+              << "\"avgKbitsPerFrame\":" << std::fixed << std::setprecision(2) << avgKbitsPerFrame << ","
+              << "\"avgCallMs\":" << std::fixed << std::setprecision(2) << avgCallMs << ","
+              << "\"p95CallMs\":" << std::fixed << std::setprecision(2) << p95CallMs << ","
+              << "\"maxCallMs\":" << std::fixed << std::setprecision(2) << r.callMsMax
               << "}" << std::endl;
 }
 

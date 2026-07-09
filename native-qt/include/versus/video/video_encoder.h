@@ -98,6 +98,7 @@ class VideoEncoder {
     VideoCodec activeCodec() const;
     std::string activeCodecName() const;
     std::string activeEncoderName() const;
+    std::string activeInputFormatName() const;
     bool isHardwareEncoderActive() const;
     EncodeFailureKind lastEncodeFailureKind() const;
 

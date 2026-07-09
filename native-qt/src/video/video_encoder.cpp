@@ -612,6 +612,9 @@ class VideoEncoder::Impl {
     }
     VideoCodec activeCodec() const { return activeCodec_.load(std::memory_order_relaxed); }
     std::string activeCodecName() const { return videoCodecName(activeCodec()); }
+    std::string activeInputFormatName() const {
+        return useHardware_.load(std::memory_order_relaxed) ? "NV12" : "YUV420P";
+    }
     bool isHardwareEncoder() const { return useHardware_.load(std::memory_order_relaxed); }
     EncodeFailureKind lastEncodeFailureKind() const {
         return lastEncodeFailureKind_.load(std::memory_order_relaxed);
@@ -795,6 +798,15 @@ class VideoEncoder::Impl {
     }
     VideoCodec activeCodec() const { return activeCodec_.load(std::memory_order_relaxed); }
     std::string activeCodecName() const { return videoCodecName(activeCodec()); }
+    std::string activeInputFormatName() const {
+        if (usingExternalFfmpeg_) {
+            if (externalInputIsGray_) {
+                return "gray";
+            }
+            return externalInputIsNv12_ ? "NV12" : "BGRA";
+        }
+        return subtypeName(inputSubtype_);
+    }
     bool isHardwareEncoder() const { return usingHardware_.load(std::memory_order_relaxed); }
     EncodeFailureKind lastEncodeFailureKind() const {
         return lastEncodeFailureKind_.load(std::memory_order_relaxed);
@@ -2659,6 +2671,12 @@ class VideoEncoder::Impl {
         Unsupported
     };
 
+    enum class MfInputPreference {
+        Auto,
+        NV12,
+        RGB32
+    };
+
     enum class ExternalOutputFormat {
         AnnexB,
         Ivf
@@ -2701,6 +2719,34 @@ class VideoEncoder::Impl {
         if (subtype == MFVideoFormat_ARGB32 || subtype == MFVideoFormat_RGB32) return 3;
         if (subtype == MFVideoFormat_YUY2 || subtype == MFVideoFormat_UYVY) return 4;
         return 100;
+    }
+
+    static MfInputPreference mfInputPreferenceOverride() {
+        const char *raw = std::getenv("GAME_CAPTURE_MF_INPUT");
+        if (!raw || !*raw) {
+            return MfInputPreference::Auto;
+        }
+
+        const std::string value = toLowerCopy(raw);
+        if (value == "nv12") {
+            return MfInputPreference::NV12;
+        }
+        if (value == "rgb" || value == "rgb32" || value == "argb" || value == "argb32") {
+            return MfInputPreference::RGB32;
+        }
+        return MfInputPreference::Auto;
+    }
+
+    static const char *mfInputPreferenceName(MfInputPreference preference) {
+        switch (preference) {
+            case MfInputPreference::NV12:
+                return "NV12";
+            case MfInputPreference::RGB32:
+                return "RGB32";
+            case MfInputPreference::Auto:
+            default:
+                return "auto";
+        }
     }
 
     static InputPacking inputPackingFromSubtype(const GUID &subtype) {
@@ -2836,7 +2882,13 @@ class VideoEncoder::Impl {
     bool chooseInputType(ComPtr<IMFMediaType> &outType, GUID &outSubtype) {
         HRESULT hr = S_OK;
         int bestPriority = 999;
-        const bool preferRgb32 = shouldPreferRgbInput();
+        const MfInputPreference inputPreference = mfInputPreferenceOverride();
+        const bool preferRgb32 = inputPreference == MfInputPreference::RGB32 ||
+                                 (inputPreference == MfInputPreference::Auto && shouldPreferRgbInput());
+        if (inputPreference != MfInputPreference::Auto) {
+            spdlog::info("[VideoEncoder] MF input preference override: {}",
+                         mfInputPreferenceName(inputPreference));
+        }
 
         for (DWORD i = 0; i < 64; ++i) {
             ComPtr<IMFMediaType> available;
@@ -3730,6 +3782,7 @@ class VideoEncoder::Impl {
     VideoCodec activeCodec() const { return VideoCodec::H264; }
     std::string activeCodecName() const { return "H.264"; }
     std::string activeEncoderName() const { return "unavailable"; }
+    std::string activeInputFormatName() const { return "unavailable"; }
     bool isHardwareEncoder() const { return false; }
     EncodeFailureKind lastEncodeFailureKind() const { return EncodeFailureKind::Unsupported; }
 };
@@ -3781,6 +3834,10 @@ std::string VideoEncoder::activeCodecName() const {
 
 std::string VideoEncoder::activeEncoderName() const {
     return impl_->activeEncoderName();
+}
+
+std::string VideoEncoder::activeInputFormatName() const {
+    return impl_->activeInputFormatName();
 }
 
 bool VideoEncoder::isHardwareEncoderActive() const {
