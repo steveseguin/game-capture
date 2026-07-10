@@ -244,6 +244,7 @@ class VersusApp {
     void stopAlphaEncodeThread();
     void clearAlphaEncodeQueues();
     void queueAlphaEncodeFrame(int width, int height, int64_t timestamp, std::vector<uint8_t> gray);
+    void queueAlphaEncoderReconfigure(versus::video::EncoderConfig config);
     bool takeLatestAlphaPacket(versus::video::EncodedPacket &packet);
     bool hasAnyActiveVideoTrack() const;
     bool hasAnyActiveAudioTrack() const;
@@ -389,6 +390,8 @@ class VersusApp {
     std::condition_variable alphaEncodeCV_;
     AlphaEncodeJob pendingAlphaEncodeJob_;
     bool pendingAlphaEncodeJobReady_ = false;
+    versus::video::EncoderConfig pendingAlphaEncoderConfig_{};
+    bool pendingAlphaEncoderReconfigure_ = false;
     std::mutex alphaEncoderMutex_;
     std::mutex alphaPacketMutex_;
     versus::video::EncodedPacket latestAlphaPacket_;

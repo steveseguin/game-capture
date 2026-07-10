@@ -399,6 +399,10 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
             frame.data = impl_->pixelBuffer;
 
             if (frameCallback_) {
+                {
+                    std::lock_guard<std::mutex> lock(impl_->frameMutex);
+                    impl_->latestFrame = frame;
+                }
                 frameCallback_(std::move(frame));
             } else {
                 std::lock_guard<std::mutex> lock(impl_->frameMutex);

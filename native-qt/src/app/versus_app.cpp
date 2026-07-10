@@ -853,6 +853,8 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         config.frameRate = 60;
         config.bitrate = 12000;
     }
+    const video::EncoderConfig requestedConfig = config;
+    const bool alphaRequested = usesVp9AlphaTrack(requestedConfig);
     video::EncoderConfig primaryConfig = primaryVideoEncoderConfig(config);
     std::string activeEncoderName;
     bool activeHardwareEncoder = false;
@@ -860,7 +862,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         if (!videoEncoder_.initialize(primaryConfig)) {
-            if (usesVp9AlphaTrack(config)) {
+            if (alphaRequested) {
                 spdlog::error("[App] Primary encoder failed to initialize for explicit VP9 alpha workflow");
                 emitRuntimeEvent(
                     "Primary encoder failed to initialize for VP9 alpha workflow. Use bundled FFmpeg/libvpx, lower FPS/resolution, or use chroma background mode.",
@@ -911,9 +913,13 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         {
             std::lock_guard<std::mutex> alphaLock(alphaEncoderMutex_);
             videoEncoderAlpha_.shutdown();
-            if (usesVp9AlphaTrack(config)) {
+            if (alphaRequested) {
                 alphaEncoderOk = videoEncoderAlpha_.initialize(alphaVideoEncoderConfig(config));
             }
+        }
+        if (alphaRequested && !alphaEncoderOk) {
+            config.enableAlpha = false;
+            videoConfig_.enableAlpha = false;
         }
         clearAlphaEncodeQueues();
         publishVideoStateSnapshotLocked();
@@ -926,16 +932,17 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     spdlog::info("[App] Video encoder active: {} (hardware={})",
                  activeEncoderName, activeHardwareEncoder);
 
-    if (usesVp9AlphaTrack(config)) {
+    if (alphaRequested) {
         if (!alphaEncoderOk) {
             spdlog::warn("[App] VP9 alpha encoder init failed; streaming without alpha channel");
             emitRuntimeEvent(
                 "VP9 alpha track encoder failed to initialize. Transparency is not being sent; use bundled FFmpeg/libvpx, lower FPS/resolution, or use chroma background mode.",
                 false);
         } else {
-            const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(config, config.width, config.height);
+            const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(
+                requestedConfig, requestedConfig.width, requestedConfig.height);
             spdlog::info("[App] VP9 alpha encoder active: {} kbps {}x{}",
-                         std::max(500, config.bitrate / 4),
+                         std::max(500, requestedConfig.bitrate / 4),
                          alphaWidth,
                          alphaHeight);
         }
@@ -2928,7 +2935,9 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         }
         clearAlphaEncodeQueues();
     } else if (usesVp9AlphaTrack(nextConfig) && bitrateChanged) {
-        spdlog::info("[App] Keeping VP9 alpha encoder running during bitrate-only update");
+        const video::EncoderConfig alphaConfig = alphaVideoEncoderConfig(nextConfig);
+        spdlog::info("[App] Queuing VP9 alpha bitrate update: {} kbps", alphaConfig.bitrate);
+        queueAlphaEncoderReconfigure(alphaConfig);
     } else if (!usesVp9AlphaTrack(nextConfig)) {
         clearAlphaEncodeQueues();
         {
@@ -3218,23 +3227,35 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
     const bool videoEnabled = peer->videoEnabled.load(std::memory_order_relaxed);
     const bool audioEnabled = peer->audioEnabled.load(std::memory_order_relaxed);
-    StreamTier assignedTier = peer->assignedTier.load(std::memory_order_relaxed);
-    if (assignedTier == StreamTier::None) {
-        assignedTier = assignStreamTier(
-            peer->roomMode,
-            roomModeLqEnabled_.load(std::memory_order_relaxed),
-            roleValid,
-            peerRole);
-    }
+    StreamTier assignedTier = assignStreamTier(
+        peer->roomMode,
+        roomModeLqEnabled_.load(std::memory_order_relaxed),
+        roleValid,
+        peerRole);
 
     const VideoStateSnapshot videoState = videoStateSnapshot();
-
     const int requestedVideoBitrate = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
-    const bool peerWantsLq =
-        assignedTier == StreamTier::LQ ||
-        (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps);
+    const bool alphaReceiverUsesHq =
+        assignedTier != StreamTier::None &&
+        videoEnabled &&
+        usesVp9AlphaTrack(videoState.config) &&
+        peer->alphaAllowed.load(std::memory_order_relaxed);
+    if (alphaReceiverUsesHq) {
+        assignedTier = StreamTier::HQ;
+    } else if (assignedTier != StreamTier::None &&
+               requestedVideoBitrate > 0 &&
+               requestedVideoBitrate <= kLqBitrateKbps) {
+        assignedTier = StreamTier::LQ;
+    }
+    peer->assignedTier.store(assignedTier, std::memory_order_relaxed);
+
+    const bool peerWantsLq = assignedTier == StreamTier::LQ;
     const int effectiveBitrate =
-        requestedVideoBitrate > 0 ? requestedVideoBitrate : (peerWantsLq ? kLqBitrateKbps : videoState.config.bitrate);
+        alphaReceiverUsesHq
+            ? videoState.config.bitrate
+            : (requestedVideoBitrate > 0
+                   ? requestedVideoBitrate
+                   : (peerWantsLq ? kLqBitrateKbps : videoState.config.bitrate));
     const int effectiveWidth = peerWantsLq ? kLqWidth : videoState.hqWidth;
     const int effectiveHeight = peerWantsLq ? kLqHeight : videoState.hqHeight;
     const int effectiveFps = peerWantsLq ? kLqFps : videoState.config.frameRate;
@@ -3322,9 +3343,10 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         const PeerCounts counts = collectPeerCounts();
         const int roomOnlyTier =
             roomModeLqEnabled_.load(std::memory_order_relaxed) &&
-                    counts.roomGuests > 0 &&
-                    counts.roomScenes == 0 &&
-                    counts.roomNonGuestViewers == 0
+                counts.roomGuests > 0 &&
+                counts.roomScenes == 0 &&
+                counts.roomNonGuestViewers == 0 &&
+                counts.hq == 0
                 ? 2
                 : 0;
         info["room_only_tier"] = roomOnlyTier;
@@ -3372,7 +3394,8 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
         roomModeLqEnabled_.load(std::memory_order_relaxed) &&
                 counts.roomGuests > 0 &&
                 counts.roomScenes == 0 &&
-                counts.roomNonGuestViewers == 0
+                counts.roomNonGuestViewers == 0 &&
+                counts.hq == 0
             ? 2
             : 0;
 
@@ -4504,17 +4527,19 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             const bool alphaReceiverNeedsHq =
                 usesVp9AlphaTrack(videoConfig_) &&
                 peer->alphaAllowed.load(std::memory_order_relaxed);
-            const StreamTier tier = assignStreamTier(
+            const StreamTier policyTier = assignStreamTier(
                 route.roomMode,
                 route.roomModeLqEnabled,
                 route.roleValid,
                 route.role);
-            peer->assignedTier.store(tier, std::memory_order_relaxed);
+            StreamTier tier = policyTier;
             if (alphaReceiverNeedsHq) {
-                hqPeers.push_back(peer);
+                tier = StreamTier::HQ;
             } else if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
-                lqPeers.push_back(peer);
-            } else if (tier == StreamTier::HQ) {
+                tier = StreamTier::LQ;
+            }
+            peer->assignedTier.store(tier, std::memory_order_relaxed);
+            if (tier == StreamTier::HQ) {
                 hqPeers.push_back(peer);
             } else if (tier == StreamTier::LQ) {
                 lqPeers.push_back(peer);
@@ -4550,17 +4575,37 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 return false;
             }
             if (usesVp9AlphaTrack(videoConfig_)) {
+                const video::EncoderConfig recoveryConfig = primaryVideoEncoderConfig(videoConfig_);
+                spdlog::warn("[App] {}. Restarting the {} color encoder while preserving alpha",
+                             reason,
+                             videoCodecName(videoConfig_.codec));
+                videoEncoder_.shutdown();
+                if (videoEncoder_.initialize(recoveryConfig)) {
+                    activeHqWidth_ = std::max(2, recoveryConfig.width & ~1);
+                    activeHqHeight_ = std::max(2, recoveryConfig.height & ~1);
+                    publishVideoStateSnapshotLocked();
+                    softwareExternalEncodeFailCount_ = 0;
+                    softwareExternalFailWindowStartMs_ = 0;
+                    softwareOverloadSamples_.store(0, std::memory_order_relaxed);
+                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                    emitRuntimeEvent(
+                        "VP9 color encoder was restarted after a hard failure; alpha remained enabled.",
+                        false);
+                    return false;
+                }
+
                 const int64_t warnNowMs = steadyNowMs();
                 const int64_t lastWarnMs = lastAlphaWarningMs_.load(std::memory_order_relaxed);
                 if (lastWarnMs == 0 || (warnNowMs - lastWarnMs) > 15000) {
                     lastAlphaWarningMs_.store(warnNowMs, std::memory_order_relaxed);
                     emitRuntimeEvent(
-                        "VP9 alpha encoder failed. Transparency was kept enabled; lower FPS/resolution or use chroma background mode.",
-                        false);
+                        "VP9 color encoder failed and could not be restarted while alpha was enabled.",
+                        true);
                 }
                 softwareExternalEncodeFailCount_ = 0;
                 softwareExternalFailWindowStartMs_ = 0;
-                spdlog::warn("[App] {}. Keeping VP9 alpha enabled instead of falling back to H.264", reason);
+                spdlog::error("[App] {}. Failed to restart the VP9 color encoder", reason);
                 return false;
             }
 
@@ -5311,21 +5356,68 @@ void VersusApp::startAlphaEncodeThread() {
         spdlog::info("[AlphaEncodeThread] Started");
         while (alphaEncodeThreadRunning_.load(std::memory_order_acquire)) {
             AlphaEncodeJob job;
+            video::EncoderConfig reconfigureConfig;
+            bool reconfigureEncoder = false;
             {
                 std::unique_lock<std::mutex> lock(alphaEncodeMutex_);
                 alphaEncodeCV_.wait(lock, [this]() {
                     return !alphaEncodeThreadRunning_.load(std::memory_order_acquire) ||
+                           pendingAlphaEncoderReconfigure_ ||
                            pendingAlphaEncodeJobReady_;
                 });
                 if (!alphaEncodeThreadRunning_.load(std::memory_order_acquire)) {
                     break;
                 }
-                if (!pendingAlphaEncodeJobReady_) {
+                if (pendingAlphaEncoderReconfigure_) {
+                    reconfigureConfig = pendingAlphaEncoderConfig_;
+                    pendingAlphaEncoderConfig_ = video::EncoderConfig{};
+                    pendingAlphaEncoderReconfigure_ = false;
+                    reconfigureEncoder = true;
+                } else if (pendingAlphaEncodeJobReady_) {
+                    job = std::move(pendingAlphaEncodeJob_);
+                    pendingAlphaEncodeJob_ = AlphaEncodeJob{};
+                    pendingAlphaEncodeJobReady_ = false;
+                } else {
                     continue;
                 }
-                job = std::move(pendingAlphaEncodeJob_);
-                pendingAlphaEncodeJob_ = AlphaEncodeJob{};
-                pendingAlphaEncodeJobReady_ = false;
+            }
+
+            if (reconfigureEncoder) {
+                bool initialized = false;
+                {
+                    std::lock_guard<std::mutex> encoderLock(alphaEncoderMutex_);
+                    videoEncoderAlpha_.shutdown();
+                    initialized = videoEncoderAlpha_.initialize(reconfigureConfig);
+                }
+                {
+                    std::lock_guard<std::mutex> packetLock(alphaPacketMutex_);
+                    latestAlphaPacket_ = video::EncodedPacket{};
+                    latestAlphaPacketReady_ = false;
+                }
+                if (initialized) {
+                    spdlog::info("[AlphaEncodeThread] Reconfigured VP9 alpha encoder: {}x{} {}kbps",
+                                 reconfigureConfig.width,
+                                 reconfigureConfig.height,
+                                 reconfigureConfig.bitrate);
+                } else {
+                    alphaEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                    {
+                        std::lock_guard<std::mutex> videoLock(videoSendMutex_);
+                        if (usesVp9AlphaTrack(videoConfig_)) {
+                            videoConfig_.enableAlpha = false;
+                            publishVideoStateSnapshotLocked();
+                        }
+                    }
+                    {
+                        std::lock_guard<std::mutex> queueLock(alphaEncodeMutex_);
+                        pendingAlphaEncodeJob_ = AlphaEncodeJob{};
+                        pendingAlphaEncodeJobReady_ = false;
+                    }
+                    emitRuntimeEvent(
+                        "VP9 alpha track encoder failed to apply a runtime bitrate update. Alpha output was disabled.",
+                        false);
+                }
+                continue;
             }
 
             if (job.gray.empty() || job.width <= 0 || job.height <= 0) {
@@ -5396,6 +5488,8 @@ void VersusApp::clearAlphaEncodeQueues() {
         std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
         pendingAlphaEncodeJob_ = AlphaEncodeJob{};
         pendingAlphaEncodeJobReady_ = false;
+        pendingAlphaEncoderConfig_ = video::EncoderConfig{};
+        pendingAlphaEncoderReconfigure_ = false;
     }
     {
         std::lock_guard<std::mutex> lock(alphaPacketMutex_);
@@ -5426,6 +5520,19 @@ void VersusApp::queueAlphaEncodeFrame(int width,
         pendingAlphaEncodeJob_.timestamp = timestamp;
         pendingAlphaEncodeJobReady_ = true;
         alphaFramesQueued_.fetch_add(1, std::memory_order_relaxed);
+    }
+    alphaEncodeCV_.notify_one();
+}
+
+void VersusApp::queueAlphaEncoderReconfigure(video::EncoderConfig config) {
+    if (!alphaEncodeThreadRunning_.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
+        pendingAlphaEncoderConfig_ = std::move(config);
+        pendingAlphaEncoderReconfigure_ = true;
     }
     alphaEncodeCV_.notify_one();
 }
@@ -5560,6 +5667,7 @@ bool VersusApp::hasAnyActiveAudioTrack() const {
 
 VersusApp::PeerCounts VersusApp::collectPeerCounts() const {
     PeerCounts counts;
+    const bool alphaWorkflowEnabled = usesVp9AlphaTrack(videoStateSnapshot().config);
     std::lock_guard<std::mutex> lock(peerSessionsMutex_);
     counts.total = static_cast<int>(peerSessions_.size());
     for (const auto &entry : peerSessions_) {
@@ -5589,11 +5697,21 @@ VersusApp::PeerCounts VersusApp::collectPeerCounts() const {
             entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed) != 0 &&
             canSendVideo(route)) {
             counts.activeVideo++;
-            const StreamTier tier = assignStreamTier(
+            const StreamTier policyTier = assignStreamTier(
                 route.roomMode,
                 route.roomModeLqEnabled,
                 route.roleValid,
                 route.role);
+            StreamTier tier = policyTier;
+            if (alphaWorkflowEnabled && entry.second->alphaAllowed.load(std::memory_order_relaxed)) {
+                tier = StreamTier::HQ;
+            } else {
+                const int requestedVideoBitrate =
+                    entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
+                if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
+                    tier = StreamTier::LQ;
+                }
+            }
             if (tier == StreamTier::HQ) {
                 counts.hq++;
             } else if (tier == StreamTier::LQ) {

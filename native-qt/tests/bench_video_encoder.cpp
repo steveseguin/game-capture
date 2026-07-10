@@ -33,6 +33,11 @@ struct BenchResult {
     bool hardwareActive = false;
     int framesAttempted = 0;
     int framesEncoded = 0;
+    int bitrateUpdates = 0;
+    int timestampViolations = 0;
+    std::int64_t liveTimestampFloor = 300000000LL;
+    std::int64_t firstPacketPts = -1;
+    std::int64_t lastPacketPts = -1;
     int maxConsecutiveMisses = 0;
     std::uint64_t encodedBytes = 0;
     double elapsedSeconds = 0.0;
@@ -144,7 +149,8 @@ BenchResult runBench(const BenchMode &mode,
                      bool reuseFrame,
                      int precomputeFrames,
                      versus::video::VideoCodec codec,
-                     bool alphaMask) {
+                     bool alphaMask,
+                     int bitrateUpdateFrame) {
     BenchResult result;
     result.modeName = mode.name;
     result.frameSource = reuseFrame
@@ -203,6 +209,12 @@ BenchResult runBench(const BenchMode &mode,
             generatedFrame = alphaMask ? makeGrayFrame(width, height, i, fps) : makeFrame(width, height, i, fps);
             frame = &generatedFrame;
         }
+        frame->timestamp = result.liveTimestampFloor
+            + static_cast<std::int64_t>(i) * (10000000LL / std::max(1, fps));
+        if (bitrateUpdateFrame > 0 && (i + 1) == bitrateUpdateFrame) {
+            encoder.setBitrate(std::max(250, bitrateKbps * 3 / 4));
+            result.bitrateUpdates++;
+        }
         versus::video::EncodedPacket packet;
         const auto callStart = Clock::now();
         const bool ok = encoder.encode(*frame, packet);
@@ -214,6 +226,14 @@ BenchResult runBench(const BenchMode &mode,
         if (ok) {
             result.framesEncoded++;
             result.encodedBytes += packet.data.size();
+            if (result.firstPacketPts < 0) {
+                result.firstPacketPts = packet.pts;
+            }
+            if (packet.pts < result.liveTimestampFloor
+                || (result.lastPacketPts >= 0 && packet.pts < result.lastPacketPts)) {
+                result.timestampViolations++;
+            }
+            result.lastPacketPts = packet.pts;
             consecutiveMisses = 0;
         } else {
             consecutiveMisses++;
@@ -239,7 +259,9 @@ BenchResult runBench(const BenchMode &mode,
 }
 
 void printResult(const BenchResult &r) {
-    const double encodedFps = static_cast<double>(r.framesEncoded) / r.elapsedSeconds;
+    const double encodedFps = (r.elapsedSeconds > 0.0)
+        ? static_cast<double>(r.framesEncoded) / r.elapsedSeconds
+        : 0.0;
     const double successPct = (r.framesAttempted > 0)
         ? (100.0 * static_cast<double>(r.framesEncoded) / static_cast<double>(r.framesAttempted))
         : 0.0;
@@ -268,6 +290,13 @@ void printResult(const BenchResult &r) {
               << "\"hardwareActive\":" << (r.hardwareActive ? "true" : "false") << ","
               << "\"framesAttempted\":" << r.framesAttempted << ","
               << "\"framesEncoded\":" << r.framesEncoded << ","
+              << "\"bitrateUpdates\":" << r.bitrateUpdates << ","
+              << "\"liveTimestampFloor\":" << r.liveTimestampFloor << ","
+              << "\"firstPacketPts\":" << r.firstPacketPts << ","
+              << "\"lastPacketPts\":" << r.lastPacketPts << ","
+              << "\"timestampViolations\":" << r.timestampViolations << ","
+              << "\"timestampValidationOk\":"
+              << ((r.framesEncoded > 0 && r.timestampViolations == 0) ? "true" : "false") << ","
               << "\"successPct\":" << std::fixed << std::setprecision(2) << successPct << ","
               << "\"encodedFps\":" << std::fixed << std::setprecision(2) << encodedFps << ","
               << "\"maxConsecutiveMisses\":" << r.maxConsecutiveMisses << ","
@@ -290,6 +319,8 @@ int main(int argc, char **argv) {
     int progressEvery = 0;
     bool reuseFrame = false;
     int precomputeFrames = 0;
+    int bitrateUpdateFrame = 0;
+    bool requireLivePts = false;
     bool alphaMask = false;
     versus::video::VideoCodec codec = versus::video::VideoCodec::H264;
     std::set<std::string> modeFilter;
@@ -336,6 +367,10 @@ int main(int argc, char **argv) {
             if (precomputeFrames > 0) {
                 reuseFrame = false;
             }
+        } else if (arg.rfind("--bitrate-update-frame=", 0) == 0) {
+            bitrateUpdateFrame = std::max(0, std::stoi(arg.substr(23)));
+        } else if (arg == "--require-live-pts") {
+            requireLivePts = true;
         }
     }
 
@@ -387,6 +422,7 @@ int main(int argc, char **argv) {
         return 2;
     }
 
+    bool livePtsFailure = false;
     for (const auto &mode : modes) {
         const BenchResult result = runBench(mode,
                                             width,
@@ -398,9 +434,14 @@ int main(int argc, char **argv) {
                                             reuseFrame,
                                             precomputeFrames,
                                             codec,
-                                            alphaMask);
+                                            alphaMask,
+                                            bitrateUpdateFrame);
         printResult(result);
+        if (requireLivePts
+            && (!result.initOk || result.framesEncoded == 0 || result.timestampViolations != 0)) {
+            livePtsFailure = true;
+        }
     }
 
-    return 0;
+    return livePtsFailure ? 3 : 0;
 }

@@ -435,7 +435,8 @@ function spawnPublisher(config, caseConfig) {
   const qtPluginPath = detectQtPluginPath();
   if (qtPluginPath) {
     env.QT_PLUGIN_PATH = qtPluginPath;
-    env.QT_QPA_PLATFORM = env.QT_QPA_PLATFORM || 'offscreen';
+    env.QT_QPA_PLATFORM = env.QT_QPA_PLATFORM ||
+      (fs.existsSync(path.join(qtPluginPath, 'platforms', 'qoffscreen.dll')) ? 'offscreen' : 'windows');
   }
 
   const proc = spawn(command, args, {

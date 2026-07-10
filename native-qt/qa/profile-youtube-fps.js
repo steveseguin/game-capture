@@ -283,7 +283,8 @@ async function main() {
     const qtPluginPath = detectQtPluginPath();
     if (qtPluginPath) {
       pubEnv.QT_PLUGIN_PATH = qtPluginPath;
-      pubEnv.QT_QPA_PLATFORM = pubEnv.QT_QPA_PLATFORM || 'offscreen';
+      pubEnv.QT_QPA_PLATFORM = pubEnv.QT_QPA_PLATFORM ||
+        (fs.existsSync(path.join(qtPluginPath, 'platforms', 'qoffscreen.dll')) ? 'offscreen' : 'windows');
     }
 
     publisher = spawn(args.publisherPath, pubArgs, {

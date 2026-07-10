@@ -808,6 +808,10 @@ class WindowCapture::Impl {
         }
 
         if (frameCallback_) {
+            {
+                std::lock_guard<std::mutex> lock(frameMutex_);
+                latestFrame_ = frame;
+            }
             frameCallback_(std::move(frame));
         } else {
             std::lock_guard<std::mutex> lock(frameMutex_);

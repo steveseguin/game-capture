@@ -2664,10 +2664,12 @@ void MainWindow::refreshFfmpegStatus() {
     const QString configuredPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString();
     const versus::video::FfmpegProbeInfo info =
         versus::video::VideoEncoder::probeFfmpeg(configuredPath.toStdString());
+    const bool alphaWorkflowSelected = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
     const bool needsFfmpeg =
         codecSelect_ &&
         (codecUsesExternalFfmpeg(codecFromUiValue(codecSelect_->currentData().toString())) ||
-         (encoderSelect_ && encoderSelect_->currentData().toString() == "ffmpeg_nvenc"));
+         (encoderSelect_ && encoderSelect_->currentData().toString() == "ffmpeg_nvenc") ||
+         alphaWorkflowSelected);
     if (!needsFfmpeg) {
         ffmpegStatusLabel_->setText("Only needed for VP9/AV1/H.265 or FFmpeg NVENC.");
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
@@ -2680,6 +2682,7 @@ void MainWindow::refreshFfmpegStatus() {
     }
     const bool selectedVp9 = codecSelect_ &&
         codecFromUiValue(codecSelect_->currentData().toString()) == versus::video::VideoCodec::VP9;
+    const bool needsLibvpxVp9 = selectedVp9 || alphaWorkflowSelected;
     const QString source = info.userOverride
         ? QStringLiteral("custom")
         : (info.bundled ? QStringLiteral("bundled") : QStringLiteral("development"));
@@ -2693,13 +2696,13 @@ void MainWindow::refreshFfmpegStatus() {
         ffmpegStatusLabel_->setText(status);
         return;
     }
-    if (selectedVp9 && !info.hasLibvpxVp9) {
+    if (needsLibvpxVp9 && !info.hasLibvpxVp9) {
         status += "\nMissing libvpx-vp9; VP9 alpha will not start.";
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
         ffmpegStatusLabel_->setText(status);
         return;
     }
-    if (selectedVp9) {
+    if (needsLibvpxVp9) {
         status += "\nlibvpx-vp9 available; VP9 alpha is CPU encoded.";
     }
     ffmpegStatusLabel_->setText(status);

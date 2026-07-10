@@ -29,6 +29,7 @@ function parseArgs(argv) {
     height: 0,
     fps: 0,
     bitrateKbps: 0,
+    controlBitrateKbps: 0,
     alphaWorkflow: false,
     alphaBackground: '',
     alphaBackgroundColor: '',
@@ -87,6 +88,8 @@ function parseArgs(argv) {
       args.fps = Number(arg.slice('--fps='.length)) || args.fps;
     } else if (arg.startsWith('--bitrate-kbps=')) {
       args.bitrateKbps = Number(arg.slice('--bitrate-kbps='.length)) || args.bitrateKbps;
+    } else if (arg.startsWith('--control-bitrate-kbps=')) {
+      args.controlBitrateKbps = Number(arg.slice('--control-bitrate-kbps='.length)) || args.controlBitrateKbps;
     } else if (arg === '--alpha-workflow') {
       args.alphaWorkflow = true;
     } else if (arg.startsWith('--alpha-background=')) {
@@ -149,12 +152,16 @@ function detectQtPluginPath() {
   ].filter(Boolean);
 
   for (const candidate of candidates) {
-    if (fs.existsSync(path.join(candidate, 'platforms', 'qwindows.dll')) ||
-        fs.existsSync(path.join(candidate, 'platforms', 'qoffscreen.dll'))) {
-      return candidate;
+    const hasOffscreen = fs.existsSync(path.join(candidate, 'platforms', 'qoffscreen.dll'));
+    const hasWindows = fs.existsSync(path.join(candidate, 'platforms', 'qwindows.dll'));
+    if (hasOffscreen || hasWindows) {
+      return {
+        path: candidate,
+        platform: hasOffscreen ? 'offscreen' : 'windows'
+      };
     }
   }
-  return '';
+  return { path: '', platform: '' };
 }
 
 function detectPublisherBinary(explicitPath) {
@@ -277,10 +284,10 @@ function spawnPublisher(config) {
       args.push(`--diagnostics-out=${config.diagnosticsOut}`);
     }
 
-    const qtPluginPath = detectQtPluginPath();
-    if (qtPluginPath) {
-      env.QT_PLUGIN_PATH = qtPluginPath;
-      env.QT_QPA_PLATFORM = env.QT_QPA_PLATFORM || 'offscreen';
+    const qtPlugin = detectQtPluginPath();
+    if (qtPlugin.path) {
+      env.QT_PLUGIN_PATH = qtPlugin.path;
+      env.QT_QPA_PLATFORM = env.QT_QPA_PLATFORM || qtPlugin.platform;
     }
   }
 
@@ -500,6 +507,31 @@ async function runViewerCheck(viewerUrl, timeoutMs, holdMs, headful, screenshotD
     lastState = await collectState();
 
     if (lastState.hasDecodedVideo) {
+      let controlState = null;
+      if (initOptions.controlBitrateKbps > 0) {
+        const peerState = await waitForSessionPeer(page, Math.max(8000, Math.floor(timeoutMs / 2)));
+        if (!peerState || !peerState.ready) {
+          const shotPath = path.join(screenshotDir, `e2e-fail-${runId}-${nowStamp()}.png`);
+          fs.mkdirSync(screenshotDir, { recursive: true });
+          await page.screenshot({ path: shotPath, fullPage: true });
+          await browser.close();
+          return { ok: false, state: { stage: 'control-session-peer', peerState }, screenshot: shotPath };
+        }
+        const sendResult = await sendDataMessage(page, {
+          targetBitrate: initOptions.controlBitrateKbps,
+          keyframe: true,
+          requestStats: true
+        });
+        if (!sendResult.ok) {
+          const shotPath = path.join(screenshotDir, `e2e-fail-${runId}-${nowStamp()}.png`);
+          fs.mkdirSync(screenshotDir, { recursive: true });
+          await page.screenshot({ path: shotPath, fullPage: true });
+          await browser.close();
+          return { ok: false, state: { stage: 'control-bitrate-send', sendResult }, screenshot: shotPath };
+        }
+        controlState = { targetBitrateKbps: initOptions.controlBitrateKbps, sendResult };
+        await wait(2500);
+      }
       if (holdMs > 0) {
         await wait(holdMs);
         const heldState = await collectState();
@@ -511,6 +543,9 @@ async function runViewerCheck(viewerUrl, timeoutMs, holdMs, headful, screenshotD
           return { ok: false, state: heldState, screenshot: shotPath };
         }
         lastState = heldState;
+      }
+      if (controlState) {
+        lastState.control = controlState;
       }
 
       const shotPath = path.join(screenshotDir, `e2e-pass-${runId}-${nowStamp()}.png`);
@@ -592,6 +627,9 @@ async function main() {
   if (config.holdMs > 0) {
     console.log(`[E2E] Hold per iteration: ${config.holdMs}ms`);
   }
+  if (config.controlBitrateKbps > 0) {
+    console.log(`[E2E] Runtime control bitrate: ${config.controlBitrateKbps}kbps`);
+  }
   if (config.viewerAttempts > 1) {
     console.log(`[E2E] Viewer attempts per iteration: ${config.viewerAttempts}`);
   }
@@ -636,6 +674,7 @@ async function main() {
           video: config.initVideo,
           audio: config.initAudio,
           label: config.label,
+          controlBitrateKbps: config.controlBitrateKbps,
           viewerWidth: config.viewerWidth,
           viewerHeight: config.viewerHeight
         },
@@ -649,6 +688,28 @@ async function main() {
         break;
       }
       await wait(1000);
+    }
+    if (results.length === config.iterations && results.every((result) => result.ok) && config.controlBitrateKbps > 0) {
+      await wait(500);
+      const publisherOutput = `${started.stdout.join('')}\n${started.stderr.join('')}`;
+      const primaryMarker = `[App] Applying runtime bitrate update: ${config.controlBitrateKbps} kbps`;
+      const alphaBitrateKbps = Math.max(500, Math.floor(config.controlBitrateKbps / 4));
+      const alphaPattern = new RegExp(
+        `\\[AlphaEncodeThread\\] Reconfigured VP9 alpha encoder: \\d+x\\d+ ${alphaBitrateKbps}kbps`
+      );
+      const primaryConfirmed = publisherOutput.includes(primaryMarker);
+      const alphaConfirmed = !config.alphaWorkflow || alphaPattern.test(publisherOutput);
+      if (!primaryConfirmed || !alphaConfirmed) {
+        const lastResult = results[results.length - 1];
+        lastResult.ok = false;
+        lastResult.state = {
+          ...lastResult.state,
+          controlLogValidation: { primaryConfirmed, alphaConfirmed, alphaBitrateKbps }
+        };
+        console.error(`[E2E] Runtime bitrate validation failed: ${JSON.stringify(lastResult.state.controlLogValidation)}`);
+      } else {
+        console.log(`[E2E] Runtime bitrate update confirmed${config.alphaWorkflow ? ' with alpha encoder reconfigure' : ''}`);
+      }
     }
   } finally {
     if (!config.keepPublisher && started.proc && !started.proc.killed) {

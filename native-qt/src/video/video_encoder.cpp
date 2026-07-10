@@ -827,7 +827,7 @@ class VideoEncoder::Impl {
             usingHardware_ = externalUsingHardware_;
             setActiveEncoderName(externalEncoderName_);
             activeCodec_.store(config_.codec, std::memory_order_relaxed);
-            if (!runWarmupProbe()) {
+            if (!runWarmupProbeAndPrepareLivePipeline()) {
                 bool recovered = false;
                 if (config_.codec != VideoCodec::H264 &&
                     config_.preferredHardware != HardwareEncoder::None) {
@@ -840,7 +840,7 @@ class VideoEncoder::Impl {
                         usingHardware_ = externalUsingHardware_;
                         setActiveEncoderName(externalEncoderName_);
                         activeCodec_.store(config_.codec, std::memory_order_relaxed);
-                        recovered = runWarmupProbe();
+                        recovered = runWarmupProbeAndPrepareLivePipeline();
                     }
                 }
                 if (!recovered) {
@@ -1913,13 +1913,25 @@ class VideoEncoder::Impl {
             lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             return false;
         }
-        if (runWarmup && !runWarmupProbe()) {
+        if (runWarmup && !runWarmupProbeAndPrepareLivePipeline()) {
             spdlog::warn("[FFmpegEncoder] Restarted FFmpeg pipeline failed warm-up probe");
+            shutdownExternalFfmpegNvenc();
             lastEncodeFailureKind_.store(EncodeFailureKind::Timeout, std::memory_order_relaxed);
             return false;
         }
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         return true;
+    }
+
+    bool recoverExternalFfmpegNvenc() {
+        if (externalWarmupInProgress_) {
+            // Initialization owns fallback selection. Restarting with another
+            // warm-up from inside the warm-up probe would recurse forever when
+            // an encoder process cannot start on this machine.
+            shutdownExternalFfmpegNvenc();
+            return false;
+        }
+        return restartExternalFfmpegNvenc(true);
     }
 
     bool startExternalIoWorkers() {
@@ -2554,7 +2566,7 @@ class VideoEncoder::Impl {
 
         if (externalForceKeyframeRequested_) {
             externalForceKeyframeRequested_ = false;
-            restartExternalFfmpegNvenc(true);
+            recoverExternalFfmpegNvenc();
             if (!usingExternalFfmpeg_) {
                 lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
                 return false;
@@ -2566,7 +2578,10 @@ class VideoEncoder::Impl {
             GetExitCodeProcess(externalProcess_, &exitCode);
             spdlog::warn("[FFmpegEncoder] ffmpeg process exited unexpectedly (code={})", exitCode);
             lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
-            shutdownExternalFfmpegNvenc();
+            if (!recoverExternalFfmpegNvenc()) {
+                spdlog::error("[FFmpegEncoder] Failed to recover FFmpeg after unexpected process exit");
+            }
+            lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             return false;
         }
 
@@ -2581,7 +2596,7 @@ class VideoEncoder::Impl {
             if (enqueueResult == ExternalEnqueueResult::IoFailure) {
                 spdlog::warn("[FFmpegEncoder] FFmpeg IO worker rejected input; restarting pipeline");
                 lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
-                restartExternalFfmpegNvenc(true);
+                recoverExternalFfmpegNvenc();
             } else if (enqueueResult == ExternalEnqueueResult::Backpressure) {
                 spdlog::warn("[FFmpegEncoder] FFmpeg input queue is full; skipping frame while encoder catches up");
                 lastEncodeFailureKind_.store(EncodeFailureKind::Backpressure, std::memory_order_relaxed);
@@ -2634,7 +2649,7 @@ class VideoEncoder::Impl {
         if (ioWorkerFailed) {
             spdlog::warn("[FFmpegEncoder] FFmpeg IO worker failure detected; restarting pipeline");
             lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
-            restartExternalFfmpegNvenc(true);
+            recoverExternalFfmpegNvenc();
             return false;
         }
 
@@ -2643,7 +2658,10 @@ class VideoEncoder::Impl {
             GetExitCodeProcess(externalProcess_, &exitCode);
             spdlog::warn("[FFmpegEncoder] ffmpeg process exited during encode wait (code={})", exitCode);
             lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
-            shutdownExternalFfmpegNvenc();
+            if (!recoverExternalFfmpegNvenc()) {
+                spdlog::error("[FFmpegEncoder] Failed to recover FFmpeg after encode-wait process exit");
+            }
+            lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             return false;
         }
 
@@ -3108,6 +3126,30 @@ class VideoEncoder::Impl {
         }
         spdlog::warn("[VideoEncoder] Warm-up probe produced no encoded output");
         return false;
+    }
+
+    bool runWarmupProbeAndPrepareLivePipeline() {
+        const bool previousWarmupState = externalWarmupInProgress_;
+        externalWarmupInProgress_ = true;
+        const bool probeSucceeded = runWarmupProbe();
+        externalWarmupInProgress_ = previousWarmupState;
+        if (!probeSucceeded) {
+            return false;
+        }
+        if (!usingExternalFfmpeg_) {
+            return true;
+        }
+
+        // A persistent FFmpeg process may still contain probe inputs or encoded
+        // probe packets when the first packet arrives. Never expose those to the
+        // live RTP path: replace the warmed process with a clean, identical one.
+        spdlog::info("[FFmpegEncoder] Replacing warmed FFmpeg pipeline before live input");
+        shutdownExternalFfmpegNvenc();
+        if (!initializeExternalFfmpegNvenc()) {
+            spdlog::warn("[FFmpegEncoder] Failed to start clean FFmpeg pipeline after warm-up");
+            return false;
+        }
+        return true;
     }
 
     bool ensureComInitialized() {
@@ -3726,6 +3768,7 @@ class VideoEncoder::Impl {
     std::atomic<bool> usingHardware_{false};
     bool streamStarted_ = false;
     bool usingExternalFfmpeg_ = false;
+    bool externalWarmupInProgress_ = false;
     bool externalForceKeyframeRequested_ = false;
     bool externalFirstPacketLogged_ = false;
     bool externalIvfHeaderParsed_ = false;
