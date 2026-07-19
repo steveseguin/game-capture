@@ -1,15 +1,18 @@
 #include <QtTest/QtTest>
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QProcess>
 #include <QStringList>
 
 #include "versus/video/spout_capture.h"
+#include "versus/video/video_encoder.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <utility>
 
@@ -107,10 +110,32 @@ class TestSpoutCapture : public QObject {
     Q_OBJECT
 
   private slots:
+    void testFfmpegProbeIsBoundedAndCached();
     void testReceivesBgraAlphaFrames();
     void testContinuesAfterSenderResize();
     void testContinuesAfterSenderRestartWithSameName();
 };
+
+void TestSpoutCapture::testFfmpegProbeIsBoundedAndCached() {
+    const QString helperPath =
+        QDir(QCoreApplication::applicationDirPath()).filePath("ffmpeg_probe_hang_helper.exe");
+    QVERIFY2(QFileInfo::exists(helperPath), qPrintable(helperPath));
+
+    QElapsedTimer timer;
+    timer.start();
+    const auto firstProbe = versus::video::VideoEncoder::probeFfmpeg(helperPath.toStdString());
+    const qint64 firstElapsedMs = timer.elapsed();
+    QVERIFY(firstProbe.error.find("timed out") != std::string::npos);
+    QVERIFY2(firstElapsedMs >= 2500 && firstElapsedMs < 6000,
+             qPrintable(QString("First probe took %1 ms").arg(firstElapsedMs)));
+
+    timer.restart();
+    const auto cachedProbe = versus::video::VideoEncoder::probeFfmpeg(helperPath.toStdString());
+    const qint64 cachedElapsedMs = timer.elapsed();
+    QCOMPARE(cachedProbe.error, firstProbe.error);
+    QVERIFY2(cachedElapsedMs < 500,
+             qPrintable(QString("Cached probe took %1 ms").arg(cachedElapsedMs)));
+}
 
 void TestSpoutCapture::testReceivesBgraAlphaFrames() {
     const std::string senderName =
@@ -127,7 +152,13 @@ void TestSpoutCapture::testReceivesBgraAlphaFrames() {
     QTRY_VERIFY_WITH_TIMEOUT(hasSender(capture, senderName), 3000);
 
     std::atomic<int> frameCount{0};
-    capture.setFrameCallback([&frameCount](const versus::video::CapturedFrame &) {
+    std::mutex frameMutex;
+    versus::video::CapturedFrame latestFrame;
+    capture.setFrameCallback([&](const versus::video::CapturedFrame &frame) {
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            latestFrame = frame;
+        }
         frameCount.fetch_add(1, std::memory_order_relaxed);
     });
 
@@ -135,7 +166,11 @@ void TestSpoutCapture::testReceivesBgraAlphaFrames() {
     QTRY_VERIFY_WITH_TIMEOUT(frameCount.load(std::memory_order_relaxed) >= 2, 5000);
 
     versus::video::CapturedFrame frame;
-    QVERIFY(capture.getLatestFrame(frame));
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        frame = latestFrame;
+    }
+    QVERIFY(!frame.data.empty());
     QCOMPARE(frame.width, kWidth);
     QCOMPARE(frame.height, kHeight);
     QCOMPARE(frame.stride, kWidth * 4);
@@ -176,7 +211,13 @@ void TestSpoutCapture::testContinuesAfterSenderResize() {
 
     std::atomic<int> initialFrames{0};
     std::atomic<int> resizedFrames{0};
-    capture.setFrameCallback([&initialFrames, &resizedFrames](const versus::video::CapturedFrame &frame) {
+    std::mutex frameMutex;
+    versus::video::CapturedFrame latestFrame;
+    capture.setFrameCallback([&](const versus::video::CapturedFrame &frame) {
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            latestFrame = frame;
+        }
         if (frame.width == kWidth && frame.height == kHeight) {
             initialFrames.fetch_add(1, std::memory_order_relaxed);
         }
@@ -190,7 +231,11 @@ void TestSpoutCapture::testContinuesAfterSenderResize() {
     QTRY_VERIFY_WITH_TIMEOUT(resizedFrames.load(std::memory_order_relaxed) >= 2, 7000);
 
     versus::video::CapturedFrame frame;
-    QVERIFY(capture.getLatestFrame(frame));
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        frame = latestFrame;
+    }
+    QVERIFY(!frame.data.empty());
     QCOMPARE(frame.width, kResizeWidth);
     QCOMPARE(frame.height, kResizeHeight);
     QCOMPARE(frame.stride, kResizeWidth * 4);
@@ -216,7 +261,13 @@ void TestSpoutCapture::testContinuesAfterSenderRestartWithSameName() {
 
     std::atomic<int> initialFrames{0};
     std::atomic<int> restartedFrames{0};
-    capture.setFrameCallback([&initialFrames, &restartedFrames](const versus::video::CapturedFrame &frame) {
+    std::mutex frameMutex;
+    versus::video::CapturedFrame latestFrame;
+    capture.setFrameCallback([&](const versus::video::CapturedFrame &frame) {
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            latestFrame = frame;
+        }
         if (frame.width == kWidth && frame.height == kHeight) {
             initialFrames.fetch_add(1, std::memory_order_relaxed);
         }
@@ -244,7 +295,11 @@ void TestSpoutCapture::testContinuesAfterSenderRestartWithSameName() {
     QTRY_VERIFY_WITH_TIMEOUT(restartedFrames.load(std::memory_order_relaxed) >= 2, 7000);
 
     versus::video::CapturedFrame frame;
-    QVERIFY(capture.getLatestFrame(frame));
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        frame = latestFrame;
+    }
+    QVERIFY(!frame.data.empty());
     QCOMPARE(frame.width, kResizeWidth);
     QCOMPARE(frame.height, kResizeHeight);
     QCOMPARE(frame.stride, kResizeWidth * 4);

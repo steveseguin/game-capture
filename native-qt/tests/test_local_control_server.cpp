@@ -77,6 +77,8 @@ class TestLocalControlServer : public QObject {
     void testHealthAndDiscovery();
     void testAuthAndDiagnostics();
     void testSourcesAndIssueReport();
+    void testRecentLogTailReadsFromEnd();
+    void testIssueReportFailureReturnsServerError();
     void testStopCommand();
     void testFailedStartDoesNotRemoveDiscovery();
 };
@@ -185,6 +187,56 @@ void TestLocalControlServer::testSourcesAndIssueReport() {
     QCOMPARE(reportJson.value("notes").toString(), QString("local control test"));
     QCOMPARE(reportJson.value("diagnostics").toObject().value("schema").toString(), QString("diagnostics"));
     QCOMPARE(reportJson.value("log_tail").toArray().last().toString(), QString("second"));
+}
+
+void TestLocalControlServer::testRecentLogTailReadsFromEnd() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString logPath = dir.filePath("large.log");
+    QFile log(logPath);
+    QVERIFY(log.open(QIODevice::WriteOnly));
+    for (int i = 0; i < 10000; ++i) {
+        const QByteArray line = QByteArray("line-") + QByteArray::number(i).rightJustified(5, '0') + "\n";
+        QCOMPARE(log.write(line), line.size());
+    }
+    log.close();
+
+    versus::control::LocalControlServer server;
+    versus::control::LocalControlServerConfig config;
+    config.token = "test-token";
+    config.discoveryPath = dir.filePath("control.json");
+    config.logPath = logPath;
+    QVERIFY(server.start(config));
+
+    const QByteArray response = httpRequest(server.port(), authGet("/logs/recent?lines=2"));
+    QCOMPARE(statusCode(response), 200);
+    const QJsonArray lines = responseObject(response).value("lines").toArray();
+    QCOMPARE(lines.size(), 2);
+    QCOMPARE(lines.at(0).toString(), QString("line-09998"));
+    QCOMPARE(lines.at(1).toString(), QString("line-09999"));
+}
+
+void TestLocalControlServer::testIssueReportFailureReturnsServerError() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString blockedPath = dir.filePath("not-a-directory");
+    QFile blocker(blockedPath);
+    QVERIFY(blocker.open(QIODevice::WriteOnly));
+    blocker.write("blocked");
+    blocker.close();
+
+    versus::control::LocalControlServer server;
+    versus::control::LocalControlServerConfig config;
+    config.token = "test-token";
+    config.discoveryPath = dir.filePath("control.json");
+    config.reportDir = blockedPath;
+    QVERIFY(server.start(config));
+
+    const QByteArray response = httpRequest(
+        server.port(),
+        authPost("/commands", R"({"command":"issue_report"})"));
+    QCOMPARE(statusCode(response), 500);
+    QVERIFY(!responseObject(response).value("ok").toBool());
 }
 
 void TestLocalControlServer::testStopCommand() {

@@ -18,6 +18,7 @@ private slots:
 
     void testInitialState();
     void testSetEmptyWindowList();
+    void testEmptyTextRefreshesVisiblePlaceholder();
     void testSetWindowList();
     void testWindowSelection();
     void testRefreshSignal();
@@ -74,6 +75,21 @@ void TestWindowListWidget::testSetEmptyWindowList() {
     auto *item = listWidget->item(0);
     QVERIFY(item != nullptr);
     QVERIFY(!(item->flags() & Qt::ItemIsSelectable));
+}
+
+void TestWindowListWidget::testEmptyTextRefreshesVisiblePlaceholder() {
+    widget_->setEmptyText("No windows detected");
+    widget_->setWindowList({});
+
+    auto *listWidget = widget_->findChild<QListWidget*>();
+    QVERIFY(listWidget != nullptr);
+    QCOMPARE(listWidget->count(), 1);
+    QCOMPARE(listWidget->item(0)->text(), QString("No windows detected"));
+
+    widget_->setEmptyText("No Spout senders detected");
+    QCOMPARE(listWidget->item(0)->text(), QString("No Spout senders detected"));
+    widget_->setWindowList({});
+    QCOMPARE(listWidget->item(0)->text(), QString("No Spout senders detected"));
 }
 
 void TestWindowListWidget::testSetWindowList() {

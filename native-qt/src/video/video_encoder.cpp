@@ -296,28 +296,131 @@ std::wstring quoteCommandArgForShell(const std::wstring &arg) {
     return quoted;
 }
 
-std::string runCommandCapture(const std::filesystem::path &exe, const std::vector<std::string> &args) {
+struct CommandCaptureResult {
+    std::string output;
+    bool started = false;
+    bool timedOut = false;
+    int exitCode = -1;
+};
+
+constexpr DWORD kFfmpegProbeTimeoutMs = 3000;
+constexpr size_t kFfmpegProbeMaximumOutputBytes = 2 * 1024 * 1024;
+
+void drainCommandPipe(HANDLE readPipe, std::string &output) {
+    std::array<char, 4096> buffer{};
+    while (true) {
+        DWORD available = 0;
+        if (!PeekNamedPipe(readPipe, nullptr, 0, nullptr, &available, nullptr) || available == 0) {
+            return;
+        }
+        DWORD bytesRead = 0;
+        const DWORD bytesToRead = std::min<DWORD>(available, static_cast<DWORD>(buffer.size()));
+        if (!ReadFile(readPipe, buffer.data(), bytesToRead, &bytesRead, nullptr) || bytesRead == 0) {
+            return;
+        }
+        if (output.size() < kFfmpegProbeMaximumOutputBytes) {
+            const size_t remaining = kFfmpegProbeMaximumOutputBytes - output.size();
+            output.append(buffer.data(), std::min<size_t>(bytesRead, remaining));
+        }
+    }
+}
+
+CommandCaptureResult runCommandCapture(const std::filesystem::path &exe,
+                                       const std::vector<std::string> &args) {
+    CommandCaptureResult result;
     std::wstring command = quoteCommandArgForShell(exe.wstring());
     for (const auto &arg : args) {
         command.push_back(L' ');
         command += quoteCommandArgForShell(utf8ToWideForCommand(arg));
     }
-    command += L" 2>&1";
 
-    FILE *pipe = _wpopen(command.c_str(), L"r");
-    if (!pipe) {
-        return {};
+    SECURITY_ATTRIBUTES pipeAttributes{};
+    pipeAttributes.nLength = sizeof(pipeAttributes);
+    pipeAttributes.bInheritHandle = TRUE;
+    HANDLE readPipe = nullptr;
+    HANDLE writePipe = nullptr;
+    if (!CreatePipe(&readPipe, &writePipe, &pipeAttributes, 0)) {
+        return result;
     }
-    std::string output;
-    std::array<char, 4096> buffer = {};
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
-        output += buffer.data();
+    if (!SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0)) {
+        CloseHandle(readPipe);
+        CloseHandle(writePipe);
+        return result;
     }
-    _pclose(pipe);
-    return output;
+    HANDLE nullInput = CreateFileW(
+        L"NUL",
+        GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
+        &pipeAttributes,
+        OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL,
+        nullptr);
+    if (nullInput == INVALID_HANDLE_VALUE) {
+        CloseHandle(readPipe);
+        CloseHandle(writePipe);
+        return result;
+    }
+
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    startup.dwFlags = STARTF_USESTDHANDLES;
+    startup.hStdInput = nullInput;
+    startup.hStdOutput = writePipe;
+    startup.hStdError = writePipe;
+    PROCESS_INFORMATION process{};
+    const BOOL created = CreateProcessW(
+        exe.c_str(),
+        command.data(),
+        nullptr,
+        nullptr,
+        TRUE,
+        CREATE_NO_WINDOW,
+        nullptr,
+        nullptr,
+        &startup,
+        &process);
+    CloseHandle(writePipe);
+    CloseHandle(nullInput);
+    if (!created) {
+        CloseHandle(readPipe);
+        return result;
+    }
+
+    result.started = true;
+    const auto deadline = std::chrono::steady_clock::now() +
+        std::chrono::milliseconds(kFfmpegProbeTimeoutMs);
+    while (true) {
+        drainCommandPipe(readPipe, result.output);
+        const DWORD waitResult = WaitForSingleObject(process.hProcess, 25);
+        if (waitResult == WAIT_OBJECT_0 || waitResult == WAIT_FAILED) {
+            break;
+        }
+        if (std::chrono::steady_clock::now() >= deadline) {
+            result.timedOut = true;
+            TerminateProcess(process.hProcess, 1);
+            WaitForSingleObject(process.hProcess, 1000);
+            break;
+        }
+    }
+    drainCommandPipe(readPipe, result.output);
+    DWORD exitCode = 0;
+    if (GetExitCodeProcess(process.hProcess, &exitCode)) {
+        result.exitCode = static_cast<int>(exitCode);
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    CloseHandle(readPipe);
+    return result;
 }
 #else
-std::string runCommandCapture(const std::filesystem::path &, const std::vector<std::string> &) {
+struct CommandCaptureResult {
+    std::string output;
+    bool started = false;
+    bool timedOut = false;
+    int exitCode = -1;
+};
+
+CommandCaptureResult runCommandCapture(const std::filesystem::path &, const std::vector<std::string> &) {
     return {};
 }
 #endif
@@ -337,14 +440,65 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     info.path = resolved.string();
     info.bundled = isBundledFfmpegPath(resolved);
 
-    const std::string versionOutput = runCommandCapture(resolved, {"-hide_banner", "-version"});
-    const std::string encoderOutput = runCommandCapture(resolved, {"-hide_banner", "-encoders"});
-    if (versionOutput.empty()) {
+    struct ProbeCacheEntry {
+        bool valid = false;
+        std::string key;
+        std::filesystem::file_time_type modified{};
+        std::chrono::steady_clock::time_point probedAt{};
+        FfmpegProbeInfo info;
+    };
+    static std::mutex probeCacheMutex;
+    static ProbeCacheEntry probeCache;
+    std::error_code modifiedError;
+    const auto modified = std::filesystem::last_write_time(resolved, modifiedError);
+    const std::string cacheKey =
+        (info.userOverride ? "user:" : "auto:") + toLowerCopy(resolved.lexically_normal().string());
+    const auto probeNow = std::chrono::steady_clock::now();
+    std::lock_guard<std::mutex> cacheLock(probeCacheMutex);
+    if (probeCache.valid &&
+        probeCache.key == cacheKey &&
+        !modifiedError &&
+        probeCache.modified == modified &&
+        (probeNow - probeCache.probedAt) < std::chrono::seconds(60)) {
+        return probeCache.info;
+    }
+    const auto cacheAndReturn = [&](FfmpegProbeInfo completed) {
+        probeCache.valid = !modifiedError;
+        probeCache.key = cacheKey;
+        probeCache.modified = modified;
+        probeCache.probedAt = probeNow;
+        probeCache.info = completed;
+        return completed;
+    };
+
+    const CommandCaptureResult versionProbe = runCommandCapture(resolved, {"-hide_banner", "-version"});
+    if (!versionProbe.started) {
         info.error = "FFmpeg probe failed";
-        return info;
+        return cacheAndReturn(info);
+    }
+    if (versionProbe.timedOut) {
+        info.error = "FFmpeg version probe timed out";
+        return cacheAndReturn(info);
+    }
+    if (versionProbe.exitCode != 0 || versionProbe.output.empty()) {
+        info.error = "FFmpeg version probe failed";
+        return cacheAndReturn(info);
+    }
+    const CommandCaptureResult encoderProbe = runCommandCapture(resolved, {"-hide_banner", "-encoders"});
+    if (!encoderProbe.started) {
+        info.error = "FFmpeg encoder probe failed";
+        return cacheAndReturn(info);
+    }
+    if (encoderProbe.timedOut) {
+        info.error = "FFmpeg encoder probe timed out";
+        return cacheAndReturn(info);
+    }
+    if (encoderProbe.exitCode != 0 || encoderProbe.output.empty()) {
+        info.error = "FFmpeg encoder probe failed";
+        return cacheAndReturn(info);
     }
 
-    std::istringstream versionStream(versionOutput);
+    std::istringstream versionStream(versionProbe.output);
     std::string line;
     if (std::getline(versionStream, line)) {
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
@@ -353,7 +507,7 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
         info.version = line;
     }
     versionStream.clear();
-    versionStream.str(versionOutput);
+    versionStream.str(versionProbe.output);
     while (std::getline(versionStream, line)) {
         if (line.rfind("configuration:", 0) == 0) {
             while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) {
@@ -364,10 +518,10 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
         }
     }
 
-    info.hasLibvpxVp9 = textContainsInsensitive(encoderOutput, "libvpx-vp9");
+    info.hasLibvpxVp9 = textContainsInsensitive(encoderProbe.output, "libvpx-vp9");
     info.gplEnabled = textContainsInsensitive(info.configuration, "--enable-gpl");
     info.nonfreeEnabled = textContainsInsensitive(info.configuration, "--enable-nonfree");
-    return info;
+    return cacheAndReturn(info);
 }
 
 void fillBgraOpaqueColor(uint8_t *dst,

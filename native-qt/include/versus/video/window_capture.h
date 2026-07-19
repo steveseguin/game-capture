@@ -46,7 +46,6 @@ class WindowCapture {
     bool isCapturing() const;
 
     void setFrameCallback(FrameCallback cb);
-    bool getLatestFrame(CapturedFrame &outFrame);
 
     // Capture a static thumbnail of a window (does not require active capture)
     static QPixmap captureWindowThumbnail(const std::string &windowId, int maxWidth = 120, int maxHeight = 68);

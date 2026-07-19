@@ -25,7 +25,6 @@ class SpoutCapture {
     bool isCapturing() const;
 
     void setFrameCallback(FrameCallback cb);
-    bool getLatestFrame(CapturedFrame &outFrame);
 
   private:
     struct Impl;

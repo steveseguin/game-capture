@@ -761,6 +761,25 @@ void MainWindow::requestQuit() {
     qApp->quit();
 }
 
+void MainWindow::requestStop() {
+    if (!core_) {
+        return;
+    }
+
+    const bool startPending = startFuture_.isValid() && !startFuture_.isFinished();
+    if (startInProgress_ || startPending) {
+        stopAfterPendingStart_ = true;
+        updateStatus("Stop requested; waiting for startup to finish...", "connecting");
+        return;
+    }
+
+    const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
+    if (stopInProgress_ || stopPending || !isLive_) {
+        return;
+    }
+    onGoLiveClicked();
+}
+
 void MainWindow::loadPersistedSettings() {
     loadingPersistedSettings_ = true;
 
@@ -2160,12 +2179,15 @@ void MainWindow::onGoLiveClicked() {
             refreshFfmpegStatus();
             return;
         }
-        if ((config.codec == versus::video::VideoCodec::VP9 || config.enableAlpha) && !ffmpegInfo.hasLibvpxVp9) {
+        const bool needsLibvpxVp9 =
+            config.codec == versus::video::VideoCodec::VP9 ||
+            (config.enableAlpha && config.codec == versus::video::VideoCodec::H264);
+        if (needsLibvpxVp9 && !ffmpegInfo.hasLibvpxVp9) {
             updateStatus("FFmpeg lacks libvpx-vp9", "error");
             QMessageBox::warning(
                 this,
                 "FFmpeg VP9 Encoder Missing",
-                "The OBS alpha workflow requires FFmpeg with libvpx-vp9. Use the bundled release FFmpeg or choose a compatible custom FFmpeg path.");
+                "VP9 and the H.264 dual-track OBS alpha workflow require FFmpeg with libvpx-vp9. Use the bundled release FFmpeg or choose a compatible custom FFmpeg path.");
             refreshFfmpegStatus();
             return;
         }
@@ -2293,6 +2315,8 @@ void MainWindow::onGoLiveClicked() {
                     return;
                 }
 
+                const bool stopAfterStart = self->stopAfterPendingStart_;
+                self->stopAfterPendingStart_ = false;
                 self->startInProgress_ = false;
                 self->forceQuitEnabled_ = false;
                 if (!started) {
@@ -2402,7 +2426,19 @@ void MainWindow::onGoLiveClicked() {
                     self->windowListWidget_->setAutoRefreshEnabled(false);
                 }
                 self->updateGoLiveButton();
-                self->maybeQuitAfterPendingOperations();
+                if (stopAfterStart) {
+                    QTimer::singleShot(0, self, [self]() {
+                        if (!self) {
+                            return;
+                        }
+                        if (self->startFuture_.isValid()) {
+                            self->startFuture_.waitForFinished();
+                        }
+                        self->requestStop();
+                    });
+                } else {
+                    self->maybeQuitAfterPendingOperations();
+                }
             }, Qt::QueuedConnection);
         });
     }
@@ -2665,9 +2701,12 @@ void MainWindow::refreshFfmpegStatus() {
     const versus::video::FfmpegProbeInfo info =
         versus::video::VideoEncoder::probeFfmpeg(configuredPath.toStdString());
     const bool alphaWorkflowSelected = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+    const auto selectedCodec = codecSelect_
+        ? codecFromUiValue(codecSelect_->currentData().toString())
+        : versus::video::VideoCodec::H264;
     const bool needsFfmpeg =
         codecSelect_ &&
-        (codecUsesExternalFfmpeg(codecFromUiValue(codecSelect_->currentData().toString())) ||
+        (codecUsesExternalFfmpeg(selectedCodec) ||
          (encoderSelect_ && encoderSelect_->currentData().toString() == "ffmpeg_nvenc") ||
          alphaWorkflowSelected);
     if (!needsFfmpeg) {
@@ -2676,13 +2715,13 @@ void MainWindow::refreshFfmpegStatus() {
         return;
     }
     if (!info.resolved) {
-        ffmpegStatusLabel_->setText("ffmpeg.exe not found. VP9 alpha requires the bundled FFmpeg/libvpx or a compatible custom path.");
+        ffmpegStatusLabel_->setText("ffmpeg.exe not found. Use the bundled FFmpeg or a compatible custom path for the selected codec/workflow.");
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
         return;
     }
-    const bool selectedVp9 = codecSelect_ &&
-        codecFromUiValue(codecSelect_->currentData().toString()) == versus::video::VideoCodec::VP9;
-    const bool needsLibvpxVp9 = selectedVp9 || alphaWorkflowSelected;
+    const bool selectedVp9 = selectedCodec == versus::video::VideoCodec::VP9;
+    const bool needsLibvpxVp9 = selectedVp9 ||
+        (alphaWorkflowSelected && selectedCodec == versus::video::VideoCodec::H264);
     const QString source = info.userOverride
         ? QStringLiteral("custom")
         : (info.bundled ? QStringLiteral("bundled") : QStringLiteral("development"));
@@ -2703,7 +2742,9 @@ void MainWindow::refreshFfmpegStatus() {
         return;
     }
     if (needsLibvpxVp9) {
-        status += "\nlibvpx-vp9 available; VP9 alpha is CPU encoded.";
+        status += alphaWorkflowSelected
+            ? "\nlibvpx-vp9 available; the alpha mask is CPU encoded."
+            : "\nlibvpx-vp9 available.";
     }
     ffmpegStatusLabel_->setText(status);
     ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));

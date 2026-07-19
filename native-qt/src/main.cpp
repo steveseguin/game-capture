@@ -4,6 +4,7 @@
 #include <QJsonObject>
 #include <QMetaObject>
 #include <QObject>
+#include <QPointer>
 #include <QTimer>
 
 #include <algorithm>
@@ -492,6 +493,7 @@ int main(int argc, char *argv[]) {
         }
     });
 
+    QPointer<versus::ui::MainWindow> guiWindow;
     std::unique_ptr<versus::control::LocalControlServer> localControlServer;
     if (localControlEnabled) {
         localControlServer = std::make_unique<versus::control::LocalControlServer>();
@@ -507,14 +509,22 @@ int main(int argc, char *argv[]) {
         localControlServer->setAudioInputSourcesProvider([&core]() {
             return audioInputListToJson(core.listAudioInputDevices());
         });
-        localControlServer->setStopCallback([&core]() {
-            QMetaObject::invokeMethod(qApp, [&core]() {
+        localControlServer->setStopCallback([&core, &guiWindow, headless]() {
+            QMetaObject::invokeMethod(qApp, [&core, &guiWindow, headless]() {
+                if (!headless && guiWindow) {
+                    guiWindow->requestStop();
+                    return;
+                }
                 core.stopLive();
                 core.stopCapture();
             }, Qt::QueuedConnection);
         });
-        localControlServer->setQuitCallback([&core]() {
-            QMetaObject::invokeMethod(qApp, [&core]() {
+        localControlServer->setQuitCallback([&core, &guiWindow, headless]() {
+            QMetaObject::invokeMethod(qApp, [&core, &guiWindow, headless]() {
+                if (!headless && guiWindow) {
+                    guiWindow->requestQuit();
+                    return;
+                }
                 core.stopLive();
                 core.stopCapture();
                 QApplication::quit();
@@ -789,6 +799,7 @@ int main(int argc, char *argv[]) {
 
     // Normal GUI mode
     versus::ui::MainWindow window(&core);
+    guiWindow = &window;
     window.show();
     const int result = app.exec();
     if (app.property("force_exit_without_shutdown").toBool()) {

@@ -407,10 +407,8 @@ bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
     return true;
 }
 
-bool compositeAlphaBackground(const video::CapturedFrame &frame,
-                              const video::EncoderConfig &config,
-                              std::vector<uint8_t> &scratch,
-                              video::CapturedFrame &out) {
+bool compositeAlphaBackground(video::CapturedFrame &frame,
+                              const video::EncoderConfig &config) {
     if (config.alphaBackgroundMode == video::AlphaBackgroundMode::None ||
         config.enableAlpha ||
         frame.format != video::CapturedFrame::Format::BGRA ||
@@ -421,43 +419,28 @@ bool compositeAlphaBackground(const video::CapturedFrame &frame,
         return false;
     }
 
-    const size_t outputStride = static_cast<size_t>(frame.width) * 4;
-    const size_t outputSize = outputStride * static_cast<size_t>(frame.height);
-    scratch.resize(outputSize);
-
     const int bgR = std::clamp<int>(config.alphaBackgroundRed, 0, 255);
     const int bgG = std::clamp<int>(config.alphaBackgroundGreen, 0, 255);
     const int bgB = std::clamp<int>(config.alphaBackgroundBlue, 0, 255);
 
     for (int y = 0; y < frame.height; ++y) {
-        const uint8_t *srcRow = frame.data.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
-        uint8_t *dstRow = scratch.data() + static_cast<size_t>(y) * outputStride;
+        uint8_t *row = frame.data.data() + static_cast<size_t>(y) * static_cast<size_t>(frame.stride);
         for (int x = 0; x < frame.width; ++x) {
-            const uint8_t *src = srcRow + static_cast<size_t>(x) * 4;
-            uint8_t *dst = dstRow + static_cast<size_t>(x) * 4;
-            const int a = src[3];
-            if (a >= 255) {
-                dst[0] = src[0];
-                dst[1] = src[1];
-                dst[2] = src[2];
-            } else if (a <= 0) {
-                dst[0] = static_cast<uint8_t>(bgB);
-                dst[1] = static_cast<uint8_t>(bgG);
-                dst[2] = static_cast<uint8_t>(bgR);
-            } else {
+            uint8_t *pixel = row + static_cast<size_t>(x) * 4;
+            const int a = pixel[3];
+            if (a <= 0) {
+                pixel[0] = static_cast<uint8_t>(bgB);
+                pixel[1] = static_cast<uint8_t>(bgG);
+                pixel[2] = static_cast<uint8_t>(bgR);
+            } else if (a < 255) {
                 const int invA = 255 - a;
-                dst[0] = static_cast<uint8_t>((static_cast<int>(src[0]) * a + bgB * invA + 127) / 255);
-                dst[1] = static_cast<uint8_t>((static_cast<int>(src[1]) * a + bgG * invA + 127) / 255);
-                dst[2] = static_cast<uint8_t>((static_cast<int>(src[2]) * a + bgR * invA + 127) / 255);
+                pixel[0] = static_cast<uint8_t>((static_cast<int>(pixel[0]) * a + bgB * invA + 127) / 255);
+                pixel[1] = static_cast<uint8_t>((static_cast<int>(pixel[1]) * a + bgG * invA + 127) / 255);
+                pixel[2] = static_cast<uint8_t>((static_cast<int>(pixel[2]) * a + bgR * invA + 127) / 255);
             }
-            dst[3] = 255;
+            pixel[3] = 255;
         }
     }
-
-    out = frame;
-    out.data = scratch;
-    out.stride = static_cast<int>(outputStride);
-    out.format = video::CapturedFrame::Format::BGRA;
     return true;
 }
 
@@ -742,7 +725,7 @@ std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioInputDevices() {
 }
 
 bool VersusApp::startCapture(const std::string &windowId) {
-    return startCapture(videoSourceMode_, windowId);
+    return startCapture(lifecycleStateSnapshot().videoSourceMode, windowId);
 }
 
 bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) {
@@ -806,20 +789,28 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     }
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        hasLatestVideoFrame_ = false;
-        latestVideoFrame_ = video::CapturedFrame{};
+        pendingVideoFrame_.reset();
+        cachedVideoFrame_.reset();
     }
-    selectedWindowId_ = sourceId;
-    videoSourceMode_ = mode;
+    const auto frameCallback = [this](video::CapturedFrame frame) {
+        handleVideoFrame(std::move(frame));
+    };
+    windowCapture_.setFrameCallback(frameCallback);
+    spoutCapture_.setFrameCallback(frameCallback);
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        selectedWindowId_ = sourceId;
+        videoSourceMode_ = mode;
+    }
     resetSourceHealth(mode, sourceId);
     uint32_t selectedWindowProcessId = 0;
-    if (mode == VideoSourceMode::Window && !selectedWindowId_.empty()) {
+    if (mode == VideoSourceMode::Window && !sourceId.empty()) {
         if (!windowCapture_.startCapture(sourceId, 1920, 1080, 60)) {
             return false;
         }
         auto windows = windowCapture_.getWindows();
         for (const auto &info : windows) {
-            if (info.id == selectedWindowId_) {
+            if (info.id == sourceId) {
                 selectedWindowProcessId = info.processId;
                 break;
             }
@@ -954,12 +945,6 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     audioConfig.bitrate = audioEncoderBitrateKbps_.load(std::memory_order_relaxed);
     opusEncoder_.initialize(audioConfig);
 
-    const auto frameCallback = [this](video::CapturedFrame frame) {
-        handleVideoFrame(std::move(frame));
-    };
-    windowCapture_.setFrameCallback(frameCallback);
-    spoutCapture_.setFrameCallback(frameCallback);
-
     capturing_ = true;
     startEncodeThread();
     startVideoMaintenanceThread();
@@ -1023,13 +1008,20 @@ void VersusApp::stopCapture() {
     lastKeyframeSendMs_.store(0);
     resetMetricsWindow(steadyNowMs());
     capturing_ = false;
+    {
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        pendingVideoFrame_.reset();
+        cachedVideoFrame_.reset();
+    }
 }
 
 void VersusApp::setSelectedWindow(const std::string &windowId) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     selectedWindowId_ = windowId;
 }
 
 void VersusApp::setVideoSourceMode(VideoSourceMode mode) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     videoSourceMode_ = mode;
 }
 
@@ -1048,14 +1040,17 @@ void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
 }
 
 void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     audioSourceMode_ = mode;
 }
 
 void VersusApp::setIncludeMicrophone(bool enabled) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     includeMicrophone_ = enabled;
 }
 
 void VersusApp::setMicrophoneDeviceId(const std::string &deviceId) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     microphoneDeviceId_ = deviceId;
 }
 
@@ -1070,7 +1065,15 @@ bool VersusApp::goLive(const StartOptions &options) {
         return true;
     }
 
-    startOptions_ = options;
+    const std::string sessionSalt = options.salt.empty() ? "vdo.ninja" : options.salt;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        startOptions_ = options;
+        room_ = options.room;
+        password_ = options.password;
+        salt_ = sessionSalt;
+        remoteControlToken_ = options.remoteControlToken;
+    }
     stopRequested_.store(false);
     reconnecting_.store(false);
     videoTrackActive_.store(false);
@@ -1117,13 +1120,9 @@ bool VersusApp::goLive(const StartOptions &options) {
         lastPeerDisconnectReason_.clear();
     }
 
-    room_ = options.room;
-    password_ = options.password;
-    salt_ = options.salt.empty() ? "vdo.ninja" : options.salt;
     maxViewers_.store(std::max(0, options.maxViewers), std::memory_order_relaxed);
     roomModeLqEnabled_.store(options.roomModeLqEnabled, std::memory_order_relaxed);
     remoteControlEnabled_.store(options.remoteControlEnabled, std::memory_order_relaxed);
-    remoteControlToken_ = options.remoteControlToken;
     roomCodecWarningEmitted_ = false;
     const auto resolvedIce = webrtc::resolveIceConfig(options.iceMode);
     {
@@ -1155,21 +1154,21 @@ bool VersusApp::goLive(const StartOptions &options) {
 
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        signaling_.setPassword(password_);
-        if (password_ == "false" || password_ == "0" || password_ == "off") {
+        signaling_.setPassword(options.password);
+        if (options.password == "false" || options.password == "0" || options.password == "off") {
             spdlog::info("[App] Encryption disabled");
             signaling_.disableEncryption();
         }
     }
 
-    if (!room_.empty()) {
-        spdlog::info("[App] Joining room: {}", room_);
+    if (!options.room.empty()) {
+        spdlog::info("[App] Joining room: {}", options.room);
         signaling::RoomConfig roomConfig;
-        roomConfig.room = room_;
-        roomConfig.password = password_;
+        roomConfig.room = options.room;
+        roomConfig.password = options.password;
         roomConfig.label = options.label;
         roomConfig.streamId = options.streamId;
-        roomConfig.salt = salt_;
+        roomConfig.salt = sessionSalt;
         {
             std::lock_guard<std::mutex> lock(signalingOpsMutex_);
             if (!signaling_.joinRoom(roomConfig)) {
@@ -1180,31 +1179,37 @@ bool VersusApp::goLive(const StartOptions &options) {
         }
     }
 
+    std::string resolvedStreamId;
     if (options.streamId.empty()) {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        streamId_ = signaling_.getStreamId();
+        resolvedStreamId = signaling_.getStreamId();
     } else {
-        streamId_ = options.streamId;
+        resolvedStreamId = options.streamId;
     }
-    if (streamId_.empty()) {
-        streamId_ = "gamecapture_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
+    if (resolvedStreamId.empty()) {
+        resolvedStreamId = "gamecapture_" + std::to_string(std::chrono::system_clock::now().time_since_epoch().count());
     }
-
-    if (remoteControlEnabled_.load(std::memory_order_relaxed) && remoteControlToken_.empty()) {
-        if (!password_.empty() && password_ != "false" && password_ != "0" && password_ != "off") {
-            remoteControlToken_ = password_;
+    std::string resolvedRemoteControlToken = options.remoteControlToken;
+    if (remoteControlEnabled_.load(std::memory_order_relaxed) && resolvedRemoteControlToken.empty()) {
+        if (!options.password.empty() && options.password != "false" && options.password != "0" && options.password != "off") {
+            resolvedRemoteControlToken = options.password;
         } else {
-            remoteControlToken_ = streamId_;
+            resolvedRemoteControlToken = resolvedStreamId;
         }
     }
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        streamId_ = resolvedStreamId;
+        remoteControlToken_ = resolvedRemoteControlToken;
+    }
     if (remoteControlEnabled_.load(std::memory_order_relaxed)) {
-        spdlog::info("[App] Remote control enabled (tokenLength={})", remoteControlToken_.size());
+        spdlog::info("[App] Remote control enabled (tokenLength={})", resolvedRemoteControlToken.size());
     }
 
-    spdlog::info("[App] Publishing stream: {}", streamId_);
+    spdlog::info("[App] Publishing stream: {}", resolvedStreamId);
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        if (!signaling_.publish(streamId_, options.label)) {
+        if (!signaling_.publish(resolvedStreamId, options.label)) {
             spdlog::error("[App] Failed to publish stream");
             signaling_.disconnect();
             return false;
@@ -1669,6 +1674,41 @@ std::string VersusApp::buildDiagnosticsJson() const {
     const VideoStateSnapshot videoState = videoStateSnapshot();
     const PeerCounts counts = collectPeerCounts();
     const video::FfmpegProbeInfo ffmpegInfo = video::VideoEncoder::probeFfmpeg(videoState.config.ffmpegPath);
+    std::string diagnosticsServer;
+    std::string diagnosticsRoom;
+    std::string diagnosticsStreamId;
+    bool diagnosticsPasswordSet = false;
+    bool diagnosticsPasswordDisabled = false;
+    int diagnosticsRemoteControlTokenLength = 0;
+    AudioSourceMode diagnosticsAudioSourceMode = AudioSourceMode::None;
+    bool diagnosticsIncludeMicrophone = false;
+    std::string diagnosticsMicrophoneSource;
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        diagnosticsServer = startOptions_.server;
+        diagnosticsRoom = room_;
+        diagnosticsStreamId = streamId_;
+        diagnosticsPasswordSet = !password_.empty();
+        diagnosticsPasswordDisabled = password_ == "false" || password_ == "0" || password_ == "off";
+        diagnosticsRemoteControlTokenLength = static_cast<int>(remoteControlToken_.size());
+        diagnosticsAudioSourceMode = audioSourceMode_;
+        diagnosticsIncludeMicrophone = includeMicrophone_;
+        diagnosticsMicrophoneSource = activeMicrophoneSourceName_;
+    }
+    std::string diagnosticsIceMode;
+    int diagnosticsIceServerCount = 0;
+    {
+        std::lock_guard<std::mutex> lock(iceConfigMutex_);
+        diagnosticsIceMode = webrtc::iceModeName(iceMode_);
+        diagnosticsIceServerCount = static_cast<int>(resolvedIceServers_.size());
+    }
+    int diagnosticsCaptureWidth = 0;
+    int diagnosticsCaptureHeight = 0;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        diagnosticsCaptureWidth = lastCaptureWidth_;
+        diagnosticsCaptureHeight = lastCaptureHeight_;
+    }
 
     root["app"] = {
         {"live", live_.load(std::memory_order_relaxed)},
@@ -1695,15 +1735,15 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"large_source", sourceHealth.largeSource}
     };
     root["signaling"] = {
-        {"server", startOptions_.server},
-        {"room", room_},
-        {"stream_id", streamId_},
-        {"password_set", !password_.empty()},
-        {"password_disabled", password_ == "false" || password_ == "0" || password_ == "off"},
+        {"server", diagnosticsServer},
+        {"room", diagnosticsRoom},
+        {"stream_id", diagnosticsStreamId},
+        {"password_set", diagnosticsPasswordSet},
+        {"password_disabled", diagnosticsPasswordDisabled},
         {"remote_control_enabled", remoteControlEnabled_.load(std::memory_order_relaxed)},
-        {"remote_control_token_length", static_cast<int>(remoteControlToken_.size())},
-        {"ice_mode", webrtc::iceModeName(iceMode_)},
-        {"resolved_ice_servers", static_cast<int>(resolvedIceServers_.size())},
+        {"remote_control_token_length", diagnosticsRemoteControlTokenLength},
+        {"ice_mode", diagnosticsIceMode},
+        {"resolved_ice_servers", diagnosticsIceServerCount},
         {"relay_candidate_seen", relayCandidateSeen_.load(std::memory_order_relaxed)},
         {"direct_candidate_seen", directCandidateSeen_.load(std::memory_order_relaxed)},
         {"max_viewers", maxViewers_.load(std::memory_order_relaxed)}
@@ -1742,8 +1782,8 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"lq_encoder", videoState.lqEncoderName},
         {"last_sent_width", lastSentWidth_.load(std::memory_order_relaxed)},
         {"last_sent_height", lastSentHeight_.load(std::memory_order_relaxed)},
-        {"last_capture_width", lastCaptureWidth_},
-        {"last_capture_height", lastCaptureHeight_},
+        {"last_capture_width", diagnosticsCaptureWidth},
+        {"last_capture_height", diagnosticsCaptureHeight},
         {"pending_global_keyframe", pendingGlobalKeyframe_.load(std::memory_order_relaxed)},
         {"video_track_active", videoTrackActive_.load(std::memory_order_relaxed)},
         {"encode_failures", videoEncodeFailures_.load(std::memory_order_relaxed)},
@@ -1762,9 +1802,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"dropped_frame_rate", metrics.droppedFrameRate}
     };
     root["audio"] = {
-        {"source_mode", audioSourceModeName(audioSourceMode_)},
-        {"include_microphone", includeMicrophone_},
-        {"active_microphone_source", activeMicrophoneSourceName_},
+        {"source_mode", audioSourceModeName(diagnosticsAudioSourceMode)},
+        {"include_microphone", diagnosticsIncludeMicrophone},
+        {"active_microphone_source", diagnosticsMicrophoneSource},
         {"configured_opus_bitrate_kbps", audioEncoderBitrateKbps_.load(std::memory_order_relaxed)},
         {"primary_gain", primaryAudioGain_.load(std::memory_order_relaxed)},
         {"additional_gain", additionalAudioGain_.load(std::memory_order_relaxed)},
@@ -1967,13 +2007,25 @@ bool VersusApp::writeDiagnosticsJson(const std::string &path) const {
 }
 
 void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+    const AudioSourceMode audioSourceMode = lifecycleState.audioSourceMode;
+    const bool includeMicrophone = lifecycleState.includeMicrophone;
+    const std::string microphoneDeviceId = lifecycleState.microphoneDeviceId;
     {
         std::lock_guard<std::mutex> lock(additionalAudioMutex_);
         additionalAudioBuffer_.clear();
         additionalAudioSampleRate_ = 0;
         additionalAudioChannels_ = 0;
     }
-    activeMicrophoneSourceName_ = microphoneDeviceId_.empty() ? "default-microphone" : "selected-microphone";
+    const auto setActiveMicrophoneSource = [this](std::string source) {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        activeMicrophoneSourceName_ = std::move(source);
+    };
+    const auto activeMicrophoneSource = [this]() {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        return activeMicrophoneSourceName_;
+    };
+    setActiveMicrophoneSource(microphoneDeviceId.empty() ? "default-microphone" : "selected-microphone");
 
     const auto primaryCallback = [this](versus::audio::StreamChunk &&chunk) {
         handlePrimaryAudioChunk(std::move(chunk));
@@ -1997,13 +2049,13 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         }
     };
 
-    const auto resolveMicrophoneLabel = [this]() {
-        if (microphoneDeviceId_.empty()) {
+    const auto resolveMicrophoneLabel = [this, &microphoneDeviceId]() {
+        if (microphoneDeviceId.empty()) {
             return std::string("default-microphone");
         }
         const auto devices = microphoneAudioCapture_.GetInputDevices();
         for (const auto &device : devices) {
-            if (device.id == microphoneDeviceId_) {
+            if (device.id == microphoneDeviceId) {
                 return device.name.empty() ? std::string("selected-microphone") : device.name;
             }
         }
@@ -2014,41 +2066,42 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                                      const char *role) {
         const std::string requestedLabel = resolveMicrophoneLabel();
         audio::CaptureResult micResult;
-        if (!microphoneDeviceId_.empty()) {
-            micResult = microphoneAudioCapture_.StartInputDeviceStreamCapture(microphoneDeviceId_, callback);
+        if (!microphoneDeviceId.empty()) {
+            micResult = microphoneAudioCapture_.StartInputDeviceStreamCapture(microphoneDeviceId, callback);
             if (!micResult.success) {
                 spdlog::warn("[Audio] {} microphone capture device='{}' failed: {}; falling back to default input",
                              role,
                              requestedLabel,
                              micResult.error.empty() ? "unknown error" : micResult.error);
                 emitRuntimeEvent("Selected microphone/input was unavailable; using Windows default microphone/input.", false);
-                activeMicrophoneSourceName_ = "default-microphone";
+                setActiveMicrophoneSource("default-microphone");
                 micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
                     audio::DefaultAudioEndpoint::MultimediaInput, callback);
             } else {
-                activeMicrophoneSourceName_ = requestedLabel;
+                setActiveMicrophoneSource(requestedLabel);
             }
         } else {
             micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
                 audio::DefaultAudioEndpoint::MultimediaInput, callback);
-            activeMicrophoneSourceName_ = "default-microphone";
+            setActiveMicrophoneSource("default-microphone");
         }
 
         if (micResult.success) {
+            const std::string activeSource = activeMicrophoneSource();
             spdlog::info("[Audio] {} microphone capture source={} sampleRate={} channels={} processLoopback={}",
                          role,
-                         activeMicrophoneSourceName_,
+                         activeSource,
                          micResult.sampleRate,
                          micResult.channels,
                          micResult.usingProcessLoopback);
-            warnIfConverted(activeMicrophoneSourceName_, micResult);
+            warnIfConverted(activeSource, micResult);
             return true;
         }
 
         spdlog::warn("[Audio] {} microphone capture failed: {}",
                      role,
                      micResult.error.empty() ? "unknown error" : micResult.error);
-        activeMicrophoneSourceName_ = "none";
+        setActiveMicrophoneSource("none");
         return false;
     };
     const auto startMicrophoneAsPrimary = [&]() {
@@ -2056,7 +2109,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
     };
 
     audio::CaptureResult result;
-    switch (audioSourceMode_) {
+    switch (audioSourceMode) {
         case AudioSourceMode::DefaultOutput:
             result = audioCapture_.StartDefaultEndpointStreamCapture(
                 audio::DefaultAudioEndpoint::MultimediaOutput, primaryCallback);
@@ -2069,7 +2122,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
             startMicrophoneAsPrimary();
             return;
         case AudioSourceMode::None:
-            if (!includeMicrophone_) {
+            if (!includeMicrophone) {
                 spdlog::info("[Audio] Audio capture disabled by user setting");
                 return;
             }
@@ -2079,7 +2132,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         default:
             if (selectedWindowProcessId == 0) {
                 spdlog::warn("[Audio] Selected-window audio requested but no process id was available");
-                if (includeMicrophone_) {
+                if (includeMicrophone) {
                     spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
                     startMicrophoneAsPrimary();
                 }
@@ -2091,23 +2144,23 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
 
     if (result.success) {
         spdlog::info("[Audio] Capture source={} sampleRate={} channels={} processLoopback={}",
-                     audioSourceModeName(audioSourceMode_),
+                     audioSourceModeName(audioSourceMode),
                      result.sampleRate,
                      result.channels,
                      result.usingProcessLoopback);
-        warnIfConverted(audioSourceModeName(audioSourceMode_), result);
+        warnIfConverted(audioSourceModeName(audioSourceMode), result);
     } else {
         spdlog::warn("[Audio] Capture source={} failed: {}",
-                     audioSourceModeName(audioSourceMode_),
+                     audioSourceModeName(audioSourceMode),
                      result.error.empty() ? "unknown error" : result.error);
-        if (includeMicrophone_ && audioSourceMode_ != AudioSourceMode::DefaultMicrophone) {
+        if (includeMicrophone && audioSourceMode != AudioSourceMode::DefaultMicrophone) {
             spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
             startMicrophoneAsPrimary();
         }
         return;
     }
 
-    if (includeMicrophone_ && audioSourceMode_ != AudioSourceMode::DefaultMicrophone) {
+    if (includeMicrophone && audioSourceMode != AudioSourceMode::DefaultMicrophone) {
         startMicrophone(additionalCallback, "Additional");
     }
 }
@@ -2397,7 +2450,8 @@ void VersusApp::setupSignalingCallbacks() {
             resolvedSession = existingPeer && !existingPeer->session.empty() ? existingPeer->session : "default";
             spdlog::info("[Signaling] Using stable default session ID for uuid={}: {}", uuid, resolvedSession);
         }
-        const std::string resolvedStreamId = streamId_.empty() ? streamId : streamId_;
+        const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+        const std::string resolvedStreamId = lifecycleState.streamId.empty() ? streamId : lifecycleState.streamId;
         const std::string key = makePeerKey(uuid, resolvedSession);
         const int maxViewers = maxViewers_.load(std::memory_order_relaxed);
         if (maxViewers > 0) {
@@ -2431,7 +2485,7 @@ void VersusApp::setupSignalingCallbacks() {
         peer->createdAtMs = steadyNowMs();
         peer->lastStateChangeMs.store(peer->createdAtMs, std::memory_order_relaxed);
         peer->answerReceived = false;
-        peer->roomMode = !room_.empty();
+        peer->roomMode = !lifecycleState.room.empty();
         peer->initReceived.store(false, std::memory_order_relaxed);
         peer->roleValid.store(false, std::memory_order_relaxed);
         peer->role.store(PeerRole::Unknown, std::memory_order_relaxed);
@@ -2525,6 +2579,9 @@ void VersusApp::setupSignalingCallbacks() {
                             std::lock_guard<std::mutex> lock(iceConfigMutex_);
                             resolvedIceServers_ = fallbackIce.servers;
                             iceMode_ = webrtc::IceMode::All;
+                        }
+                        {
+                            std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
                             startOptions_.iceMode = webrtc::IceMode::All;
                         }
                         emitRuntimeEvent(
@@ -2767,10 +2824,11 @@ bool VersusApp::isControlMessageAuthorized(const std::shared_ptr<PeerSession> &p
     if (!remoteControlEnabled_.load(std::memory_order_relaxed)) {
         return false;
     }
-    if (remoteControlToken_.empty()) {
+    const std::string remoteControlToken = lifecycleStateSnapshot().remoteControlToken;
+    if (remoteControlToken.empty()) {
         return true;
     }
-    return token == remoteControlToken_;
+    return token == remoteControlToken;
 }
 
 bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
@@ -2801,10 +2859,10 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         int captureWidth = lastCaptureWidth_;
         int captureHeight = lastCaptureHeight_;
         {
-            std::lock_guard<std::mutex> latestLock(latestVideoFrameMutex_);
-            if (hasLatestVideoFrame_ && latestVideoFrame_.width > 0 && latestVideoFrame_.height > 0) {
-                captureWidth = latestVideoFrame_.width;
-                captureHeight = latestVideoFrame_.height;
+            const auto cachedFrame = getCachedVideoFrame();
+            if (cachedFrame && cachedFrame->width > 0 && cachedFrame->height > 0) {
+                captureWidth = cachedFrame->width;
+                captureHeight = cachedFrame->height;
             }
         }
         if (captureWidth > 0 && captureHeight > 0 &&
@@ -2979,7 +3037,7 @@ bool VersusApp::applyRuntimeAudioControl(int bitrateKbps) {
 }
 
 bool VersusApp::enforceRoomCodecLock() {
-    if (room_.empty()) {
+    if (lifecycleStateSnapshot().room.empty()) {
         return true;
     }
     if (!roomModeLqEnabled_.load(std::memory_order_relaxed)) {
@@ -3222,6 +3280,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         return;
     }
 
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
     const PeerRole peerRole = peer->role.load(std::memory_order_relaxed);
     const bool roleValid = peer->roleValid.load(std::memory_order_relaxed);
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
@@ -3267,7 +3326,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     nlohmann::json msg;
     nlohmann::json info;
 
-    info["label"] = startOptions_.label;
+    info["label"] = lifecycleState.startOptions.label;
     info["version"] = publisherVersionTag();
     info["maxviewers_url"] = maxViewers_.load(std::memory_order_relaxed);
     info["quality_url"] = effectiveBitrate;
@@ -3290,7 +3349,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         info["video_encoder_input_format"] = videoState.encoderInputFormat;
         info["hardware_encoder"] = videoState.hardwareEncoder;
     }
-    info["room_init"] = !room_.empty();
+    info["room_init"] = !lifecycleState.room.empty();
     info["room_init_received"] = initReceived;
     info["broadcast_mode"] = true;
     info["remote"] = remoteControlEnabled_.load(std::memory_order_relaxed);
@@ -3304,13 +3363,15 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     info["assigned_tier"] = streamTierName(assignedTier);
     info["requested_video_bitrate_kbps"] = requestedVideoBitrate;
     info["requested_audio_bitrate_kbps"] = peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed);
-    info["audio_source"] = audioSourceModeName(audioSourceMode_);
+    info["audio_source"] = audioSourceModeName(lifecycleState.audioSourceMode);
     const bool additionalMicrophoneActive =
-        includeMicrophone_ &&
-        audioSourceMode_ != AudioSourceMode::DefaultMicrophone &&
-        activeMicrophoneSourceName_ != "none";
+        lifecycleState.includeMicrophone &&
+        lifecycleState.audioSourceMode != AudioSourceMode::DefaultMicrophone &&
+        lifecycleState.activeMicrophoneSourceName != "none";
     info["include_microphone"] = additionalMicrophoneActive;
-    info["additional_audio_source"] = additionalMicrophoneActive ? activeMicrophoneSourceName_ : "none";
+    info["additional_audio_source"] = additionalMicrophoneActive
+        ? lifecycleState.activeMicrophoneSourceName
+        : "none";
     info["resolution"] = resolutionLabel(effectiveWidth, effectiveHeight);
     info["video_bitrate_kbps"] = aggregateVideoKbps;
     info["audio_bitrate_kbps"] = aggregateAudioKbps;
@@ -3378,6 +3439,7 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
         return;
     }
 
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
     int width = lastSentWidth_.load(std::memory_order_relaxed);
     int height = lastSentHeight_.load(std::memory_order_relaxed);
     const VideoStateSnapshot videoState = videoStateSnapshot();
@@ -3400,7 +3462,9 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
             : 0;
 
     nlohmann::json stats;
-    stats["label"] = startOptions_.label.empty() ? "Game Capture" : startOptions_.label;
+    stats["label"] = lifecycleState.startOptions.label.empty()
+        ? "Game Capture"
+        : lifecycleState.startOptions.label;
     stats["video_bitrate_kbps"] = aggregateVideoKbps;
     stats["audio_bitrate_kbps"] = aggregateAudioKbps;
     stats["available_outgoing_bitrate_kbps"] = videoState.config.bitrate;
@@ -3417,7 +3481,9 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
     stats["active_video"] = counts.activeVideo;
     stats["active_audio"] = counts.activeAudio;
 
-    const std::string key = streamId_.empty() ? std::string("game-capture") : streamId_;
+    const std::string key = lifecycleState.streamId.empty()
+        ? std::string("game-capture")
+        : lifecycleState.streamId;
     nlohmann::json msg;
     msg["remoteStats"][key] = stats;
     peer->client->sendDataMessage(msg.dump());
@@ -3428,17 +3494,18 @@ void VersusApp::sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer) {
         return;
     }
 
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
     nlohmann::json options = nlohmann::json::array();
-    if (audioSourceMode_ != AudioSourceMode::None || includeMicrophone_) {
-        std::string microphoneLabel = activeMicrophoneSourceName_;
-        std::string microphoneDeviceId = microphoneDeviceId_;
+    if (lifecycleState.audioSourceMode != AudioSourceMode::None || lifecycleState.includeMicrophone) {
+        std::string microphoneLabel = lifecycleState.activeMicrophoneSourceName;
+        std::string microphoneDeviceId = lifecycleState.microphoneDeviceId;
         if (microphoneLabel == "default-microphone" ||
             microphoneLabel == "selected-microphone" ||
             microphoneLabel.empty()) {
             const auto devices = microphoneAudioCapture_.GetInputDevices();
             for (const auto &device : devices) {
-                if ((!microphoneDeviceId_.empty() && device.id == microphoneDeviceId_) ||
-                    (microphoneDeviceId_.empty() && device.isDefault)) {
+                if ((!microphoneDeviceId.empty() && device.id == microphoneDeviceId) ||
+                    (microphoneDeviceId.empty() && device.isDefault)) {
                     microphoneLabel = device.name.empty() ? std::string("Microphone/input device") : device.name;
                     microphoneDeviceId = device.id;
                     break;
@@ -3452,7 +3519,7 @@ void VersusApp::sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer) {
         }
 
         std::string label;
-        switch (audioSourceMode_) {
+        switch (lifecycleState.audioSourceMode) {
             case AudioSourceMode::SelectedWindow:
                 label = "Selected window/app audio";
                 break;
@@ -3467,12 +3534,12 @@ void VersusApp::sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer) {
                 break;
             case AudioSourceMode::None:
             default:
-                label = includeMicrophone_ ? microphoneLabel : "";
+                label = lifecycleState.includeMicrophone ? microphoneLabel : "";
                 break;
         }
-        if (includeMicrophone_ &&
-            audioSourceMode_ != AudioSourceMode::DefaultMicrophone &&
-            audioSourceMode_ != AudioSourceMode::None) {
+        if (lifecycleState.includeMicrophone &&
+            lifecycleState.audioSourceMode != AudioSourceMode::DefaultMicrophone &&
+            lifecycleState.audioSourceMode != AudioSourceMode::None) {
             label += " + " + microphoneLabel;
         }
 
@@ -3534,9 +3601,10 @@ void VersusApp::sendPeerMediaDevices(const std::shared_ptr<PeerSession> &peer) {
         return;
     }
 
+    const std::string selectedWindowId = lifecycleStateSnapshot().selectedWindowId;
     nlohmann::json devices = nlohmann::json::array();
     devices.push_back({
-        {"deviceId", selectedWindowId_.empty() ? "game-capture-window" : selectedWindowId_},
+        {"deviceId", selectedWindowId.empty() ? "game-capture-window" : selectedWindowId},
         {"kind", "videoinput"},
         {"label", "Game Capture window"},
         {"groupId", "game-capture"}
@@ -3803,7 +3871,8 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (hasRequestAsTargetedControl) {
         const std::string requesterUuid = msg.contains("UUID") ? parseStringValue(msg["UUID"]) : "";
         const std::string requestAsTarget = parseStringValue(msg["requestAs"]);
-        const std::string nativeStatsKey = streamId_.empty() ? std::string("game-capture") : streamId_;
+        const std::string streamId = lifecycleStateSnapshot().streamId;
+        const std::string nativeStatsKey = streamId.empty() ? std::string("game-capture") : streamId;
         const bool targetMatchesNative =
             !requestAsTarget.empty() &&
             (requestAsTarget == nativeStatsKey || requestAsTarget == peer->streamId);
@@ -3876,7 +3945,10 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             sendRejectedControl("changeCamera", "Remote camera changes are not authorized.");
         } else {
             const std::string deviceId = msg["changeCamera"].is_string() ? msg["changeCamera"].get<std::string>() : "";
-            const std::string currentWindowDeviceId = selectedWindowId_.empty() ? "game-capture-window" : selectedWindowId_;
+            const std::string selectedWindowId = lifecycleStateSnapshot().selectedWindowId;
+            const std::string currentWindowDeviceId = selectedWindowId.empty()
+                ? "game-capture-window"
+                : selectedWindowId;
             const bool sameDevice = deviceId.empty() || deviceId == "game-capture-window" || deviceId == currentWindowDeviceId;
             sendPeerMediaDeviceChange(
                 peer,
@@ -4717,6 +4789,13 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         return true;
                     };
 
+                    const bool preserveVp9AlphaTrack = usesVp9AlphaTrack(videoConfig_);
+                    const auto publishRecoveredConfig = [this, preserveVp9AlphaTrack](
+                                                            video::EncoderConfig recoveredConfig) {
+                        recoveredConfig.enableAlpha = preserveVp9AlphaTrack;
+                        videoConfig_ = std::move(recoveredConfig);
+                        publishVideoStateSnapshotLocked();
+                    };
                     bool switchedToHardware = false;
 
                     if (hardwareRecoveryAttemptCount_ < kHardwareMaxSelfRecoveries) {
@@ -4725,8 +4804,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         selfRecoveryConfig.enableAlpha = false;
                         if (reinitAndCheck(selfRecoveryConfig, true, false, "Self-recovery reinit", "current")) {
                             hardwareRecoveryAttemptCount_++;
-                            videoConfig_ = selfRecoveryConfig;
-                            publishVideoStateSnapshotLocked();
+                            publishRecoveredConfig(selfRecoveryConfig);
                             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                             emitRuntimeEvent(
@@ -4766,8 +4844,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                             }
 
                             hardwareRecoveryAttemptCount_ = 0;
-                            videoConfig_ = candidateConfig;
-                            publishVideoStateSnapshotLocked();
+                            publishRecoveredConfig(candidateConfig);
                             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                             emitRuntimeEvent(
@@ -4789,8 +4866,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
                         videoEncoder_.shutdown();
                         if (videoEncoder_.initialize(fallbackConfig)) {
-                            videoConfig_ = fallbackConfig;
-                            publishVideoStateSnapshotLocked();
+                            publishRecoveredConfig(fallbackConfig);
                             hardwareAutoFallbackTriggered_ = true;
                             hardwareRecoveryAttemptCount_ = 0;
                             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -5092,18 +5168,9 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
     return true;
 }
 
-bool VersusApp::getCachedVideoFrame(video::CapturedFrame &frame) {
-    {
-        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        if (hasLatestVideoFrame_ && !latestVideoFrame_.data.empty()) {
-            frame = latestVideoFrame_;
-            return true;
-        }
-    }
-    if (videoSourceMode_ == VideoSourceMode::Spout) {
-        return spoutCapture_.getLatestFrame(frame);
-    }
-    return windowCapture_.getLatestFrame(frame);
+std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame() {
+    std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+    return cachedVideoFrame_;
 }
 
 void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
@@ -5113,21 +5180,14 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
     videoFramesCaptured_.fetch_add(1, std::memory_order_relaxed);
     updateSourceHealthFromFrame(frame);
 
-    video::CapturedFrame frameForEncoding;
-    {
-        const video::EncoderConfig config = videoStateSnapshot().config;
-        video::CapturedFrame compositedFrame;
-        if (compositeAlphaBackground(frame, config, alphaCompositeBuffer_, compositedFrame)) {
-            frameForEncoding = std::move(compositedFrame);
-        } else {
-            frameForEncoding = std::move(frame);
-        }
-    }
+    const video::EncoderConfig config = videoStateSnapshot().config;
+    compositeAlphaBackground(frame, config);
 
+    const auto sharedFrame = std::make_shared<const video::CapturedFrame>(std::move(frame));
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        latestVideoFrame_ = std::move(frameForEncoding);
-        hasLatestVideoFrame_ = true;
+        pendingVideoFrame_ = sharedFrame;
+        cachedVideoFrame_ = sharedFrame;
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -5169,30 +5229,35 @@ void VersusApp::startSignalingRecovery() {
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             spdlog::warn("[App] Signaling recovery attempt {}", attempt);
 
+            const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
             bool recovered = false;
             {
                 std::lock_guard<std::mutex> lock(signalingOpsMutex_);
                 signaling_.disconnect();
 
-                if (signaling_.connect(startOptions_.server)) {
-                    signaling_.setPassword(password_);
-                    if (password_ == "false" || password_ == "0" || password_ == "off") {
+                if (signaling_.connect(lifecycleState.startOptions.server)) {
+                    signaling_.setPassword(lifecycleState.password);
+                    if (lifecycleState.password == "false" ||
+                        lifecycleState.password == "0" ||
+                        lifecycleState.password == "off") {
                         signaling_.disableEncryption();
                     }
 
                     bool joined = true;
-                    if (!room_.empty()) {
+                    if (!lifecycleState.room.empty()) {
                         signaling::RoomConfig roomConfig;
-                        roomConfig.room = room_;
-                        roomConfig.password = password_;
-                        roomConfig.label = startOptions_.label;
-                        roomConfig.streamId = streamId_;
-                        roomConfig.salt = salt_;
+                        roomConfig.room = lifecycleState.room;
+                        roomConfig.password = lifecycleState.password;
+                        roomConfig.label = lifecycleState.startOptions.label;
+                        roomConfig.streamId = lifecycleState.streamId;
+                        roomConfig.salt = lifecycleState.salt;
                         joined = signaling_.joinRoom(roomConfig);
                     }
 
                     if (joined) {
-                        recovered = signaling_.publish(streamId_, startOptions_.label);
+                        recovered = signaling_.publish(
+                            lifecycleState.streamId,
+                            lifecycleState.startOptions.label);
                     }
                 }
 
@@ -5242,17 +5307,18 @@ void VersusApp::startVideoMaintenanceThread() {
         return;
     }
 
-    videoMaintenanceThread_ = std::thread([this]() {
+    const VideoSourceMode sourceMode = lifecycleStateSnapshot().videoSourceMode;
+    videoMaintenanceThread_ = std::thread([this, sourceMode]() {
         int64_t lastInfoBroadcastMs = 0;
         while (videoMaintenanceRunning_.load()) {
-            const bool sourceCapturing = videoSourceMode_ == VideoSourceMode::Spout
+            const bool sourceCapturing = sourceMode == VideoSourceMode::Spout
                 ? spoutCapture_.isCapturing()
                 : windowCapture_.isCapturing();
             if (capturing_.load(std::memory_order_relaxed) && !sourceCapturing) {
                 videoTrackActive_.store(false, std::memory_order_relaxed);
                 pendingGlobalKeyframe_.store(false, std::memory_order_relaxed);
                 if (!captureBackendFailureNotified_.exchange(true, std::memory_order_relaxed)) {
-                    const std::string message = videoSourceMode_ == VideoSourceMode::Spout
+                    const std::string message = sourceMode == VideoSourceMode::Spout
                         ? "Spout2 capture stopped. Select a valid Spout2 sender and start streaming again."
                         : "Window capture stopped. Select a valid window and start streaming again.";
                     spdlog::warn("[App] {}", message);
@@ -5322,9 +5388,9 @@ void VersusApp::startVideoMaintenanceThread() {
                 (lastKeyframeMs == 0) || ((nowMs - lastKeyframeMs) >= kPeriodicKeyframeMs);
 
             if (staleSend || periodicKeyframeDue) {
-                video::CapturedFrame cached;
-                if (getCachedVideoFrame(cached)) {
-                    encodeAndSendVideoFrame(cached, periodicKeyframeDue);
+                const auto cachedFrame = getCachedVideoFrame();
+                if (cachedFrame && !cachedFrame->data.empty()) {
+                    encodeAndSendVideoFrame(*cachedFrame, periodicKeyframeDue);
                 } else if (periodicKeyframeDue) {
                     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
@@ -5586,18 +5652,17 @@ void VersusApp::startEncodeThread() {
                 spdlog::info("[EncodeThread] Video track became active; forcing keyframe on next frame");
             }
 
-            video::CapturedFrame frame;
+            std::shared_ptr<const video::CapturedFrame> frame;
             {
                 std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-                frame = std::move(latestVideoFrame_);
-                hasLatestVideoFrame_ = false;
+                frame = std::move(pendingVideoFrame_);
             }
 
-            if (frame.data.empty()) {
+            if (!frame || frame->data.empty()) {
                 continue;
             }
 
-            if (!encodeAndSendVideoFrame(frame, false)) {
+            if (!encodeAndSendVideoFrame(*frame, false)) {
                 static int sendFailCount = 0;
                 if (++sendFailCount % 100 == 1) {
                     spdlog::warn("[EncodeThread] encodeAndSendVideoFrame failed (count={})", sendFailCount);
@@ -5762,6 +5827,24 @@ VersusApp::VideoStateSnapshot VersusApp::videoStateSnapshot() const {
 
     std::lock_guard<std::mutex> snapshotLock(videoStateSnapshotMutex_);
     return cachedVideoStateSnapshot_;
+}
+
+VersusApp::LifecycleStateSnapshot VersusApp::lifecycleStateSnapshot() const {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+    LifecycleStateSnapshot snapshot;
+    snapshot.startOptions = startOptions_;
+    snapshot.streamId = streamId_;
+    snapshot.room = room_;
+    snapshot.password = password_;
+    snapshot.salt = salt_;
+    snapshot.remoteControlToken = remoteControlToken_;
+    snapshot.selectedWindowId = selectedWindowId_;
+    snapshot.videoSourceMode = videoSourceMode_;
+    snapshot.audioSourceMode = audioSourceMode_;
+    snapshot.includeMicrophone = includeMicrophone_;
+    snapshot.microphoneDeviceId = microphoneDeviceId_;
+    snapshot.activeMicrophoneSourceName = activeMicrophoneSourceName_;
+    return snapshot;
 }
 
 void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet) {

@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.41",
+    [string]$Version = "0.2.45",
     [string]$FfmpegBundleRoot = "",
     [switch]$AllowMissingFfmpeg = $false,
     [switch]$SkipVirusTotal = $false
@@ -91,6 +91,7 @@ function Resolve-RuntimeDll([string]$Name) {
             return (Resolve-Path $direct).Path
         }
         $match = Get-ChildItem -Path $root -Filter $Name -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '(?i)[\\/](x64|amd64)[\\/]' } |
             Sort-Object FullName -Descending |
             Select-Object -First 1
         if ($match) {

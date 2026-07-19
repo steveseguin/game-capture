@@ -756,7 +756,8 @@ void TestMainWindow::testFfmpegAlphaStatusMessaging() {
     alphaCheck->setChecked(true);
 
     QVERIFY(statusLabel->text().contains("ffmpeg.exe", Qt::CaseInsensitive));
-    QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive));
+    QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive) ||
+            statusLabel->text().contains("alpha mask", Qt::CaseInsensitive));
     QVERIFY(statusLabel->text().contains("FFmpeg/libvpx", Qt::CaseInsensitive) ||
             statusLabel->text().contains("using", Qt::CaseInsensitive));
 
@@ -768,7 +769,16 @@ void TestMainWindow::testFfmpegAlphaStatusMessaging() {
 
     QVERIFY(!statusLabel->text().contains("Only needed", Qt::CaseInsensitive));
     QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive) ||
-            statusLabel->text().contains("libvpx-vp9", Qt::CaseInsensitive));
+            statusLabel->text().contains("libvpx-vp9", Qt::CaseInsensitive) ||
+            statusLabel->text().contains("alpha mask", Qt::CaseInsensitive));
+
+    const int av1Index = codecCombo->findData("av1");
+    QVERIFY(av1Index >= 0);
+    codecCombo->setCurrentIndex(av1Index);
+    alphaCheck->setChecked(true);
+    QCoreApplication::processEvents();
+    QVERIFY(!statusLabel->text().contains("libvpx-vp9", Qt::CaseInsensitive));
+    QVERIFY(!statusLabel->text().contains("alpha mask", Qt::CaseInsensitive));
 }
 
 void TestMainWindow::testAlphaWorkflowMessaging() {

@@ -459,8 +459,9 @@ struct WebRtcClient::Impl {
         return true;
     }
 
-    // Alpha track must be added AFTER the primary video track so it occupies m-line 1 in SDP.
-    // The OBS VDO.Ninja plugin identifies the alpha track by SDP m-line position (not mid name).
+    // Alpha must remain the second video section. The OBS VDO.Ninja plugin recognizes either
+    // that video-section ordering or the explicit "video-alpha" MID; audio/data m-lines may
+    // already exist when a capable receiver requests alpha during renegotiation.
     bool ensureAlphaVideoTrack() {
         if (!pc || !enableAlphaTrack) {
             return false;
@@ -960,7 +961,7 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAud
         change.changed = true;
         change.videoAdded = true;
     }
-    // Alpha track MUST be added after primary (SDP m-line ordering determines role in OBS plugin)
+    // Keep alpha after the primary video section; absolute SDP m-line index is not significant.
     if (enableVideo && enableAlpha && impl_->enableAlphaTrack && !impl_->alphaVideoTrack && impl_->ensureAlphaVideoTrack()) {
         change.changed = true;
         change.alphaAdded = true;

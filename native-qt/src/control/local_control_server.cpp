@@ -11,7 +11,6 @@
 #include <QRandomGenerator>
 #include <QTcpServer>
 #include <QTcpSocket>
-#include <QTextStream>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
@@ -95,18 +94,48 @@ QJsonArray readLogTail(const QString &path, int maxLines) {
         return lines;
     }
     QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    if (!file.open(QIODevice::ReadOnly)) {
         return lines;
     }
-    QStringList allLines;
-    QTextStream stream(&file);
-    while (!stream.atEnd()) {
-        allLines.push_back(stream.readLine());
-        if (allLines.size() > maxLines) {
-            allLines.removeFirst();
+
+    constexpr qint64 kReadChunkBytes = 64 * 1024;
+    constexpr qint64 kMaximumTailBytes = 2 * 1024 * 1024;
+    QByteArray tail;
+    qint64 position = file.size();
+    qsizetype newlineCount = 0;
+    while (position > 0 && newlineCount <= maxLines && tail.size() < kMaximumTailBytes) {
+        const qint64 remainingCapacity = kMaximumTailBytes - tail.size();
+        const qint64 bytesToRead = std::min({position, kReadChunkBytes, remainingCapacity});
+        position -= bytesToRead;
+        if (!file.seek(position)) {
+            return {};
         }
+        const QByteArray chunk = file.read(bytesToRead);
+        if (chunk.size() != bytesToRead) {
+            return {};
+        }
+        newlineCount += chunk.count('\n');
+        tail.prepend(chunk);
     }
-    for (const QString &line : allLines) {
+
+    if (position > 0) {
+        const qsizetype firstCompleteLine = tail.indexOf('\n');
+        if (firstCompleteLine < 0) {
+            return lines;
+        }
+        tail.remove(0, firstCompleteLine + 1);
+    }
+
+    QStringList tailLines = QString::fromUtf8(tail).split('\n');
+    if (!tailLines.isEmpty() && tailLines.constLast().isEmpty()) {
+        tailLines.removeLast();
+    }
+    const qsizetype firstLine = std::max<qsizetype>(0, tailLines.size() - maxLines);
+    for (qsizetype i = firstLine; i < tailLines.size(); ++i) {
+        QString line = tailLines.at(i);
+        if (line.endsWith('\r')) {
+            line.chop(1);
+        }
         lines.append(line);
     }
     return lines;
@@ -403,7 +432,10 @@ void LocalControlServer::routeRequest(QTcpSocket *socket, const HttpRequest &req
             return;
         }
         if (command == "issue_report") {
-            sendJson(socket, 201, issueReportJson(request.body));
+            const QByteArray response = issueReportJson(request.body);
+            const QJsonDocument responseDoc = jsonDocumentFromBytes(response);
+            const bool created = responseDoc.isObject() && responseDoc.object().value("ok").toBool();
+            sendJson(socket, created ? 201 : 500, response);
             return;
         }
         sendError(socket, 400, "Unknown command");
@@ -512,7 +544,10 @@ QByteArray LocalControlServer::recentLogJson(int maxLines) const {
 QByteArray LocalControlServer::issueReportJson(const QByteArray &requestBody) {
     const QJsonDocument commandDoc = jsonDocumentFromBytes(requestBody);
     const QJsonObject command = commandDoc.isObject() ? commandDoc.object() : QJsonObject{};
-    QDir().mkpath(config_.reportDir);
+    if (!QDir(config_.reportDir).exists() && !QDir().mkpath(config_.reportDir)) {
+        QJsonObject error{{"ok", false}, {"error", "Could not create issue report directory"}, {"path", config_.reportDir}};
+        return QJsonDocument(error).toJson(QJsonDocument::Compact);
+    }
     const QString reportPath = QDir(config_.reportDir).filePath(QString("issue-report-%1.json").arg(timestampForFile()));
 
     QJsonObject report;
@@ -532,8 +567,15 @@ QByteArray LocalControlServer::issueReportJson(const QByteArray &requestBody) {
         QJsonObject error{{"ok", false}, {"error", "Could not write issue report"}, {"path", reportPath}};
         return QJsonDocument(error).toJson(QJsonDocument::Compact);
     }
-    file.write(QJsonDocument(report).toJson(QJsonDocument::Indented));
-    file.write("\n");
+    const QByteArray reportBytes = QJsonDocument(report).toJson(QJsonDocument::Indented);
+    if (file.write(reportBytes) != reportBytes.size() ||
+        file.write("\n") != 1 ||
+        !file.flush()) {
+        file.close();
+        QFile::remove(reportPath);
+        QJsonObject error{{"ok", false}, {"error", "Could not write issue report"}, {"path", reportPath}};
+        return QJsonDocument(error).toJson(QJsonDocument::Compact);
+    }
 
     QJsonObject response{{"ok", true}, {"command", "issue_report"}, {"path", reportPath}};
     return QJsonDocument(response).toJson(QJsonDocument::Compact);

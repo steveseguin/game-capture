@@ -209,6 +209,20 @@ class VersusApp {
         bool lqEncoderInitialized = false;
         std::string lqEncoderName;
     };
+    struct LifecycleStateSnapshot {
+        StartOptions startOptions;
+        std::string streamId;
+        std::string room;
+        std::string password;
+        std::string salt;
+        std::string remoteControlToken;
+        std::string selectedWindowId;
+        VideoSourceMode videoSourceMode = VideoSourceMode::Window;
+        AudioSourceMode audioSourceMode = AudioSourceMode::SelectedWindow;
+        bool includeMicrophone = false;
+        std::string microphoneDeviceId;
+        std::string activeMicrophoneSourceName;
+    };
     struct PendingRemoteCandidate {
         std::string uuid;
         std::string session;
@@ -285,7 +299,7 @@ class VersusApp {
     bool isControlMessageAuthorized(const std::shared_ptr<PeerSession> &peer, const std::string &token) const;
     bool encodeAndSendVideoFrame(const versus::video::CapturedFrame &frame, bool forceKeyframe);
     bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
-    bool getCachedVideoFrame(versus::video::CapturedFrame &frame);
+    std::shared_ptr<const versus::video::CapturedFrame> getCachedVideoFrame();
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
     std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
                                                                 const std::string &session) const;
@@ -306,6 +320,7 @@ class VersusApp {
     VideoStateSnapshot buildVideoStateSnapshotLocked() const;
     void publishVideoStateSnapshotLocked() const;
     VideoStateSnapshot videoStateSnapshot() const;
+    LifecycleStateSnapshot lifecycleStateSnapshot() const;
 
     std::atomic<bool> live_{false};
     std::atomic<bool> capturing_{false};
@@ -398,6 +413,7 @@ class VersusApp {
     bool latestAlphaPacketReady_ = false;
     mutable std::mutex peerSessionsMutex_;
     std::mutex peerShutdownTasksMutex_;
+    mutable std::mutex lifecycleStateMutex_;
     mutable std::mutex signalingOpsMutex_;
     mutable std::mutex iceConfigMutex_;
     mutable std::mutex runtimeEventMutex_;
@@ -489,8 +505,8 @@ class VersusApp {
     mutable std::mutex videoStateSnapshotMutex_;
     mutable VideoStateSnapshot cachedVideoStateSnapshot_;
     std::mutex latestVideoFrameMutex_;
-    versus::video::CapturedFrame latestVideoFrame_;
-    bool hasLatestVideoFrame_ = false;
+    std::shared_ptr<const versus::video::CapturedFrame> pendingVideoFrame_;
+    std::shared_ptr<const versus::video::CapturedFrame> cachedVideoFrame_;
     int activeHqWidth_ = 0;
     int activeHqHeight_ = 0;
     int lastCaptureWidth_ = 0;
@@ -521,7 +537,6 @@ class VersusApp {
     versus::video::VideoEncoder videoEncoderLq_;
     versus::video::VideoEncoder videoEncoderAlpha_;
     std::vector<uint8_t> alphaGrayBuffer_;
-    std::vector<uint8_t> alphaCompositeBuffer_;
     versus::audio::WindowAudioCaptureCore audioCapture_;
     versus::audio::WindowAudioCaptureCore microphoneAudioCapture_;
     versus::audio::OpusEncoder opusEncoder_;

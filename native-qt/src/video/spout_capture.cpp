@@ -81,10 +81,8 @@ WindowInfo makeSenderInfo(SPOUTLIBRARY *spout, const char *name) {
 struct SpoutCapture::Impl {
 #if defined(_WIN32) && defined(VERSUS_USE_SPOUT)
     std::thread captureThread;
-    std::mutex frameMutex;
     std::mutex initMutex;
     std::condition_variable initCV;
-    CapturedFrame latestFrame;
     std::vector<uint8_t> pixelBuffer;
     std::string activeSenderName;
     unsigned int senderWidth = 0;
@@ -173,11 +171,6 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
         std::lock_guard<std::mutex> lock(impl_->initMutex);
         impl_->initDone = false;
         impl_->initSucceeded = false;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(impl_->frameMutex);
-        impl_->latestFrame = CapturedFrame{};
     }
 
     capturing_.store(true, std::memory_order_release);
@@ -399,14 +392,7 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
             frame.data = impl_->pixelBuffer;
 
             if (frameCallback_) {
-                {
-                    std::lock_guard<std::mutex> lock(impl_->frameMutex);
-                    impl_->latestFrame = frame;
-                }
                 frameCallback_(std::move(frame));
-            } else {
-                std::lock_guard<std::mutex> lock(impl_->frameMutex);
-                impl_->latestFrame = std::move(frame);
             }
 
             receiver->HoldFps(impl_->targetFps);
@@ -458,10 +444,6 @@ void SpoutCapture::stopCapture() {
     impl_->senderWidth = 0;
     impl_->senderHeight = 0;
     impl_->senderFormat = 0;
-    {
-        std::lock_guard<std::mutex> lock(impl_->frameMutex);
-        impl_->latestFrame = CapturedFrame{};
-    }
 #endif
 }
 
@@ -471,20 +453,6 @@ bool SpoutCapture::isCapturing() const {
 
 void SpoutCapture::setFrameCallback(FrameCallback cb) {
     frameCallback_ = std::move(cb);
-}
-
-bool SpoutCapture::getLatestFrame(CapturedFrame &outFrame) {
-#if defined(_WIN32) && defined(VERSUS_USE_SPOUT)
-    std::lock_guard<std::mutex> lock(impl_->frameMutex);
-    if (impl_->latestFrame.data.empty()) {
-        return false;
-    }
-    outFrame = impl_->latestFrame;
-    return true;
-#else
-    (void)outFrame;
-    return false;
-#endif
 }
 
 }  // namespace versus::video

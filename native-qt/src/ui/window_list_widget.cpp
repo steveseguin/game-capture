@@ -333,7 +333,13 @@ void WindowListWidget::setHeaderText(const QString &text) {
 }
 
 void WindowListWidget::setEmptyText(const QString &text) {
+    if (emptyText_ == text) {
+        return;
+    }
     emptyText_ = text;
+    if (windowItems_.isEmpty() && listWidget_ && listWidget_->count() == 1) {
+        listWidget_->item(0)->setText(emptyText_);
+    }
 }
 
 void WindowListWidget::setSpoutModeEnabled(bool enabled) {

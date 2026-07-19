@@ -146,7 +146,14 @@ foreach ($name in @("LICENSE.txt", "README.txt", "VERSION.txt")) {
 }
 
 $firstVersionLine = ($versionOutput -split "`n" | Select-Object -First 1).Trim()
-$sourceArchiveUrl = "https://github.com/FFmpeg/FFmpeg/archive/94138f6973.zip"
+$commitMatch = [regex]::Match(
+    $firstVersionLine,
+    '(?i)(?:^|[-\s])g(?<commit>[0-9a-f]{7,40})(?=[-\s]|$)')
+if (-not $commitMatch.Success) {
+    throw "Could not derive the FFmpeg source commit from the staged binary version: $firstVersionLine"
+}
+$ffmpegSourceCommit = $commitMatch.Groups['commit'].Value.ToLowerInvariant()
+$sourceArchiveUrl = "https://github.com/FFmpeg/FFmpeg/archive/$ffmpegSourceCommit.zip"
 $btbnBuildUrl = "https://github.com/BtbN/FFmpeg-Builds/tree/$ReleaseTag"
 
 $manifest = [ordered]@{
@@ -156,7 +163,7 @@ $manifest = [ordered]@{
     asset_name = $AssetName
     asset_url = $downloadUrl
     asset_sha256 = $actualSha
-    ffmpeg_source_commit = "94138f6973"
+    ffmpeg_source_commit = $ffmpegSourceCommit
     ffmpeg_source_archive_url = $sourceArchiveUrl
     build_scripts_url = $btbnBuildUrl
     staged_utc = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -179,7 +186,7 @@ $sources += "Binary asset: $AssetName"
 $sources += "Binary URL: $downloadUrl"
 $sources += "Binary SHA256: $actualSha"
 $sources += ""
-$sources += "FFmpeg source commit: 94138f6973"
+$sources += "FFmpeg source commit: $ffmpegSourceCommit"
 $sources += "FFmpeg source archive: $sourceArchiveUrl"
 $sources += "BtbN build scripts: $btbnBuildUrl"
 $sources += ""

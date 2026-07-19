@@ -40,6 +40,8 @@ class MainWindow : public QMainWindow {
 
   public slots:
     void updateStats(const StreamStats &stats);
+    void requestStop();
+    void requestQuit();
 
   private slots:
     void onWindowSelected(const QString &windowId);
@@ -69,7 +71,6 @@ class MainWindow : public QMainWindow {
     void loadPersistedSettings();
     void showFirewallWarningIfNeeded();
     void maybeQuitAfterPendingOperations();
-    void requestQuit();
     void savePersistedSettings();
     void connectPersistedSettingSignals();
     int selectedBitrateKbps() const;
@@ -164,6 +165,7 @@ class MainWindow : public QMainWindow {
     bool reconnectNoticeActive_ = false;
     bool quitRequested_ = false;
     bool quitAfterPendingOps_ = false;
+    bool stopAfterPendingStart_ = false;
     bool forceQuitEnabled_ = false;
     bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;

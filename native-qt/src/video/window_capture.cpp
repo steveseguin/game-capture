@@ -416,15 +416,6 @@ class WindowCapture::Impl {
         lastContentHeight_ = 0;
     }
 
-    bool getLatestFrame(CapturedFrame &outFrame) {
-        std::lock_guard<std::mutex> lock(frameMutex_);
-        if (latestFrame_.data.empty()) {
-            return false;
-        }
-        outFrame = latestFrame_;
-        return true;
-    }
-
     void setFrameCallback(FrameCallback callback) {
         frameCallback_ = std::move(callback);
     }
@@ -808,14 +799,7 @@ class WindowCapture::Impl {
         }
 
         if (frameCallback_) {
-            {
-                std::lock_guard<std::mutex> lock(frameMutex_);
-                latestFrame_ = frame;
-            }
             frameCallback_(std::move(frame));
-        } else {
-            std::lock_guard<std::mutex> lock(frameMutex_);
-            latestFrame_ = std::move(frame);
         }
     }
 
@@ -852,8 +836,6 @@ class WindowCapture::Impl {
     bool desktopCropWarningLogged_ = false;
 
     std::mutex processFrameMutex_;
-    std::mutex frameMutex_;
-    CapturedFrame latestFrame_;
     FrameCallback frameCallback_;
     std::thread captureThread_;
 };
@@ -866,7 +848,6 @@ class WindowCapture::Impl {
     std::vector<WindowInfo> enumerateWindows() { return {}; }
     bool startCapture(void *, int, int, int) { return false; }
     void stopCapture() {}
-    bool getLatestFrame(CapturedFrame &) { return false; }
     void setFrameCallback(FrameCallback) {}
     bool isCapturing() const { return false; }
 };
@@ -924,10 +905,6 @@ bool WindowCapture::isCapturing() const {
 void WindowCapture::setFrameCallback(FrameCallback cb) {
     frameCallback_ = std::move(cb);
     impl_->setFrameCallback(frameCallback_);
-}
-
-bool WindowCapture::getLatestFrame(CapturedFrame &outFrame) {
-    return impl_->getLatestFrame(outFrame);
 }
 
 QPixmap WindowCapture::captureWindowThumbnail(const std::string &windowId, int maxWidth, int maxHeight) {
