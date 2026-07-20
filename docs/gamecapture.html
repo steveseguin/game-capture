@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game Capture for VDO.Ninja</title>
+    <title>Game Capture for VDO.Ninja | Spout2 &amp; Alpha Video</title>
     <meta
       name="description"
-      content="Download Game Capture for Windows and publish low-latency gameplay to VDO.Ninja."
+      content="Publish games, app windows, or Spout2 VTuber avatars from Windows to VDO.Ninja and OBS, with low-latency video and optional alpha transparency."
     />
     <meta
       name="keywords"
-      content="game capture, vdo.ninja, windows game streaming, low latency streaming, webrtc game capture, obs guest capture"
+      content="game capture, spout2 capture, vdo.ninja, vtuber streaming, transparent avatar, alpha video, windows game streaming, webrtc game capture, obs guest capture"
     />
     <meta name="author" content="Steve Seguin" />
     <meta name="robots" content="index,follow,max-image-preview:large" />
@@ -19,10 +19,10 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Game Capture" />
-    <meta property="og:title" content="Game Capture for VDO.Ninja" />
+    <meta property="og:title" content="Game Capture for VDO.Ninja | Spout2 &amp; Alpha Video" />
     <meta
       property="og:description"
-      content="Download Game Capture for Windows and publish low-latency gameplay to VDO.Ninja."
+      content="Publish games, app windows, or Spout2 VTuber avatars from Windows to VDO.Ninja and OBS, with optional alpha transparency."
     />
     <meta property="og:url" content="https://steveseguin.github.io/game-capture/gamecapture.html" />
     <meta property="og:image" content="https://steveseguin.github.io/game-capture/app-screenshot.png" />
@@ -30,10 +30,10 @@
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:creator" content="@SteveSeguin" />
-    <meta name="twitter:title" content="Game Capture for VDO.Ninja" />
+    <meta name="twitter:title" content="Game Capture for VDO.Ninja | Spout2 &amp; Alpha Video" />
     <meta
       name="twitter:description"
-      content="Windows-native game publishing app for low-latency VDO.Ninja workflows."
+      content="Windows-native game, window, and Spout2 publishing for low-latency VDO.Ninja and transparent OBS workflows."
     />
     <meta name="twitter:image" content="https://steveseguin.github.io/game-capture/app-screenshot.png" />
     <link rel="icon" href="https://vdo.ninja/media/favicon.ico" />
@@ -44,7 +44,7 @@
         "name": "Game Capture",
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "Windows",
-        "description": "Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with low latency.",
+        "description": "Game Capture is a native Windows app for publishing games, app windows, and Spout2 VTuber avatars to VDO.Ninja and OBS, with optional alpha transparency.",
         "url": "https://steveseguin.github.io/game-capture/gamecapture.html",
         "downloadUrl": "https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe",
         "publisher": {
@@ -274,8 +274,8 @@
         <span class="kicker">Windows Native App</span>
         <h1>Game Capture for VDO.Ninja</h1>
         <p class="sub">
-          Send a guest one link to install, launch, and publish gameplay. Keep control simple:
-          stream ID, room workflow, and OBS-ready view links.
+          Publish games, app windows, or Spout2 VTuber avatars from Windows. Keep control simple:
+          stream ID, room workflow, and OBS-ready view links, including transparent alpha video.
         </p>
 
         <div class="download-grid">
@@ -318,7 +318,7 @@
           <h2>How It Works</h2>
           <ul class="list">
             <li>Creator sets stream ID and shares a link with the guest.</li>
-            <li>Guest opens Game Capture and selects the game/window to publish.</li>
+            <li>Guest opens Game Capture and selects a game, app window, or Spout2 sender.</li>
             <li>OBS uses view/scene links to pull the feed.</li>
             <li>Room workflows support role-based quality control.</li>
           </ul>
@@ -332,15 +332,31 @@
             <li>Multiple viewers from one HD encode workflow.</li>
             <li>No Electron runtime, low memory usage, native Qt app.</li>
             <li>Simple alternative to OBS for guest-side game feed publishing.</li>
+            <li>Direct Spout2 input for VTuber avatars and transparent graphics.</li>
             <li>Built for VDO.Ninja compatibility and link workflows.</li>
           </ul>
+        </article>
+        <article class="card">
+          <h2>Spout2 &amp; VTuber Sources</h2>
+          <ul class="list">
+            <li>Receive local Spout2 video from VTube Studio, Warudo, VSeeFace, VNyan, and similar Windows apps.</li>
+            <li>Enable Spout output in the avatar app, choose <strong>Spout2 (avatar apps)</strong>, and select its sender.</li>
+            <li>Spout2 carries video only; choose an output mix or microphone separately if the feed needs audio.</li>
+            <li>Use VP9 with the OBS alpha workflow for true transparency, or chroma background with H.264/NVENC.</li>
+            <li>If the sender is black, set Game Capture and the sender app to the same GPU in Windows Graphics settings.</li>
+          </ul>
+          <p>
+            <a href="https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja"
+              >Open the Game Capture and Spout2 setup guide</a
+            >.
+          </p>
         </article>
         <article class="card">
           <h2>Alpha Workflow</h2>
           <ul class="list">
             <li>Use <strong>VP9 (OBS Alpha Preview)</strong> with alpha enabled for transparent OBS playback.</li>
             <li>VP9 alpha requires the bundled LGPL FFmpeg/libvpx VP9 encoder and is CPU-encoded.</li>
-            <li>Transparent OBS playback requires the <a href="https://github.com/steveseguin/ninja-obs-plugin">VDO.Ninja OBS plugin</a> with Native Receiver enabled.</li>
+            <li>Transparent OBS playback requires the <a href="https://github.com/steveseguin/ninja-obs-plugin">VDO.Ninja OBS plugin</a> with <strong>Use Native Receiver (Experimental)</strong> enabled.</li>
             <li>OBS Browser Sources and normal browser viewers receive standard color video instead of composited transparency.</li>
             <li>Compatible OBS VDO.Ninja native receivers upgrade that stream to transparency automatically.</li>
             <li>For hardware encoding, use Alpha Background &rarr; Chroma background and key the selected color in the receiver.</li>

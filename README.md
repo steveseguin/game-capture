@@ -22,6 +22,19 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
 Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
 
+## Spout2 / VTuber Sources
+
+Game Capture can publish a local Spout2 sender from VTube Studio, Warudo, VSeeFace, VNyan, and other Windows avatar or graphics apps. This avoids capturing the app's controls and preserves transparent pixels for the alpha or chroma workflow.
+
+1. Enable Spout or Spout2 output in the source app and keep it running.
+2. In Game Capture, set `Video Source` to `Spout2 (avatar apps)`.
+3. Select the sender, enter the VDO.Ninja stream or room details, and go live.
+4. Use H.264 for normal video, `VP9 (OBS Alpha Preview)` for true transparency, or `Alpha Background -> Chroma background` for a hardware-encoded chroma-key feed.
+
+Spout2 carries video only. Game Capture defaults Spout2 sources to no audio, so choose an output mix or microphone separately when needed. If the sender is missing, enable its Spout output and refresh the list. If it appears but renders black, configure Game Capture and the sender app to use the same GPU in Windows Graphics settings.
+
+See the [Game Capture and Spout2 setup guide](https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja) for the receiver choices and troubleshooting steps.
+
 ## Local Control
 
 For same-user automation and local issue collection, the compiled app can expose an opt-in loopback JSON API with `--local-control`. It provides diagnostics, recent logs, source discovery, issue-report export, stop, and quit commands. See `docs/local-control-api.md`.
@@ -36,7 +49,7 @@ For same-user automation and local issue collection, the compiled app can expose
 
 - For transparent playback in OBS, choose `VP9 (OBS Alpha Preview)` and enable the alpha workflow.
 - VP9 alpha requires `ffmpeg.exe` with libvpx/VP9 support. Windows releases include a pinned LGPL FFmpeg bundle under `ffmpeg/bin/ffmpeg.exe`; advanced users can override it with `--ffmpeg-path` or the FFmpeg Path setting.
-- Transparent playback in OBS requires the [VDO.Ninja OBS plugin](https://github.com/steveseguin/ninja-obs-plugin) with its native receiver path enabled. OBS Browser Sources and normal browser viewers do not composite the alpha track.
+- Transparent playback in OBS requires the [VDO.Ninja OBS plugin](https://github.com/steveseguin/ninja-obs-plugin) with `Use Native Receiver (Experimental)` enabled. OBS Browser Sources and normal browser viewers do not composite the alpha track.
 - Compatible OBS VDO.Ninja native receivers automatically upgrade that stream to dual-track VP9 transparency.
 - Browser viewers remain compatible, but they stay standard color video.
 - For hardware encoding compatibility, leave VP9 alpha disabled and use `Alpha Background -> Chroma background`. Game Capture composites transparent Spout2/window pixels over the selected color before H.264/NVENC encode, so the receiver can chroma-key the feed.
