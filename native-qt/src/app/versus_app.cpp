@@ -1,5 +1,6 @@
 #include "versus/app/versus_app.h"
 
+#include "versus/audio/audio_format_converter.h"
 #include "versus/video/aspect_fit.h"
 
 #include <nlohmann/json.hpp>
@@ -539,6 +540,8 @@ const char *audioSourceModeName(AudioSourceMode mode) {
 
 const char *videoSourceModeName(VideoSourceMode mode) {
     switch (mode) {
+        case VideoSourceMode::Camera:
+            return "camera";
         case VideoSourceMode::Spout:
             return "spout";
         case VideoSourceMode::Window:
@@ -556,76 +559,6 @@ nlohmann::json integerRange(int minValue, int maxValue, int step = 0) {
         range["step"] = step;
     }
     return range;
-}
-
-std::vector<float> normalizeAudioForOpus(const audio::StreamChunk &chunk) {
-    constexpr uint32_t kOpusSampleRate = 48000;
-    constexpr uint32_t kOpusChannels = 2;
-
-    const uint32_t inputChannels = std::max<uint32_t>(1, chunk.channels);
-    const uint32_t inputSampleRate = std::max<uint32_t>(1, chunk.sampleRate);
-    const size_t inputFrames = chunk.samples.size() / inputChannels;
-    if (inputFrames == 0) {
-        return {};
-    }
-
-    std::vector<float> stereo;
-    stereo.resize(inputFrames * kOpusChannels);
-    for (size_t frame = 0; frame < inputFrames; ++frame) {
-        const size_t src = frame * inputChannels;
-        float left = 0.0f;
-        float right = 0.0f;
-        if (inputChannels == 1) {
-            left = chunk.samples[src];
-            right = left;
-        } else if (inputChannels == 2) {
-            left = chunk.samples[src];
-            right = chunk.samples[src + 1];
-        } else {
-            uint32_t leftCount = 0;
-            uint32_t rightCount = 0;
-            for (uint32_t ch = 0; ch < inputChannels; ++ch) {
-                if ((ch % 2) == 0) {
-                    left += chunk.samples[src + ch];
-                    leftCount++;
-                } else {
-                    right += chunk.samples[src + ch];
-                    rightCount++;
-                }
-            }
-            left /= static_cast<float>(std::max<uint32_t>(1, leftCount));
-            right /= static_cast<float>(std::max<uint32_t>(1, rightCount));
-        }
-        stereo[(frame * kOpusChannels)] = left;
-        stereo[(frame * kOpusChannels) + 1] = right;
-    }
-
-    if (inputSampleRate == kOpusSampleRate) {
-        return stereo;
-    }
-
-    const size_t outputFrames = std::max<size_t>(
-        1,
-        static_cast<size_t>(std::ceil(
-            (static_cast<double>(inputFrames) * static_cast<double>(kOpusSampleRate)) /
-            static_cast<double>(inputSampleRate))));
-    std::vector<float> resampled;
-    resampled.resize(outputFrames * kOpusChannels);
-
-    const double step = static_cast<double>(inputSampleRate) / static_cast<double>(kOpusSampleRate);
-    for (size_t frame = 0; frame < outputFrames; ++frame) {
-        const double srcPos = static_cast<double>(frame) * step;
-        const size_t srcFrame = std::min<size_t>(static_cast<size_t>(srcPos), inputFrames - 1);
-        const size_t nextFrame = std::min<size_t>(srcFrame + 1, inputFrames - 1);
-        const float mix = static_cast<float>(srcPos - static_cast<double>(srcFrame));
-        for (size_t ch = 0; ch < kOpusChannels; ++ch) {
-            const float a = stereo[(srcFrame * kOpusChannels) + ch];
-            const float b = stereo[(nextFrame * kOpusChannels) + ch];
-            resampled[(frame * kOpusChannels) + ch] = a + ((b - a) * mix);
-        }
-    }
-
-    return resampled;
 }
 
 std::string publisherVersionTag() {
@@ -720,8 +653,19 @@ std::vector<versus::video::WindowInfo> VersusApp::listSpoutSenders() {
     return spoutCapture_.getSenders();
 }
 
+std::vector<versus::video::WindowInfo> VersusApp::listCameras() {
+    return cameraCapture_.getCameras();
+}
+
 std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioInputDevices() {
     return audioCapture_.GetInputDevices();
+}
+
+std::string VersusApp::lastCaptureError() const {
+    if (lifecycleStateSnapshot().videoSourceMode == VideoSourceMode::Camera) {
+        return cameraCapture_.lastError();
+    }
+    return {};
 }
 
 bool VersusApp::startCapture(const std::string &windowId) {
@@ -729,9 +673,19 @@ bool VersusApp::startCapture(const std::string &windowId) {
 }
 
 bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) {
-    if (capturing_) {
-        stopCapture();
-    }
+    // A previous startup can fail after one of the capture backends has
+    // already opened but before capturing_ becomes true. Always begin from a
+    // fully stopped state, then arm a rollback for every early return below.
+    stopCapture();
+    struct StartupRollback {
+        VersusApp *app = nullptr;
+        bool armed = true;
+        ~StartupRollback() {
+            if (armed && app) {
+                app->stopCapture();
+            }
+        }
+    } startupRollback{this};
 
     audioPts100ns_.store(0);
     audioLevelRms_.store(0.0f);
@@ -797,6 +751,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     };
     windowCapture_.setFrameCallback(frameCallback);
     spoutCapture_.setFrameCallback(frameCallback);
+    cameraCapture_.setFrameCallback(frameCallback);
     {
         std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
         selectedWindowId_ = sourceId;
@@ -826,6 +781,27 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                 captureConfig.width,
                 captureConfig.height,
                 captureConfig.frameRate > 0 ? captureConfig.frameRate : 60)) {
+            return false;
+        }
+    } else if (mode == VideoSourceMode::Camera) {
+        video::EncoderConfig captureConfig;
+        {
+            std::lock_guard<std::mutex> lock(videoSendMutex_);
+            captureConfig = videoConfig_;
+        }
+        if (!cameraCapture_.startCapture(
+                sourceId,
+                captureConfig.width > 0 ? captureConfig.width : 1920,
+                captureConfig.height > 0 ? captureConfig.height : 1080,
+                captureConfig.frameRate > 0 ? captureConfig.frameRate : 30)) {
+            const std::string detail = cameraCapture_.lastError();
+            spdlog::warn("[App] Camera capture failed: {}",
+                         detail.empty() ? "unknown error" : detail);
+            emitRuntimeEvent(
+                detail.empty()
+                    ? "Failed to open the selected camera."
+                    : detail,
+                false);
             return false;
         }
     } else {
@@ -860,11 +836,13 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                     true);
                 windowCapture_.stopCapture();
                 spoutCapture_.stopCapture();
+                cameraCapture_.stopCapture();
                 return false;
             }
             if (config.codec == video::VideoCodec::H264) {
                 windowCapture_.stopCapture();
                 spoutCapture_.stopCapture();
+                cameraCapture_.stopCapture();
                 return false;
             }
 
@@ -883,6 +861,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                               videoCodecName(selectedCodec));
                 windowCapture_.stopCapture();
                 spoutCapture_.stopCapture();
+                cameraCapture_.stopCapture();
                 return false;
             }
 
@@ -918,6 +897,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     if (activeEncoderName.empty()) {
         windowCapture_.stopCapture();
         spoutCapture_.stopCapture();
+        cameraCapture_.stopCapture();
         return false;
     }
     spdlog::info("[App] Video encoder active: {} (hardware={})",
@@ -948,18 +928,16 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     capturing_ = true;
     startEncodeThread();
     startVideoMaintenanceThread();
+    startupRollback.armed = false;
     return true;
 }
 
 void VersusApp::stopCapture() {
-    if (!capturing_) {
-        return;
-    }
-
     stopVideoMaintenanceThread();
     stopEncodeThread();
     windowCapture_.stopCapture();
     spoutCapture_.stopCapture();
+    cameraCapture_.stopCapture();
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         videoEncoder_.shutdown();
@@ -1472,6 +1450,10 @@ SourceHealth VersusApp::getSourceHealth() const {
     return sourceHealth_;
 }
 
+std::shared_ptr<const video::CapturedFrame> VersusApp::getPublisherPreviewFrame() {
+    return getCachedVideoFrame();
+}
+
 void VersusApp::resetSourceHealth(VideoSourceMode mode, const std::string &sourceId) {
     std::lock_guard<std::mutex> lock(sourceHealthMutex_);
     sourceHealth_ = SourceHealth{};
@@ -1702,12 +1684,17 @@ std::string VersusApp::buildDiagnosticsJson() const {
         diagnosticsIceMode = webrtc::iceModeName(iceMode_);
         diagnosticsIceServerCount = static_cast<int>(resolvedIceServers_.size());
     }
-    int diagnosticsCaptureWidth = 0;
-    int diagnosticsCaptureHeight = 0;
+    int diagnosticsCaptureWidth = sourceHealth.width;
+    int diagnosticsCaptureHeight = sourceHealth.height;
     {
-        std::lock_guard<std::mutex> lock(videoSendMutex_);
-        diagnosticsCaptureWidth = lastCaptureWidth_;
-        diagnosticsCaptureHeight = lastCaptureHeight_;
+        // Diagnostics is served from the Qt/control thread and must never
+        // wait behind a driver or encoder call that owns the video mutex.
+        // The source-health dimensions remain a useful, thread-safe fallback.
+        std::unique_lock<std::mutex> lock(videoSendMutex_, std::try_to_lock);
+        if (lock.owns_lock()) {
+            diagnosticsCaptureWidth = lastCaptureWidth_;
+            diagnosticsCaptureHeight = lastCaptureHeight_;
+        }
     }
 
     root["app"] = {
@@ -2170,7 +2157,7 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
         return;
     }
 
-    std::vector<float> normalizedSamples = normalizeAudioForOpus(chunk);
+    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk);
     if (normalizedSamples.empty()) {
         return;
     }
@@ -2233,7 +2220,7 @@ void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
     }
     lastPrimaryAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
 
-    std::vector<float> normalizedSamples = normalizeAudioForOpus(chunk);
+    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk);
     if (normalizedSamples.empty()) {
         return;
     }
@@ -5311,16 +5298,42 @@ void VersusApp::startVideoMaintenanceThread() {
     videoMaintenanceThread_ = std::thread([this, sourceMode]() {
         int64_t lastInfoBroadcastMs = 0;
         while (videoMaintenanceRunning_.load()) {
-            const bool sourceCapturing = sourceMode == VideoSourceMode::Spout
-                ? spoutCapture_.isCapturing()
-                : windowCapture_.isCapturing();
+            bool sourceCapturing = false;
+            switch (sourceMode) {
+                case VideoSourceMode::Camera:
+                    sourceCapturing = cameraCapture_.isCapturing();
+                    break;
+                case VideoSourceMode::Spout:
+                    sourceCapturing = spoutCapture_.isCapturing();
+                    break;
+                case VideoSourceMode::Window:
+                default:
+                    sourceCapturing = windowCapture_.isCapturing();
+                    break;
+            }
             if (capturing_.load(std::memory_order_relaxed) && !sourceCapturing) {
                 videoTrackActive_.store(false, std::memory_order_relaxed);
                 pendingGlobalKeyframe_.store(false, std::memory_order_relaxed);
                 if (!captureBackendFailureNotified_.exchange(true, std::memory_order_relaxed)) {
-                    const std::string message = sourceMode == VideoSourceMode::Spout
-                        ? "Spout2 capture stopped. Select a valid Spout2 sender and start streaming again."
-                        : "Window capture stopped. Select a valid window and start streaming again.";
+                    std::string message;
+                    switch (sourceMode) {
+                        case VideoSourceMode::Camera:
+                            message = cameraCapture_.lastError();
+                            if (message.empty()) {
+                                message =
+                                    "Camera capture stopped. Check the camera connection and Windows privacy settings, then start streaming again.";
+                            }
+                            break;
+                        case VideoSourceMode::Spout:
+                            message =
+                                "Spout2 capture stopped. Select a valid Spout2 sender and start streaming again.";
+                            break;
+                        case VideoSourceMode::Window:
+                        default:
+                            message =
+                                "Window capture stopped. Select a valid window and start streaming again.";
+                            break;
+                    }
                     spdlog::warn("[App] {}", message);
                     emitRuntimeEvent(message, true);
                 }

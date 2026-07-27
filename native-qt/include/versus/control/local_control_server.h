@@ -43,6 +43,7 @@ class LocalControlServer : public QObject {
 
     void setDiagnosticsProvider(DiagnosticsProvider provider);
     void setWindowSourcesProvider(SourcesProvider provider);
+    void setCameraSourcesProvider(SourcesProvider provider);
     void setSpoutSourcesProvider(SourcesProvider provider);
     void setAudioInputSourcesProvider(SourcesProvider provider);
     void setStopCallback(StopCallback callback);
@@ -78,6 +79,7 @@ class LocalControlServer : public QObject {
     LocalControlServerConfig config_;
     DiagnosticsProvider diagnosticsProvider_;
     SourcesProvider windowSourcesProvider_;
+    SourcesProvider cameraSourcesProvider_;
     SourcesProvider spoutSourcesProvider_;
     SourcesProvider audioInputSourcesProvider_;
     StopCallback stopCallback_;

@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.45",
+    [string]$Version = "0.2.48",
     [string]$FfmpegBundleRoot = "",
     [switch]$AllowMissingFfmpeg = $false,
     [switch]$SkipVirusTotal = $false

@@ -25,6 +25,10 @@ function parseArgs(argv) {
     ffmpegOptions: '',
     source: '',
     spoutSender: '',
+    camera: '',
+    audioSource: '',
+    microphoneDevice: '',
+    includeMicrophone: false,
     width: 0,
     height: 0,
     fps: 0,
@@ -80,6 +84,14 @@ function parseArgs(argv) {
       args.source = arg.slice('--source='.length);
     } else if (arg.startsWith('--spout-sender=')) {
       args.spoutSender = arg.slice('--spout-sender='.length);
+    } else if (arg.startsWith('--camera=')) {
+      args.camera = arg.slice('--camera='.length);
+    } else if (arg.startsWith('--audio-source=')) {
+      args.audioSource = arg.slice('--audio-source='.length);
+    } else if (arg.startsWith('--microphone-device=')) {
+      args.microphoneDevice = arg.slice('--microphone-device='.length);
+    } else if (arg === '--include-microphone' || arg === '--include-mic') {
+      args.includeMicrophone = true;
     } else if (arg.startsWith('--width=')) {
       args.width = Number(arg.slice('--width='.length)) || args.width;
     } else if (arg.startsWith('--height=')) {
@@ -258,6 +270,17 @@ function spawnPublisher(config) {
     }
     if (config.spoutSender) {
       args.push(`--spout-sender=${config.spoutSender}`);
+    }
+    if (config.camera) {
+      args.push(`--camera=${config.camera}`);
+    }
+    if (config.audioSource) {
+      args.push(`--audio-source=${config.audioSource}`);
+    }
+    if (config.microphoneDevice) {
+      args.push(`--microphone-device=${config.microphoneDevice}`);
+    } else if (config.includeMicrophone) {
+      args.push('--include-microphone');
     }
     if (config.width > 0) {
       args.push(`--width=${config.width}`);

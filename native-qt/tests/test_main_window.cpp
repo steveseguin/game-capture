@@ -41,8 +41,12 @@ private slots:
     void testRemoteControlControls();
     void testResolutionOptions();
     void testVideoSourceModeControl();
+    void testCameraBasicOptions();
+    void testPersistedCameraOptions();
     void testPersistedSpoutModeUsesNoAudio();
+    void testPersistedCameraModeUsesMicrophone();
     void testSpoutSelectionPreviewMessaging();
+    void testCameraSelectionPreviewMessaging();
     void testIceModeOptions();
     void testAudioSourceOptions();
     void testAudioMixControls();
@@ -158,17 +162,10 @@ void TestMainWindow::testGoLiveButtonEnabledAfterSelection() {
 }
 
 void TestMainWindow::testStatusLabelUpdates() {
-    auto labels = window_->findChildren<QLabel*>();
-    QLabel *statusLabel = nullptr;
-
-    for (auto *label : labels) {
-        if (label->text() == "Select a window to capture") {
-            statusLabel = label;
-            break;
-        }
-    }
-
+    auto *statusLabel = window_->findChild<QLabel*>("statusLabel");
     QVERIFY(statusLabel != nullptr);
+    QCOMPARE(statusLabel->text(), QString("Select a window to capture"));
+    QVERIFY(statusLabel->wordWrap());
 }
 
 void TestMainWindow::testSystemTrayExists() {
@@ -282,6 +279,7 @@ void TestMainWindow::testVideoSourceModeControl() {
     QVERIFY(sourceCombo != nullptr);
     QVERIFY(audioCombo != nullptr);
     QVERIFY(sourceCombo->findData("window") >= 0);
+    QVERIFY(sourceCombo->findData("camera") >= 0);
     QVERIFY(sourceCombo->findData("spout") >= 0);
     QCOMPARE(sourceCombo->currentData().toString(), QString("window"));
 
@@ -299,6 +297,74 @@ void TestMainWindow::testVideoSourceModeControl() {
     sourceCombo->setCurrentIndex(spoutIndex);
     QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
     QCOMPARE(audioCombo->currentData().toString(), QString("none"));
+
+    const int cameraIndex = sourceCombo->findData("camera");
+    QVERIFY(cameraIndex >= 0);
+    QVERIFY(sourceCombo->itemText(cameraIndex).contains("webcam", Qt::CaseInsensitive));
+    sourceCombo->setCurrentIndex(cameraIndex);
+    QCOMPARE(sourceCombo->currentData().toString(), QString("camera"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("default-microphone"));
+
+    const int windowIndex = sourceCombo->findData("window");
+    QVERIFY(windowIndex >= 0);
+    sourceCombo->setCurrentIndex(windowIndex);
+    QCOMPARE(sourceCombo->currentData().toString(), QString("window"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("selected-window"));
+
+    const int defaultOutputIndex = audioCombo->findData("default-output");
+    QVERIFY(defaultOutputIndex >= 0);
+    audioCombo->setCurrentIndex(defaultOutputIndex);
+    sourceCombo->setCurrentIndex(cameraIndex);
+    sourceCombo->setCurrentIndex(windowIndex);
+    QCOMPARE(audioCombo->currentData().toString(), QString("default-output"));
+}
+
+void TestMainWindow::testCameraBasicOptions() {
+    auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
+    auto *cameraPanel = window_->findChild<QWidget*>("cameraOptionsPanel");
+    auto *resolution = window_->findChild<QComboBox*>("cameraResolutionSelect");
+    auto *frameRate = window_->findChild<QComboBox*>("cameraFpsSelect");
+    QVERIFY(sourceCombo != nullptr);
+    QVERIFY(cameraPanel != nullptr);
+    QVERIFY(resolution != nullptr);
+    QVERIFY(frameRate != nullptr);
+    QVERIFY(cameraPanel->isHidden());
+
+    sourceCombo->setCurrentIndex(sourceCombo->findData("camera"));
+    QVERIFY(!cameraPanel->isHidden());
+    QVERIFY(resolution->findData("1920x1080") >= 0);
+    QVERIFY(resolution->findData("1280x720") >= 0);
+    QVERIFY(resolution->findData("640x480") >= 0);
+    QVERIFY(frameRate->findData(60) >= 0);
+    QVERIFY(frameRate->findData(30) >= 0);
+    QVERIFY(frameRate->findData(24) >= 0);
+    QCOMPARE(frameRate->currentData().toInt(), 30);
+    QVERIFY(resolution->toolTip().contains("closest supported", Qt::CaseInsensitive));
+
+    sourceCombo->setCurrentIndex(sourceCombo->findData("window"));
+    QVERIFY(cameraPanel->isHidden());
+}
+
+void TestMainWindow::testPersistedCameraOptions() {
+    delete window_;
+    window_ = nullptr;
+
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.setValue("video/sourceMode", "camera");
+    settings.setValue("camera/resolution", "1280x720");
+    settings.setValue("camera/fps", 24);
+    settings.sync();
+
+    window_ = new versus::ui::MainWindow(nullptr);
+    auto *cameraPanel = window_->findChild<QWidget*>("cameraOptionsPanel");
+    auto *resolution = window_->findChild<QComboBox*>("cameraResolutionSelect");
+    auto *frameRate = window_->findChild<QComboBox*>("cameraFpsSelect");
+    QVERIFY(cameraPanel != nullptr);
+    QVERIFY(resolution != nullptr);
+    QVERIFY(frameRate != nullptr);
+    QVERIFY(!cameraPanel->isHidden());
+    QCOMPARE(resolution->currentData().toString(), QString("1280x720"));
+    QCOMPARE(frameRate->currentData().toInt(), 24);
 }
 
 void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
@@ -318,6 +384,28 @@ void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
     QVERIFY(audioCombo != nullptr);
     QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
     QCOMPARE(audioCombo->currentData().toString(), QString("none"));
+}
+
+void TestMainWindow::testPersistedCameraModeUsesMicrophone() {
+    delete window_;
+    window_ = nullptr;
+
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.setValue("video/sourceMode", "camera");
+    settings.setValue("audio/source", "selected-window");
+    settings.sync();
+
+    window_ = new versus::ui::MainWindow(nullptr);
+
+    auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
+    auto *audioCombo = window_->findChild<QComboBox*>("audioSourceSelect");
+    auto *microphoneCombo = window_->findChild<QComboBox*>("microphoneDeviceSelect");
+    QVERIFY(sourceCombo != nullptr);
+    QVERIFY(audioCombo != nullptr);
+    QVERIFY(microphoneCombo != nullptr);
+    QCOMPARE(sourceCombo->currentData().toString(), QString("camera"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("default-microphone"));
+    QVERIFY(microphoneCombo->toolTip().contains("Camera mode", Qt::CaseInsensitive));
 }
 
 void TestMainWindow::testSpoutSelectionPreviewMessaging() {
@@ -352,6 +440,41 @@ void TestMainWindow::testSpoutSelectionPreviewMessaging() {
     QVERIFY(preview->text().contains("For transparency: VP9 alpha or chroma background"));
     QVERIFY(preview->text().contains("Video only"));
     QVERIFY(preview->text().contains("selected stream resolution"));
+}
+
+void TestMainWindow::testCameraSelectionPreviewMessaging() {
+    auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
+    auto *audioCombo = window_->findChild<QComboBox*>("audioSourceSelect");
+    auto *windowList = window_->findChild<versus::ui::WindowListWidget*>();
+    auto *preview = window_->findChild<QLabel*>("selectedPreview");
+    QVERIFY(sourceCombo != nullptr);
+    QVERIFY(audioCombo != nullptr);
+    QVERIFY(windowList != nullptr);
+    QVERIFY(preview != nullptr);
+
+    const int cameraIndex = sourceCombo->findData("camera");
+    QVERIFY(cameraIndex >= 0);
+    sourceCombo->setCurrentIndex(cameraIndex);
+    QCOMPARE(audioCombo->currentData().toString(), QString("default-microphone"));
+
+    std::vector<versus::video::WindowInfo> cameras;
+    versus::video::WindowInfo camera;
+    camera.id = "camera-device-id";
+    camera.name = "Test Webcam";
+    camera.executableName = "Video input device";
+    cameras.push_back(camera);
+    windowList->setWindowList(cameras);
+
+    auto *listWidget = windowList->findChild<QListWidget*>();
+    QVERIFY(listWidget != nullptr);
+    QCOMPARE(listWidget->count(), 1);
+    emit listWidget->itemClicked(listWidget->item(0));
+
+    QVERIFY(preview->text().contains("Camera selected"));
+    QVERIFY(preview->text().contains("Test Webcam"));
+    QVERIFY(preview->text().contains("Microphone:"));
+    QVERIFY(preview->text().contains("primary audio"));
+    QVERIFY(preview->text().contains("opens when streaming starts"));
 }
 
 void TestMainWindow::testIceModeOptions() {

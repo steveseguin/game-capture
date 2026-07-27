@@ -55,25 +55,30 @@ void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel,
     }
 
     const QString windowId = QString::fromStdString(window.id);
-    if (spoutModeEnabled_) {
+    if (spoutModeEnabled_ || cameraModeEnabled_) {
         QPixmap fallback(thumbnailLabel->size());
         fallback.fill(Qt::transparent);
         QPainter painter(&fallback);
         painter.setRenderHint(QPainter::Antialiasing, true);
 
         QLinearGradient gradient(0, 0, fallback.width(), fallback.height());
-        gradient.setColorAt(0.0, QColor("#143a46"));
+        gradient.setColorAt(
+            0.0,
+            cameraModeEnabled_ ? QColor("#28355a") : QColor("#143a46"));
         gradient.setColorAt(1.0, QColor("#101927"));
         painter.setBrush(gradient);
         painter.setPen(Qt::NoPen);
         painter.drawRoundedRect(fallback.rect(), 6, 6);
 
-        painter.setPen(QColor("#5de6ff"));
+        painter.setPen(cameraModeEnabled_ ? QColor("#a9bfff") : QColor("#5de6ff"));
         QFont font = painter.font();
         font.setBold(true);
         font.setPointSize(14);
         painter.setFont(font);
-        painter.drawText(fallback.rect(), Qt::AlignCenter, QStringLiteral("Spout2"));
+        painter.drawText(
+            fallback.rect(),
+            Qt::AlignCenter,
+            cameraModeEnabled_ ? QStringLiteral("Camera") : QStringLiteral("Spout2"));
 
         thumbnailLabel->setPixmap(fallback);
         thumbnailLabel->setText(QString());
@@ -314,6 +319,16 @@ QString WindowListWidget::selectedWindowId() const {
     return selectedWindowId_;
 }
 
+QString WindowListWidget::selectedWindowName() const {
+    const auto itemIt = windowItems_.constFind(selectedWindowId_);
+    if (itemIt == windowItems_.constEnd() || !itemIt.value() || !listWidget_) {
+        return {};
+    }
+    QWidget *widget = listWidget_->itemWidget(itemIt.value());
+    QLabel *titleLabel = widget ? widget->findChild<QLabel *>("title") : nullptr;
+    return titleLabel ? titleLabel->text().trimmed() : QString();
+}
+
 void WindowListWidget::setAutoRefreshEnabled(bool enabled) {
     if (enabled) {
         autoRefreshTimer_->start();
@@ -343,10 +358,25 @@ void WindowListWidget::setEmptyText(const QString &text) {
 }
 
 void WindowListWidget::setSpoutModeEnabled(bool enabled) {
-    if (spoutModeEnabled_ == enabled) {
+    if (spoutModeEnabled_ == enabled && (!enabled || !cameraModeEnabled_)) {
         return;
     }
     spoutModeEnabled_ = enabled;
+    if (enabled) {
+        cameraModeEnabled_ = false;
+    }
+    thumbnailCache_.clear();
+    requestThumbnailRefresh();
+}
+
+void WindowListWidget::setCameraModeEnabled(bool enabled) {
+    if (cameraModeEnabled_ == enabled && (!enabled || !spoutModeEnabled_)) {
+        return;
+    }
+    cameraModeEnabled_ = enabled;
+    if (enabled) {
+        spoutModeEnabled_ = false;
+    }
     thumbnailCache_.clear();
     requestThumbnailRefresh();
 }

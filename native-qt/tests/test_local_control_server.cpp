@@ -142,6 +142,11 @@ void TestLocalControlServer::testSourcesAndIssueReport() {
     server.setDiagnosticsProvider([]() {
         return QByteArray(R"({"schema":"diagnostics","app":{"live":false}})");
     });
+    server.setCameraSourcesProvider([]() {
+        QJsonArray sources;
+        sources.append(QJsonObject{{"id", "camera-a"}, {"name", "Camera A"}});
+        return sources;
+    });
     server.setSpoutSourcesProvider([]() {
         QJsonArray sources;
         sources.append(QJsonObject{{"id", "spout-a"}, {"name", "Spout A"}});
@@ -164,6 +169,18 @@ void TestLocalControlServer::testSourcesAndIssueReport() {
     QCOMPARE(statusCode(sourcesResponse), 200);
     QCOMPARE(responseObject(sourcesResponse).value("sources").toArray().first().toObject().value("id").toString(),
              QString("spout-a"));
+
+    const QByteArray cameraSourcesResponse = httpRequest(server.port(), authGet("/sources/cameras"));
+    QCOMPARE(statusCode(cameraSourcesResponse), 200);
+    QCOMPARE(
+        responseObject(cameraSourcesResponse)
+            .value("sources")
+            .toArray()
+            .first()
+            .toObject()
+            .value("id")
+            .toString(),
+        QString("camera-a"));
 
     const QByteArray audioSourcesResponse = httpRequest(server.port(), authGet("/sources/audio-inputs"));
     QCOMPARE(statusCode(audioSourcesResponse), 200);

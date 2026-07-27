@@ -5,6 +5,7 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 ## Why Teams Use It
 
 - Window audio capture without virtual audio cables.
+- Camera/webcam video with selectable microphone or other Windows input devices.
 - Hardware-accelerated encoding and bitrate presets for game feeds.
 - Dual-stream routing (HQ/LQ) for room roles and monitor paths.
 - Multiple viewers from a single HD encode workflow.
@@ -15,12 +16,20 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 ## Quick Start
 
 1. Download the installer from the latest release.
-2. Launch Game Capture and pick your game window.
+2. Launch Game Capture and pick a game window, camera/webcam, or Spout2 sender.
 3. Enter a stream ID (or paste a full VDO.Ninja URL) and go live.
 4. Use the generated view links in OBS.
 
 While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
 Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
+
+## Camera / Webcam Sources
+
+1. Set `Video Source` to `Camera / Webcam`.
+2. Choose the camera, resolution, frame rate, and `Microphone / Input` device.
+3. Paste a Stream ID or VDO.Ninja URL, then go live.
+
+Camera mode selects the chosen microphone/input as the primary audio source by default. Once live, `Selected Source Preview` shows the local camera feed seen by the publisher. Microphone inputs from 8–384 kHz, mono through multichannel, and 16/24/32-bit PCM or 32-bit float are converted to the 48 kHz stereo format used for WebRTC. Advanced settings can switch to system output, disable audio, or mix the microphone with another audio source. Windows can list installed virtual cameras even when their sender is inactive; Game Capture waits for a real first frame and stops startup with an actionable error instead of publishing a blank source. The same bounded error path handles disconnected cameras and cameras already owned by another app. If a device is missing, enable desktop camera or microphone access in Windows Privacy & security settings and click Refresh.
 
 ## Spout2 / VTuber Sources
 
@@ -55,6 +64,10 @@ For same-user automation and local issue collection, the compiled app can expose
 - For hardware encoding compatibility, leave VP9 alpha disabled and use `Alpha Background -> Chroma background`. Game Capture composites transparent Spout2/window pixels over the selected color before H.264/NVENC encode, so the receiver can chroma-key the feed.
 - If you need the broadest viewer compatibility, leave alpha disabled.
 - AV1 alpha-preserving encode remains experimental and is not the current OBS transparency path.
+
+### NVIDIA AV1 Compatibility
+
+On the tested machine, the installed NVIDIA driver exposes NVENC API 12.2, while the bundled FFmpeg AV1 encoder requires NVENC API 13.0 and reports NVIDIA driver 570.0 or newer as the minimum. Game Capture therefore falls back to software AV1 encoding on this configuration. H.264 hardware encoding works reliably; select H.264 or update the NVIDIA driver if AV1 falls back to software.
 
 VP9 alpha is CPU-encoded and software-heavy because Game Capture encodes both the color video and a second alpha video track. The default VP9 settings already use libvpx realtime mode with the fastest `-cpu-used 8` setting. If the encoder overloads, lower output resolution/FPS first; `1080p30` or `720p60` are safer starting points than `1080p60`. Advanced users can use `FFmpeg Options` to override output options; for example, `-g 30 -keyint_min 30` can reduce all-keyframe cost, but recovery after packet loss or late joins may be slower.
 

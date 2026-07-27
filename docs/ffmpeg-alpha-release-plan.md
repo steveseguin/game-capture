@@ -122,6 +122,8 @@ Current implementation note: the first working bundle uses the pinned BtbN LGPL 
 
 Unknown: whether to expose FFmpeg NVENC/QSV/AMF from the bundled FFmpeg.
 
+Validated NVIDIA compatibility note: this machine's installed driver exposes NVENC API 12.2. The bundled FFmpeg AV1 NVENC encoder requires API 13.0 and reports NVIDIA driver 570.0 or newer as the minimum, so AV1 falls back to the software encoder on this configuration. Native Media Foundation H.264 hardware encoding works reliably.
+
 Recommendation: do not rely on bundled FFmpeg for hardware AVC/HEVC in the first safe distribution pass. Keep Game Capture's native Media Foundation path for H.264/H.265 hardware where available. Advanced users can still select their own FFmpeg through the explicit override.
 
 Reasons:

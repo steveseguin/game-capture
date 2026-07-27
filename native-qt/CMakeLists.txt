@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.45 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.48 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -152,9 +152,11 @@ set(VERSUS_SOURCES
     src/signaling/vdo_signaling.cpp
     src/webrtc/webrtc_client.cpp
     src/webrtc/ice_config.cpp
+    src/video/camera_capture.cpp
     src/video/spout_capture.cpp
     src/video/window_capture.cpp
     src/video/video_encoder.cpp
+    src/audio/audio_format_converter.cpp
     src/audio/opus_encoder.cpp
     src/audio/window_audio_capture_core.cpp
 )
@@ -171,9 +173,11 @@ set(VERSUS_HEADERS
     include/versus/webrtc/webrtc_client.h
     include/versus/webrtc/ice_config.h
     include/versus/video/aspect_fit.h
+    include/versus/video/camera_capture.h
     include/versus/video/spout_capture.h
     include/versus/video/window_capture.h
     include/versus/video/video_encoder.h
+    include/versus/audio/audio_format_converter.h
     include/versus/audio/opus_encoder.h
     include/versus/audio/window_audio_capture_core.h
 )
@@ -236,6 +240,11 @@ if(WIN32)
         dxgi
         dbghelp
         winhttp
+        runtimeobject
+        mf
+        mfplat
+        mfreadwrite
+        mfuuid
     )
 
     set(VERSUS_FFMPEG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ffmpeg-win64" CACHE PATH "Optional staged FFmpeg bundle root; expected to contain bin/ffmpeg.exe")
@@ -350,9 +359,11 @@ if(VERSUS_BUILD_TESTS)
         src/signaling/vdo_signaling.cpp
         src/webrtc/webrtc_client.cpp
         src/webrtc/ice_config.cpp
+        src/video/camera_capture.cpp
         src/video/spout_capture.cpp
         src/video/window_capture.cpp
         src/video/video_encoder.cpp
+        src/audio/audio_format_converter.cpp
         src/audio/opus_encoder.cpp
         src/audio/window_audio_capture_core.cpp
     )
@@ -386,7 +397,7 @@ if(VERSUS_BUILD_TESTS)
     if(WIN32)
         target_link_libraries(versus-lib PUBLIC
             ole32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi winhttp
-            dbghelp
+            dbghelp runtimeobject mf mfplat mfreadwrite mfuuid
         )
     endif()
     if(VERSUS_USE_NVENC)
@@ -409,6 +420,18 @@ if(VERSUS_BUILD_TESTS)
     target_link_libraries(test_window_capture PRIVATE versus-lib Qt6::Test)
     add_test(NAME WindowCaptureTest COMMAND test_window_capture)
     versus_set_qt_test_environment(WindowCaptureTest)
+
+    add_executable(test_camera_capture tests/test_camera_capture.cpp)
+    set_target_properties(test_camera_capture PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_camera_capture PRIVATE versus-lib Qt6::Test)
+    add_test(NAME CameraCaptureTest COMMAND test_camera_capture)
+    versus_set_qt_test_environment(CameraCaptureTest)
+
+    add_executable(test_audio_format_converter tests/test_audio_format_converter.cpp)
+    set_target_properties(test_audio_format_converter PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_audio_format_converter PRIVATE versus-lib Qt6::Test)
+    add_test(NAME AudioFormatConverterTest COMMAND test_audio_format_converter)
+    versus_set_qt_test_environment(AudioFormatConverterTest)
 
     # Test: OpusEncoder
     add_executable(test_opus_encoder tests/test_opus_encoder.cpp)

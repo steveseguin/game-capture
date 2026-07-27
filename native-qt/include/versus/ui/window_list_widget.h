@@ -20,11 +20,13 @@ class WindowListWidget : public QWidget {
 
     void setWindowList(const std::vector<versus::video::WindowInfo> &windows);
     QString selectedWindowId() const;
+    QString selectedWindowName() const;
     void setAutoRefreshEnabled(bool enabled);
     void requestThumbnailRefresh();
     void setHeaderText(const QString &text);
     void setEmptyText(const QString &text);
     void setSpoutModeEnabled(bool enabled);
+    void setCameraModeEnabled(bool enabled);
 
   signals:
     void windowSelected(const QString &windowId);
@@ -52,6 +54,7 @@ class WindowListWidget : public QWidget {
     QString emptyText_ = "No windows detected. Launch a game and click Refresh.";
     bool forceThumbnailRefreshOnNextSet_ = false;
     bool spoutModeEnabled_ = false;
+    bool cameraModeEnabled_ = false;
 };
 
 }  // namespace versus::ui

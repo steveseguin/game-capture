@@ -16,6 +16,7 @@
 #include "versus/signaling/vdo_signaling.h"
 #include "versus/app/dual_stream_policy.h"
 #include "versus/webrtc/webrtc_client.h"
+#include "versus/video/camera_capture.h"
 #include "versus/video/spout_capture.h"
 #include "versus/video/video_encoder.h"
 #include "versus/video/window_capture.h"
@@ -34,7 +35,8 @@ enum class AudioSourceMode {
 
 enum class VideoSourceMode {
     Window,
-    Spout
+    Spout,
+    Camera
 };
 
 struct StreamMetrics {
@@ -151,7 +153,9 @@ class VersusApp {
 
     std::vector<versus::video::WindowInfo> listWindows();
     std::vector<versus::video::WindowInfo> listSpoutSenders();
+    std::vector<versus::video::WindowInfo> listCameras();
     std::vector<versus::audio::AudioDeviceInfo> listAudioInputDevices();
+    std::string lastCaptureError() const;
     bool startCapture(const std::string &windowId);
     bool startCapture(VideoSourceMode mode, const std::string &sourceId);
     void stopCapture();
@@ -178,6 +182,7 @@ class VersusApp {
     StreamMetrics getStreamMetrics() const;
     ConnectionHealth getConnectionHealth() const;
     SourceHealth getSourceHealth() const;
+    std::shared_ptr<const versus::video::CapturedFrame> getPublisherPreviewFrame();
     std::string buildDiagnosticsJson() const;
     bool writeDiagnosticsJson(const std::string &path) const;
 
@@ -533,6 +538,7 @@ class VersusApp {
 
     versus::video::WindowCapture windowCapture_;
     versus::video::SpoutCapture spoutCapture_;
+    versus::video::CameraCapture cameraCapture_;
     versus::video::VideoEncoder videoEncoder_;
     versus::video::VideoEncoder videoEncoderLq_;
     versus::video::VideoEncoder videoEncoderAlpha_;

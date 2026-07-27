@@ -1,5 +1,7 @@
 #include "versus/audio/window_audio_capture_core.h"
 
+#include "versus/audio/audio_format_converter.h"
+
 #include <algorithm>
 #include <exception>
 #include <memory>
@@ -69,14 +71,65 @@ struct ScopedAudioCaptureBuffer {
     }
 };
 
-bool isSupportedAudioFormat(uint32_t sampleRate, uint32_t channels, uint32_t bitsPerSample) {
-    if (sampleRate < kMinSupportedSampleRate || sampleRate > kMaxSupportedSampleRate) {
+struct NativeAudioFormat {
+    uint32_t sampleRate = 0;
+    uint32_t channels = 0;
+    uint32_t containerBits = 0;
+    uint32_t validBits = 0;
+    bool floatingPoint = false;
+    bool knownEncoding = false;
+};
+
+NativeAudioFormat inspectAudioFormat(const WAVEFORMATEX *format) {
+    NativeAudioFormat result;
+    if (!format) {
+        return result;
+    }
+
+    result.sampleRate = format->nSamplesPerSec;
+    result.channels = format->nChannels;
+    result.containerBits = format->wBitsPerSample;
+    result.validBits = format->wBitsPerSample;
+    result.floatingPoint = format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT;
+    result.knownEncoding =
+        format->wFormatTag == WAVE_FORMAT_IEEE_FLOAT ||
+        format->wFormatTag == WAVE_FORMAT_PCM;
+
+    if (format->wFormatTag == WAVE_FORMAT_EXTENSIBLE &&
+        format->cbSize >= sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX)) {
+        const auto *ext = reinterpret_cast<const WAVEFORMATEXTENSIBLE *>(format);
+        result.sampleRate = ext->Format.nSamplesPerSec;
+        result.channels = ext->Format.nChannels;
+        result.containerBits = ext->Format.wBitsPerSample;
+        result.validBits = ext->Samples.wValidBitsPerSample > 0
+            ? ext->Samples.wValidBitsPerSample
+            : ext->Format.wBitsPerSample;
+        result.floatingPoint =
+            IsEqualGUID(ext->SubFormat, KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
+        result.knownEncoding =
+            result.floatingPoint ||
+            IsEqualGUID(ext->SubFormat, KSDATAFORMAT_SUBTYPE_PCM);
+    }
+    return result;
+}
+
+bool isSupportedAudioFormat(const NativeAudioFormat &format) {
+    if (format.sampleRate < kMinSupportedSampleRate ||
+        format.sampleRate > kMaxSupportedSampleRate) {
         return false;
     }
-    if (channels == 0 || channels > kMaxSupportedChannelCount) {
+    if (format.channels == 0 || format.channels > kMaxSupportedChannelCount) {
         return false;
     }
-    return bitsPerSample == 16 || bitsPerSample == 24 || bitsPerSample == 32;
+    if (!format.knownEncoding) {
+        return false;
+    }
+    return versus::audio::isSupportedAudioSampleFormat({
+        format.floatingPoint
+            ? versus::audio::AudioSampleEncoding::Float
+            : versus::audio::AudioSampleEncoding::PcmSigned,
+        static_cast<uint16_t>(format.containerBits),
+        static_cast<uint16_t>(format.validBits)});
 }
 
 std::string WideToUtf8(const std::wstring &str) {
@@ -135,9 +188,12 @@ std::string GetDeviceFriendlyName(IMMDevice *device) {
     return WideToUtf8(name.value.pwszVal);
 }
 
-void ReadDeviceMixFormat(IMMDevice *device, uint32_t &sampleRate, uint32_t &channels) {
-    sampleRate = 0;
-    channels = 0;
+void ReadDeviceMixFormat(IMMDevice *device, versus::audio::AudioDeviceInfo &info) {
+    info.sampleRate = 0;
+    info.channels = 0;
+    info.bitsPerSample = 0;
+    info.validBitsPerSample = 0;
+    info.floatingPoint = false;
     if (!device) {
         return;
     }
@@ -154,13 +210,12 @@ void ReadDeviceMixFormat(IMMDevice *device, uint32_t &sampleRate, uint32_t &chan
         return;
     }
     std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> mixFormat(mixFormatRaw, CoTaskMemFree);
-    sampleRate = mixFormat->nSamplesPerSec;
-    channels = mixFormat->nChannels;
-    if (mixFormat->wFormatTag == WAVE_FORMAT_EXTENSIBLE) {
-        auto *ext = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(mixFormat.get());
-        sampleRate = ext->Format.nSamplesPerSec;
-        channels = ext->Format.nChannels;
-    }
+    const NativeAudioFormat format = inspectAudioFormat(mixFormat.get());
+    info.sampleRate = format.sampleRate;
+    info.channels = format.channels;
+    info.bitsPerSample = format.containerBits;
+    info.validBitsPerSample = format.validBits;
+    info.floatingPoint = format.floatingPoint;
 }
 
 std::string GetProcessExecutableName(DWORD processId) {
@@ -334,7 +389,7 @@ std::vector<versus::audio::AudioDeviceInfo> EnumerateInputDevices() {
             info.name = "Microphone/input device";
         }
         info.isDefault = !defaultDeviceId.empty() && id == defaultDeviceId;
-        ReadDeviceMixFormat(device.Get(), info.sampleRate, info.channels);
+        ReadDeviceMixFormat(device.Get(), info);
         devices.push_back(std::move(info));
     }
 
@@ -530,7 +585,9 @@ void WindowAudioCaptureCore::StopCapture() {
         sampleRate_ = kDefaultSampleRate;
         channels_ = kDefaultChannelCount;
         bitsPerSample_ = 32;
+        validBitsPerSample_ = 32;
         isFloatFormat_ = true;
+        sampleFormatKnown_ = true;
     }
 
     {
@@ -562,7 +619,9 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
     sampleRate_ = kDefaultSampleRate;
     channels_ = kDefaultChannelCount;
     bitsPerSample_ = 32;
+    validBitsPerSample_ = 32;
     isFloatFormat_ = true;
+    sampleFormatKnown_ = true;
     maxBufferSamples_ = static_cast<size_t>(kDefaultSampleRate) * kDefaultChannelCount * 15;
 
     ComPtr<IAudioClient> client;
@@ -657,12 +716,21 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
         result.error = "GetMixFormat failed";
         return result;
     }
-    if (!isSupportedAudioFormat(sampleRate_, channels_, bitsPerSample_)) {
+    const NativeAudioFormat nativeFormat = inspectAudioFormat(format);
+    sampleRate_ = nativeFormat.sampleRate;
+    channels_ = nativeFormat.channels;
+    bitsPerSample_ = nativeFormat.containerBits;
+    validBitsPerSample_ = nativeFormat.validBits;
+    isFloatFormat_ = nativeFormat.floatingPoint;
+    sampleFormatKnown_ = nativeFormat.knownEncoding;
+    if (!isSupportedAudioFormat(nativeFormat)) {
         result.error = "Unsupported audio mix format";
-        spdlog::warn("[Audio] Unsupported process loopback mix format: {}Hz {}ch {}bit",
+        spdlog::warn("[Audio] Unsupported process loopback mix format: {}Hz {}ch {}bit ({} valid), encoding={}",
                      sampleRate_,
                      channels_,
-                     bitsPerSample_);
+                     bitsPerSample_,
+                     validBitsPerSample_,
+                     sampleFormatKnown_ ? (isFloatFormat_ ? "float" : "PCM") : "unknown");
         return result;
     }
 
@@ -733,7 +801,9 @@ CaptureResult WindowAudioCaptureCore::StartDefaultEndpoint(DefaultAudioEndpoint 
     sampleRate_ = kDefaultSampleRate;
     channels_ = kDefaultChannelCount;
     bitsPerSample_ = 32;
+    validBitsPerSample_ = 32;
     isFloatFormat_ = true;
+    sampleFormatKnown_ = true;
     maxBufferSamples_ = static_cast<size_t>(kDefaultSampleRate) * kDefaultChannelCount * 15;
 
     ComPtr<IMMDeviceEnumerator> enumerator;
@@ -809,12 +879,21 @@ CaptureResult WindowAudioCaptureCore::StartDefaultEndpoint(DefaultAudioEndpoint 
         result.error = "GetMixFormat failed";
         return result;
     }
-    if (!isSupportedAudioFormat(sampleRate_, channels_, bitsPerSample_)) {
+    const NativeAudioFormat nativeFormat = inspectAudioFormat(format);
+    sampleRate_ = nativeFormat.sampleRate;
+    channels_ = nativeFormat.channels;
+    bitsPerSample_ = nativeFormat.containerBits;
+    validBitsPerSample_ = nativeFormat.validBits;
+    isFloatFormat_ = nativeFormat.floatingPoint;
+    sampleFormatKnown_ = nativeFormat.knownEncoding;
+    if (!isSupportedAudioFormat(nativeFormat)) {
         result.error = "Unsupported audio mix format";
-        spdlog::warn("[Audio] Unsupported default endpoint mix format: {}Hz {}ch {}bit",
+        spdlog::warn("[Audio] Unsupported default endpoint mix format: {}Hz {}ch {}bit ({} valid), encoding={}",
                      sampleRate_,
                      channels_,
-                     bitsPerSample_);
+                     bitsPerSample_,
+                     validBitsPerSample_,
+                     sampleFormatKnown_ ? (isFloatFormat_ ? "float" : "PCM") : "unknown");
         return result;
     }
 
@@ -889,7 +968,9 @@ CaptureResult WindowAudioCaptureCore::StartInputDevice(const std::string &device
     sampleRate_ = kDefaultSampleRate;
     channels_ = kDefaultChannelCount;
     bitsPerSample_ = 32;
+    validBitsPerSample_ = 32;
     isFloatFormat_ = true;
+    sampleFormatKnown_ = true;
     maxBufferSamples_ = static_cast<size_t>(kDefaultSampleRate) * kDefaultChannelCount * 15;
 
     ComPtr<IMMDeviceEnumerator> enumerator;
@@ -969,12 +1050,21 @@ CaptureResult WindowAudioCaptureCore::StartInputDevice(const std::string &device
         result.error = "GetMixFormat failed";
         return result;
     }
-    if (!isSupportedAudioFormat(sampleRate_, channels_, bitsPerSample_)) {
+    const NativeAudioFormat nativeFormat = inspectAudioFormat(format);
+    sampleRate_ = nativeFormat.sampleRate;
+    channels_ = nativeFormat.channels;
+    bitsPerSample_ = nativeFormat.containerBits;
+    validBitsPerSample_ = nativeFormat.validBits;
+    isFloatFormat_ = nativeFormat.floatingPoint;
+    sampleFormatKnown_ = nativeFormat.knownEncoding;
+    if (!isSupportedAudioFormat(nativeFormat)) {
         result.error = "Unsupported audio mix format";
-        spdlog::warn("[Audio] Unsupported input device mix format: {}Hz {}ch {}bit",
+        spdlog::warn("[Audio] Unsupported input device mix format: {}Hz {}ch {}bit ({} valid), encoding={}",
                      sampleRate_,
                      channels_,
-                     bitsPerSample_);
+                     bitsPerSample_,
+                     validBitsPerSample_,
+                     sampleFormatKnown_ ? (isFloatFormat_ ? "float" : "PCM") : "unknown");
         return result;
     }
 
@@ -1067,29 +1157,20 @@ void WindowAudioCaptureCore::CaptureLoop() {
                 std::vector<float> converted(sampleCount, 0.0f);
 
                 if (!(flags & AUDCLNT_BUFFERFLAGS_SILENT) && data && sampleCount > 0) {
-                    if (isFloatFormat_) {
-                        const float *src = reinterpret_cast<const float *>(data);
-                        std::copy(src, src + sampleCount, converted.begin());
-                    } else if (bitsPerSample_ == 16) {
-                        const int16_t *src = reinterpret_cast<const int16_t *>(data);
-                        for (size_t i = 0; i < sampleCount; ++i) {
-                            converted[i] = static_cast<float>(src[i]) / 32768.0f;
-                        }
-                    } else if (bitsPerSample_ == 24) {
-                        const uint8_t *src = reinterpret_cast<const uint8_t *>(data);
-                        for (size_t i = 0; i < sampleCount; ++i) {
-                            int32_t value = src[0] | (src[1] << 8) | (src[2] << 16);
-                            if (value & 0x800000) {
-                                value |= ~0xFFFFFF;
-                            }
-                            converted[i] = static_cast<float>(value) / 8388608.0f;
-                            src += 3;
-                        }
-                    } else if (bitsPerSample_ == 32) {
-                        const int32_t *src = reinterpret_cast<const int32_t *>(data);
-                        for (size_t i = 0; i < sampleCount; ++i) {
-                            converted[i] = static_cast<float>(src[i]) / 2147483648.0f;
-                        }
+                    const AudioSampleFormat format{
+                        isFloatFormat_
+                            ? AudioSampleEncoding::Float
+                            : AudioSampleEncoding::PcmSigned,
+                        static_cast<uint16_t>(bitsPerSample_),
+                        static_cast<uint16_t>(validBitsPerSample_)};
+                    if (!convertInterleavedAudioToFloat(
+                            data, sampleCount, format, converted)) {
+                        spdlog::warn(
+                            "[Audio] Rejected capture packet format: {}bit container, {} valid, {}",
+                            bitsPerSample_,
+                            validBitsPerSample_,
+                            isFloatFormat_ ? "float" : "PCM");
+                        converted.assign(sampleCount, 0.0f);
                     }
                 }
 

@@ -17,6 +17,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
 #include <QMenuBar>
 #include <QMetaObject>
 #include <QMessageBox>
@@ -207,6 +208,9 @@ versus::app::AudioSourceMode audioSourceModeFromUiValue(const QString &value) {
 }
 
 versus::app::VideoSourceMode videoSourceModeFromUiValue(const QString &value) {
+    if (value == "camera") {
+        return versus::app::VideoSourceMode::Camera;
+    }
     if (value == "spout") {
         return versus::app::VideoSourceMode::Spout;
     }
@@ -322,6 +326,11 @@ QString audioDeviceLabel(const versus::audio::AudioDeviceInfo &device) {
         label += QString(" - %1 kHz, %2 ch")
             .arg(device.sampleRate / 1000.0, 0, 'f', device.sampleRate % 1000 == 0 ? 0 : 1)
             .arg(device.channels);
+        if (device.bitsPerSample > 0) {
+            label += QString(", %1-bit").arg(device.validBitsPerSample > 0
+                ? device.validBitsPerSample
+                : device.bitsPerSample);
+        }
     }
     return label;
 }
@@ -784,6 +793,8 @@ void MainWindow::loadPersistedSettings() {
     loadingPersistedSettings_ = true;
 
     QSettings settings = makeUiSettings();
+    preferredWindowAudioSource_ =
+        settings.value("audio/windowSource", "selected-window").toString();
     const QByteArray geometry = settings.value("window/geometry").toByteArray();
     if (!geometry.isEmpty()) {
         restoreGeometry(geometry);
@@ -837,17 +848,33 @@ void MainWindow::loadPersistedSettings() {
 
     restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
+    restoreComboByData(
+        cameraResolutionSelect_,
+        settings.value("camera/resolution", "1920x1080"));
+    restoreComboByData(cameraFpsSelect_, settings.value("camera/fps", 30));
     restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 12000));
     restoreComboByData(iceModeSelect_, settings.value("network/iceMode", "stun-only"));
     restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
     restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
     restoreComboByData(sourceModeSelect_, settings.value("video/sourceMode", "window"));
+    if (cameraOptionsPanel_ && sourceModeSelect_) {
+        cameraOptionsPanel_->setVisible(
+            sourceModeSelect_->currentData().toString() == "camera");
+    }
     restoreComboByData(audioSourceSelect_, settings.value("audio/source", "selected-window"));
-    if (sourceModeSelect_ &&
-        sourceModeSelect_->currentData().toString() == "spout" &&
-        audioSourceSelect_ &&
-        audioSourceSelect_->currentData().toString() == "selected-window") {
-        restoreComboByData(audioSourceSelect_, QString("none"));
+    if (sourceModeSelect_ && audioSourceSelect_) {
+        const QString sourceMode = sourceModeSelect_->currentData().toString();
+        const QString audioMode = audioSourceSelect_->currentData().toString();
+        if (sourceMode == "spout" && audioMode == "selected-window") {
+            restoreComboByData(audioSourceSelect_, QString("none"));
+        } else if (sourceMode == "camera" && audioMode == "selected-window") {
+            restoreComboByData(audioSourceSelect_, QString("default-microphone"));
+        }
+        previousSourceMode_ = sourceMode;
+        if (sourceMode == "window") {
+            preferredWindowAudioSource_ =
+                audioSourceSelect_->currentData().toString();
+        }
     }
     refreshMicrophoneDevices(settings.value("audio/microphoneDeviceId").toString());
 
@@ -893,6 +920,8 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("ui/minimizeToTrayOnClose", minimizeToTrayOnClose_);
     settings.setValue("video/resolution", resolutionSelect_ ? resolutionSelect_->currentData().toString() : QString("1920x1080"));
     settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
+    settings.setValue("camera/resolution", cameraResolutionSelect_ ? cameraResolutionSelect_->currentData().toString() : QString("1920x1080"));
+    settings.setValue("camera/fps", cameraFpsSelect_ ? cameraFpsSelect_->currentData().toInt() : 30);
     settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 12000);
     settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 12000);
     settings.setValue("video/sourceMode", sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window"));
@@ -905,6 +934,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/ffmpegOptions", ffmpegOptionsInput_ ? ffmpegOptionsInput_->text() : QString());
     settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
     settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
+    settings.setValue("audio/windowSource", preferredWindowAudioSource_);
     settings.setValue("audio/includeMicrophone", includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false);
     settings.setValue("audio/microphoneDeviceId", microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentData().toString() : QString());
     settings.setValue("audio/primaryGainPercent", primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100);
@@ -941,6 +971,12 @@ void MainWindow::connectPersistedSettingSignals() {
     if (fpsSelect_) {
         connect(fpsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
+    if (cameraResolutionSelect_) {
+        connect(cameraResolutionSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    if (cameraFpsSelect_) {
+        connect(cameraFpsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
     if (bitrateSelect_) {
         connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
@@ -960,7 +996,18 @@ void MainWindow::connectPersistedSettingSignals() {
         connect(iceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
     if (audioSourceSelect_) {
-        connect(audioSourceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+        connect(
+            audioSourceSelect_,
+            QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this,
+            [this, saveNow](int) {
+                if (sourceModeSelect_ &&
+                    sourceModeSelect_->currentData().toString() == "window") {
+                    preferredWindowAudioSource_ =
+                        audioSourceSelect_->currentData().toString();
+                }
+                saveNow();
+            });
     }
     if (includeMicrophoneCheck_) {
         connect(includeMicrophoneCheck_, &QCheckBox::toggled, this, saveNow);
@@ -1091,29 +1138,59 @@ void MainWindow::setupUI() {
     sourceModeSelect_ = new QComboBox(this);
     sourceModeSelect_->setObjectName("sourceModeSelect");
     sourceModeSelect_->addItem("Window", QVariant("window"));
+    sourceModeSelect_->addItem("Camera / Webcam", QVariant("camera"));
     sourceModeSelect_->addItem("Spout2 (avatar apps)", QVariant("spout"));
     sourceModeSelect_->setToolTip(
-        "Window captures visible app/game windows. Spout2 is for local avatar/alpha senders such as VTube Studio, "
-        "Warudo, VSeeFace, and VNyan. Start or enable Spout output in that app first. For transparency, use VP9 "
-        "with OBS alpha workflow. If frames are black, run both apps on the same GPU.");
+        "Window captures visible app/game windows. Camera / Webcam captures a Windows video input device. "
+        "Spout2 is for local avatar/alpha senders such as VTube Studio, Warudo, VSeeFace, and VNyan. "
+        "Start or enable Spout output in that app first. For transparency, use VP9 with OBS alpha workflow. "
+        "If Spout frames are black, run both apps on the same GPU.");
     installComboWheelGuard(sourceModeSelect_);
     connect(sourceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
-        if (sourceModeSelect_ &&
-            sourceModeSelect_->currentData().toString() == "spout" &&
-            audioSourceSelect_ &&
-            audioSourceSelect_->currentData().toString() == "selected-window") {
-            const int noAudioIndex = audioSourceSelect_->findData("none");
-            if (noAudioIndex >= 0) {
-                audioSourceSelect_->setCurrentIndex(noAudioIndex);
+        const QString sourceMode = sourceModeSelect_
+            ? sourceModeSelect_->currentData().toString()
+            : QStringLiteral("window");
+        if (cameraOptionsPanel_) {
+            cameraOptionsPanel_->setVisible(sourceMode == "camera");
+        }
+        if (audioSourceSelect_) {
+            QString audioMode = audioSourceSelect_->currentData().toString();
+            if (!loadingPersistedSettings_) {
+                if (previousSourceMode_ == "window" && sourceMode != "window") {
+                    preferredWindowAudioSource_ = audioMode;
+                } else if (previousSourceMode_ != "window" && sourceMode == "window") {
+                    const int preferredIndex =
+                        audioSourceSelect_->findData(preferredWindowAudioSource_);
+                    if (preferredIndex >= 0) {
+                        audioSourceSelect_->setCurrentIndex(preferredIndex);
+                        audioMode = audioSourceSelect_->currentData().toString();
+                    }
+                }
+            }
+            if (sourceMode == "spout" && audioMode == "selected-window") {
+                const int noAudioIndex = audioSourceSelect_->findData("none");
+                if (noAudioIndex >= 0) {
+                    audioSourceSelect_->setCurrentIndex(noAudioIndex);
+                }
+            } else if (sourceMode == "camera" &&
+                       (audioMode == "selected-window" || audioMode == "none")) {
+                const int microphoneIndex = audioSourceSelect_->findData("default-microphone");
+                if (microphoneIndex >= 0) {
+                    audioSourceSelect_->setCurrentIndex(microphoneIndex);
+                }
             }
         }
+        previousSourceMode_ = sourceMode;
         selectedWindowId_.clear();
         if (windowListWidget_) {
             windowListWidget_->requestThumbnailRefresh();
         }
-        updateStatus(sourceModeSelect_ && sourceModeSelect_->currentData().toString() == "spout"
-            ? "Select a Spout2 sender"
-            : "Select a window to capture",
+        updateStatus(
+            sourceMode == "spout"
+                ? "Select a Spout2 sender"
+                : (sourceMode == "camera"
+                    ? "Select a camera"
+                    : "Select a window to capture"),
             "idle");
         refreshWindowList();
         refreshSelectedWindowPreview();
@@ -1123,6 +1200,59 @@ void MainWindow::setupUI() {
     sourceLayout->addWidget(sourceLabel);
     sourceLayout->addWidget(sourceModeSelect_, 1);
     layout->addLayout(sourceLayout);
+
+    cameraOptionsPanel_ = new QWidget(this);
+    cameraOptionsPanel_->setObjectName("cameraOptionsPanel");
+    auto *cameraOptionsLayout = new QHBoxLayout(cameraOptionsPanel_);
+    cameraOptionsLayout->setContentsMargins(0, 0, 0, 0);
+    cameraOptionsLayout->setSpacing(8);
+
+    auto *cameraResolutionLabel = new QLabel("Camera Resolution", this);
+    cameraResolutionLabel->setStyleSheet(
+        QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
+    cameraResolutionSelect_ = new QComboBox(this);
+    cameraResolutionSelect_->setObjectName("cameraResolutionSelect");
+    cameraResolutionSelect_->addItem("1920x1080", QVariant("1920x1080"));
+    cameraResolutionSelect_->addItem("1280x720", QVariant("1280x720"));
+    cameraResolutionSelect_->addItem("960x540", QVariant("960x540"));
+    cameraResolutionSelect_->addItem("640x480", QVariant("640x480"));
+    cameraResolutionSelect_->setToolTip(
+        "Requested camera capture resolution. If the camera does not offer this exact mode, Game Capture uses the closest supported mode.");
+    installComboWheelGuard(cameraResolutionSelect_);
+
+    auto *cameraFpsLabel = new QLabel("Frame Rate", this);
+    cameraFpsLabel->setStyleSheet(
+        QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
+    cameraFpsSelect_ = new QComboBox(this);
+    cameraFpsSelect_->setObjectName("cameraFpsSelect");
+    cameraFpsSelect_->addItem("60 fps", QVariant(60));
+    cameraFpsSelect_->addItem("30 fps", QVariant(30));
+    cameraFpsSelect_->addItem("24 fps", QVariant(24));
+    cameraFpsSelect_->setCurrentIndex(1);
+    cameraFpsSelect_->setToolTip(
+        "Requested camera frame rate. If the camera does not offer this exact rate, Game Capture uses the closest supported rate.");
+    installComboWheelGuard(cameraFpsSelect_);
+
+    cameraOptionsLayout->addWidget(cameraResolutionLabel);
+    cameraOptionsLayout->addWidget(cameraResolutionSelect_, 1);
+    cameraOptionsLayout->addWidget(cameraFpsLabel);
+    cameraOptionsLayout->addWidget(cameraFpsSelect_, 1);
+    cameraOptionsPanel_->setVisible(false);
+    layout->addWidget(cameraOptionsPanel_);
+
+    auto *microphoneLayout = new QHBoxLayout();
+    auto *microphoneLabel = new QLabel("Microphone / Input", this);
+    microphoneLabel->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
+    microphoneDeviceSelect_ = new QComboBox(this);
+    microphoneDeviceSelect_->setObjectName("microphoneDeviceSelect");
+    microphoneDeviceSelect_->setToolTip(
+        "Choose the microphone/input used by Camera mode, the microphone audio source, or the additional audio mix. "
+        "If the selected device is unavailable, capture falls back to the Windows default input.");
+    refreshMicrophoneDevices();
+    installComboWheelGuard(microphoneDeviceSelect_);
+    microphoneLayout->addWidget(microphoneLabel);
+    microphoneLayout->addWidget(microphoneDeviceSelect_, 1);
+    layout->addLayout(microphoneLayout);
 
     auto *captureSplitter = new QSplitter(Qt::Horizontal, this);
     captureSplitter->setChildrenCollapsible(false);
@@ -1170,7 +1300,7 @@ void MainWindow::setupUI() {
     heroTitle->setStyleSheet(QString("color: %1; font-size: 18px; font-weight: 700;").arg(COLOR_TEXT));
     layout->addWidget(heroTitle);
 
-    auto *heroSubTitle = new QLabel("Select a window, paste a Stream ID or VDO URL, then go live.", this);
+    auto *heroSubTitle = new QLabel("Select a video source, paste a Stream ID or VDO URL, then go live.", this);
     heroSubTitle->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     heroSubTitle->setWordWrap(true);
     layout->addWidget(heroSubTitle);
@@ -1296,10 +1426,10 @@ void MainWindow::setupUI() {
     audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
     audioSourceSelect_->addItem("Default output mix", QVariant("default-output"));
     audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
-    audioSourceSelect_->addItem("Default microphone/input", QVariant("default-microphone"));
+    audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
     audioSourceSelect_->addItem("No audio", QVariant("none"));
     audioSourceSelect_->setToolTip(
-        "Use Communications output for VOIP-style games, or Default microphone/input when voice chat is captured through an input device.");
+        "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above.");
     installComboWheelGuard(audioSourceSelect_);
     advancedForm->addRow("Audio Source", audioSourceSelect_);
 
@@ -1309,14 +1439,6 @@ void MainWindow::setupUI() {
     includeMicrophoneCheck_->setToolTip(
         "Mixes the selected microphone/input into the selected audio source so game/app audio and the on-screen player's mic are sent together.");
     advancedForm->addRow("Additional Audio", includeMicrophoneCheck_);
-
-    microphoneDeviceSelect_ = new QComboBox(this);
-    microphoneDeviceSelect_->setObjectName("microphoneDeviceSelect");
-    microphoneDeviceSelect_->setToolTip(
-        "Choose a microphone/input to mix in. If the selected device is unavailable, capture falls back to the Windows default input.");
-    refreshMicrophoneDevices();
-    installComboWheelGuard(microphoneDeviceSelect_);
-    advancedForm->addRow("Microphone", microphoneDeviceSelect_);
 
     primaryAudioGainSpin_ = new QSpinBox(this);
     primaryAudioGainSpin_->setObjectName("primaryAudioGainSpin");
@@ -1427,7 +1549,7 @@ void MainWindow::setupUI() {
 
     ffmpegOptionsInput_ = new QLineEdit(this);
     ffmpegOptionsInput_->setObjectName("ffmpegOptionsInput");
-    ffmpegOptionsInput_->setPlaceholderText("Optional ffmpeg options (VP9: -g 30 -keyint_min 30; NVENC: -preset llhq -rc cbr)");
+    ffmpegOptionsInput_->setPlaceholderText("Optional ffmpeg options (VP9: -g 30 -keyint_min 30; NVENC: -preset p4 -rc cbr)");
     ffmpegOptionsInput_->setToolTip(
         "Advanced FFmpeg output options are appended after Game Capture defaults. VP9 already uses "
         "-deadline realtime -cpu-used 8. For slow CPUs, lower resolution/FPS first; advanced VP9 users can try "
@@ -1473,7 +1595,9 @@ void MainWindow::setupUI() {
 
     // Status label
     statusLabel_ = new QLabel("Select a window to capture", this);
+    statusLabel_->setObjectName("statusLabel");
     statusLabel_->setAlignment(Qt::AlignCenter);
+    statusLabel_->setWordWrap(true);
     statusLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     layout->addWidget(statusLabel_);
 
@@ -1895,7 +2019,13 @@ void MainWindow::onWindowSelected(const QString &windowId) {
     refreshSelectedWindowPreview();
     if (hasSelection) {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
-        updateStatus(sourceMode == "spout" ? "Ready to capture Spout2 sender" : "Ready to go live", "ready");
+        updateStatus(
+            sourceMode == "spout"
+                ? "Ready to capture Spout2 sender"
+                : (sourceMode == "camera"
+                    ? "Ready to capture camera"
+                    : "Ready to go live"),
+            "ready");
     }
 }
 
@@ -1917,6 +2047,7 @@ void MainWindow::refreshWindowList() {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
         if (sourceMode == "spout") {
             windowListWidget_->setSpoutModeEnabled(true);
+            windowListWidget_->setCameraModeEnabled(false);
             windowListWidget_->setHeaderText("Select Spout2 Sender:");
             windowListWidget_->setEmptyText(
                 "No Spout2 senders detected. Enable Spout output in the avatar app, keep it running, then Refresh.");
@@ -1925,8 +2056,20 @@ void MainWindow::refreshWindowList() {
             if (selectedWindowId_.isEmpty()) {
                 updateStatus(senders.empty() ? "Waiting for Spout2 sender" : "Select a Spout2 sender", "idle");
             }
+        } else if (sourceMode == "camera") {
+            windowListWidget_->setSpoutModeEnabled(false);
+            windowListWidget_->setCameraModeEnabled(true);
+            windowListWidget_->setHeaderText("Select Camera / Webcam:");
+            windowListWidget_->setEmptyText(
+                "No cameras detected. Connect a camera, allow desktop camera access in Windows Settings, then Refresh.");
+            auto cameras = core_->listCameras();
+            windowListWidget_->setWindowList(cameras);
+            if (selectedWindowId_.isEmpty()) {
+                updateStatus(cameras.empty() ? "Waiting for camera" : "Select a camera", "idle");
+            }
         } else {
             windowListWidget_->setSpoutModeEnabled(false);
+            windowListWidget_->setCameraModeEnabled(false);
             windowListWidget_->setHeaderText("Select Game/Window:");
             windowListWidget_->setEmptyText("No windows detected. Launch a game and click Refresh.");
             auto windows = core_->listWindows();
@@ -1961,10 +2104,26 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
             microphoneDeviceSelect_->addItem(audioDeviceLabel(device), QVariant(QString::fromStdString(device.id)));
             QString tooltip = QString::fromStdString(device.name);
             if (device.sampleRate > 0 && device.channels > 0) {
-                tooltip += QString("\nNative format: %1 Hz, %2 channel(s).")
+                tooltip += QString("\nNative format: %1 Hz, %2 channel(s)")
                     .arg(device.sampleRate)
                     .arg(device.channels);
-                if (device.sampleRate != 48000 || device.channels != 2) {
+                if (device.bitsPerSample > 0) {
+                    tooltip += QString(", %1-bit %2")
+                        .arg(device.validBitsPerSample > 0
+                            ? device.validBitsPerSample
+                            : device.bitsPerSample)
+                        .arg(device.floatingPoint ? "float" : "PCM");
+                    if (device.validBitsPerSample > 0 &&
+                        device.validBitsPerSample != device.bitsPerSample) {
+                        tooltip += QString(" in a %1-bit container")
+                            .arg(device.bitsPerSample);
+                    }
+                }
+                tooltip += ".";
+                if (device.sampleRate != 48000 ||
+                    device.channels != 2 ||
+                    device.bitsPerSample != 32 ||
+                    !device.floatingPoint) {
                     tooltip += "\nGame Capture will convert this input to 48 kHz stereo for WebRTC.";
                 }
             }
@@ -2081,11 +2240,27 @@ void MainWindow::onGoLiveClicked() {
             }, Qt::QueuedConnection);
         });
     } else {
-        const QString resolutionText = resolutionSelect_->currentData().toString();
+        const QString sourceModeValue = sourceModeSelect_
+            ? sourceModeSelect_->currentData().toString()
+            : QString("window");
+        const bool cameraMode = sourceModeValue == "camera";
+        const QComboBox *activeResolutionSelect =
+            cameraMode && cameraResolutionSelect_
+                ? cameraResolutionSelect_
+                : resolutionSelect_;
+        const QComboBox *activeFpsSelect =
+            cameraMode && cameraFpsSelect_
+                ? cameraFpsSelect_
+                : fpsSelect_;
+        const QString resolutionText = activeResolutionSelect
+            ? activeResolutionSelect->currentData().toString()
+            : QString("1920x1080");
         const QStringList parts = resolutionText.split('x');
         const int width = parts.size() > 0 ? parts[0].toInt() : 1920;
         const int height = parts.size() > 1 ? parts[1].toInt() : 1080;
-        const int fps = fpsSelect_->currentData().toInt();
+        const int fps = activeFpsSelect
+            ? activeFpsSelect->currentData().toInt()
+            : (cameraMode ? 30 : 60);
         const int bitrate = selectedBitrateKbps();
 
         versus::video::EncoderConfig config;
@@ -2120,9 +2295,6 @@ void MainWindow::onGoLiveClicked() {
         const QString audioSourceValue = audioSourceSelect_
             ? audioSourceSelect_->currentData().toString()
             : QString("selected-window");
-        const QString sourceModeValue = sourceModeSelect_
-            ? sourceModeSelect_->currentData().toString()
-            : QString("window");
         const bool includeMicrophone = includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false;
         const QString microphoneDeviceId = microphoneDeviceSelect_
             ? microphoneDeviceSelect_->currentData().toString()
@@ -2285,7 +2457,10 @@ void MainWindow::onGoLiveClicked() {
                 core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
                 if (!core->startCapture(sourceMode, selectedWindowId)) {
-                    failureStatus = "Failed to start capture";
+                    const std::string detail = core->lastCaptureError();
+                    failureStatus = detail.empty()
+                        ? QStringLiteral("Failed to start capture")
+                        : QString::fromStdString(detail);
                 } else {
                     if (!core->goLive(options)) {
                         failureStatus = "Failed to connect";
@@ -2346,6 +2521,7 @@ void MainWindow::onGoLiveClicked() {
                 self->setConfigControlsEnabled(false);
 
                 self->updateStatus("LIVE", "live");
+                self->refreshPublisherCameraPreview();
 
                 const QString shareLink = QString::fromStdString(self->core_->getShareLink());
                 if (self->shareLabel_) {
@@ -2606,6 +2782,7 @@ void MainWindow::onStatsTimer() {
             microphoneAudioLevelLabel_,
             showAdditionalMicLevel ? core_->getAdditionalAudioLevelRms() : 0.0f,
             showAdditionalMicLevel ? core_->getAdditionalAudioPeak() : 0.0f);
+        refreshPublisherCameraPreview();
     } else {
         resetOperatorHealthUi();
     }
@@ -2908,6 +3085,12 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (sourceModeSelect_) {
         sourceModeSelect_->setEnabled(enabled);
     }
+    if (cameraResolutionSelect_) {
+        cameraResolutionSelect_->setEnabled(enabled);
+    }
+    if (cameraFpsSelect_) {
+        cameraFpsSelect_->setEnabled(enabled);
+    }
     if (streamIdInput_) {
         streamIdInput_->setEnabled(enabled);
     }
@@ -3037,9 +3220,62 @@ void MainWindow::refreshSelectedWindowPreview() {
     const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
     if (selectedWindowId_.isEmpty()) {
         previewLabel_->setPixmap(QPixmap());
-        previewLabel_->setText(sourceMode == "spout"
-            ? "Select a Spout2 sender"
-            : "Select a window to see live preview");
+        previewLabel_->setText(
+            sourceMode == "spout"
+                ? "Select a Spout2 sender"
+                : (sourceMode == "camera"
+                    ? "Select a camera / webcam"
+                    : "Select a window to see live preview"));
+        return;
+    }
+
+    if (sourceMode == "camera") {
+        previewLabel_->setPixmap(QPixmap());
+        QString cameraName = windowListWidget_
+            ? windowListWidget_->selectedWindowName()
+            : QString();
+        if (cameraName.isEmpty()) {
+            cameraName = QStringLiteral("Selected camera");
+        }
+
+        QStringList lines;
+        lines << "Camera selected" << cameraName;
+        if (cameraResolutionSelect_ && cameraFpsSelect_) {
+            lines << QString("Requested mode: %1 at %2 fps")
+                .arg(cameraResolutionSelect_->currentData().toString())
+                .arg(cameraFpsSelect_->currentData().toInt());
+        }
+        const QString microphoneName = microphoneDeviceSelect_
+            ? microphoneDeviceSelect_->currentText().trimmed()
+            : QString();
+        lines << QString("Microphone: %1").arg(
+            microphoneName.isEmpty() ? QStringLiteral("Windows default") : microphoneName);
+
+        const QString audioMode = audioSourceSelect_
+            ? audioSourceSelect_->currentData().toString()
+            : QStringLiteral("default-microphone");
+        if (audioMode == "default-microphone") {
+            lines << "Selected microphone/input will be the primary audio";
+        } else if (audioMode == "none") {
+            lines << "Audio is disabled";
+        } else if (includeMicrophoneCheck_ && includeMicrophoneCheck_->isChecked()) {
+            lines << "Selected microphone/input will be mixed with the primary audio";
+        } else {
+            lines << "Choose microphone/input as Audio Source to send this mic";
+        }
+
+        if (core_) {
+            const auto sourceHealth = core_->getSourceHealth();
+            if (sourceHealth.mode == versus::app::VideoSourceMode::Camera &&
+                QString::fromStdString(sourceHealth.sourceId) == selectedWindowId_ &&
+                sourceHealth.hasFrame) {
+                lines << QString("Last capture: %1x%2")
+                    .arg(sourceHealth.width)
+                    .arg(sourceHealth.height);
+            }
+        }
+        lines << "Camera opens when streaming starts";
+        previewLabel_->setText(lines.join('\n'));
         return;
     }
 
@@ -3115,6 +3351,65 @@ void MainWindow::refreshSelectedWindowPreview() {
         targetSize = QSize(420, 220);
     }
     previewLabel_->setPixmap(preview.scaled(
+        targetSize,
+        Qt::KeepAspectRatio,
+        Qt::SmoothTransformation));
+}
+
+void MainWindow::refreshPublisherCameraPreview() {
+    if (!previewLabel_ || !core_ || !isLive_ || !sourceModeSelect_ ||
+        sourceModeSelect_->currentData().toString() != QStringLiteral("camera")) {
+        return;
+    }
+
+    const auto frame = core_->getPublisherPreviewFrame();
+    if (!frame || frame->data.empty() || frame->width <= 0 || frame->height <= 0) {
+        previewLabel_->setPixmap(QPixmap());
+        previewLabel_->setText("Waiting for live camera preview...");
+        return;
+    }
+
+    QImage image;
+    if (frame->format == versus::video::CapturedFrame::Format::BGRA &&
+        frame->stride >= frame->width * 4 &&
+        frame->data.size() >=
+            static_cast<size_t>(frame->stride) * static_cast<size_t>(frame->height)) {
+        image = QImage(
+                    frame->data.data(),
+                    frame->width,
+                    frame->height,
+                    frame->stride,
+                    QImage::Format_ARGB32)
+                    .copy();
+    } else if (frame->format == versus::video::CapturedFrame::Format::Gray &&
+               frame->stride >= frame->width &&
+               frame->data.size() >=
+                   static_cast<size_t>(frame->stride) * static_cast<size_t>(frame->height)) {
+        image = QImage(
+                    frame->data.data(),
+                    frame->width,
+                    frame->height,
+                    frame->stride,
+                    QImage::Format_Grayscale8)
+                    .copy();
+    }
+
+    if (image.isNull()) {
+        previewLabel_->setPixmap(QPixmap());
+        previewLabel_->setText("Live camera preview is unavailable for this pixel format");
+        return;
+    }
+
+    QSize targetSize = previewLabel_->contentsRect().size();
+    if (!targetSize.isValid() || targetSize.isEmpty()) {
+        targetSize = previewLabel_->size();
+    }
+    if (!targetSize.isValid() || targetSize.isEmpty()) {
+        targetSize = QSize(420, 220);
+    }
+
+    previewLabel_->setText(QString());
+    previewLabel_->setPixmap(QPixmap::fromImage(image).scaled(
         targetSize,
         Qt::KeepAspectRatio,
         Qt::SmoothTransformation));

@@ -63,6 +63,7 @@ class MainWindow : public QMainWindow {
     void refreshWindowList();
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
     void refreshSelectedWindowPreview();
+    void refreshPublisherCameraPreview();
     void syncCodecUiState();
     void updateAlphaBackgroundColorButton();
     void chooseAlphaBackgroundColor();
@@ -93,6 +94,9 @@ class MainWindow : public QMainWindow {
     QPushButton *passwordRevealButton_ = nullptr;
     QLineEdit *labelInput_ = nullptr;
     QComboBox *sourceModeSelect_ = nullptr;
+    QWidget *cameraOptionsPanel_ = nullptr;
+    QComboBox *cameraResolutionSelect_ = nullptr;
+    QComboBox *cameraFpsSelect_ = nullptr;
     QCheckBox *advancedToggle_ = nullptr;
     QWidget *advancedPanel_ = nullptr;
     QComboBox *resolutionSelect_ = nullptr;
@@ -170,6 +174,8 @@ class MainWindow : public QMainWindow {
     bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
     bool loadingPersistedSettings_ = false;
+    QString previousSourceMode_ = QStringLiteral("window");
+    QString preferredWindowAudioSource_ = QStringLiteral("selected-window");
     quint64 startOpId_ = 0;
     quint64 stopOpId_ = 0;
     QFuture<void> startFuture_;

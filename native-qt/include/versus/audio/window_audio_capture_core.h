@@ -25,6 +25,9 @@ struct AudioDeviceInfo {
     std::string name;
     uint32_t sampleRate = 0;
     uint32_t channels = 0;
+    uint32_t bitsPerSample = 0;
+    uint32_t validBitsPerSample = 0;
+    bool floatingPoint = false;
     bool isDefault = false;
 };
 
@@ -92,7 +95,9 @@ class WindowAudioCaptureCore {
     uint32_t sampleRate_ = 48000;
     uint32_t channels_ = 2;
     uint32_t bitsPerSample_ = 32;
+    uint32_t validBitsPerSample_ = 32;
     bool isFloatFormat_ = true;
+    bool sampleFormatKnown_ = true;
     size_t maxBufferSamples_ = 48000 * 2 * 15;
     std::mutex callbackMutex_;
     StreamCallback streamCallback_;

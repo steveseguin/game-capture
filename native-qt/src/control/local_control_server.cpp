@@ -239,6 +239,10 @@ void LocalControlServer::setWindowSourcesProvider(SourcesProvider provider) {
     windowSourcesProvider_ = std::move(provider);
 }
 
+void LocalControlServer::setCameraSourcesProvider(SourcesProvider provider) {
+    cameraSourcesProvider_ = std::move(provider);
+}
+
 void LocalControlServer::setSpoutSourcesProvider(SourcesProvider provider) {
     spoutSourcesProvider_ = std::move(provider);
 }
@@ -361,6 +365,10 @@ void LocalControlServer::routeRequest(QTcpSocket *socket, const HttpRequest &req
 
     if (request.method == "GET" && path == "/sources/windows") {
         sendJson(socket, 200, sourcesJson(windowSourcesProvider_));
+        return;
+    }
+    if (request.method == "GET" && path == "/sources/cameras") {
+        sendJson(socket, 200, sourcesJson(cameraSourcesProvider_));
         return;
     }
     if (request.method == "GET" && path == "/sources/spout") {
@@ -497,6 +505,7 @@ QByteArray LocalControlServer::schemaJson() const {
         QJsonObject{{"method", "GET"}, {"path", "/schema"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/diagnostics"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/sources/windows"}, {"auth_required", true}},
+        QJsonObject{{"method", "GET"}, {"path", "/sources/cameras"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/sources/spout"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/sources/audio-inputs"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/logs/recent?lines=250"}, {"auth_required", true}},
@@ -600,6 +609,7 @@ bool LocalControlServer::writeDiscoveryFile() {
             "/diagnostics",
             "/schema",
             "/sources/windows",
+            "/sources/cameras",
             "/sources/spout",
             "/sources/audio-inputs",
             "/logs/recent",

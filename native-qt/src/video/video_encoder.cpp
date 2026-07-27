@@ -1712,7 +1712,9 @@ class VideoEncoder::Impl {
         }
         if (encoderName.find("_nvenc") != std::string::npos) {
             args.push_back("-preset");
-            args.push_back("llhq");
+            // The legacy llhq alias is not exposed by newer AV1 NVENC builds.
+            // p4 plus the low-latency tune is the supported cross-codec equivalent.
+            args.push_back("p4");
             args.push_back("-tune");
             args.push_back("ll");
             args.push_back("-zerolatency");

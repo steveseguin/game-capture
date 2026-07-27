@@ -67,10 +67,15 @@ Authenticated:
 - `GET /schema`
 - `GET /diagnostics`
 - `GET /sources/windows`
+- `GET /sources/cameras`
 - `GET /sources/spout`
 - `GET /sources/audio-inputs`
 - `GET /logs/recent?lines=250`
 - `POST /commands`
+
+Audio-input source objects include `sampleRate`, `channels`, `bitsPerSample`,
+`validBitsPerSample`, `floatingPoint`, and `isDefault` alongside the device
+`id` and `name`.
 
 Authentication header:
 
