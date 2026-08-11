@@ -38,135 +38,6 @@ std::string sha256Hex(const std::string &value) {
         .toStdString();
 }
 
-std::string normalizeAnswerIdentity(const std::string &sdp) {
-    auto trim = [](std::string value) {
-        const auto first = value.find_first_not_of(" \t\r");
-        if (first == std::string::npos) {
-            return std::string{};
-        }
-        const auto last = value.find_last_not_of(" \t\r");
-        return value.substr(first, last - first + 1);
-    };
-    auto collapseWhitespace = [&](const std::string &value) {
-        std::istringstream words(value);
-        std::ostringstream normalized;
-        std::string word;
-        bool first = true;
-        while (words >> word) {
-            if (!first) {
-                normalized << ' ';
-            }
-            normalized << word;
-            first = false;
-        }
-        return normalized.str();
-    };
-
-    std::string origin;
-    std::vector<std::string> iceUfrags;
-    std::vector<std::string> icePasswords;
-    std::vector<std::string> mids;
-    std::vector<std::string> fingerprintFreeFallback;
-    std::istringstream input(sdp);
-    std::string line;
-    while (std::getline(input, line)) {
-        line = trim(std::move(line));
-        if (line.empty()) {
-            continue;
-        }
-        std::string lower = line;
-        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
-        if (lower.rfind("a=fingerprint:", 0) == 0 ||
-            lower.rfind("a=candidate:", 0) == 0 ||
-            lower == "a=end-of-candidates") {
-            continue;
-        }
-        fingerprintFreeFallback.push_back(collapseWhitespace(line));
-        if (lower.rfind("o=", 0) == 0 && origin.empty()) {
-            origin = collapseWhitespace(line.substr(2));
-        } else if (lower.rfind("a=ice-ufrag:", 0) == 0) {
-            iceUfrags.push_back(trim(line.substr(12)));
-        } else if (lower.rfind("a=ice-pwd:", 0) == 0) {
-            icePasswords.push_back(trim(line.substr(10)));
-        } else if (lower.rfind("a=mid:", 0) == 0) {
-            mids.push_back(trim(line.substr(6)));
-        }
-    }
-
-    auto normalizeSet = [](std::vector<std::string> &values) {
-        values.erase(std::remove_if(values.begin(), values.end(), [](const std::string &value) {
-            return value.empty();
-        }), values.end());
-        std::sort(values.begin(), values.end());
-        values.erase(std::unique(values.begin(), values.end()), values.end());
-    };
-    normalizeSet(iceUfrags);
-    normalizeSet(icePasswords);
-    normalizeSet(mids);
-
-    std::ostringstream identity;
-    identity << "origin=" << origin << "|ufrag=";
-    for (const auto &value : iceUfrags) {
-        identity << ';' << value.size() << ':' << value;
-    }
-    identity << "|pwd=";
-    for (const auto &value : icePasswords) {
-        identity << ';' << value.size() << ':' << value;
-    }
-    identity << "|mids=";
-    for (const auto &value : mids) {
-        identity << ';' << value.size() << ':' << value;
-    }
-
-    if (!origin.empty() || !iceUfrags.empty() || !icePasswords.empty() || !mids.empty()) {
-        return identity.str();
-    }
-
-    // Malformed answers still need a replay identity. This fallback remains
-    // fingerprint-insensitive while excluding trickled candidate noise.
-    std::ostringstream fallback;
-    for (const auto &value : fingerprintFreeFallback) {
-        fallback << value.size() << ':' << value;
-    }
-    return fallback.str();
-}
-
-std::string candidateIceUfrag(const std::string &candidate) {
-    std::istringstream tokens(candidate);
-    std::string token;
-    while (tokens >> token) {
-        std::transform(token.begin(), token.end(), token.begin(), [](unsigned char ch) {
-            return static_cast<char>(std::tolower(ch));
-        });
-        if (token != "ufrag") {
-            continue;
-        }
-        std::string ufrag;
-        if (tokens >> ufrag) {
-            return ufrag;
-        }
-        break;
-    }
-    return {};
-}
-
-bool answerIdentityMatchesCandidate(const std::string &answerIdentity,
-                                    const std::string &candidate) {
-    const std::string ufrag = candidateIceUfrag(candidate);
-    if (ufrag.empty()) {
-        return true;
-    }
-    const auto start = answerIdentity.find("|ufrag=");
-    if (start == std::string::npos) {
-        return false;
-    }
-    const auto end = answerIdentity.find("|pwd=", start + 7);
-    const std::string encoded = ";" + std::to_string(ufrag.size()) + ':' + ufrag;
-    return answerIdentity.substr(start + 7, end - (start + 7)).find(encoded) != std::string::npos;
-}
-
 }  // namespace detail
 
 namespace {
@@ -192,7 +63,6 @@ constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
 constexpr int kLqBitrateKbps = 2000;
 constexpr std::size_t kPendingRemoteCandidatesMaxPerPeer = 100;
-constexpr std::size_t kAttemptedAnswerIdentityHistoryMax = 64;
 
 int64_t steadyNowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -2268,25 +2138,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         uint64_t activeOfferGeneration = 0;
         uint64_t activeTransportGeneration = 0;
         uint64_t clientTransportGeneration = 0;
-        uint64_t localCandidateWorkOfferGeneration = 0;
-        uint64_t localCandidateWorkOutstanding = 0;
-        uint64_t localCandidateWorkAdmitted = 0;
-        uint64_t localCandidateWorkCompleted = 0;
-        uint64_t localCandidateWorkSuperseded = 0;
-        uint64_t localCandidateRetiredOutstanding = 0;
-        uint64_t localCandidateOutcomeSequence = 0;
-        bool localCandidateAccountingViolation = false;
-        bool localCandidateWorkInvariantConsistent = false;
-        int attemptedAnswerIdentityCount = 0;
-        webrtc::LocalCandidateDiagnostics candidateDiagnosticsBefore;
-        webrtc::LocalCandidateDiagnostics candidateDiagnosticsAfter;
         {
-            std::lock_guard<std::recursive_mutex> clientLock(
-                peer->clientOperationMutex);
-            if (peer->client) {
-                candidateDiagnosticsBefore =
-                    peer->client->localCandidateDiagnostics();
-            }
             std::lock_guard<std::mutex> lock(peer->negotiationMutex);
             bufferedLocalCandidateCount = static_cast<int>(peer->pendingCandidates.size());
             offerDispatched = peer->offerDispatched;
@@ -2296,52 +2148,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
             activeOfferGeneration = peer->activeOfferGeneration;
             activeTransportGeneration = peer->activeTransportGeneration;
             clientTransportGeneration = peer->clientTransportGeneration;
-            localCandidateWorkOfferGeneration =
-                peer->localCandidateWorkOfferGeneration;
-            localCandidateWorkOutstanding =
-                peer->localCandidateWorkOutstanding;
-            localCandidateWorkAdmitted =
-                peer->localCandidateWorkAdmitted;
-            localCandidateWorkCompleted =
-                peer->localCandidateWorkCompleted;
-            localCandidateWorkSuperseded =
-                peer->localCandidateWorkSuperseded;
-            for (const auto &[workId, owner] :
-                 peer->localCandidateOutstandingWork) {
-                (void)workId;
-                if (owner.offerGeneration != activeOfferGeneration) {
-                    ++localCandidateRetiredOutstanding;
-                }
-            }
-            localCandidateOutcomeSequence =
-                peer->localCandidateOutcomeSequence;
-            localCandidateAccountingViolation =
-                peer->localCandidateAccountingViolation;
-            localCandidateWorkInvariantConsistent =
-                localCandidateWorkOutstanding ==
-                    peer->localCandidateOutstandingWork.size() &&
-                localCandidateWorkAdmitted ==
-                    localCandidateWorkCompleted +
-                        localCandidateWorkOutstanding;
-            attemptedAnswerIdentityCount = static_cast<int>(peer->attemptedAnswerIdentities.size());
-            if (peer->client) {
-                candidateDiagnosticsAfter =
-                    peer->client->localCandidateDiagnostics();
-            }
         }
-        const bool localCandidateSnapshotCoherent =
-            candidateDiagnosticsBefore.gatheringComplete ==
-                candidateDiagnosticsAfter.gatheringComplete &&
-            candidateDiagnosticsBefore.callbacksInFlight ==
-                candidateDiagnosticsAfter.callbacksInFlight &&
-            candidateDiagnosticsBefore.activitySequence ==
-                candidateDiagnosticsAfter.activitySequence &&
-            candidateDiagnosticsBefore.gatheringEpoch ==
-                candidateDiagnosticsAfter.gatheringEpoch &&
-            candidateDiagnosticsBefore.candidatesAfterGatheringComplete ==
-                candidateDiagnosticsAfter.candidatesAfterGatheringComplete &&
-            candidateDiagnosticsBefore.overlappingGatheringDetected ==
-                candidateDiagnosticsAfter.overlappingGatheringDetected;
         item["signaling"] = {
             {"offer_dispatched", offerDispatched},
             {"offer_creation_in_progress", offerCreationInProgress},
@@ -2349,52 +2156,15 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"active_offer_generation", activeOfferGeneration},
             {"active_transport_generation", activeTransportGeneration},
             {"client_transport_generation", clientTransportGeneration},
-            {"attempted_answer_identities", attemptedAnswerIdentityCount},
             {"offer_count", peer->offerCount.load(std::memory_order_relaxed)},
             {"recovery_offer_count", peer->recoveryOfferCount.load(std::memory_order_relaxed)},
             {"answer_count", peer->answerCount.load(std::memory_order_relaxed)},
             {"local_candidates_sent", peer->localCandidatesSent.load(std::memory_order_relaxed)},
             {"local_candidate_send_failures",
              peer->localCandidateSendFailures.load(std::memory_order_relaxed)},
-            {"local_candidate_gathering_complete",
-             candidateDiagnosticsAfter.gatheringComplete},
-            {"local_candidate_callbacks_in_flight",
-             candidateDiagnosticsAfter.callbacksInFlight},
-            {"local_candidate_activity_sequence",
-             candidateDiagnosticsAfter.activitySequence},
-            {"local_candidate_gathering_epoch",
-             candidateDiagnosticsAfter.gatheringEpoch},
-            {"local_candidates_after_gathering_complete",
-             candidateDiagnosticsAfter.candidatesAfterGatheringComplete},
-            {"local_candidate_overlapping_gathering_detected",
-             candidateDiagnosticsAfter.overlappingGatheringDetected},
-            {"local_candidate_work_offer_generation",
-             localCandidateWorkOfferGeneration},
-            {"local_candidate_work_outstanding",
-             localCandidateWorkOutstanding},
-            {"local_candidate_work_admitted",
-             localCandidateWorkAdmitted},
-            {"local_candidate_work_completed",
-             localCandidateWorkCompleted},
-            {"local_candidate_work_superseded",
-             localCandidateWorkSuperseded},
-            {"local_candidate_retired_outstanding",
-             localCandidateRetiredOutstanding},
-            {"local_candidate_work_invariant_consistent",
-             localCandidateWorkInvariantConsistent},
-            {"local_candidate_outcome_sequence",
-             localCandidateOutcomeSequence},
-            {"local_candidate_accounting_violation",
-             localCandidateAccountingViolation},
-            {"local_candidate_snapshot_coherent",
-             localCandidateSnapshotCoherent},
             {"remote_candidates_applied", peer->remoteCandidatesApplied.load(std::memory_order_relaxed)},
             {"pending_remote_candidates", pendingRemoteCandidateCounts[
                 makePeerKey(peerSnapshot.uuid, peerSnapshot.session)]},
-            {"sessionless_wss_answers_rejected",
-             peer->sessionlessWssAnswersRejected.load(std::memory_order_relaxed)},
-            {"sessionless_wss_remote_candidates_rejected",
-             peer->sessionlessWssRemoteCandidatesRejected.load(std::memory_order_relaxed)},
             {"duplicate_offer_recheck_pending",
              peer->duplicateOfferRecheckPending.load(std::memory_order_relaxed)},
             {"duplicate_offer_rechecks_scheduled",
@@ -3166,11 +2936,6 @@ void VersusApp::handlePeerConnectionState(
     {
         std::lock_guard<std::mutex> lock(peer->negotiationMutex);
         peer->transportRetired = true;
-        for (auto &attempt : peer->attemptedAnswerIdentities) {
-            if (attempt.transportGeneration == peer->activeTransportGeneration) {
-                attempt.transportRetired = true;
-            }
-        }
         if (!peer->directFailureNoticeEmitted) {
             emitDirectFailure = peer->activeIceMode == webrtc::IceMode::StunOnly ||
                 peer->activeIceMode == webrtc::IceMode::HostOnly;
@@ -3329,7 +3094,11 @@ void VersusApp::setupSignalingCallbacks() {
             return;
         }
 
-        const std::string resolvedSession = generatePeerSessionId();
+        // Echo the viewer-supplied session when the play request carries one
+        // (VDO.Ninja receivers reply with the session our offer names, and
+        // older receivers expect their own value back). Mint only when absent.
+        const std::string resolvedSession =
+            session.empty() ? generatePeerSessionId() : session;
         const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
         const std::string resolvedStreamId = lifecycleState.streamId.empty() ? streamId : lifecycleState.streamId;
         const std::string key = uuid;
@@ -3470,102 +3239,39 @@ void VersusApp::setupSignalingCallbacks() {
         peer->client->setIceCandidateCallback([this, weakPeer](const std::string &candidate,
                                                                 const std::string &mid,
                                                                 int mlineIndex,
-                                                                uint64_t clientTransportGeneration,
-                                                                uint64_t localCandidateOfferGeneration) {
+                                                                uint64_t clientTransportGeneration) {
             auto peerPtr = weakPeer.lock();
             if (!peerPtr || candidate.empty()) {
                 return;
             }
             bool shouldSend = false;
-            bool accountingViolation = false;
-            bool supersededCandidate = false;
             std::string uuidLocal;
             std::string sessionLocal;
             std::string typeLocal;
-            uint64_t candidateWorkId = 0;
-            uint64_t candidateGeneration = 0;
             {
                 std::lock_guard<std::mutex> lock(peerPtr->negotiationMutex);
-                if (peerPtr->removed || peerPtr->activeOfferGeneration == 0 ||
+                if (peerPtr->removed ||
                     peerPtr->clientTransportGeneration != clientTransportGeneration) {
-                    if (!peerPtr->removed &&
-                        peerPtr->clientTransportGeneration != clientTransportGeneration) {
+                    if (!peerPtr->removed) {
                         recordPeerEvent(peerPtr, "local-candidate-dropped retired-transport-generation");
                     }
                     return;
                 }
-                candidateGeneration = localCandidateOfferGeneration;
-                if (candidateGeneration == 0) {
-                    peerPtr->localCandidateAccountingViolation = true;
-                    accountingViolation = true;
-                    ++peerPtr->localCandidateOutcomeSequence;
-                } else if (candidateGeneration !=
-                           peerPtr->activeOfferGeneration) {
-                    // The callback began under an older local description and
-                    // crossed an App-level offer reservation. It owns no new
-                    // work in the active generation and is dropped explicitly.
-                    supersededCandidate = true;
-                    ++peerPtr->localCandidateOutcomeSequence;
-                } else {
-                    candidateWorkId = ++peerPtr->nextLocalCandidateWorkId;
-                    if (candidateWorkId == 0) {
-                        peerPtr->localCandidateAccountingViolation = true;
-                        accountingViolation = true;
-                        ++peerPtr->localCandidateOutcomeSequence;
-                    } else {
-                        uuidLocal = peerPtr->uuid;
-                        sessionLocal = peerPtr->activeWireSession;
-                        typeLocal = peerPtr->candidateType;
-                        const bool inserted =
-                            peerPtr->localCandidateOutstandingWork.emplace(
-                                candidateWorkId,
-                                LocalCandidateWorkOwner{
-                                    candidateGeneration,
-                                    clientTransportGeneration,
-                                    sessionLocal}).second;
-                        if (!inserted) {
-                            peerPtr->localCandidateAccountingViolation = true;
-                            accountingViolation = true;
-                        } else {
-                            ++peerPtr->localCandidateWorkAdmitted;
-                            peerPtr->localCandidateWorkOutstanding =
-                                static_cast<uint64_t>(
-                                    peerPtr->localCandidateOutstandingWork.size());
-                            ++peerPtr->localCandidateOutcomeSequence;
-                            if (peerPtr->localCandidateWorkAdmitted !=
-                                peerPtr->localCandidateWorkCompleted +
-                                    peerPtr->localCandidateWorkOutstanding) {
-                                peerPtr->localCandidateAccountingViolation = true;
-                                accountingViolation = true;
-                            }
-                        }
-                    }
-                }
-                if (!accountingViolation && !supersededCandidate &&
-                    !peerPtr->offerDispatched) {
+                // Candidates belong to the ICE transport, not an offer
+                // generation: a same-transport renegotiation keeps them valid.
+                if (!peerPtr->offerDispatched) {
                     peerPtr->pendingCandidates.push_back({
                         candidate,
                         mid,
                         mlineIndex,
-                        candidateWorkId,
-                        candidateGeneration,
-                        clientTransportGeneration,
-                        sessionLocal});
+                        clientTransportGeneration});
                     recordPeerEvent(peerPtr, "local-candidate-buffered");
-                } else if (!accountingViolation && !supersededCandidate) {
+                } else {
                     shouldSend = true;
+                    uuidLocal = peerPtr->uuid;
+                    sessionLocal = peerPtr->activeWireSession;
+                    typeLocal = peerPtr->candidateType;
                 }
-            }
-
-            if (accountingViolation) {
-                recordPeerEvent(peerPtr, "local-candidate-accounting-violation reason=admission-generation");
-                return;
-            }
-            if (supersededCandidate) {
-                recordPeerEvent(
-                    peerPtr,
-                    "local-candidate-dropped superseded-offer-context");
-                return;
             }
 
             const std::string lowerCandidate = toLowerCopy(candidate);
@@ -3606,35 +3312,14 @@ void VersusApp::setupSignalingCallbacks() {
                     std::lock_guard<std::mutex> negotiationLock(peerPtr->negotiationMutex);
                     stillCurrent = !peerPtr->removed &&
                         peerPtr->clientTransportGeneration == clientTransportGeneration &&
-                        peerPtr->activeOfferGeneration == candidateGeneration &&
                         peerPtr->activeWireSession == sessionLocal &&
                         peerPtr->offerDispatched;
                 }
                 if (!stillCurrent) {
-                    recordPeerEvent(peerPtr, "local-candidate-dropped superseded-generation");
-                    completePeerLocalCandidateWork(
-                        peerPtr,
-                        candidateWorkId,
-                        candidateGeneration,
-                        clientTransportGeneration,
-                        sessionLocal,
-                        true,
-                        "immediate-superseded");
+                    recordPeerEvent(peerPtr, "local-candidate-dropped superseded-transport");
                     return;
                 }
-                const bool candidateSent =
-                    dispatchPeerCandidateToSignaling(peerPtr, cand, relayCandidate);
-                completePeerLocalCandidateWork(
-                    peerPtr,
-                    candidateWorkId,
-                    candidateGeneration,
-                    clientTransportGeneration,
-                    sessionLocal,
-                    false,
-                    "immediate-dispatch");
-                if (!candidateSent) {
-                    return;
-                }
+                dispatchPeerCandidateToSignaling(peerPtr, cand, relayCandidate);
             }
         });
 
@@ -3704,43 +3389,6 @@ void VersusApp::setupSignalingCallbacks() {
     signaling_.onAnswer([this](const signaling::SignalAnswer &answer) {
         spdlog::info("[Signaling] onAnswer uuid={} session={}", answer.uuid, answer.session);
 
-        // WSS answers are not transport-bound. Without the publisher-owned
-        // wire session there is no way to distinguish a late answer for a
-        // retired PeerConnection from an answer for its replacement. Current
-        // VDO.Ninja and ninja-plugin receivers echo the non-empty session from
-        // our offer, so fail closed before UUID routing when it is absent.
-        if (answer.session.empty()) {
-            std::shared_ptr<PeerSession> activePeer;
-            std::string activeWireSession;
-            {
-                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-                activePeer = findPeerSessionForSignalLocked(answer.uuid, {});
-                if (activePeer) {
-                    std::lock_guard<std::mutex> negotiationLock(
-                        activePeer->negotiationMutex);
-                    if (!activePeer->removed) {
-                        activeWireSession = activePeer->activeWireSession;
-                        activePeer->sessionlessWssAnswersRejected.fetch_add(
-                            1,
-                            std::memory_order_relaxed);
-                    }
-                }
-            }
-            const std::string answerSdpSha256 = detail::sha256Hex(answer.sdp);
-            spdlog::warn(
-                "[Signaling] Rejecting publisher WebSocket answer reason=missing-session uuid={} source=signaling-wss receivedSession=missing activeSession={} answerSdpSha256={}",
-                answer.uuid,
-                activeWireSession,
-                answerSdpSha256);
-            if (activePeer && !activeWireSession.empty()) {
-                recordPeerEvent(
-                    activePeer,
-                    "answer-ignored sessionless-wss answer-sdp-sha256=" +
-                        answerSdpSha256);
-            }
-            return;
-        }
-
         std::shared_ptr<PeerSession> peer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
@@ -3767,41 +3415,6 @@ void VersusApp::setupSignalingCallbacks() {
 
     signaling_.onCandidate([this](const signaling::SignalCandidate &cand) {
         if (cand.candidate.empty()) {
-            return;
-        }
-
-        // Unlike data-channel signaling, a WSS candidate has no callback
-        // generation proving which PeerConnection produced it. Require the
-        // wire session before touching connectivity diagnostics or queues.
-        if (cand.session.empty()) {
-            std::shared_ptr<PeerSession> activePeer;
-            std::string activeWireSession;
-            {
-                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-                activePeer = findPeerSessionForSignalLocked(cand.uuid, {});
-                if (activePeer) {
-                    std::lock_guard<std::mutex> negotiationLock(
-                        activePeer->negotiationMutex);
-                    if (!activePeer->removed) {
-                        activeWireSession = activePeer->activeWireSession;
-                        activePeer->sessionlessWssRemoteCandidatesRejected.fetch_add(
-                            1,
-                            std::memory_order_relaxed);
-                    }
-                }
-            }
-            const std::string candidateSha256 = detail::sha256Hex(cand.candidate);
-            spdlog::warn(
-                "[Signaling] Rejecting publisher WebSocket remote ICE candidate reason=missing-session uuid={} source=signaling-wss receivedSession=missing activeSession={} candidateSha256={}",
-                cand.uuid,
-                activeWireSession,
-                candidateSha256);
-            if (activePeer && !activeWireSession.empty()) {
-                recordPeerEvent(
-                    activePeer,
-                    "remote-candidate-dropped sessionless-wss candidate-sha256=" +
-                        candidateSha256);
-            }
             return;
         }
 
@@ -8495,72 +8108,6 @@ bool VersusApp::dispatchPeerOfferToSignaling(
     return signaling_.sendOffer(offer);
 }
 
-bool VersusApp::completePeerLocalCandidateWorkLocked(
-    PeerSession &peer,
-    uint64_t workId,
-    uint64_t offerGeneration,
-    uint64_t clientTransportGeneration,
-    const std::string &wireSession,
-    bool superseded) {
-    const auto work = peer.localCandidateOutstandingWork.find(workId);
-    const bool ownerMatches =
-        work != peer.localCandidateOutstandingWork.end() &&
-        work->second.offerGeneration == offerGeneration &&
-        work->second.clientTransportGeneration == clientTransportGeneration &&
-        work->second.wireSession == wireSession;
-    if (workId == 0 || offerGeneration == 0 || !ownerMatches) {
-        peer.localCandidateAccountingViolation = true;
-        ++peer.localCandidateOutcomeSequence;
-        return false;
-    }
-
-    peer.localCandidateOutstandingWork.erase(work);
-    ++peer.localCandidateWorkCompleted;
-    if (superseded) {
-        ++peer.localCandidateWorkSuperseded;
-    }
-    peer.localCandidateWorkOutstanding =
-        static_cast<uint64_t>(peer.localCandidateOutstandingWork.size());
-    ++peer.localCandidateOutcomeSequence;
-    if (peer.localCandidateWorkAdmitted !=
-        peer.localCandidateWorkCompleted +
-            peer.localCandidateWorkOutstanding) {
-        peer.localCandidateAccountingViolation = true;
-        return false;
-    }
-    return true;
-}
-
-void VersusApp::completePeerLocalCandidateWork(
-    const std::shared_ptr<PeerSession> &peer,
-    uint64_t workId,
-    uint64_t offerGeneration,
-    uint64_t clientTransportGeneration,
-    const std::string &wireSession,
-    bool superseded,
-    const char *reason) {
-    if (!peer) {
-        return;
-    }
-    bool completed = false;
-    {
-        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
-        completed = completePeerLocalCandidateWorkLocked(
-            *peer,
-            workId,
-            offerGeneration,
-            clientTransportGeneration,
-            wireSession,
-            superseded);
-    }
-    if (!completed) {
-        recordPeerEvent(
-            peer,
-            std::string("local-candidate-accounting-violation reason=") +
-                (reason ? reason : "unspecified"));
-    }
-}
-
 bool VersusApp::dispatchPeerCandidateToSignaling(
     const std::shared_ptr<PeerSession> &peer,
     const signaling::SignalCandidate &candidate,
@@ -8619,8 +8166,6 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
     bool rebuild = rebuildPeerConnection;
     bool coalescedTransition = false;
     uint64_t coalescedGeneration = 0;
-    uint64_t supersededBufferedCandidateCount = 0;
-    uint64_t supersededBufferedCandidateFailures = 0;
     std::string offerWireSession;
     std::string retiredWireSession;
     {
@@ -8663,11 +8208,6 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
             if (peer->activeTransportGeneration == 0) {
                 peer->activeTransportGeneration = 1;
             } else if (rebuild) {
-                for (auto &attempt : peer->attemptedAnswerIdentities) {
-                    if (attempt.transportGeneration == peer->activeTransportGeneration) {
-                        attempt.transportRetired = true;
-                    }
-                }
                 ++peer->activeTransportGeneration;
             }
             if (rebuild) {
@@ -8677,35 +8217,12 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                 retiredWireSession = peer->activeWireSession;
                 peer->activeWireSession = generatePeerSessionId();
             }
-            // Buffered candidates were admitted work for the retiring offer.
-            // Settle each item before removing it; immediate callbacks retain
-            // their own per-generation entries until they finish naturally.
-            while (!peer->pendingCandidates.empty()) {
-                const PendingCandidate &pending =
-                    peer->pendingCandidates.back();
-                if (!completePeerLocalCandidateWorkLocked(
-                        *peer,
-                        pending.workId,
-                        pending.offerGeneration,
-                        pending.clientTransportGeneration,
-                        pending.wireSession,
-                        true)) {
-                    ++supersededBufferedCandidateFailures;
-                }
-                ++supersededBufferedCandidateCount;
-                peer->pendingCandidates.pop_back();
-            }
             offerGeneration = ++peer->activeOfferGeneration;
-            peer->localCandidateWorkOfferGeneration = offerGeneration;
-            ++peer->localCandidateOutcomeSequence;
             offerWireSession = peer->activeWireSession;
             peer->offerCreationInProgress = true;
             peer->answerReceived = false;
             peer->offerDispatched = false;
             peer->lastLocalOfferSdp.clear();
-            if (rebuild) {
-                peer->activeAnswerIdentity.clear();
-            }
             peer->candidateType = "local";
             peer->transportRetired = false;
             peer->offerCount.fetch_add(1, std::memory_order_relaxed);
@@ -8731,14 +8248,6 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                             " generation=" + std::to_string(coalescedGeneration) +
                             " reason=" + requestedReason);
         return true;
-    }
-    if (supersededBufferedCandidateCount != 0) {
-        recordPeerEvent(
-            peer,
-            std::string("local-candidate-buffered-work-settled count=") +
-                std::to_string(supersededBufferedCandidateCount) +
-                " failures=" +
-                std::to_string(supersededBufferedCandidateFailures));
     }
     if (!retiredWireSession.empty() && retiredWireSession != offerWireSession) {
         std::lock_guard<std::mutex> mapLock(peerSessionsMutex_);
@@ -8838,7 +8347,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                          peer->session,
                          requestedReason,
                          rebuild);
-            offerSdp = peer->client->createOffer(offerGeneration);
+            offerSdp = peer->client->createOffer();
             clientOperationOk = !offerSdp.empty();
         }
     }
@@ -8855,11 +8364,6 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                 peer->offerCreationInProgress = false;
                 peer->offerDispatched = false;
                 peer->transportRetired = true;
-                for (auto &attempt : peer->attemptedAnswerIdentities) {
-                    if (attempt.transportGeneration == peer->activeTransportGeneration) {
-                        attempt.transportRetired = true;
-                    }
-                }
             }
         }
         int64_t expected = 0;
@@ -8919,9 +8423,16 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
         }
     }
     if (!sent) {
-        // Retain the unresolved offer only for late-answer identity checks.
-        // Duplicate requests follow the same-PC grace/rebuild policy and never
-        // replay this SDP as a substitute for fresh ICE.
+        // The offer never reached the wire. Revert the dispatched flag so new
+        // candidates buffer for the next attempt instead of being sent against
+        // an offer the receiver never saw.
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            if (peer->activeOfferGeneration == offerGeneration &&
+                peer->activeWireSession == offerWireSession) {
+                peer->offerDispatched = false;
+            }
+        }
         int64_t expected = 0;
         peer->disconnectedSinceMs.compare_exchange_strong(
             expected,
@@ -8932,7 +8443,6 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
     }
 
     std::vector<PendingCandidate> bufferedCandidates;
-    std::vector<PendingCandidate> supersededBufferedCandidates;
     std::string candidateType = "local";
     {
         std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
@@ -8943,28 +8453,16 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
         }
         auto pending = peer->pendingCandidates.begin();
         while (pending != peer->pendingCandidates.end()) {
-            if (pending->offerGeneration == offerGeneration) {
+            if (pending->clientTransportGeneration ==
+                peer->clientTransportGeneration) {
                 bufferedCandidates.push_back(*pending);
             } else {
-                supersededBufferedCandidates.push_back(*pending);
+                recordPeerEvent(
+                    peer, "local-candidate-dropped retired-transport-generation");
             }
             pending = peer->pendingCandidates.erase(pending);
         }
         candidateType = peer->candidateType;
-    }
-
-    for (const auto &pending : supersededBufferedCandidates) {
-        recordPeerEvent(
-            peer,
-            "local-candidate-dropped superseded-generation");
-        completePeerLocalCandidateWork(
-            peer,
-            pending.workId,
-            pending.offerGeneration,
-            pending.clientTransportGeneration,
-            pending.wireSession,
-            true,
-            "buffered-stale-extraction");
     }
 
     bool allBufferedCandidatesSent = true;
@@ -8974,7 +8472,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
         cand.candidate = pending.candidate;
         cand.mid = pending.mid;
         cand.mlineIndex = pending.mlineIndex;
-        cand.session = pending.wireSession;
+        cand.session = offerWireSession;
         cand.type = candidateType;
         {
             std::lock_guard<std::mutex> signalingLock(signalingOpsMutex_);
@@ -8984,36 +8482,18 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                 stillCurrent = !peer->removed &&
                     peer->clientTransportGeneration ==
                         pending.clientTransportGeneration &&
-                    peer->activeOfferGeneration == pending.offerGeneration &&
-                    peer->activeWireSession == pending.wireSession &&
+                    peer->activeWireSession == offerWireSession &&
                     peer->offerDispatched;
             }
             if (!stillCurrent) {
-                recordPeerEvent(peer, "local-candidate-dropped superseded-generation");
-                completePeerLocalCandidateWork(
-                    peer,
-                    pending.workId,
-                    pending.offerGeneration,
-                    pending.clientTransportGeneration,
-                    pending.wireSession,
-                    true,
-                    "buffered-superseded");
+                recordPeerEvent(peer, "local-candidate-dropped superseded-transport");
                 continue;
             }
-            const bool candidateSent = dispatchPeerCandidateToSignaling(
+            if (!dispatchPeerCandidateToSignaling(
                     peer,
                     cand,
                     toLowerCopy(pending.candidate).find(" typ relay") !=
-                        std::string::npos);
-            completePeerLocalCandidateWork(
-                peer,
-                pending.workId,
-                pending.offerGeneration,
-                pending.clientTransportGeneration,
-                pending.wireSession,
-                false,
-                "buffered-dispatch");
-            if (!candidateSent) {
+                        std::string::npos)) {
                 allBufferedCandidatesSent = false;
             }
         }
@@ -9218,7 +8698,6 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
         return;
     }
 
-    const std::string answerIdentity = detail::normalizeAnswerIdentity(sdp);
     uint64_t answerGeneration = 0;
     uint64_t answerTransportGeneration = 0;
     std::string answerWireSession;
@@ -9248,25 +8727,6 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
             return;
         }
 
-        const auto previousAttempt = std::find_if(
-            peer->attemptedAnswerIdentities.begin(),
-            peer->attemptedAnswerIdentities.end(),
-            [&](const AttemptedAnswerIdentity &attempt) {
-                return attempt.wireSession == answerWireSession &&
-                    attempt.identity == answerIdentity;
-            });
-        if (previousAttempt != peer->attemptedAnswerIdentities.end()) {
-            spdlog::info("[App] Ignoring stale or replayed answer identity {}:{} source={} attemptedGeneration={} activeGeneration={}",
-                         peer->uuid,
-                         peer->session,
-                         source ? source : "unknown",
-                         previousAttempt->offerGeneration,
-                         peer->activeOfferGeneration);
-            recordPeerEvent(peer, "answer-ignored stale-identity attempted-generation=" +
-                                      std::to_string(previousAttempt->offerGeneration) +
-                                      " active-generation=" + std::to_string(peer->activeOfferGeneration));
-            return;
-        }
         if (peer->answerReceived || peer->answerApplicationInProgress) {
             spdlog::info("[App] Ignoring stale or replayed answer {}:{} source={} generation={}",
                          peer->uuid,
@@ -9279,16 +8739,6 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
 
         answerGeneration = peer->activeOfferGeneration;
         answerTransportGeneration = peer->activeTransportGeneration;
-        peer->attemptedAnswerIdentities.push_back({
-            answerGeneration,
-            answerTransportGeneration,
-            false,
-            answerWireSession,
-            answerIdentity,
-        });
-        while (peer->attemptedAnswerIdentities.size() > kAttemptedAnswerIdentityHistoryMax) {
-            peer->attemptedAnswerIdentities.pop_front();
-        }
         peer->answerApplicationInProgress = true;
     }
 
@@ -9332,7 +8782,6 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
         if (applied) {
             peer->answerReceived = true;
             peer->answeredOfferGeneration = answerGeneration;
-            peer->activeAnswerIdentity = answerIdentity;
             peer->answerCount.fetch_add(1, std::memory_order_relaxed);
             {
                 std::lock_guard<std::mutex> diagnosticsLock(peer->diagnosticsMutex);
@@ -9340,15 +8789,8 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
             }
         } else {
             // A description rejected by the transport cannot be repaired in
-            // place. Retire this offer generation while retaining its semantic
-            // identity so a fingerprint-only replay cannot enter generation B.
+            // place. Retire this transport so the next offer rebuilds it.
             peer->transportRetired = true;
-            for (auto &attempt : peer->attemptedAnswerIdentities) {
-                if (attempt.offerGeneration == answerGeneration &&
-                    attempt.transportGeneration == answerTransportGeneration) {
-                    attempt.transportRetired = true;
-                }
-            }
         }
         runQueuedTransition = peer->queuedOfferTransition;
     }
@@ -9377,7 +8819,6 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
             peer,
             answerGeneration,
             answerTransportGeneration,
-            answerIdentity,
             source ? source : "answer-applied");
     }
     recordPeerEvent(peer, std::string("answer-applied generation=") +
@@ -9497,28 +8938,8 @@ void VersusApp::handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &pe
 
     uint64_t candidateGeneration = 0;
     uint64_t candidateTransportGeneration = 0;
-    std::string answerIdentity;
     std::string candidateWireSession;
     bool queueCandidate = false;
-    uint64_t staleAnswerGeneration = 0;
-    const std::string ufrag = detail::candidateIceUfrag(cand.candidate);
-    auto matchingRetiredAnswerGeneration = [&]() -> uint64_t {
-        if (ufrag.empty()) {
-            return 0;
-        }
-        const auto priorAnswer = std::find_if(
-            peer->attemptedAnswerIdentities.begin(),
-            peer->attemptedAnswerIdentities.end(),
-            [&](const AttemptedAnswerIdentity &attempt) {
-                return attempt.transportRetired &&
-                    (attempt.transportGeneration != candidateTransportGeneration ||
-                     peer->transportRetired) &&
-                    detail::answerIdentityMatchesCandidate(attempt.identity, cand.candidate);
-            });
-        return priorAnswer == peer->attemptedAnswerIdentities.end()
-            ? 0
-            : priorAnswer->offerGeneration;
-    };
     {
         std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
         if (peer->removed) {
@@ -9536,32 +8957,17 @@ void VersusApp::handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &pe
         }
         candidateGeneration = peer->activeOfferGeneration;
         candidateTransportGeneration = peer->activeTransportGeneration;
-        answerIdentity = peer->activeAnswerIdentity;
         candidateWireSession = peer->activeWireSession;
         queueCandidate = peer->sessionInitializing ||
             peer->offerCreationInProgress ||
             peer->answerApplicationInProgress ||
             !peer->offerDispatched ||
             !peer->answerReceived;
-        staleAnswerGeneration = matchingRetiredAnswerGeneration();
     }
 
     signaling::SignalCandidate routed = cand;
     routed.uuid = peer->uuid;
     routed.session = candidateWireSession;
-    if (staleAnswerGeneration != 0) {
-        spdlog::warn("[Signaling] Rejecting stale-generation remote ICE candidate {}:{} source={} candidateUfrag={} priorGeneration={} activeGeneration={}",
-                     peer->uuid,
-                     peer->session,
-                     source ? source : "unknown",
-                     ufrag,
-                     staleAnswerGeneration,
-                     candidateGeneration);
-        recordPeerEvent(peer, "remote-candidate-dropped stale-generation ufrag=" + ufrag +
-                                  " prior-generation=" + std::to_string(staleAnswerGeneration) +
-                                  " active-generation=" + std::to_string(candidateGeneration));
-        return;
-    }
     if (queueCandidate) {
         bool queued = false;
         {
@@ -9589,14 +8995,12 @@ void VersusApp::handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &pe
             }
             candidateGeneration = peer->activeOfferGeneration;
             candidateTransportGeneration = peer->activeTransportGeneration;
-            answerIdentity = peer->activeAnswerIdentity;
             queueCandidate = peer->sessionInitializing ||
                 peer->offerCreationInProgress ||
                 peer->answerApplicationInProgress ||
                 !peer->offerDispatched ||
                 !peer->answerReceived;
-            staleAnswerGeneration = matchingRetiredAnswerGeneration();
-            if (staleAnswerGeneration == 0 && queueCandidate) {
+            if (queueCandidate) {
                 queuePendingRemoteCandidateLocked(
                     routed,
                     steadyNowMs(),
@@ -9605,36 +9009,11 @@ void VersusApp::handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &pe
                 queued = true;
             }
         }
-        if (staleAnswerGeneration != 0) {
-            spdlog::warn("[Signaling] Rejecting stale-generation remote ICE candidate {}:{} source={} candidateUfrag={} priorGeneration={} activeGeneration={}",
-                         peer->uuid,
-                         peer->session,
-                         source ? source : "unknown",
-                         ufrag,
-                         staleAnswerGeneration,
-                         candidateGeneration);
-            recordPeerEvent(peer, "remote-candidate-dropped stale-generation ufrag=" + ufrag +
-                                      " prior-generation=" + std::to_string(staleAnswerGeneration) +
-                                      " active-generation=" + std::to_string(candidateGeneration));
-            return;
-        }
         if (queued) {
             recordPeerEvent(peer, "remote-candidate-buffered generation=" +
                                       std::to_string(candidateGeneration));
             return;
         }
-    }
-
-    if (!detail::answerIdentityMatchesCandidate(answerIdentity, routed.candidate)) {
-        spdlog::warn("[Signaling] Rejecting stale-generation/ufrag remote ICE candidate {}:{} source={} generation={} candidateUfrag={}",
-                     peer->uuid,
-                     peer->session,
-                     source ? source : "unknown",
-                     candidateGeneration,
-                     ufrag);
-        recordPeerEvent(peer, "remote-candidate-dropped stale-ufrag generation=" +
-                                  std::to_string(candidateGeneration));
-        return;
     }
 
     bool applied = false;
@@ -9648,8 +9027,7 @@ void VersusApp::handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &pe
             stillCurrent = !peer->removed &&
                 peer->activeTransportGeneration == candidateTransportGeneration &&
                 peer->activeWireSession == candidateWireSession &&
-                !peer->transportRetired &&
-                detail::answerIdentityMatchesCandidate(peer->activeAnswerIdentity, routed.candidate);
+                !peer->transportRetired;
         }
         if (!stillCurrent) {
             spdlog::warn("[Signaling] Rejecting stale-generation remote ICE candidate {}:{} source={} queuedGeneration={} activeGeneration={}",
@@ -9712,7 +9090,6 @@ void VersusApp::queuePendingRemoteCandidateLocked(const signaling::SignalCandida
         nowMs,
         offerGeneration,
         transportGeneration,
-        detail::candidateIceUfrag(cand.candidate),
     });
     spdlog::info("[Signaling] Queued remote ICE candidate uuid={} session={} generation={} transportGeneration={} queued={}",
                  cand.uuid,
@@ -9727,8 +9104,7 @@ std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandi
     const std::string &session,
     int64_t nowMs,
     uint64_t offerGeneration,
-    uint64_t transportGeneration,
-    const std::string &answerIdentity) {
+    uint64_t transportGeneration) {
     std::vector<PendingRemoteCandidate> drained;
     if (uuid.empty()) {
         return drained;
@@ -9755,17 +9131,13 @@ std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandi
             }
             const bool generationMatches = pending.transportGeneration == transportGeneration ||
                 (pending.transportGeneration == 0 && transportGeneration == 1);
-            const bool ufragMatches = detail::answerIdentityMatchesCandidate(
-                answerIdentity,
-                pending.candidate);
-            if (!generationMatches || !ufragMatches) {
-                spdlog::warn("[Signaling] Dropped stale-generation/ufrag remote ICE candidate key={} queuedGeneration={} activeGeneration={} queuedTransportGeneration={} activeTransportGeneration={} candidateUfrag={}",
+            if (!generationMatches) {
+                spdlog::warn("[Signaling] Dropped stale-generation remote ICE candidate key={} queuedGeneration={} activeGeneration={} queuedTransportGeneration={} activeTransportGeneration={}",
                              key,
                              pending.offerGeneration,
                              offerGeneration,
                              pending.transportGeneration,
-                             transportGeneration,
-                             pending.iceUfrag.empty() ? "none" : pending.iceUfrag);
+                             transportGeneration);
                 continue;
             }
             drained.push_back(pending);
@@ -9800,7 +9172,6 @@ std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandi
 void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer,
                                              uint64_t offerGeneration,
                                              uint64_t transportGeneration,
-                                             const std::string &answerIdentity,
                                              const char *reason) {
     if (!peer || !peer->client) {
         return;
@@ -9828,8 +9199,7 @@ void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> 
             activeWireSession,
             steadyNowMs(),
             offerGeneration,
-            transportGeneration,
-            answerIdentity);
+            transportGeneration);
     }
 
     if (pendingCandidates.empty()) {
@@ -9852,13 +9222,10 @@ void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> 
             stillCurrent = !peer->removed &&
                 peer->activeTransportGeneration == transportGeneration &&
                 peer->activeWireSession == activeWireSession &&
-                !peer->transportRetired &&
-                detail::answerIdentityMatchesCandidate(
-                    peer->activeAnswerIdentity,
-                    pending.candidate);
+                !peer->transportRetired;
         }
         if (!stillCurrent) {
-            spdlog::warn("[Signaling] Dropped stale-generation/ufrag remote ICE candidate during drain {}:{} queuedGeneration={} activeGeneration={}",
+            spdlog::warn("[Signaling] Dropped stale-generation remote ICE candidate during drain {}:{} queuedGeneration={} activeGeneration={}",
                          peer->uuid,
                          peer->session,
                          pending.offerGeneration,

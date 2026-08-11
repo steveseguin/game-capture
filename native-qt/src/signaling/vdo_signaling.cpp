@@ -31,7 +31,6 @@ namespace {
 
 using json = nlohmann::json;
 
-constexpr std::size_t kMaxOfferAttemptObservations = 60;
 
 std::string toHex(const std::vector<uint8_t> &bytes) {
     std::ostringstream oss;
@@ -695,11 +694,6 @@ struct VdoSignaling::Impl {
     PeerCleanupCallback onPeerCleanup;
     ListingCallback onListing;
     std::map<std::string, PeerInfo> peers;
-    mutable std::mutex offerAttemptMutex;
-    uint64_t offerAttemptSequence = 0;
-    std::deque<OfferAttemptObservation> offerAttempts;
-    std::atomic<bool> forceEncryptionFailure{false};
-    std::atomic<uint64_t> outboundSendAttempts{0};
 
     void shutdownSockets() {
         std::vector<std::shared_ptr<rtc::WebSocket>> sockets;
@@ -809,7 +803,6 @@ struct VdoSignaling::Impl {
     }
 
     bool sendMessage(const json &msg, const char *kindHint = nullptr) {
-        outboundSendAttempts.fetch_add(1, std::memory_order_relaxed);
         std::shared_ptr<rtc::WebSocket> socketRef;
         {
             std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
@@ -882,15 +875,6 @@ bool VdoSignaling::tryParseSignalPayload(const std::string &payload, ParsedSigna
         return false;
     }
     return parseSignalPayloadJson(msg, impl_->password, impl_->salt, impl_->encryptionDisabled, parsed);
-}
-
-bool VdoSignaling::dispatchInboundPayloadForTesting(const std::string &payload) {
-    ParsedSignalMessage parsed;
-    if (!tryParseSignalPayload(payload, parsed)) {
-        return false;
-    }
-    impl_->handleMessage(payload);
-    return true;
 }
 
 bool VdoSignaling::connect(const std::string &server) {
@@ -1116,23 +1100,6 @@ void VdoSignaling::unpublish() {
 }
 
 bool VdoSignaling::sendOffer(const SignalOffer &offer) {
-    {
-        std::lock_guard<std::mutex> lock(impl_->offerAttemptMutex);
-        if (++impl_->offerAttemptSequence == 0) {
-            ++impl_->offerAttemptSequence;
-        }
-        impl_->offerAttempts.push_back({
-            impl_->offerAttemptSequence,
-            offer.uuid,
-            offer.session,
-            hashHex(offer.sdp, 64),
-            offer.sdp.size(),
-        });
-        while (impl_->offerAttempts.size() > kMaxOfferAttemptObservations) {
-            impl_->offerAttempts.pop_front();
-        }
-    }
-
     json desc;
     desc["type"] = "offer";
     desc["sdp"] = offer.sdp;
@@ -1155,8 +1122,7 @@ bool VdoSignaling::sendOffer(const SignalOffer &offer) {
         auto pass = effectivePassword(impl_->password, impl_->encryptionDisabled);
         spdlog::info("[Signaling] Encrypting offer with key derived from: pass='{}' + salt='{}'",
                      pass.empty() ? "(empty)" : "(set)", impl_->salt);
-        if (!impl_->forceEncryptionFailure.load(std::memory_order_relaxed) &&
-            aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
+        if (aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
             msg["description"] = encrypted;
             msg["vector"] = vector;
             spdlog::info("[Signaling] Sending encrypted offer, vector={}", vector);
@@ -1166,20 +1132,6 @@ bool VdoSignaling::sendOffer(const SignalOffer &offer) {
         }
     }
     return impl_->sendMessage(msg, "offer");
-}
-
-std::vector<VdoSignaling::OfferAttemptObservation>
-VdoSignaling::offerAttemptsForTesting() const {
-    std::lock_guard<std::mutex> lock(impl_->offerAttemptMutex);
-    return {impl_->offerAttempts.begin(), impl_->offerAttempts.end()};
-}
-
-void VdoSignaling::forceEncryptionFailureForTesting(bool forceFailure) {
-    impl_->forceEncryptionFailure.store(forceFailure, std::memory_order_relaxed);
-}
-
-uint64_t VdoSignaling::outboundSendAttemptsForTesting() const {
-    return impl_->outboundSendAttempts.load(std::memory_order_relaxed);
 }
 
 bool VdoSignaling::sendAnswer(const SignalAnswer &answer) {
@@ -1202,8 +1154,7 @@ bool VdoSignaling::sendAnswer(const SignalAnswer &answer) {
         std::string encrypted;
         std::string vector;
         auto pass = effectivePassword(impl_->password, impl_->encryptionDisabled);
-        if (!impl_->forceEncryptionFailure.load(std::memory_order_relaxed) &&
-            aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
+        if (aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
             msg["description"] = encrypted;
             msg["vector"] = vector;
         } else {
@@ -1229,8 +1180,7 @@ bool VdoSignaling::sendCandidate(const SignalCandidate &candidate) {
         std::string encrypted;
         std::string vector;
         auto pass = effectivePassword(impl_->password, impl_->encryptionDisabled);
-        if (!impl_->forceEncryptionFailure.load(std::memory_order_relaxed) &&
-            aesEncryptCbc(candidatePayload.dump(), pass + impl_->salt, encrypted, vector)) {
+        if (aesEncryptCbc(candidatePayload.dump(), pass + impl_->salt, encrypted, vector)) {
             msg["candidate"] = encrypted;
             msg["vector"] = vector;
         } else {

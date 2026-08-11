@@ -29,18 +29,6 @@
 
 namespace versus::app {
 
-namespace detail {
-
-// Deliberately excludes DTLS fingerprints and trickled candidates. VDO.Ninja
-// does not carry an offer id, so the stable answer origin/version, ICE
-// credentials, and MID set are the best available generation identity.
-std::string normalizeAnswerIdentity(const std::string &sdp);
-std::string candidateIceUfrag(const std::string &candidate);
-bool answerIdentityMatchesCandidate(const std::string &answerIdentity,
-                                    const std::string &candidate);
-
-}  // namespace detail
-
 enum class AudioSourceMode {
     SelectedWindow,
     DefaultOutput,
@@ -283,7 +271,6 @@ class VersusApp {
         int64_t queuedAtMs = 0;
         uint64_t offerGeneration = 0;
         uint64_t transportGeneration = 0;
-        std::string iceUfrag;
     };
     void setupCallbacks();
     void startAudioCapture(uint32_t selectedWindowProcessId);
@@ -386,21 +373,6 @@ class VersusApp {
         uint64_t offerGeneration,
         uint64_t transportGeneration,
         const std::string &reason);
-    void completePeerLocalCandidateWork(
-        const std::shared_ptr<PeerSession> &peer,
-        uint64_t workId,
-        uint64_t offerGeneration,
-        uint64_t clientTransportGeneration,
-        const std::string &wireSession,
-        bool superseded,
-        const char *reason);
-    bool completePeerLocalCandidateWorkLocked(
-        PeerSession &peer,
-        uint64_t workId,
-        uint64_t offerGeneration,
-        uint64_t clientTransportGeneration,
-        const std::string &wireSession,
-        bool superseded);
     bool dispatchPeerCandidateToSignaling(
         const std::shared_ptr<PeerSession> &peer,
         const signaling::SignalCandidate &candidate,
@@ -460,12 +432,10 @@ class VersusApp {
                                                                           const std::string &session,
                                                                           int64_t nowMs,
                                                                           uint64_t offerGeneration,
-                                                                          uint64_t transportGeneration,
-                                                                          const std::string &answerIdentity);
+                                                                          uint64_t transportGeneration);
     void drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer,
                                       uint64_t offerGeneration,
                                       uint64_t transportGeneration,
-                                      const std::string &answerIdentity,
                                       const char *reason);
     void shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer);
     void reapCompletedPeerShutdowns();
@@ -634,22 +604,7 @@ class VersusApp {
         std::string candidate;
         std::string mid;
         int mlineIndex;
-        uint64_t workId = 0;
-        uint64_t offerGeneration = 0;
         uint64_t clientTransportGeneration = 0;
-        std::string wireSession;
-    };
-    struct LocalCandidateWorkOwner {
-        uint64_t offerGeneration = 0;
-        uint64_t clientTransportGeneration = 0;
-        std::string wireSession;
-    };
-    struct AttemptedAnswerIdentity {
-        uint64_t offerGeneration = 0;
-        uint64_t transportGeneration = 0;
-        bool transportRetired = false;
-        std::string wireSession;
-        std::string identity;
     };
     struct OfferDispatchObservation {
         uint64_t sequence = 0;
@@ -715,8 +670,6 @@ class VersusApp {
         std::atomic<int> localCandidatesSent{0};
         std::atomic<int> localCandidateSendFailures{0};
         std::atomic<int> remoteCandidatesApplied{0};
-        std::atomic<int> sessionlessWssAnswersRejected{0};
-        std::atomic<int> sessionlessWssRemoteCandidatesRejected{0};
         std::atomic<int> rejectedControlCount{0};
         std::atomic<bool> duplicateOfferRecheckPending{false};
         std::atomic<uint64_t> duplicateOfferRechecksScheduled{0};
@@ -755,24 +708,12 @@ class VersusApp {
         uint64_t activeTransportGeneration = 0;
         uint64_t clientTransportGeneration = 0;
         uint64_t answeredOfferGeneration = 0;
-        uint64_t localCandidateWorkOfferGeneration = 0;
-        uint64_t localCandidateWorkOutstanding = 0;
-        uint64_t nextLocalCandidateWorkId = 0;
-        uint64_t localCandidateWorkAdmitted = 0;
-        uint64_t localCandidateWorkCompleted = 0;
-        uint64_t localCandidateWorkSuperseded = 0;
-        uint64_t localCandidateOutcomeSequence = 0;
-        bool localCandidateAccountingViolation = false;
-        std::unordered_map<uint64_t, LocalCandidateWorkOwner>
-            localCandidateOutstandingWork;
         webrtc::IceMode activeIceMode = webrtc::IceMode::All;
         // Guarded by negotiationMutex. VDO.Ninja assigns one publisher-owned
         // session per PeerConnection, so a full transport replacement rotates
         // this value while ordinary renegotiation retains it.
         std::string activeWireSession;
         std::string lastLocalOfferSdp;
-        std::string activeAnswerIdentity;
-        std::deque<AttemptedAnswerIdentity> attemptedAnswerIdentities;
         mutable std::mutex diagnosticsMutex;
         std::string lastConnectionState = "new";
         std::string lastOfferReason;

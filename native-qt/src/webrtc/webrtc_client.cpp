@@ -151,13 +151,6 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
 
         std::mutex descriptionMutex;
         std::string localDescription;
-        std::atomic<bool> gatheringComplete{false};
-        std::atomic<uint32_t> localCandidateCallbacksInFlight{0};
-        std::atomic<uint64_t> localCandidateActivitySequence{0};
-        std::atomic<uint64_t> localCandidateGatheringEpoch{0};
-        std::atomic<uint64_t> localCandidatesAfterGatheringComplete{0};
-        std::atomic<bool> overlappingCandidateGatheringDetected{false};
-        std::atomic<uint64_t> localCandidateContext{0};
 
         std::mutex remoteCandidateMutex;
         std::vector<RemoteCandidate> pendingRemoteCandidates;
@@ -847,43 +840,6 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         }
     }
 
-    bool beginLocalCandidateGathering(const std::shared_ptr<TransportState> &target,
-                                      uint64_t localCandidateContext) {
-        if (!target || !target->pc) return false;
-        const rtc::PeerConnection::GatheringState gatheringState =
-            target->pc->gatheringState();
-        if (gatheringState ==
-            rtc::PeerConnection::GatheringState::InProgress) {
-            // Rotating an offer context while the prior gather is still live
-            // would attribute its later candidates to the new offer. Refuse
-            // that transition and retain sticky diagnostics for the artifact
-            // workflow instead of emitting candidates under the wrong owner.
-            target->overlappingCandidateGatheringDetected.store(
-                true, std::memory_order_release);
-            target->localCandidateActivitySequence.fetch_add(
-                1, std::memory_order_acq_rel);
-            return false;
-        }
-
-        target->localCandidateContext.store(
-            localCandidateContext, std::memory_order_release);
-        target->localCandidateActivitySequence.fetch_add(
-            1, std::memory_order_acq_rel);
-        if (gatheringState == rtc::PeerConnection::GatheringState::New) {
-            target->localCandidatesAfterGatheringComplete.store(
-                0, std::memory_order_release);
-            target->localCandidateGatheringEpoch.fetch_add(
-                1, std::memory_order_acq_rel);
-            target->gatheringComplete.store(false, std::memory_order_release);
-        } else {
-            // libdatachannel gathers only while its state is New. A normal
-            // same-PC renegotiation in Complete state changes SDP/context but
-            // creates no second gathering-complete callback.
-            target->gatheringComplete.store(true, std::memory_order_release);
-        }
-        return true;
-    }
-
     void bindPeerCallbacks(const std::shared_ptr<TransportState> &target) {
         std::weak_ptr<Impl> weakSelf = weak_from_this();
         std::weak_ptr<TransportState> weakTarget = target;
@@ -906,46 +862,13 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             auto state = weakTarget.lock();
             if (!self || !state || !self->isCurrentTransport(state)) return;
 
-            // Capture the local-description owner before callback admission.
-            // Do not take callbackDispatchMutex here: reset must be able to
-            // retire a callback parked before CallbackLease admission. The
-            // lease below supplies dispatch ordering, and its generation check
-            // drops that callback after a transport replacement.
-            const uint64_t localCandidateContext =
-                state->localCandidateContext.load(std::memory_order_acquire);
-
-            const bool arrivedAfterComplete =
-                state->gatheringComplete.load(std::memory_order_acquire);
-            if (arrivedAfterComplete) {
-                state->localCandidatesAfterGatheringComplete.fetch_add(
-                    1, std::memory_order_relaxed);
-            }
-            state->localCandidateCallbacksInFlight.fetch_add(
-                1, std::memory_order_acq_rel);
-            state->localCandidateActivitySequence.fetch_add(
-                1, std::memory_order_acq_rel);
-            const auto finishActivity = [&state](void *) {
-                state->localCandidateActivitySequence.fetch_add(
-                    1, std::memory_order_acq_rel);
-                state->localCandidateCallbacksInFlight.fetch_sub(
-                    1, std::memory_order_acq_rel);
-            };
-            const std::unique_ptr<void, decltype(finishActivity)> activityLease(
-                state.get(), finishActivity);
-
-            // A candidate delivered after libdatachannel declared gathering
-            // complete cannot be assigned safely to a later same-PC offer.
-            // Preserve terminal state, count the violation, and fail closed.
-            if (arrivedAfterComplete) return;
-
             if (!candidateAllowedForMode(candidate.candidate(), mode)) return;
             self->invokeCallback(generation,
                                  &Impl::iceCallback,
                                  candidate.candidate(),
                                  candidate.mid(),
                                  0,
-                                 generation,
-                                 localCandidateContext);
+                                 generation);
         });
 
         target->pc->onLocalDescription([weakSelf, weakTarget](rtc::Description description) {
@@ -955,21 +878,6 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             std::lock_guard<std::mutex> lock(state->descriptionMutex);
             if (!self->isCurrentTransport(state)) return;
             state->localDescription = std::string(description);
-        });
-
-        target->pc->onGatheringStateChange([weakSelf, weakTarget](
-                                               rtc::PeerConnection::GatheringState gathering) {
-            auto self = weakSelf.lock();
-            auto state = weakTarget.lock();
-            if (!self || !state || !self->isCurrentTransport(state)) return;
-            if (gathering == rtc::PeerConnection::GatheringState::Complete) {
-                std::lock_guard<std::recursive_mutex> callbackDispatchLock(
-                    self->callbackDispatchMutex);
-                if (!self->isCurrentTransport(state)) return;
-                state->localCandidateActivitySequence.fetch_add(
-                    1, std::memory_order_acq_rel);
-                state->gatheringComplete.store(true, std::memory_order_release);
-            }
         });
 
         target->pc->onDataChannel([weakSelf, weakTarget](std::shared_ptr<rtc::DataChannel> channel) {
@@ -1026,18 +934,22 @@ WebRtcClient::WebRtcClient() : impl_(std::make_shared<Impl>()) {}
 WebRtcClient::~WebRtcClient() { shutdown(); }
 
 bool WebRtcClient::initialize(const PeerConfig &config) {
-    const IceConfigBindingValidation iceBinding = validateIceConfigBinding(
-        config.iceMode,
-        config.iceServers,
-        config.turnRegistry);
-    if (!iceBinding.accepted) {
-        spdlog::warn(
-            "[WebRTC] Rejected ICE configuration mode={} ice_server_count={} turn_server_count={} reason={}",
-            iceModeName(config.iceMode),
-            iceBinding.iceServerCount,
-            iceBinding.turnServerCount,
-            iceBinding.failureReason);
-        return false;
+    // Relay mode cannot work without at least one TURN server; every other
+    // mode proceeds with whatever servers resolved (a failed TURN registry
+    // fetch degrades to STUN rather than blocking the connection).
+    if (config.iceMode == IceMode::Relay) {
+        const bool hasTurnServer = std::any_of(
+            config.iceServers.begin(),
+            config.iceServers.end(),
+            [](const IceServerConfig &server) {
+                return server.url.rfind("turn:", 0) == 0 ||
+                    server.url.rfind("turns:", 0) == 0;
+            });
+        if (!hasTurnServer) {
+            spdlog::warn(
+                "[WebRTC] Rejected ICE configuration mode=relay reason=no-turn-servers");
+            return false;
+        }
     }
 
     rtc::Configuration rtcConfig;
@@ -1088,9 +1000,6 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
     retired.reset();
     if (replacement) {
         impl_->resumeCallbacks();
-        spdlog::info(
-            "{}",
-            consumedIceConfigDiagnostic(config.iceMode, iceBinding, config.turnRegistry));
     }
     return static_cast<bool>(replacement);
 }
@@ -1176,7 +1085,7 @@ bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::strin
     return true;
 }
 
-std::string WebRtcClient::createOffer(uint64_t localCandidateContext) {
+std::string WebRtcClient::createOffer() {
     std::lock_guard<std::recursive_mutex> callbackDispatchLock(
         impl_->callbackDispatchMutex);
     std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
@@ -1190,12 +1099,6 @@ std::string WebRtcClient::createOffer(uint64_t localCandidateContext) {
     {
         std::lock_guard<std::mutex> lock(target->descriptionMutex);
         target->localDescription.clear();
-    }
-    if (!impl_->beginLocalCandidateGathering(
-            target, localCandidateContext)) {
-        spdlog::warn(
-            "[WebRTC] Refused local offer while ICE gathering is still in progress");
-        return {};
     }
     try {
         target->pc->setLocalDescription(rtc::Description::Type::Offer);
@@ -1255,11 +1158,6 @@ std::string WebRtcClient::createAnswer(const std::string &offer) {
         target->remoteDescriptionSet = true;
     }
     impl_->drainPendingRemoteCandidates(target);
-    if (!impl_->beginLocalCandidateGathering(target, 0)) {
-        spdlog::warn(
-            "[WebRTC] Refused local answer while ICE gathering is still in progress");
-        return {};
-    }
     try {
         target->pc->setLocalDescription(rtc::Description::Type::Answer);
     } catch (const std::exception &e) {
@@ -1370,8 +1268,7 @@ void WebRtcClient::invokeIceCandidateCallbackForTesting(
     const std::string &candidate,
     const std::string &mid,
     int mlineIndex,
-    uint64_t transportGeneration,
-    uint64_t localCandidateContext) {
+    uint64_t transportGeneration) {
     if (!impl_) {
         return;
     }
@@ -1381,8 +1278,7 @@ void WebRtcClient::invokeIceCandidateCallbackForTesting(
         candidate,
         mid,
         mlineIndex,
-        transportGeneration,
-        localCandidateContext);
+        transportGeneration);
 }
 
 void WebRtcClient::invokeStateCallbackForTesting(
@@ -1589,21 +1485,6 @@ ConnectionState WebRtcClient::connectionState() const {
 
 uint64_t WebRtcClient::transportGeneration() const {
     return impl_->activeGeneration.load(std::memory_order_acquire);
-}
-
-LocalCandidateDiagnostics WebRtcClient::localCandidateDiagnostics() const {
-    const auto target = impl_->transportSnapshot();
-    if (!target || !impl_->isCurrentTransport(target)) {
-        return {};
-    }
-    return {
-        target->gatheringComplete.load(std::memory_order_acquire),
-        target->localCandidateCallbacksInFlight.load(std::memory_order_acquire),
-        target->localCandidateActivitySequence.load(std::memory_order_acquire),
-        target->localCandidateGatheringEpoch.load(std::memory_order_acquire),
-        target->localCandidatesAfterGatheringComplete.load(std::memory_order_acquire),
-        target->overlappingCandidateGatheringDetected.load(std::memory_order_acquire),
-    };
 }
 
 bool WebRtcClient::hasActiveVideoTrack() const {

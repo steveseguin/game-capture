@@ -449,28 +449,6 @@ if ($FfmpegPath) {
 
 $allPass = $true
 
-$uiWheelInstrumentPass = & $script:runStepImplementation "Packaged UI wheel E2E instrument gate" {
-    node.exe (Join-Path $script:repoRoot "e2e/ui-wheel-e2e-regression.js")
-}
-if (-not $uiWheelInstrumentPass) {
-    throw "Packaged UI wheel E2E instrument gate failed; native interaction results are not admissible."
-}
-$uiWheelReportDir = Join-Path $reportDir "release-ui-wheel-$timestamp"
-$uiWheelPass = & $script:runStepImplementation "Packaged MainWindow native wheel interactions" {
-    node.exe (Join-Path $script:repoRoot "e2e/ui-wheel-packaged-e2e.js") `
-        "--publisher-path=$script:publisherExe" `
-        "--artifact-manifest-path=$script:artifactManifestPathBinding" `
-        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding" `
-        "--report-dir=$uiWheelReportDir"
-}
-$allPass = $allPass -and $uiWheelPass
-$lines += "## Packaged MainWindow native wheel interactions"
-$lines += ""
-$lines += "- Instrument: PASS"
-$lines += "- Result: " + ($(if ($uiWheelPass) { "PASS" } else { "FAIL" }))
-$lines += "- Evidence: $uiWheelReportDir"
-$lines += ""
-
 $gpuInfo = Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, AdapterCompatibility, VideoProcessor
 $lines += "## GPU Inventory"
 $lines += ""
@@ -563,53 +541,6 @@ $lines += "- Result: " + ($(if ($controlPass) { "PASS" } else { "FAIL" }))
 $lines += "- Password: $(if ($ControlPassword -ne '') { $ControlPassword } else { '(default)' })"
 $lines += "- Token length: $($ControlToken.Length)"
 $lines += ""
-
-Write-Section "Local candidate send-outcome contract"
-$candidateOutcomeGateArgs = @(
-    "--prefix", $script:repoRoot, "run", "gate:local-candidate-send-outcomes"
-)
-& $script:npmExecutable @candidateOutcomeGateArgs
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
-
-Write-Section "Signaling Spout artifact identity contract"
-$signalingSpoutGateArgs = @(
-    "--prefix", $script:repoRoot, "run", "gate:signaling-spout-artifact-bindings"
-)
-& $script:npmExecutable @signalingSpoutGateArgs
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
-
-Write-Section "Control Center packaged artifact identity contract"
-$directorIdentityGateArgs = @(
-    "--prefix", $script:repoRoot, "run", "gate:director-packaged-identity"
-)
-& $script:npmExecutable @directorIdentityGateArgs
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
-
-Write-Section "Signaling deterministic-media fixture contract"
-$signalFixtureGateArgs = @(
-    "--prefix", $script:repoRoot, "run", "gate:signaling-media-fixture"
-)
-& $script:npmExecutable @signalFixtureGateArgs
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
-
-Write-Section "Installed Firefox BiDi identity and interaction contract"
-$installedFirefoxGateArgs = @(
-    "--prefix", $script:repoRoot, "run", "gate:installed-firefox-bidi"
-)
-& $script:npmExecutable @installedFirefoxGateArgs -- `
-    "--firefox-path=$script:firefoxPathBinding" `
-    "--expected-firefox-sha256=$script:firefoxSha256Binding"
-if ($LASTEXITCODE -ne 0) {
-    exit $LASTEXITCODE
-}
 
 $signalEdgeReportDir = New-BrowserWorkflowReportDirectory 'signaling-edge'
 $signalEdgePass = & $script:runStepImplementation "Signaling regressions (Edge)" {
@@ -746,15 +677,6 @@ $controlCenterInstalledFirefoxPass = & $script:runStepImplementation "Control Ce
         -StartedAtUtc $startedAtUtc
 }
 $allPass = $allPass -and $controlCenterInstalledFirefoxPass
-
-$alphaManifestPass = & $script:runStepImplementation "Alpha workflow manifest contract" {
-    $alphaManifestArgs = @(
-        "--prefix", $script:repoRoot, "run", "gate:alpha-workflow-manifests", "--",
-        "-PluginRepo", $RoomAlphaPluginRepo
-    )
-    & $script:npmExecutable @alphaManifestArgs
-}
-$allPass = $allPass -and $alphaManifestPass
 
 $alphaArtifactPass = & $script:runStepImplementation "Alpha artifact identity contract" {
     $alphaArtifactArgs = @(

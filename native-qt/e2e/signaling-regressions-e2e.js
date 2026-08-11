@@ -2367,9 +2367,6 @@ function sessionlessWssDownstreamState(snapshot) {
     activeWireSession: snapshot.activeWireSession,
     pendingRemoteCandidates: Number(snapshot.signaling.pending_remote_candidates || 0),
     answerCount: Number(snapshot.signaling.answer_count || 0),
-    attemptedAnswerIdentities: Number(
-      snapshot.signaling.attempted_answer_identities || 0
-    ),
     answerReceived: snapshot.signaling.answer_received,
     remoteCandidatesApplied: Number(
       snapshot.signaling.remote_candidates_applied || 0
@@ -2417,75 +2414,6 @@ async function waitForDiagnosticsPeerSnapshot(
     await wait(100);
   }
   return null;
-}
-
-function candidateOutcomeSnapshotReady(snapshot, expectedActiveWireSession) {
-  return !!snapshot && snapshot.peerCount === 1 &&
-    snapshot.activeWireSession === expectedActiveWireSession &&
-    Object.prototype.hasOwnProperty.call(
-      snapshot.signaling,
-      'local_candidate_send_failures'
-    ) && Number(snapshot.signaling.local_candidates_sent || 0) > 0 &&
-    snapshot.signaling.local_candidate_gathering_complete === true &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_callbacks_in_flight) &&
-    snapshot.signaling.local_candidate_callbacks_in_flight === 0 &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_activity_sequence) &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_gathering_epoch) &&
-    snapshot.signaling.local_candidate_gathering_epoch > 0 &&
-    Number.isSafeInteger(
-      snapshot.signaling.local_candidates_after_gathering_complete
-    ) && snapshot.signaling.local_candidates_after_gathering_complete === 0 &&
-    snapshot.signaling.local_candidate_overlapping_gathering_detected === false &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_work_outstanding) &&
-    snapshot.signaling.local_candidate_work_outstanding === 0 &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_work_admitted) &&
-    snapshot.signaling.local_candidate_work_admitted > 0 &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_work_completed) &&
-    snapshot.signaling.local_candidate_work_completed ===
-      snapshot.signaling.local_candidate_work_admitted &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_work_superseded) &&
-    snapshot.signaling.local_candidate_work_superseded >= 0 &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_retired_outstanding) &&
-    snapshot.signaling.local_candidate_retired_outstanding === 0 &&
-    snapshot.signaling.local_candidate_work_invariant_consistent === true &&
-    snapshot.signaling.local_candidate_work_offer_generation ===
-      snapshot.signaling.active_offer_generation &&
-    Number.isSafeInteger(snapshot.signaling.local_candidate_outcome_sequence) &&
-    snapshot.signaling.local_candidate_accounting_violation === false &&
-    snapshot.signaling.local_candidate_snapshot_coherent === true &&
-    snapshot.signaling.buffered_local_candidates === 0;
-}
-
-function candidateOutcomeSnapshotsTerminalAndStable(
-  initialSnapshot,
-  finalSnapshot,
-  expectedActiveWireSession
-) {
-  if (!candidateOutcomeSnapshotReady(initialSnapshot, expectedActiveWireSession) ||
-      !candidateOutcomeSnapshotReady(finalSnapshot, expectedActiveWireSession) ||
-      finalSnapshot.generatedSteadyMs - initialSnapshot.generatedSteadyMs < 4000) {
-    return false;
-  }
-  const initial = initialSnapshot.signaling;
-  const final = finalSnapshot.signaling;
-  return final.local_candidate_activity_sequence ===
-      initial.local_candidate_activity_sequence &&
-    final.local_candidates_sent === initial.local_candidates_sent &&
-    final.local_candidate_send_failures === initial.local_candidate_send_failures &&
-    final.local_candidate_gathering_epoch === initial.local_candidate_gathering_epoch &&
-    final.local_candidates_after_gathering_complete ===
-      initial.local_candidates_after_gathering_complete &&
-    final.local_candidate_work_outstanding === initial.local_candidate_work_outstanding &&
-    final.local_candidate_work_admitted === initial.local_candidate_work_admitted &&
-    final.local_candidate_work_completed === initial.local_candidate_work_completed &&
-    final.local_candidate_work_superseded === initial.local_candidate_work_superseded &&
-    final.local_candidate_retired_outstanding ===
-      initial.local_candidate_retired_outstanding &&
-    final.local_candidate_outcome_sequence === initial.local_candidate_outcome_sequence &&
-    final.buffered_local_candidates === initial.buffered_local_candidates &&
-    final.active_offer_generation === initial.active_offer_generation &&
-    final.active_transport_generation === initial.active_transport_generation &&
-    final.client_transport_generation === initial.client_transport_generation;
 }
 
 function escapeRegExp(value) {
@@ -3708,99 +3636,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
           media: { initial: duplicateMedia.initial, final: duplicateMedia.final }
         });
 
-      const candidateOutcomeInitialSnapshot = await waitForDiagnosticsPeerSnapshot(
-        diagnosticsPath,
-        duplicateUuid,
-        (snapshot) => candidateOutcomeSnapshotReady(
-          snapshot,
-          activeDuplicateOffer.message.session
-        ),
-        duplicatePeerSnapshot ? duplicatePeerSnapshot.generatedSteadyMs : 0,
-        8000
-      );
-      await wait(4000);
-      const candidateOutcomeSnapshot = candidateOutcomeInitialSnapshot
-        ? await waitForDiagnosticsPeerSnapshot(
-          diagnosticsPath,
-          duplicateUuid,
-          (snapshot) => candidateOutcomeSnapshotsTerminalAndStable(
-            candidateOutcomeInitialSnapshot,
-            snapshot,
-            activeDuplicateOffer.message.session
-          ),
-          candidateOutcomeInitialSnapshot.generatedSteadyMs,
-          12000
-        )
-        : null;
-      const candidateOutcomeTerminalAndStable =
-        candidateOutcomeSnapshotsTerminalAndStable(
-          candidateOutcomeInitialSnapshot,
-          candidateOutcomeSnapshot,
-          activeDuplicateOffer.message.session
-        );
-      const candidateOutcomeSignaling = Object.freeze({
-        ...(candidateOutcomeSnapshot ? candidateOutcomeSnapshot.signaling : {})
-      });
-      const candidateFailureFieldPresent = Object.prototype.hasOwnProperty.call(
-        candidateOutcomeSignaling,
-        'local_candidate_send_failures'
-      );
-      const observedLocalCandidatesSent = Number(
-        candidateOutcomeSignaling.local_candidates_sent || 0
-      );
-      const observedLocalCandidateSendFailures = Number(
-        candidateOutcomeSignaling.local_candidate_send_failures
-      );
-      const observedLocalCandidateActivitySequence = Number(
-        candidateOutcomeSignaling.local_candidate_activity_sequence
-      );
-      const observedLocalCandidateWorkAdmitted = Number(
-        candidateOutcomeSignaling.local_candidate_work_admitted
-      );
-      const observedLocalCandidateWorkCompleted = Number(
-        candidateOutcomeSignaling.local_candidate_work_completed
-      );
-      addCheck(
-        report,
-        'packaged-local-candidate-send-outcomes-are-observed',
-        duplicateConnected.ok && duplicateMedia.ok &&
-          candidateOutcomeTerminalAndStable && !!candidateOutcomeSnapshot &&
-          Number.isSafeInteger(observedLocalCandidatesSent) &&
-          observedLocalCandidatesSent > 0 && candidateFailureFieldPresent &&
-          Number.isSafeInteger(observedLocalCandidateSendFailures) &&
-          observedLocalCandidateSendFailures === 0 &&
-          candidateOutcomeSignaling.local_candidate_gathering_complete === true &&
-          candidateOutcomeSignaling.local_candidate_callbacks_in_flight === 0 &&
-          Number.isSafeInteger(observedLocalCandidateActivitySequence) &&
-          Number.isSafeInteger(observedLocalCandidateWorkAdmitted) &&
-          observedLocalCandidateWorkAdmitted > 0 &&
-          observedLocalCandidateWorkCompleted === observedLocalCandidateWorkAdmitted &&
-          candidateOutcomeSignaling.local_candidate_retired_outstanding === 0 &&
-          candidateOutcomeSignaling.local_candidate_work_invariant_consistent === true,
-        {
-          expectedWireSession: activeDuplicateOffer.message.session,
-          failureFieldPresent: candidateFailureFieldPresent,
-          localCandidatesSent: observedLocalCandidatesSent,
-          localCandidateSendFailures: observedLocalCandidateSendFailures,
-          localCandidateGatheringComplete:
-            candidateOutcomeSignaling.local_candidate_gathering_complete,
-          localCandidateCallbacksInFlight:
-            candidateOutcomeSignaling.local_candidate_callbacks_in_flight,
-          localCandidateActivitySequence: observedLocalCandidateActivitySequence,
-          localCandidateWorkAdmitted: observedLocalCandidateWorkAdmitted,
-          localCandidateWorkCompleted: observedLocalCandidateWorkCompleted,
-          localCandidateWorkSuperseded:
-            candidateOutcomeSignaling.local_candidate_work_superseded,
-          localCandidateRetiredOutstanding:
-            candidateOutcomeSignaling.local_candidate_retired_outstanding,
-          localCandidateWorkInvariantConsistent:
-            candidateOutcomeSignaling.local_candidate_work_invariant_consistent,
-          terminalAndStable: candidateOutcomeTerminalAndStable,
-          initialSnapshot: candidateOutcomeInitialSnapshot,
-          snapshot: candidateOutcomeSnapshot
-        }
-      );
-
       sendAnswer(
         signal,
         duplicateUuid,
@@ -4634,15 +4469,8 @@ async function runNegotiationScenario(config, executable, browser, report, media
             (snapshot) => snapshot.peerCount === 1 &&
               snapshot.activeWireSession === offerB.message.session &&
               snapshot.signaling.answer_received === false &&
-              Number.isFinite(Number(
-                snapshot.signaling.sessionless_wss_answers_rejected
-              )) &&
-              Number.isFinite(Number(
-                snapshot.signaling.sessionless_wss_remote_candidates_rejected
-              )) &&
               Number.isFinite(Number(snapshot.signaling.pending_remote_candidates)) &&
               Number.isFinite(Number(snapshot.signaling.answer_count)) &&
-              Number.isFinite(Number(snapshot.signaling.attempted_answer_identities)) &&
               Number.isFinite(Number(snapshot.signaling.remote_candidates_applied)) &&
               Number.isFinite(Number(snapshot.signaling.active_offer_generation)) &&
               Number.isFinite(Number(snapshot.signaling.active_transport_generation)) &&
@@ -4664,13 +4492,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
             }
           );
 
-          const sessionlessAnswerRejectsBefore = Number(
-            sessionlessCounterBaseline.signaling.sessionless_wss_answers_rejected
-          );
-          const sessionlessCandidateRejectsBefore = Number(
-            sessionlessCounterBaseline.signaling
-              .sessionless_wss_remote_candidates_rejected
-          );
           const sessionlessBaselineDownstreamState = sessionlessWssDownstreamState(
             sessionlessCounterBaseline
           );
@@ -4727,12 +4548,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
               diagnosticsPath,
               staleUuid,
               (snapshot) => snapshot.peerCount === 1 &&
-                snapshot.activeWireSession === offerB.message.session &&
-                Number(
-                  snapshot.signaling.sessionless_wss_remote_candidates_rejected
-                ) === sessionlessCandidateRejectsBefore + 1 &&
-                Number(snapshot.signaling.sessionless_wss_answers_rejected) ===
-                  sessionlessAnswerRejectsBefore,
+                snapshot.activeWireSession === offerB.message.session,
               sessionlessCounterBaseline.generatedSteadyMs,
               8000
             );
@@ -4763,13 +4579,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
             sessionlessCandidateObservation.ok &&
             sessionlessCandidateRejectionLines.length === 1 &&
             !!sessionlessCandidateCounterAfter &&
-            Number(
-              sessionlessCandidateCounterAfter.signaling
-                .sessionless_wss_remote_candidates_rejected
-            ) === sessionlessCandidateRejectsBefore + 1 &&
-            Number(
-              sessionlessCandidateCounterAfter.signaling.sessionless_wss_answers_rejected
-            ) === sessionlessAnswerRejectsBefore &&
             sessionlessCandidateStateUnchanged &&
             sessionlessCandidateQuiescent;
           addCheck(
@@ -4784,20 +4593,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
               explicitRejectionLines: sessionlessCandidateRejectionLines,
               postEventQuiescenceMs: sessionlessPostEventQuiescenceMs,
               forbiddenRoutingLines: sessionlessCandidateForbiddenRoutingLines,
-              rejectionCountBefore: sessionlessCandidateRejectsBefore,
-              rejectionCountAfter: sessionlessCandidateCounterAfter
-                ? Number(
-                  sessionlessCandidateCounterAfter.signaling
-                    .sessionless_wss_remote_candidates_rejected
-                )
-                : null,
-              answerRejectionCountBefore: sessionlessAnswerRejectsBefore,
-              answerRejectionCountAfter: sessionlessCandidateCounterAfter
-                ? Number(
-                  sessionlessCandidateCounterAfter.signaling
-                    .sessionless_wss_answers_rejected
-                )
-                : null,
               downstreamBefore: sessionlessBaselineDownstreamState,
               downstreamAfter: sessionlessCandidateDownstreamState,
               outputTail: sessionlessCandidateOutput.slice(-5000)
@@ -4851,12 +4646,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
             diagnosticsPath,
             staleUuid,
             (snapshot) => snapshot.peerCount === 1 &&
-              snapshot.activeWireSession === offerB.message.session &&
-              Number(snapshot.signaling.sessionless_wss_answers_rejected) ===
-                sessionlessAnswerRejectsBefore + 1 &&
-              Number(
-                snapshot.signaling.sessionless_wss_remote_candidates_rejected
-              ) === sessionlessCandidateRejectsBefore + 1,
+              snapshot.activeWireSession === offerB.message.session,
             sessionlessCandidateCounterAfter
               ? sessionlessCandidateCounterAfter.generatedSteadyMs
               : sessionlessCounterBaseline.generatedSteadyMs,
@@ -4887,13 +4677,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
             sessionlessAnswerObservation.ok &&
             sessionlessAnswerRejectionLines.length === 1 &&
             !!sessionlessAnswerCounterAfter &&
-            Number(
-              sessionlessAnswerCounterAfter.signaling.sessionless_wss_answers_rejected
-            ) === sessionlessAnswerRejectsBefore + 1 &&
-            Number(
-              sessionlessAnswerCounterAfter.signaling
-                .sessionless_wss_remote_candidates_rejected
-            ) === sessionlessCandidateRejectsBefore + 1 &&
             sessionlessAnswerStateUnchanged &&
             sessionlessAnswerQuiescent;
           addCheck(
@@ -4908,20 +4691,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
               explicitRejectionLines: sessionlessAnswerRejectionLines,
               postEventQuiescenceMs: sessionlessPostEventQuiescenceMs,
               forbiddenApplyLines: sessionlessAnswerForbiddenApplyLines,
-              rejectionCountBefore: sessionlessAnswerRejectsBefore,
-              rejectionCountAfter: sessionlessAnswerCounterAfter
-                ? Number(
-                  sessionlessAnswerCounterAfter.signaling
-                    .sessionless_wss_answers_rejected
-                )
-                : null,
-              candidateRejectionCountBefore: sessionlessCandidateRejectsBefore,
-              candidateRejectionCountAfter: sessionlessAnswerCounterAfter
-                ? Number(
-                  sessionlessAnswerCounterAfter.signaling
-                    .sessionless_wss_remote_candidates_rejected
-                )
-                : null,
               downstreamBefore: sessionlessCandidateDownstreamState,
               downstreamAfter: sessionlessAnswerDownstreamState,
               outputTail: sessionlessAnswerOutput.slice(-5000)
@@ -5501,12 +5270,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
               ) === 0 &&
               Number(mislabeledActiveAnswerCounterAfter.signaling.answer_count || 0) ===
                 Number(counterAfterCorrectlyLabeledActiveCandidate.signaling.answer_count || 0) &&
-              Number(
-                mislabeledActiveAnswerCounterAfter.signaling.attempted_answer_identities || 0
-              ) === Number(
-                counterAfterCorrectlyLabeledActiveCandidate.signaling
-                  .attempted_answer_identities || 0
-              ) &&
               mislabeledActiveAnswerCounterAfter.signaling.answer_received === false,
             {
               retiredSession: offerA.message.session,
@@ -5592,11 +5355,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
               countOccurrences(staleApplyOutput, '[App] Applying peer answer') === 0 &&
               Number(staleAnswerCounterAfter.signaling.answer_count || 0) ===
                 Number(mislabeledActiveAnswerCounterAfter.signaling.answer_count || 0) &&
-              Number(staleAnswerCounterAfter.signaling.attempted_answer_identities || 0) ===
-                Number(
-                  mislabeledActiveAnswerCounterAfter.signaling
-                    .attempted_answer_identities || 0
-                ) && staleAnswerCounterAfter.signaling.answer_received === false, {
+              staleAnswerCounterAfter.signaling.answer_received === false, {
               staleExplicitlyRejected,
               observation: staleAnswerObservation,
               counterBefore: mislabeledActiveAnswerCounterAfter,

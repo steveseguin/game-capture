@@ -216,10 +216,6 @@ int main(int argc, char *argv[]) {
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
     std::string diagnosticsOutArg;
-    bool uiWheelE2eRequested = false;
-    std::string uiWheelE2eOutArg;
-    std::string uiWheelE2eExpectedSha256Arg;
-    std::string uiWheelE2eRunIdArg;
     bool localControlEnabled = false;
     int localControlPort = 0;
     std::string localControlTokenArg;
@@ -371,13 +367,6 @@ int main(int argc, char *argv[]) {
             includeMicrophone = true;
         } else if (arg.find("--diagnostics-out=") == 0) {
             diagnosticsOutArg = arg.substr(18);
-        } else if (arg.find("--ui-wheel-e2e-out=") == 0) {
-            uiWheelE2eRequested = true;
-            uiWheelE2eOutArg = arg.substr(19);
-        } else if (arg.find("--ui-wheel-e2e-expected-sha256=") == 0) {
-            uiWheelE2eExpectedSha256Arg = arg.substr(31);
-        } else if (arg.find("--ui-wheel-e2e-run-id=") == 0) {
-            uiWheelE2eRunIdArg = arg.substr(22);
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
         } else if (arg.find("--alpha-background=") == 0) {
@@ -517,16 +506,6 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/icons/vdoninja.ico"));
     app.setProperty("force_exit_without_shutdown", false);
-    if (uiWheelE2eRequested) {
-        versus::ui::MainWindow::RuntimeOptions runtimeOptions;
-        runtimeOptions.persistedSettingsEnabled = false;
-        runtimeOptions.systemIntegrationsEnabled = false;
-        versus::ui::MainWindow window(nullptr, runtimeOptions);
-        return window.runUiWheelEndToEnd(
-            QString::fromLocal8Bit(uiWheelE2eOutArg.c_str()),
-            QString::fromLatin1(uiWheelE2eExpectedSha256Arg.c_str()),
-            QString::fromLatin1(uiWheelE2eRunIdArg.c_str()));
-    }
     auto coreHolder = std::make_unique<versus::app::VersusApp>();
     auto &core = *coreHolder;
     core.initialize();

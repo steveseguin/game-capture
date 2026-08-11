@@ -485,15 +485,6 @@ if(VERSUS_BUILD_TESTS)
     add_test(NAME VdoSignalingTest COMMAND test_vdo_signaling)
     versus_set_qt_test_environment(VdoSignalingTest)
 
-    # Gate: an App-level candidate encryption/send rejection must never be
-    # counted or diagnosed as a successful trickle candidate dispatch.
-    add_executable(test_signaling_send_outcomes tests/test_signaling_send_outcomes.cpp)
-    set_target_properties(test_signaling_send_outcomes PROPERTIES AUTOMOC ON)
-    target_link_libraries(test_signaling_send_outcomes PRIVATE versus-lib Qt6::Test)
-    add_test(NAME SignalingSendOutcomeGate COMMAND test_signaling_send_outcomes)
-    versus_set_qt_test_environment(SignalingSendOutcomeGate)
-    set_tests_properties(SignalingSendOutcomeGate PROPERTIES TIMEOUT 15)
-
     # Gate: callback-safe WebSocket retirement and reconnect lifecycle. This
     # compiles the production signaling source against a contract-faithful
     # test transport instead of linking the normal datachannel target.

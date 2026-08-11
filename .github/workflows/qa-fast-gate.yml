@@ -43,10 +43,6 @@ jobs:
         working-directory: native-qt
         run: npx playwright install msedge firefox
 
-      - name: Validate release-gate wiring
-        shell: pwsh
-        run: npm --prefix native-qt run gate:release-wiring
-
       - name: Configure CMake (Release)
         shell: pwsh
         run: >

@@ -62,15 +62,6 @@ struct MediaPlanChange {
     bool audioAdded = false;
 };
 
-struct LocalCandidateDiagnostics {
-    bool gatheringComplete = false;
-    uint32_t callbacksInFlight = 0;
-    uint64_t activitySequence = 0;
-    uint64_t gatheringEpoch = 0;
-    uint64_t candidatesAfterGatheringComplete = 0;
-    bool overlappingGatheringDetected = false;
-};
-
 class WebRtcClientTestAccess;
 
 class WebRtcClient {
@@ -78,8 +69,7 @@ class WebRtcClient {
     using IceCandidateCallback = std::function<void(const std::string &candidate,
                                                     const std::string &mid,
                                                     int mlineIndex,
-                                                    uint64_t transportGeneration,
-                                                    uint64_t localCandidateContext)>;
+                                                    uint64_t transportGeneration)>;
     using StateCallback = std::function<void(ConnectionState, uint64_t transportGeneration)>;
     using KeyframeRequestCallback = std::function<void(uint64_t transportGeneration)>;
     using DataMessageCallback = std::function<void(const std::string &message,
@@ -99,7 +89,7 @@ class WebRtcClient {
     void setVideoCodec(PeerConfig::VideoCodec codec, bool enableAlphaTrack = false);
 
     bool setRemoteDescription(const std::string &sdp, const std::string &type);
-    std::string createOffer(uint64_t localCandidateContext = 0);
+    std::string createOffer();
     std::string createAnswer(const std::string &offer);
     bool addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex);
 
@@ -118,7 +108,6 @@ class WebRtcClient {
     bool isDataChannelOpen() const;
     ConnectionState connectionState() const;
     uint64_t transportGeneration() const;
-    LocalCandidateDiagnostics localCandidateDiagnostics() const;
     bool hasActiveVideoTrack() const;
     bool hasActiveAlphaVideoTrack() const;
     bool hasActiveAudioTrack() const;
@@ -138,8 +127,7 @@ class WebRtcClient {
         const std::string &candidate,
         const std::string &mid,
         int mlineIndex,
-        uint64_t transportGeneration,
-        uint64_t localCandidateContext);
+        uint64_t transportGeneration);
     void invokeStateCallbackForTesting(ConnectionState state,
                                        uint64_t transportGeneration);
     void invokeDataChannelStateCallbackForTesting(bool open,

@@ -49,10 +49,6 @@ class MainWindow : public QMainWindow {
     ~MainWindow() override;
     static ParsedStreamTarget parseStreamTargetInput(const QString &input);
     static versus::webrtc::IceMode iceModeFromUiValue(const QString &value);
-    int runUiWheelEndToEnd(
-        const QString &outputPath,
-        const QString &expectedExecutableSha256,
-        const QString &runId);
 
   public slots:
     void updateStats(const StreamStats &stats);
