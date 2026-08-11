@@ -16,6 +16,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <iomanip>
 #include <initializer_list>
 #include <limits>
@@ -29,6 +30,8 @@ namespace versus::signaling {
 namespace {
 
 using json = nlohmann::json;
+
+constexpr std::size_t kMaxOfferAttemptObservations = 60;
 
 std::string toHex(const std::vector<uint8_t> &bytes) {
     std::ostringstream oss;
@@ -258,6 +261,46 @@ std::string hashHex(const std::string &input, size_t hexLength) {
     size_t bytes = std::min(digest.size(), hexLength / 2);
     digest.resize(bytes);
     return toHex(digest);
+}
+
+std::string signalingMessageKind(const json &msg, const char *kindHint = nullptr) {
+    if (kindHint && kindHint[0] != '\0') {
+        return kindHint;
+    }
+    if (const auto description = msg.find("description");
+        description != msg.end()) {
+        if (description->is_object()) {
+            const std::string type = asciiLower(jsonStringValue(*description, {"type"}));
+            if (type == "offer" || type == "answer" || type == "rollback") {
+                return type;
+            }
+        }
+        return "encrypted-description";
+    }
+    if (msg.contains("candidate") || msg.contains("candidates") ||
+        msg.contains("iceCandidates")) {
+        return "candidate";
+    }
+    if (msg.contains("request")) return "request";
+    if (msg.contains("ping")) return "ping";
+    if (msg.contains("pong")) return "pong";
+    if (msg.contains("alert")) return "alert";
+    if (msg.contains("list") || msg.contains("listing")) return "listing";
+    if (msg.contains("joinroom")) return "join-room";
+    if (msg.contains("seed")) return "publish";
+    if (msg.contains("unpublish")) return "unpublish";
+    return "message";
+}
+
+void logSignalingMessageMetadata(const char *direction,
+                                 const json &msg,
+                                 const std::string &payload,
+                                 const char *kindHint = nullptr) {
+    spdlog::info("[Signaling] {} message kind={} bytes={} fields={}",
+                 direction,
+                 signalingMessageKind(msg, kindHint),
+                 payload.size(),
+                 msg.size());
 }
 
 // RFC 3986 percent-encoding for URL query values.
@@ -557,11 +600,78 @@ bool parseSignalPayloadJson(const json &msg,
     return false;
 }
 
+struct SocketCallbackLifecycle {
+    std::mutex mutex;
+    std::shared_ptr<rtc::WebSocket> activeSocket;
+    std::vector<std::shared_ptr<rtc::WebSocket>> retiredSockets;
+    std::size_t activeCallbacks = 0;
+    bool admissionClosed = false;
+};
+
+class ActiveSocketCallbackLease {
+  public:
+    ActiveSocketCallbackLease() = default;
+    ActiveSocketCallbackLease(const ActiveSocketCallbackLease &) = delete;
+    ActiveSocketCallbackLease &operator=(const ActiveSocketCallbackLease &) = delete;
+
+    ActiveSocketCallbackLease(ActiveSocketCallbackLease &&other) noexcept
+        : lifecycle_(std::move(other.lifecycle_)) {}
+
+    ActiveSocketCallbackLease &operator=(ActiveSocketCallbackLease &&other) noexcept {
+        if (this != &other) {
+            release();
+            lifecycle_ = std::move(other.lifecycle_);
+        }
+        return *this;
+    }
+
+    ~ActiveSocketCallbackLease() { release(); }
+
+    static ActiveSocketCallbackLease acquire(
+        const std::shared_ptr<SocketCallbackLifecycle> &lifecycle,
+        const std::weak_ptr<rtc::WebSocket> &socketWeak) {
+        const auto callbackSocket = socketWeak.lock();
+        if (!callbackSocket) {
+            return {};
+        }
+
+        std::lock_guard<std::mutex> lock(lifecycle->mutex);
+        if (lifecycle->admissionClosed ||
+            lifecycle->activeSocket != callbackSocket) {
+            return {};
+        }
+        ++lifecycle->activeCallbacks;
+        return ActiveSocketCallbackLease(lifecycle);
+    }
+
+    explicit operator bool() const { return static_cast<bool>(lifecycle_); }
+
+  private:
+    explicit ActiveSocketCallbackLease(
+        std::shared_ptr<SocketCallbackLifecycle> lifecycle)
+        : lifecycle_(std::move(lifecycle)) {}
+
+    void release() {
+        if (!lifecycle_) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(lifecycle_->mutex);
+            if (lifecycle_->activeCallbacks != 0) {
+                --lifecycle_->activeCallbacks;
+            }
+        }
+        lifecycle_.reset();
+    }
+
+    std::shared_ptr<SocketCallbackLifecycle> lifecycle_;
+};
+
 }  // namespace
 
 struct VdoSignaling::Impl {
-    std::shared_ptr<rtc::WebSocket> socket;
-    std::mutex mutex;
+    std::shared_ptr<SocketCallbackLifecycle> socketLifecycle =
+        std::make_shared<SocketCallbackLifecycle>();
     std::string uuid;
     std::string roomId;
     std::string streamId;
@@ -585,6 +695,36 @@ struct VdoSignaling::Impl {
     PeerCleanupCallback onPeerCleanup;
     ListingCallback onListing;
     std::map<std::string, PeerInfo> peers;
+    mutable std::mutex offerAttemptMutex;
+    uint64_t offerAttemptSequence = 0;
+    std::deque<OfferAttemptObservation> offerAttempts;
+    std::atomic<bool> forceEncryptionFailure{false};
+    std::atomic<uint64_t> outboundSendAttempts{0};
+
+    void shutdownSockets() {
+        std::vector<std::shared_ptr<rtc::WebSocket>> sockets;
+        {
+            std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
+            socketLifecycle->admissionClosed = true;
+            if (socketLifecycle->activeSocket) {
+                sockets.push_back(std::move(socketLifecycle->activeSocket));
+            }
+            for (auto &socket : socketLifecycle->retiredSockets) {
+                sockets.push_back(std::move(socket));
+            }
+            socketLifecycle->retiredSockets.clear();
+        }
+
+        for (const auto &socket : sockets) {
+            if (socket && socket->isOpen()) {
+                socket->close();
+            }
+        }
+        // Dropping the final public WebSocket owners waits for callbacks that
+        // were admitted before admissionClosed was set. Callback leases own
+        // only socketLifecycle, so their epilogues never dereference Impl.
+        sockets.clear();
+    }
 
     void handleMessage(const std::string &payload) {
         json msg;
@@ -607,9 +747,7 @@ struct VdoSignaling::Impl {
     }
 
     void dispatchMessage(const json &msg, const std::string &payload) {
-        // Debug: log incoming messages (truncate large payloads)
-        std::string logPayload = payload.length() > 200 ? payload.substr(0, 200) + "..." : payload;
-        spdlog::info("[Signaling] Received: {}", logPayload);
+        logSignalingMessageMetadata("Received", msg, payload);
 
         if (msg.contains("id") && uuid.empty()) {
             uuid = msg.value("id", "");
@@ -670,20 +808,39 @@ struct VdoSignaling::Impl {
         }
     }
 
-    bool sendMessage(const json &msg) {
+    bool sendMessage(const json &msg, const char *kindHint = nullptr) {
+        outboundSendAttempts.fetch_add(1, std::memory_order_relaxed);
         std::shared_ptr<rtc::WebSocket> socketRef;
         {
-            std::lock_guard<std::mutex> lock(mutex);
-            socketRef = socket;
+            std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
+            socketRef = socketLifecycle->activeSocket;
         }
         if (!socketRef || !connected.load() || !socketRef->isOpen()) {
             return false;
         }
         std::string payload = msg.dump();
-        std::string logPayload = payload.length() > 200 ? payload.substr(0, 200) + "..." : payload;
-        spdlog::info("[Signaling] Sending: {}", logPayload);
-        socketRef->send(payload);
-        return true;
+        logSignalingMessageMetadata("Sending", msg, payload, kindHint);
+        try {
+            if (!socketRef->send(payload)) {
+                spdlog::warn("[Signaling] WebSocket rejected outgoing message");
+                return false;
+            }
+            return true;
+        } catch (const std::exception &error) {
+            spdlog::warn("[Signaling] WebSocket send failed: {}", error.what());
+        } catch (...) {
+            spdlog::warn("[Signaling] WebSocket send failed");
+        }
+        return false;
+    }
+
+    void reportEncryptionFailure(const char *signalKind) {
+        const std::string error =
+            std::string("Failed to encrypt ") + signalKind;
+        spdlog::error("[Signaling] {}; refusing plaintext fallback", error);
+        if (onError) {
+            onError(error);
+        }
     }
 
     std::string hashedRoom(const std::string &room) const {
@@ -712,7 +869,10 @@ VdoSignaling::VdoSignaling() : impl_(std::make_unique<Impl>()) {
 }
 
 VdoSignaling::~VdoSignaling() {
-    disconnect();
+    impl_->connected.store(false);
+    impl_->connectionFailed.store(false);
+    impl_->published.store(false);
+    impl_->shutdownSockets();
 }
 
 bool VdoSignaling::tryParseSignalPayload(const std::string &payload, ParsedSignalMessage &parsed) const {
@@ -724,10 +884,47 @@ bool VdoSignaling::tryParseSignalPayload(const std::string &payload, ParsedSigna
     return parseSignalPayloadJson(msg, impl_->password, impl_->salt, impl_->encryptionDisabled, parsed);
 }
 
+bool VdoSignaling::dispatchInboundPayloadForTesting(const std::string &payload) {
+    ParsedSignalMessage parsed;
+    if (!tryParseSignalPayload(payload, parsed)) {
+        return false;
+    }
+    impl_->handleMessage(payload);
+    return true;
+}
+
 bool VdoSignaling::connect(const std::string &server) {
-    if (impl_->connected.load()) {
+    const auto socketLifecycle = impl_->socketLifecycle;
+    bool hasActiveSocket = false;
+    {
+        std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
+        if (socketLifecycle->admissionClosed) {
+            return false;
+        }
+        if (socketLifecycle->activeCallbacks != 0) {
+            spdlog::warn(
+                "[Signaling] Refusing reconnect while a WebSocket callback is active");
+            return false;
+        }
+        hasActiveSocket = static_cast<bool>(socketLifecycle->activeSocket);
+    }
+    if (hasActiveSocket) {
         disconnect();
     }
+
+    std::vector<std::shared_ptr<rtc::WebSocket>> retiredSockets;
+    {
+        std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
+        if (socketLifecycle->admissionClosed ||
+            socketLifecycle->activeCallbacks != 0 ||
+            socketLifecycle->activeSocket) {
+            spdlog::warn(
+                "[Signaling] Refusing reconnect while WebSocket retirement is active");
+            return false;
+        }
+        retiredSockets.swap(socketLifecycle->retiredSockets);
+    }
+    retiredSockets.clear();
     impl_->connectionFailed.store(false);
 
     // Configure WebSocket with proper timeout
@@ -736,26 +933,16 @@ bool VdoSignaling::connect(const std::string &server) {
     wsConfig.pingInterval = std::chrono::milliseconds::zero();
     wsConfig.disableTlsVerification = false;
 
-    std::shared_ptr<rtc::WebSocket> socket;
-    {
-        std::lock_guard<std::mutex> lock(impl_->mutex);
-        socket = std::make_shared<rtc::WebSocket>(wsConfig);
-        impl_->socket = socket;
-    }
+    auto socket = std::make_shared<rtc::WebSocket>(wsConfig);
 
     std::weak_ptr<rtc::WebSocket> socketWeak = socket;
-    auto isActiveSocket = [this, socketWeak]() {
-        auto callbackSocket = socketWeak.lock();
-        if (!callbackSocket) {
-            return false;
-        }
-
-        std::lock_guard<std::mutex> lock(impl_->mutex);
-        return impl_->socket == callbackSocket;
+    auto acquireCallbackLease = [socketLifecycle, socketWeak]() {
+        return ActiveSocketCallbackLease::acquire(socketLifecycle, socketWeak);
     };
 
-    socket->onOpen([this, isActiveSocket]() {
-        if (!isActiveSocket()) {
+    socket->onOpen([this, acquireCallbackLease]() {
+        auto callbackLease = acquireCallbackLease();
+        if (!callbackLease) {
             spdlog::debug("[Signaling] Ignoring stale onOpen callback");
             return;
         }
@@ -766,8 +953,9 @@ bool VdoSignaling::connect(const std::string &server) {
             impl_->onConnected();
         }
     });
-    socket->onClosed([this, isActiveSocket]() {
-        if (!isActiveSocket()) {
+    socket->onClosed([this, acquireCallbackLease]() {
+        auto callbackLease = acquireCallbackLease();
+        if (!callbackLease) {
             spdlog::debug("[Signaling] Ignoring stale onClosed callback");
             return;
         }
@@ -777,8 +965,9 @@ bool VdoSignaling::connect(const std::string &server) {
             impl_->onDisconnected();
         }
     });
-    socket->onError([this, isActiveSocket](std::string error) {
-        if (!isActiveSocket()) {
+    socket->onError([this, acquireCallbackLease](std::string error) {
+        auto callbackLease = acquireCallbackLease();
+        if (!callbackLease) {
             spdlog::debug("[Signaling] Ignoring stale onError callback: {}", error);
             return;
         }
@@ -788,8 +977,9 @@ bool VdoSignaling::connect(const std::string &server) {
             impl_->onError(error);
         }
     });
-    socket->onMessage([this, isActiveSocket](auto message) {
-        if (!isActiveSocket()) {
+    socket->onMessage([this, acquireCallbackLease](auto message) {
+        auto callbackLease = acquireCallbackLease();
+        if (!callbackLease) {
             return;
         }
         spdlog::info("[Signaling] onMessage callback triggered");
@@ -799,6 +989,18 @@ bool VdoSignaling::connect(const std::string &server) {
             spdlog::info("[Signaling] Received non-string message");
         }
     });
+
+    {
+        std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
+        if (socketLifecycle->admissionClosed ||
+            socketLifecycle->activeCallbacks != 0 ||
+            socketLifecycle->activeSocket) {
+            spdlog::warn(
+                "[Signaling] Refusing reconnect before WebSocket activation");
+            return false;
+        }
+        socketLifecycle->activeSocket = socket;
+    }
 
     socket->open(server);
     auto start = std::chrono::steady_clock::now();
@@ -819,17 +1021,30 @@ bool VdoSignaling::connect(const std::string &server) {
 }
 
 void VdoSignaling::disconnect() {
+    const auto socketLifecycle = impl_->socketLifecycle;
     std::shared_ptr<rtc::WebSocket> socketRef;
+    std::vector<std::shared_ptr<rtc::WebSocket>> socketsToDestroy;
     {
-        std::lock_guard<std::mutex> lock(impl_->mutex);
-        socketRef = std::move(impl_->socket);
-    }
-    if (socketRef && socketRef->isOpen()) {
-        socketRef->close();
+        std::lock_guard<std::mutex> lock(socketLifecycle->mutex);
+        socketRef = std::move(socketLifecycle->activeSocket);
+        if (socketLifecycle->activeCallbacks != 0) {
+            if (socketRef) {
+                socketLifecycle->retiredSockets.push_back(socketRef);
+            }
+        } else {
+            socketsToDestroy.swap(socketLifecycle->retiredSockets);
+            if (socketRef) {
+                socketsToDestroy.push_back(socketRef);
+            }
+        }
     }
     impl_->connected.store(false);
     impl_->connectionFailed.store(false);
     impl_->published.store(false);
+    if (socketRef && socketRef->isOpen()) {
+        socketRef->close();
+    }
+    socketsToDestroy.clear();
     impl_->roomId.clear();
     impl_->streamId.clear();
 }
@@ -851,7 +1066,7 @@ bool VdoSignaling::joinRoom(const RoomConfig &config) {
     json msg;
     msg["request"] = "joinroom";
     msg["roomid"] = impl_->hashedRoom(impl_->roomId);
-    return impl_->sendMessage(msg);
+    return impl_->sendMessage(msg, "join-room");
 }
 
 void VdoSignaling::leaveRoom() {
@@ -869,8 +1084,8 @@ bool VdoSignaling::publish(const std::string &streamId, const std::string &label
     impl_->label = label;
 
     std::string hashedId = impl_->hashedStreamId(impl_->streamId);
-    spdlog::info("[Signaling] Publishing: original='{}', hashed='{}', encryptionDisabled={}",
-                 impl_->streamId, hashedId, impl_->encryptionDisabled);
+    spdlog::info("[Signaling] Publishing: streamBytes={} labelBytes={} encryptionDisabled={}",
+                 impl_->streamId.size(), impl_->label.size(), impl_->encryptionDisabled);
 
     json msg;
     msg["request"] = "seed";
@@ -883,8 +1098,8 @@ bool VdoSignaling::publish(const std::string &streamId, const std::string &label
     // Check WebSocket state after publish
     std::shared_ptr<rtc::WebSocket> socketRef;
     {
-        std::lock_guard<std::mutex> lock(impl_->mutex);
-        socketRef = impl_->socket;
+        std::lock_guard<std::mutex> lock(impl_->socketLifecycle->mutex);
+        socketRef = impl_->socketLifecycle->activeSocket;
     }
     if (socketRef) {
         spdlog::info("[Signaling] After publish: socket isOpen={}, bufferedAmount={}",
@@ -901,6 +1116,23 @@ void VdoSignaling::unpublish() {
 }
 
 bool VdoSignaling::sendOffer(const SignalOffer &offer) {
+    {
+        std::lock_guard<std::mutex> lock(impl_->offerAttemptMutex);
+        if (++impl_->offerAttemptSequence == 0) {
+            ++impl_->offerAttemptSequence;
+        }
+        impl_->offerAttempts.push_back({
+            impl_->offerAttemptSequence,
+            offer.uuid,
+            offer.session,
+            hashHex(offer.sdp, 64),
+            offer.sdp.size(),
+        });
+        while (impl_->offerAttempts.size() > kMaxOfferAttemptObservations) {
+            impl_->offerAttempts.pop_front();
+        }
+    }
+
     json desc;
     desc["type"] = "offer";
     desc["sdp"] = offer.sdp;
@@ -923,16 +1155,31 @@ bool VdoSignaling::sendOffer(const SignalOffer &offer) {
         auto pass = effectivePassword(impl_->password, impl_->encryptionDisabled);
         spdlog::info("[Signaling] Encrypting offer with key derived from: pass='{}' + salt='{}'",
                      pass.empty() ? "(empty)" : "(set)", impl_->salt);
-        if (aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
+        if (!impl_->forceEncryptionFailure.load(std::memory_order_relaxed) &&
+            aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
             msg["description"] = encrypted;
             msg["vector"] = vector;
             spdlog::info("[Signaling] Sending encrypted offer, vector={}", vector);
         } else {
-            spdlog::warn("[Signaling] Encryption failed, sending unencrypted offer");
-            msg["description"] = desc;
+            impl_->reportEncryptionFailure("offer SDP");
+            return false;
         }
     }
-    return impl_->sendMessage(msg);
+    return impl_->sendMessage(msg, "offer");
+}
+
+std::vector<VdoSignaling::OfferAttemptObservation>
+VdoSignaling::offerAttemptsForTesting() const {
+    std::lock_guard<std::mutex> lock(impl_->offerAttemptMutex);
+    return {impl_->offerAttempts.begin(), impl_->offerAttempts.end()};
+}
+
+void VdoSignaling::forceEncryptionFailureForTesting(bool forceFailure) {
+    impl_->forceEncryptionFailure.store(forceFailure, std::memory_order_relaxed);
+}
+
+uint64_t VdoSignaling::outboundSendAttemptsForTesting() const {
+    return impl_->outboundSendAttempts.load(std::memory_order_relaxed);
 }
 
 bool VdoSignaling::sendAnswer(const SignalAnswer &answer) {
@@ -955,14 +1202,16 @@ bool VdoSignaling::sendAnswer(const SignalAnswer &answer) {
         std::string encrypted;
         std::string vector;
         auto pass = effectivePassword(impl_->password, impl_->encryptionDisabled);
-        if (aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
+        if (!impl_->forceEncryptionFailure.load(std::memory_order_relaxed) &&
+            aesEncryptCbc(desc.dump(), pass + impl_->salt, encrypted, vector)) {
             msg["description"] = encrypted;
             msg["vector"] = vector;
         } else {
-            msg["description"] = desc;
+            impl_->reportEncryptionFailure("answer SDP");
+            return false;
         }
     }
-    return impl_->sendMessage(msg);
+    return impl_->sendMessage(msg, "answer");
 }
 
 bool VdoSignaling::sendCandidate(const SignalCandidate &candidate) {
@@ -980,12 +1229,16 @@ bool VdoSignaling::sendCandidate(const SignalCandidate &candidate) {
         std::string encrypted;
         std::string vector;
         auto pass = effectivePassword(impl_->password, impl_->encryptionDisabled);
-        if (aesEncryptCbc(candidatePayload.dump(), pass + impl_->salt, encrypted, vector)) {
+        if (!impl_->forceEncryptionFailure.load(std::memory_order_relaxed) &&
+            aesEncryptCbc(candidatePayload.dump(), pass + impl_->salt, encrypted, vector)) {
             msg["candidate"] = encrypted;
             msg["vector"] = vector;
+        } else {
+            impl_->reportEncryptionFailure("ICE candidate");
+            return false;
         }
     }
-    return impl_->sendMessage(msg);
+    return impl_->sendMessage(msg, "candidate");
 }
 
 void VdoSignaling::setCandidateType(const std::string &type) {

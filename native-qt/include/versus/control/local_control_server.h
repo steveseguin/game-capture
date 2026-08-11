@@ -29,6 +29,7 @@ class LocalControlServer : public QObject {
     using SourcesProvider = std::function<QJsonArray()>;
     using StopCallback = std::function<void()>;
     using QuitCallback = std::function<void()>;
+    using RefreshPeerTransportsCallback = std::function<int()>;
 
     explicit LocalControlServer(QObject *parent = nullptr);
     ~LocalControlServer() override;
@@ -48,6 +49,7 @@ class LocalControlServer : public QObject {
     void setAudioInputSourcesProvider(SourcesProvider provider);
     void setStopCallback(StopCallback callback);
     void setQuitCallback(QuitCallback callback);
+    void setRefreshPeerTransportsCallback(RefreshPeerTransportsCallback callback);
 
     static QString defaultDiscoveryPath();
     static QString defaultReportDir();
@@ -84,6 +86,7 @@ class LocalControlServer : public QObject {
     SourcesProvider audioInputSourcesProvider_;
     StopCallback stopCallback_;
     QuitCallback quitCallback_;
+    RefreshPeerTransportsCallback refreshPeerTransportsCallback_;
     QHash<QTcpSocket*, QByteArray> buffers_;
     bool discoveryFileWritten_ = false;
 };

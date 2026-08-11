@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -118,6 +120,24 @@ class VdoSignaling {
     void onListing(ListingCallback cb);
 
   private:
+    friend class VdoSignalingTestAccess;
+    struct OfferAttemptObservation {
+        uint64_t sequence = 0;
+        std::string uuid;
+        std::string session;
+        std::string sdpSha256;
+        std::size_t sdpBytes = 0;
+    };
+    // Test-only ingress seam below the WebSocket callback lease. It parses and
+    // dispatches through the same callback registry as Impl::handleMessage.
+    bool dispatchInboundPayloadForTesting(const std::string &payload);
+    // Every public sendOffer call crosses this boundary. The bounded history
+    // intentionally retains only an SDP digest, never the SDP itself.
+    std::vector<OfferAttemptObservation> offerAttemptsForTesting() const;
+    // Deterministic fault injection and a metadata-only send boundary counter
+    // let the tests prove that encryption failures never reach the transport.
+    void forceEncryptionFailureForTesting(bool forceFailure);
+    uint64_t outboundSendAttemptsForTesting() const;
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

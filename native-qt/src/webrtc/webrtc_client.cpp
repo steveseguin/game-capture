@@ -16,10 +16,13 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <thread>
+#include <utility>
 #include <variant>
 
 namespace versus::webrtc {
@@ -53,7 +56,6 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
 
     size_t offset = 0;
     bool first = true;
-
     try {
         while (offset < vp9Frame.size()) {
             const size_t remaining = vp9Frame.size() - offset;
@@ -62,7 +64,6 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
 
             rtc::binary packet(12 + 1 + chunkLength);
             auto *payload = reinterpret_cast<uint8_t *>(packet.data());
-
             payload[0] = 0x80;
             payload[1] = static_cast<uint8_t>(last ? (0x80 | payloadType) : payloadType);
             payload[2] = static_cast<uint8_t>((sequenceNumber >> 8) & 0xFF);
@@ -78,17 +79,12 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
             payload[11] = static_cast<uint8_t>(ssrc & 0xFF);
 
             uint8_t descriptor = 0;
-            if (first) {
-                descriptor |= 0x08;
-            }
-            if (last) {
-                descriptor |= 0x04;
-            }
+            if (first) descriptor |= 0x08;
+            if (last) descriptor |= 0x04;
             payload[12] = descriptor;
 
             std::memcpy(payload + 13, vp9Frame.data() + offset, chunkLength);
             track->send(packet);
-
             offset += chunkLength;
             first = false;
         }
@@ -99,7 +95,6 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
         spdlog::warn("[WebRTC] Failed to send VP9 RTP packet");
         return false;
     }
-
     return true;
 }
 
@@ -107,124 +102,441 @@ std::string selectH264ProfileLevelId(int width, int height, int fps) {
     const int safeWidth = std::max(1, width);
     const int safeHeight = std::max(1, height);
     const int safeFps = std::max(1, fps);
-
     const long long pixels = static_cast<long long>(safeWidth) * static_cast<long long>(safeHeight);
-    if (safeFps > 30 || pixels > (1280LL * 720LL)) {
-        // Level 4.2 allows 1080p60 class streams.
-        return "42e02a";
-    }
-    if (pixels > (640LL * 480LL)) {
-        // Level 3.1 comfortably covers 720p30 class streams.
-        return "42e01f";
-    }
-    // Level 3.0 for SD class streams.
+    if (safeFps > 30 || pixels > (1280LL * 720LL)) return "42e02a";
+    if (pixels > (640LL * 480LL)) return "42e01f";
     return "42e01e";
 }
 
 }  // namespace
 
-struct WebRtcClient::Impl {
+struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     struct RemoteCandidate {
         std::string candidate;
         std::string mid;
         int mlineIndex = 0;
+        uint64_t generation = 0;
     };
 
+    struct ConcurrencyTestHooks {
+        std::function<void(uint64_t)> beforeVideoSend;
+        std::function<void(uint64_t)> beforeCallbackAdmission;
+        std::function<void(uint64_t)> afterTransportClose;
+        std::function<void(uint64_t)> beforeStateCommit;
+    };
+
+    struct TransportState {
+        uint64_t generation = 0;
+        IceMode mode = IceMode::All;
+        PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
+        bool alphaTrackEnabled = false;
+        bool dataChannelEnabled = true;
+        bool hasVideoSection = false;
+        bool hasAudioSection = false;
+        bool hasAlphaSection = false;
+        int videoWidth = 1920;
+        int videoHeight = 1080;
+        int videoFps = 60;
+
+        std::shared_ptr<rtc::PeerConnection> pc;
+        std::shared_ptr<rtc::Track> videoTrack;
+        std::shared_ptr<rtc::Track> alphaVideoTrack;
+        std::shared_ptr<rtc::Track> audioTrack;
+        std::shared_ptr<rtc::RtpPacketizer> videoPacketizer;
+        std::shared_ptr<rtc::RtpPacketizer> alphaVideoPacketizer;
+        std::shared_ptr<rtc::RtpPacketizer> audioPacketizer;
+        std::shared_ptr<rtc::RtpPacketizationConfig> videoRtpConfig;
+        std::shared_ptr<rtc::RtpPacketizationConfig> alphaVideoRtpConfig;
+        std::shared_ptr<rtc::RtpPacketizationConfig> audioRtpConfig;
+
+        std::mutex descriptionMutex;
+        std::string localDescription;
+        std::atomic<bool> gatheringComplete{false};
+        std::atomic<uint32_t> localCandidateCallbacksInFlight{0};
+        std::atomic<uint64_t> localCandidateActivitySequence{0};
+        std::atomic<uint64_t> localCandidateGatheringEpoch{0};
+        std::atomic<uint64_t> localCandidatesAfterGatheringComplete{0};
+        std::atomic<bool> overlappingCandidateGatheringDetected{false};
+        std::atomic<uint64_t> localCandidateContext{0};
+
+        std::mutex remoteCandidateMutex;
+        std::vector<RemoteCandidate> pendingRemoteCandidates;
+        bool remoteDescriptionSet = false;
+
+        std::mutex dataChannelMutex;
+        std::shared_ptr<rtc::DataChannel> sendChannel;
+        std::atomic<bool> dataChannelOpen{false};
+
+        std::mutex videoSendMutex;
+        std::mutex alphaVideoSendMutex;
+        std::mutex audioSendMutex;
+        std::atomic<bool> sentFirstKeyframe{false};
+        std::atomic<bool> videoTrackOpen{false};
+        std::atomic<bool> alphaVideoTrackOpen{false};
+        std::atomic<bool> audioTrackOpen{false};
+        uint32_t videoSsrc = 2222222;
+        uint32_t alphaVideoSsrc = 4444444;
+        uint32_t audioSsrc = 3333333;
+        std::atomic<bool> published{false};
+        std::atomic<bool> closed{false};
+        std::shared_ptr<const ConcurrencyTestHooks> testHooks;
+        std::atomic<bool> testHooksEnabled{false};
+
+        ~TransportState() { close(); }
+
+        void close() noexcept {
+            if (closed.exchange(true, std::memory_order_acq_rel)) return;
+
+            try {
+                if (videoTrack) videoTrack->resetCallbacks();
+                if (alphaVideoTrack) alphaVideoTrack->resetCallbacks();
+                if (audioTrack) audioTrack->resetCallbacks();
+            } catch (...) {
+                spdlog::debug("[WebRTC] Retired track callback reset raised an exception");
+            }
+
+            std::shared_ptr<rtc::DataChannel> channel;
+            {
+                std::lock_guard<std::mutex> lock(dataChannelMutex);
+                channel = std::move(sendChannel);
+                dataChannelOpen.store(false, std::memory_order_release);
+            }
+            if (channel) {
+                try {
+                    channel->resetCallbacks();
+                    channel->close();
+                } catch (...) {
+                    spdlog::debug("[WebRTC] Retired data channel close raised an exception");
+                }
+            }
+
+            auto targetPc = std::move(pc);
+            if (targetPc) {
+                try {
+                    targetPc->resetCallbacks();
+                    targetPc->close();
+                } catch (...) {
+                    spdlog::debug("[WebRTC] Retired PeerConnection close raised an exception");
+                }
+            }
+
+            if (testHooksEnabled.load(std::memory_order_acquire)) {
+                const auto hooks = std::atomic_load_explicit(&testHooks, std::memory_order_acquire);
+                if (hooks && hooks->afterTransportClose) {
+                    try {
+                        hooks->afterTransportClose(generation);
+                    } catch (...) {
+                        spdlog::debug("[WebRTC] Transport close test hook raised an exception");
+                    }
+                }
+            }
+        }
+    };
+
+    // This mutex protects only the current bundle pointer. No libdatachannel
+    // call is made while it is held. A copied bundle keeps a retiring
+    // generation alive until the operation using it has returned.
+    mutable std::mutex transportMutex;
+    std::shared_ptr<TransportState> transport;
+    std::recursive_mutex operationMutex;
+    std::atomic<uint64_t> nextGeneration{0};
+    std::atomic<uint64_t> activeGeneration{0};
+    // The connection state and the transport generation it describes are
+    // published under transportMutex as one snapshot. A retired transport
+    // callback must not pass a generation check and then overwrite the state
+    // of a replacement transport.
+    ConnectionState state = ConnectionState::Disconnected;
+    uint64_t stateGeneration = 0;
+    bool shutdownRequested = false;
+
+    std::shared_ptr<const ConcurrencyTestHooks> testHooks;
+    std::atomic<bool> testHooksEnabled{false};
+
+    // Rebuilt PeerConnections retain the advertised SSRCs and renegotiate the
+    // same browser transceivers. Manual VP9 RTP sequence state therefore
+    // belongs to the logical sender, not to one transport generation.
+    std::mutex vp9VideoSequenceMutex;
+    std::mutex vp9AlphaSequenceMutex;
+    uint16_t vp9VideoSequenceNumber = 0;
+    uint16_t vp9AlphaSequenceNumber = 0;
+
+    std::mutex configMutex;
     rtc::Configuration config;
-    std::shared_ptr<rtc::PeerConnection> pc;
-    std::shared_ptr<rtc::Track> videoTrack;
-    std::shared_ptr<rtc::Track> alphaVideoTrack;
-    std::shared_ptr<rtc::Track> audioTrack;
-    std::shared_ptr<rtc::RtpPacketizer> videoPacketizer;
-    std::shared_ptr<rtc::RtpPacketizer> alphaVideoPacketizer;
-    std::shared_ptr<rtc::RtpPacketizer> audioPacketizer;
-    std::shared_ptr<rtc::RtpPacketizationConfig> videoRtpConfig;
-    std::shared_ptr<rtc::RtpPacketizationConfig> alphaVideoRtpConfig;
-    std::shared_ptr<rtc::RtpPacketizationConfig> audioRtpConfig;
-    std::string localDescription;
+    IceMode iceMode = IceMode::All;
+    PeerConfig::VideoCodec configuredVideoCodec = PeerConfig::VideoCodec::H264;
+    bool enableAlphaTrack = false;
+    bool enableDataChannel = true;
+    bool videoSectionNegotiated = false;
+    bool audioSectionNegotiated = false;
+    bool alphaSectionNegotiated = false;
+    int configuredVideoWidth = 1920;
+    int configuredVideoHeight = 1080;
+    int configuredVideoFps = 60;
+
+    std::mutex callbackMutex;
     IceCandidateCallback iceCallback;
     StateCallback stateCallback;
     KeyframeRequestCallback keyframeCallback;
     DataMessageCallback dataMessageCallback;
     DataChannelStateCallback dataChannelStateCallback;
-    std::shared_ptr<rtc::DataChannel> sendChannel;
-    std::mutex descMutex;
-    std::mutex dataChannelMutex;
-    std::mutex remoteCandidateMutex;
-    std::vector<RemoteCandidate> pendingRemoteCandidates;
-    std::atomic<ConnectionState> state{ConnectionState::Disconnected};
-    std::atomic<bool> suppressCallbacks{false};
-    std::atomic<bool> gatheringComplete{false};
-    std::atomic<bool> remoteDescriptionSet{false};
-    std::atomic<bool> sentFirstKeyframe{false};
-    std::atomic<bool> videoTrackOpen{false};
-    std::atomic<bool> alphaVideoTrackOpen{false};
-    std::atomic<bool> audioTrackOpen{false};
-    std::atomic<bool> dataChannelOpen{false};
-    std::chrono::steady_clock::time_point trackOpenedTime;
-    uint32_t videoSsrc = 2222222;
-    uint32_t alphaVideoSsrc = 4444444;
-    uint32_t audioSsrc = 3333333;
-    uint16_t videoSequenceNumber = 0;
-    uint16_t alphaVideoSequenceNumber = 0;
-    bool enableAlphaTrack = false;
-    bool enableDataChannel = true;
-    PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
-    int configuredVideoWidth = 1920;
-    int configuredVideoHeight = 1080;
-    int configuredVideoFps = 60;
-    IceMode iceMode = IceMode::All;
 
-    void resetRemoteCandidateState() {
-        {
-            std::lock_guard<std::mutex> lock(remoteCandidateMutex);
-            pendingRemoteCandidates.clear();
-        }
-        remoteDescriptionSet.store(false, std::memory_order_relaxed);
+    // User callbacks are serialized so a callback may suppress callbacks and
+    // shut down its own client without waiting on a second admitted callback.
+    // The lifecycle mutex is held only for admission accounting, never while a
+    // user callback executes.
+    std::recursive_mutex callbackDispatchMutex;
+    std::mutex callbackLifecycleMutex;
+    std::condition_variable callbackLifecycleCv;
+    bool callbacksSuppressed = true;
+    size_t callbacksInFlight = 0;
+
+    static std::vector<const Impl *> &callbackStack() {
+        static thread_local std::vector<const Impl *> stack;
+        return stack;
     }
 
-    bool tryAddRemoteCandidate(const RemoteCandidate &remote) {
-        if (!pc || remote.candidate.empty()) {
+    struct CallbackLease {
+        Impl &owner;
+        std::unique_lock<std::recursive_mutex> dispatchLock;
+        bool admitted = false;
+
+        CallbackLease(Impl &ownerValue, uint64_t generation)
+            : owner(ownerValue), dispatchLock(ownerValue.callbackDispatchMutex) {
+            std::lock_guard<std::mutex> lock(owner.callbackLifecycleMutex);
+            if (owner.callbacksSuppressed || !owner.isCurrentGeneration(generation)) return;
+            ++owner.callbacksInFlight;
+            callbackStack().push_back(&owner);
+            admitted = true;
+        }
+
+        ~CallbackLease() {
+            if (!admitted) return;
+            auto &stack = callbackStack();
+            if (!stack.empty() && stack.back() == &owner) {
+                stack.pop_back();
+            } else {
+                const auto it = std::find(stack.begin(), stack.end(), &owner);
+                if (it != stack.end()) stack.erase(it);
+            }
+            {
+                std::lock_guard<std::mutex> lock(owner.callbackLifecycleMutex);
+                --owner.callbacksInFlight;
+            }
+            owner.callbackLifecycleCv.notify_all();
+        }
+
+        explicit operator bool() const { return admitted; }
+    };
+
+    static rtc::Configuration makeRtcConfiguration(const std::vector<IceServerConfig> &iceServers,
+                                                     IceMode mode) {
+        rtc::Configuration rtcConfig;
+        for (const auto &ice : iceServers) {
+            rtc::IceServer server(ice.url);
+            if (!ice.username.empty()) server.username = ice.username;
+            if (!ice.credential.empty()) server.password = ice.credential;
+            rtcConfig.iceServers.emplace_back(std::move(server));
+        }
+        if (mode == IceMode::Relay) rtcConfig.iceTransportPolicy = rtc::TransportPolicy::Relay;
+        rtcConfig.disableAutoNegotiation = true;
+        rtcConfig.forceMediaTransport = true;
+        return rtcConfig;
+    }
+
+    std::shared_ptr<TransportState> transportSnapshot() const {
+        std::lock_guard<std::mutex> lock(transportMutex);
+        return transport;
+    }
+
+    bool isCurrentGeneration(uint64_t generation) const {
+        return generation != 0 && activeGeneration.load(std::memory_order_acquire) == generation;
+    }
+
+    bool isCurrentTransport(const std::shared_ptr<TransportState> &candidate) const {
+        if (!candidate) return false;
+        std::lock_guard<std::mutex> lock(transportMutex);
+        return transport == candidate &&
+            activeGeneration.load(std::memory_order_relaxed) == candidate->generation;
+    }
+
+    std::shared_ptr<TransportState> swapTransport(
+        std::shared_ptr<TransportState> replacement,
+        ConnectionState replacementState) {
+        std::shared_ptr<TransportState> retired;
+        {
+            std::lock_guard<std::mutex> lock(transportMutex);
+            if (replacement) replacement->published.store(true, std::memory_order_release);
+            retired = std::exchange(transport, std::move(replacement));
+            const uint64_t generation = transport ? transport->generation : 0;
+            activeGeneration.store(generation, std::memory_order_release);
+            state = replacementState;
+            stateGeneration = generation;
+        }
+        return retired;
+    }
+
+    bool publishConnectionState(
+        const std::shared_ptr<TransportState> &candidate,
+        ConnectionState replacementState) {
+        if (!candidate) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(transportMutex);
+        if (transport != candidate ||
+            activeGeneration.load(std::memory_order_relaxed) !=
+                candidate->generation) {
+            return false;
+        }
+        state = replacementState;
+        stateGeneration = candidate->generation;
+        return true;
+    }
+
+    bool publishConnectionState(
+        uint64_t generation,
+        ConnectionState replacementState) {
+        if (generation == 0) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(transportMutex);
+        if (!transport || transport->generation != generation ||
+            activeGeneration.load(std::memory_order_relaxed) != generation) {
+            return false;
+        }
+        state = replacementState;
+        stateGeneration = generation;
+        return true;
+    }
+
+    ConnectionState connectionStateSnapshot() const {
+        std::lock_guard<std::mutex> lock(transportMutex);
+        const uint64_t generation =
+            activeGeneration.load(std::memory_order_relaxed);
+        if (stateGeneration != generation) {
+            return transport
+                ? ConnectionState::Disconnected
+                : ConnectionState::Closed;
+        }
+        return state;
+    }
+
+    void suppressCallbacksAndWait() {
+        size_t localDepth = 0;
+        for (const Impl *entry : callbackStack()) {
+            if (entry == this) ++localDepth;
+        }
+        std::unique_lock<std::mutex> lock(callbackLifecycleMutex);
+        callbacksSuppressed = true;
+        callbackLifecycleCv.wait(lock, [&]() { return callbacksInFlight <= localDepth; });
+    }
+
+    void resumeCallbacks() {
+        std::lock_guard<std::mutex> lock(callbackLifecycleMutex);
+        callbacksSuppressed = false;
+    }
+
+    template <typename Callback, typename... Args>
+    void invokeCallback(uint64_t generation, Callback Impl::*member, Args &&...args) {
+        Callback callback;
+        {
+            std::lock_guard<std::mutex> lock(callbackMutex);
+            callback = this->*member;
+        }
+        if (!callback) return;
+
+        if (testHooksEnabled.load(std::memory_order_acquire)) {
+            const auto hooks = std::atomic_load_explicit(&testHooks, std::memory_order_acquire);
+            if (hooks && hooks->beforeCallbackAdmission) {
+                try {
+                    hooks->beforeCallbackAdmission(generation);
+                } catch (...) {
+                    spdlog::debug("[WebRTC] Callback admission test hook raised an exception");
+                }
+            }
+        }
+
+        CallbackLease lease(*this, generation);
+        if (!lease) return;
+        callback(std::forward<Args>(args)...);
+    }
+
+    static void storeTestHooks(std::shared_ptr<const ConcurrencyTestHooks> &destination,
+                               std::atomic<bool> &enabled,
+                               const std::shared_ptr<const ConcurrencyTestHooks> &hooks) {
+        if (hooks) {
+            std::atomic_store_explicit(&destination, hooks, std::memory_order_release);
+            enabled.store(true, std::memory_order_release);
+            return;
+        }
+        enabled.store(false, std::memory_order_release);
+        std::atomic_store_explicit(
+            &destination, std::shared_ptr<const ConcurrencyTestHooks>{}, std::memory_order_release);
+    }
+
+    void setConcurrencyTestHooks(std::shared_ptr<const ConcurrencyTestHooks> hooks) {
+        storeTestHooks(testHooks, testHooksEnabled, hooks);
+        auto target = transportSnapshot();
+        if (target) storeTestHooks(target->testHooks, target->testHooksEnabled, hooks);
+    }
+
+    void invokeBeforeStateCommitTestHook(uint64_t generation) const {
+        if (!testHooksEnabled.load(std::memory_order_acquire)) {
+            return;
+        }
+        const auto hooks = std::atomic_load_explicit(
+            &testHooks,
+            std::memory_order_acquire);
+        if (!hooks || !hooks->beforeStateCommit) {
+            return;
+        }
+        try {
+            hooks->beforeStateCommit(generation);
+        } catch (...) {
+            spdlog::debug("[WebRTC] State commit test hook raised an exception");
+        }
+    }
+
+    bool tryAddRemoteCandidate(const std::shared_ptr<TransportState> &target,
+                               const RemoteCandidate &remote) {
+        if (!target || !target->pc || remote.candidate.empty() ||
+            remote.generation != target->generation || !isCurrentTransport(target)) {
             return false;
         }
         (void)remote.mlineIndex;
-        pc->addRemoteCandidate(rtc::Candidate(remote.candidate, remote.mid));
+        target->pc->addRemoteCandidate(rtc::Candidate(remote.candidate, remote.mid));
         return true;
     }
 
-    bool queueRemoteCandidate(RemoteCandidate remote) {
-        if (remote.candidate.empty()) {
+    bool queueRemoteCandidate(const std::shared_ptr<TransportState> &target,
+                              RemoteCandidate remote) {
+        if (!target || remote.candidate.empty() || remote.generation != target->generation ||
+            !isCurrentTransport(target)) {
             return false;
         }
-
         constexpr size_t kMaxPendingRemoteCandidates = 100;
-        std::lock_guard<std::mutex> lock(remoteCandidateMutex);
-        if (pendingRemoteCandidates.size() >= kMaxPendingRemoteCandidates) {
-            pendingRemoteCandidates.erase(pendingRemoteCandidates.begin());
+        std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
+        if (target->pendingRemoteCandidates.size() >= kMaxPendingRemoteCandidates) {
+            target->pendingRemoteCandidates.erase(target->pendingRemoteCandidates.begin());
             spdlog::warn("[WebRTC] Pending remote ICE candidate queue full; dropping oldest candidate");
         }
-        pendingRemoteCandidates.push_back(std::move(remote));
+        target->pendingRemoteCandidates.push_back(std::move(remote));
         spdlog::info("[WebRTC] Queued remote ICE candidate until remote description is set (pending={})",
-                     pendingRemoteCandidates.size());
+                     target->pendingRemoteCandidates.size());
         return true;
     }
 
-    void drainPendingRemoteCandidates() {
+    void drainPendingRemoteCandidates(const std::shared_ptr<TransportState> &target) {
         std::vector<RemoteCandidate> pending;
         {
-            std::lock_guard<std::mutex> lock(remoteCandidateMutex);
-            pending.swap(pendingRemoteCandidates);
+            std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
+            pending.swap(target->pendingRemoteCandidates);
         }
-        if (pending.empty()) {
-            return;
-        }
+        if (pending.empty()) return;
 
         size_t added = 0;
         for (const auto &remote : pending) {
             try {
-                if (tryAddRemoteCandidate(remote)) {
-                    ++added;
-                }
+                if (tryAddRemoteCandidate(target, remote)) ++added;
             } catch (const std::exception &e) {
                 spdlog::warn("[WebRTC] Failed to add queued remote ICE candidate: {}", e.what());
             } catch (...) {
@@ -236,569 +548,618 @@ struct WebRtcClient::Impl {
                      pending.size() - added);
     }
 
-    void resetMediaState() {
-        videoTrack.reset();
-        alphaVideoTrack.reset();
-        audioTrack.reset();
-        videoPacketizer.reset();
-        alphaVideoPacketizer.reset();
-        audioPacketizer.reset();
-        videoRtpConfig.reset();
-        alphaVideoRtpConfig.reset();
-        audioRtpConfig.reset();
-        videoTrackOpen.store(false);
-        alphaVideoTrackOpen.store(false);
-        audioTrackOpen.store(false);
-        sentFirstKeyframe.store(false);
-    }
-
-    void bindDataChannel(const std::shared_ptr<rtc::DataChannel> &channel, const char *origin) {
-        if (!channel) {
-            return;
-        }
-
+    void bindDataChannel(const std::shared_ptr<TransportState> &target,
+                         const std::shared_ptr<rtc::DataChannel> &channel,
+                         const char *origin) {
+        if (!target || !channel) return;
         {
-            std::lock_guard<std::mutex> lock(dataChannelMutex);
-            sendChannel = channel;
+            std::lock_guard<std::mutex> lock(target->dataChannelMutex);
+            target->sendChannel = channel;
+            target->dataChannelOpen.store(false, std::memory_order_release);
         }
 
         spdlog::info("[WebRTC] DataChannel '{}' attached (origin={})", channel->label(), origin);
+        std::weak_ptr<Impl> weakSelf = weak_from_this();
+        std::weak_ptr<TransportState> weakTarget = target;
         std::weak_ptr<rtc::DataChannel> weakChannel = channel;
+        const uint64_t generation = target->generation;
 
-        channel->onOpen([this, weakChannel]() {
+        channel->onOpen([weakSelf, weakTarget, weakChannel, generation]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
             auto opened = weakChannel.lock();
-            if (!opened) {
-                return;
-            }
+            if (!self || !state || !opened || !self->isCurrentTransport(state)) return;
             {
-                std::lock_guard<std::mutex> lock(dataChannelMutex);
-                if (sendChannel != opened) {
-                    return;
-                }
-                dataChannelOpen.store(true);
+                std::lock_guard<std::mutex> lock(state->dataChannelMutex);
+                if (state->sendChannel != opened || !self->isCurrentTransport(state)) return;
+                state->dataChannelOpen.store(true, std::memory_order_release);
             }
             spdlog::info("[WebRTC] DataChannel open: {}", opened->label());
-            if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
-                dataChannelStateCallback(true);
-            }
+            self->invokeCallback(generation, &Impl::dataChannelStateCallback, true, generation);
         });
 
-        channel->onClosed([this, weakChannel]() {
+        channel->onClosed([weakSelf, weakTarget, weakChannel, generation]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
             auto closed = weakChannel.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            bool closedCurrentChannel = false;
             {
-                std::lock_guard<std::mutex> lock(dataChannelMutex);
-                if (!closed || sendChannel == closed) {
-                    dataChannelOpen.store(false);
+                std::lock_guard<std::mutex> lock(state->dataChannelMutex);
+                if (closed && state->sendChannel == closed) {
+                    state->dataChannelOpen.store(false, std::memory_order_release);
+                    closedCurrentChannel = true;
                 }
             }
-            if (closed) {
-                spdlog::info("[WebRTC] DataChannel closed: {}", closed->label());
-            } else {
-                spdlog::info("[WebRTC] DataChannel closed");
-            }
-            if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
-                dataChannelStateCallback(false);
+            if (closed) spdlog::info("[WebRTC] DataChannel closed: {}", closed->label());
+            if (closedCurrentChannel) {
+                self->invokeCallback(generation, &Impl::dataChannelStateCallback, false, generation);
             }
         });
 
-        channel->onError([this](const std::string &error) {
-            spdlog::warn("[WebRTC] DataChannel error: {}", error);
+        channel->onError([weakSelf, weakTarget](const std::string &error) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (self && state && self->isCurrentTransport(state)) {
+                spdlog::warn("[WebRTC] DataChannel error: {}", error);
+            }
         });
 
-        channel->onMessage([this, weakChannel](rtc::message_variant data) {
+        channel->onMessage([weakSelf, weakTarget, weakChannel, generation](rtc::message_variant data) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
             auto inbound = weakChannel.lock();
-            if (!inbound) {
-                return;
-            }
-
+            if (!self || !state || !inbound || !self->isCurrentTransport(state)) return;
             {
-                std::lock_guard<std::mutex> lock(dataChannelMutex);
-                if (sendChannel != inbound) {
-                    return;
-                }
+                std::lock_guard<std::mutex> lock(state->dataChannelMutex);
+                if (state->sendChannel != inbound || !self->isCurrentTransport(state)) return;
             }
-
-            if (suppressCallbacks.load(std::memory_order_relaxed) || !dataMessageCallback) {
-                return;
-            }
-
             if (std::holds_alternative<std::string>(data)) {
-                dataMessageCallback(std::get<std::string>(data));
+                self->invokeCallback(generation,
+                                     &Impl::dataMessageCallback,
+                                     std::get<std::string>(data),
+                                     generation);
                 return;
             }
-
             const auto &binary = std::get<rtc::binary>(data);
-            if (!binary.empty()) {
-                std::string payload;
-                payload.reserve(binary.size());
-                for (rtc::byte byte : binary) {
-                    payload.push_back(static_cast<char>(std::to_integer<unsigned char>(byte)));
-                }
-                dataMessageCallback(payload);
+            if (binary.empty()) return;
+            std::string payload;
+            payload.reserve(binary.size());
+            for (rtc::byte byte : binary) {
+                payload.push_back(static_cast<char>(std::to_integer<unsigned char>(byte)));
             }
+            self->invokeCallback(generation, &Impl::dataMessageCallback, payload, generation);
         });
+
+        if (channel->isOpen()) target->dataChannelOpen.store(true, std::memory_order_release);
     }
 
-    void clearDataChannel(bool detachCallbacks = false) {
-        std::shared_ptr<rtc::DataChannel> oldChannel;
+    bool ensureVideoTrack(const std::shared_ptr<TransportState> &target) {
+        if (!target || !target->pc || !isCurrentOrUnpublished(target)) return false;
+        PeerConfig::VideoCodec codec;
         {
-            std::lock_guard<std::mutex> lock(dataChannelMutex);
-            oldChannel = std::move(sendChannel);
-            dataChannelOpen.store(false);
+            std::lock_guard<std::mutex> lock(target->videoSendMutex);
+            if (target->videoTrack) return true;
+            codec = target->videoCodec;
         }
-
-        if (oldChannel) {
-            if (detachCallbacks) {
-                oldChannel->resetCallbacks();
-            }
-            oldChannel->close();
-        }
-        if (!suppressCallbacks.load(std::memory_order_relaxed) && dataChannelStateCallback) {
-            dataChannelStateCallback(false);
-        }
-    }
-
-    bool ensureVideoTrack() {
-        if (!pc) {
-            return false;
-        }
-        if (videoTrack) {
-            return true;
-        }
-
-        spdlog::info("[WebRTC] Adding video track after control-plane bootstrap");
 
         rtc::Description::Video video("video", rtc::Description::Direction::SendOnly);
-        switch (videoCodec) {
+        switch (codec) {
             case PeerConfig::VideoCodec::H265:
-                spdlog::info("[WebRTC] Configuring video codec: H265");
                 video.addH265Codec(kVideoPayloadType);
                 break;
             case PeerConfig::VideoCodec::AV1:
-                spdlog::info("[WebRTC] Configuring video codec: AV1");
                 video.addAV1Codec(kVideoPayloadType);
                 break;
             case PeerConfig::VideoCodec::VP9:
-                spdlog::info("[WebRTC] Configuring video codec: VP9 (primary, PT={})", kVideoPayloadType);
                 video.addVP9Codec(kVideoPayloadType);
                 break;
             case PeerConfig::VideoCodec::H264:
-            default:
-                // Choose H.264 level based on configured publish target to avoid advertising 3.1 for 1080p60.
+            default: {
                 const std::string levelId = selectH264ProfileLevelId(
-                    configuredVideoWidth,
-                    configuredVideoHeight,
-                    configuredVideoFps);
-                const std::string fmtp =
-                    "profile-level-id=" + levelId + ";packetization-mode=1;level-asymmetry-allowed=1";
-                video.addH264Codec(kVideoPayloadType, fmtp);
-                spdlog::info("[WebRTC] Configuring video codec: H264 ({}x{}@{} fmtp={})",
-                             configuredVideoWidth,
-                             configuredVideoHeight,
-                             configuredVideoFps,
-                             fmtp);
+                    target->videoWidth, target->videoHeight, target->videoFps);
+                video.addH264Codec(kVideoPayloadType,
+                    "profile-level-id=" + levelId + ";packetization-mode=1;level-asymmetry-allowed=1");
                 break;
+            }
         }
-        video.addSSRC(videoSsrc, "gamecapture-video");
-        videoTrack = pc->addTrack(video);
-        if (!videoTrack) {
-            spdlog::error("[WebRTC] Failed to add video track");
-            return false;
-        }
+        video.addSSRC(target->videoSsrc, "gamecapture-video");
+        auto track = target->pc->addTrack(video);
+        if (!track) return false;
 
-        videoTrack->onOpen([this]() {
-            spdlog::info("[WebRTC] Video track opened");
-            videoTrackOpen.store(true);
-            trackOpenedTime = std::chrono::steady_clock::now();
+        std::weak_ptr<Impl> weakSelf = weak_from_this();
+        std::weak_ptr<TransportState> weakTarget = target;
+        const uint64_t generation = target->generation;
+        track->onOpen([weakSelf, weakTarget]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            state->videoTrackOpen.store(true, std::memory_order_release);
         });
-        videoTrack->onClosed([this]() {
-            spdlog::info("[WebRTC] Video track closed");
-            videoTrackOpen.store(false);
+        track->onClosed([weakSelf, weakTarget]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            state->videoTrackOpen.store(false, std::memory_order_release);
         });
 
-        videoRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(videoSsrc, "gamecapture-video", kVideoPayloadType, kVideoClockRate);
-        switch (videoCodec) {
+        auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
+            target->videoSsrc, "gamecapture-video", kVideoPayloadType, kVideoClockRate);
+        std::shared_ptr<rtc::RtpPacketizer> packetizer;
+        switch (codec) {
             case PeerConfig::VideoCodec::H265:
-                videoPacketizer =
-                    std::make_shared<rtc::H265RtpPacketizer>(rtc::NalUnit::Separator::StartSequence, videoRtpConfig);
+                packetizer = std::make_shared<rtc::H265RtpPacketizer>(
+                    rtc::NalUnit::Separator::StartSequence, rtpConfig);
                 break;
             case PeerConfig::VideoCodec::AV1:
-                videoPacketizer = std::make_shared<rtc::AV1RtpPacketizer>(
-                    rtc::AV1RtpPacketizer::Packetization::TemporalUnit, videoRtpConfig);
+                packetizer = std::make_shared<rtc::AV1RtpPacketizer>(
+                    rtc::AV1RtpPacketizer::Packetization::TemporalUnit, rtpConfig);
                 break;
             case PeerConfig::VideoCodec::VP9:
-                videoPacketizer.reset();
                 break;
             case PeerConfig::VideoCodec::H264:
             default:
-                videoPacketizer =
-                    std::make_shared<rtc::H264RtpPacketizer>(rtc::NalUnit::Separator::StartSequence, videoRtpConfig);
+                packetizer = std::make_shared<rtc::H264RtpPacketizer>(
+                    rtc::NalUnit::Separator::StartSequence, rtpConfig);
                 break;
         }
-        if (videoCodec == PeerConfig::VideoCodec::VP9) {
-            spdlog::info("[WebRTC] Using explicit RTP packetization for VP9 primary video");
-        } else {
-            auto videoReporter = std::make_shared<rtc::RtcpSrReporter>(videoRtpConfig);
-            auto videoNack = std::make_shared<rtc::RtcpNackResponder>();
-            auto videoPli = std::make_shared<rtc::PliHandler>([this]() {
-                spdlog::info("[WebRTC] Received PLI/FIR - keyframe requested by receiver");
-                if (!suppressCallbacks.load(std::memory_order_relaxed) && keyframeCallback) {
-                    keyframeCallback();
-                }
+        if (packetizer) {
+            auto reporter = std::make_shared<rtc::RtcpSrReporter>(rtpConfig);
+            auto nack = std::make_shared<rtc::RtcpNackResponder>();
+            auto pli = std::make_shared<rtc::PliHandler>([weakSelf, weakTarget, generation]() {
+                auto self = weakSelf.lock();
+                auto state = weakTarget.lock();
+                if (!self || !state || !self->isCurrentTransport(state)) return;
+                self->invokeCallback(generation, &Impl::keyframeCallback, generation);
             });
-            videoPacketizer->addToChain(videoReporter);
-            videoPacketizer->addToChain(videoNack);
-            videoPacketizer->addToChain(videoPli);
-            videoTrack->setMediaHandler(videoPacketizer);
+            packetizer->addToChain(reporter);
+            packetizer->addToChain(nack);
+            packetizer->addToChain(pli);
+            track->setMediaHandler(packetizer);
         }
-        if (videoTrack->isOpen()) {
-            videoTrackOpen.store(true);
-            trackOpenedTime = std::chrono::steady_clock::now();
-            spdlog::info("[WebRTC] Video track already open after addTrack");
+        const bool open = track->isOpen();
+        {
+            std::lock_guard<std::mutex> lock(target->videoSendMutex);
+            target->videoTrack = std::move(track);
+            target->videoRtpConfig = std::move(rtpConfig);
+            target->videoPacketizer = std::move(packetizer);
         }
+        target->hasVideoSection = true;
+        target->videoTrackOpen.store(open, std::memory_order_release);
         return true;
     }
 
-    // Alpha must remain the second video section. The OBS VDO.Ninja plugin recognizes either
-    // that video-section ordering or the explicit "video-alpha" MID; audio/data m-lines may
-    // already exist when a capable receiver requests alpha during renegotiation.
-    bool ensureAlphaVideoTrack() {
-        if (!pc || !enableAlphaTrack) {
-            return false;
-        }
-        if (alphaVideoTrack) {
-            return true;
+    bool ensureAlphaVideoTrack(const std::shared_ptr<TransportState> &target) {
+        if (!target || !target->pc || !isCurrentOrUnpublished(target)) return false;
+        {
+            std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
+            if (!target->alphaTrackEnabled) return false;
+            if (target->alphaVideoTrack) return true;
         }
 
-        spdlog::info("[WebRTC] Adding VP9 alpha video track (PT={})", kAlphaVideoPayloadType);
         rtc::Description::Video alpha("video-alpha", rtc::Description::Direction::SendOnly);
         alpha.addVP9Codec(kAlphaVideoPayloadType);
-        alpha.addSSRC(alphaVideoSsrc, "gamecapture-alpha");
-        alphaVideoTrack = pc->addTrack(alpha);
-        if (!alphaVideoTrack) {
-            spdlog::error("[WebRTC] Failed to add VP9 alpha video track");
-            return false;
-        }
+        alpha.addSSRC(target->alphaVideoSsrc, "gamecapture-alpha");
+        auto track = target->pc->addTrack(alpha);
+        if (!track) return false;
 
-        alphaVideoTrack->onOpen([this]() {
-            spdlog::info("[WebRTC] Alpha video track opened");
-            alphaVideoTrackOpen.store(true);
+        std::weak_ptr<Impl> weakSelf = weak_from_this();
+        std::weak_ptr<TransportState> weakTarget = target;
+        track->onOpen([weakSelf, weakTarget]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            state->alphaVideoTrackOpen.store(true, std::memory_order_release);
         });
-        alphaVideoTrack->onClosed([this]() {
-            spdlog::info("[WebRTC] Alpha video track closed");
-            alphaVideoTrackOpen.store(false);
+        track->onClosed([weakSelf, weakTarget]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            state->alphaVideoTrackOpen.store(false, std::memory_order_release);
         });
-
-        alphaVideoRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
-            alphaVideoSsrc, "gamecapture-alpha", kAlphaVideoPayloadType, kVideoClockRate);
-        alphaVideoPacketizer.reset();
-        spdlog::info("[WebRTC] Using explicit RTP packetization for VP9 alpha video");
-
-        if (alphaVideoTrack->isOpen()) {
-            alphaVideoTrackOpen.store(true);
-            spdlog::info("[WebRTC] Alpha video track already open after addTrack");
+        auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
+            target->alphaVideoSsrc, "gamecapture-alpha", kAlphaVideoPayloadType, kVideoClockRate);
+        const bool open = track->isOpen();
+        {
+            std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
+            target->alphaVideoTrack = std::move(track);
+            target->alphaVideoRtpConfig = std::move(rtpConfig);
+            target->alphaVideoPacketizer.reset();
         }
+        target->hasAlphaSection = true;
+        target->alphaVideoTrackOpen.store(open, std::memory_order_release);
         return true;
     }
 
-    bool ensureAudioTrack() {
-        if (!pc) {
-            return false;
-        }
-        if (audioTrack) {
-            return true;
+    bool ensureAudioTrack(const std::shared_ptr<TransportState> &target) {
+        if (!target || !target->pc || !isCurrentOrUnpublished(target)) return false;
+        {
+            std::lock_guard<std::mutex> lock(target->audioSendMutex);
+            if (target->audioTrack) return true;
         }
 
-        spdlog::info("[WebRTC] Adding audio track after control-plane bootstrap");
         rtc::Description::Audio audio("audio", rtc::Description::Direction::SendOnly);
         audio.addOpusCodec(kAudioPayloadType);
-        audio.addSSRC(audioSsrc, "gamecapture-audio");
-        audioTrack = pc->addTrack(audio);
-        if (!audioTrack) {
-            spdlog::error("[WebRTC] Failed to add audio track");
+        audio.addSSRC(target->audioSsrc, "gamecapture-audio");
+        auto track = target->pc->addTrack(audio);
+        if (!track) return false;
+
+        std::weak_ptr<Impl> weakSelf = weak_from_this();
+        std::weak_ptr<TransportState> weakTarget = target;
+        track->onOpen([weakSelf, weakTarget]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            state->audioTrackOpen.store(true, std::memory_order_release);
+        });
+        track->onClosed([weakSelf, weakTarget]() {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            state->audioTrackOpen.store(false, std::memory_order_release);
+        });
+        auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
+            target->audioSsrc, "gamecapture-audio", kAudioPayloadType, kAudioClockRate);
+        auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(rtpConfig);
+        packetizer->addToChain(std::make_shared<rtc::RtcpSrReporter>(rtpConfig));
+        packetizer->addToChain(std::make_shared<rtc::RtcpNackResponder>());
+        track->setMediaHandler(packetizer);
+        const bool open = track->isOpen();
+        {
+            std::lock_guard<std::mutex> lock(target->audioSendMutex);
+            target->audioTrack = std::move(track);
+            target->audioRtpConfig = std::move(rtpConfig);
+            target->audioPacketizer = std::move(packetizer);
+        }
+        target->hasAudioSection = true;
+        target->audioTrackOpen.store(open, std::memory_order_release);
+        return true;
+    }
+
+    bool setupBootstrapTransport(const std::shared_ptr<TransportState> &target) {
+        if (!target || !target->pc || !isCurrentOrUnpublished(target)) return false;
+        auto channel = target->pc->createDataChannel("sendChannel");
+        if (!channel) return false;
+        bindDataChannel(target, channel, "local");
+        return true;
+    }
+
+    bool isCurrentOrUnpublished(const std::shared_ptr<TransportState> &candidate) const {
+        if (!candidate) return false;
+        return !candidate->published.load(std::memory_order_acquire) || isCurrentTransport(candidate);
+    }
+
+    static std::pair<ConnectionState, const char *> mapConnectionState(
+        rtc::PeerConnection::State value) {
+        switch (value) {
+            case rtc::PeerConnection::State::Connecting:
+                return {ConnectionState::Connecting, "connecting"};
+            case rtc::PeerConnection::State::Connected:
+                return {ConnectionState::Connected, "connected"};
+            case rtc::PeerConnection::State::Failed:
+                return {ConnectionState::Failed, "failed"};
+            case rtc::PeerConnection::State::Closed:
+                return {ConnectionState::Closed, "closed"};
+            case rtc::PeerConnection::State::New:
+            case rtc::PeerConnection::State::Disconnected:
+            default:
+                return {ConnectionState::Disconnected, "disconnected"};
+        }
+    }
+
+    bool beginLocalCandidateGathering(const std::shared_ptr<TransportState> &target,
+                                      uint64_t localCandidateContext) {
+        if (!target || !target->pc) return false;
+        const rtc::PeerConnection::GatheringState gatheringState =
+            target->pc->gatheringState();
+        if (gatheringState ==
+            rtc::PeerConnection::GatheringState::InProgress) {
+            // Rotating an offer context while the prior gather is still live
+            // would attribute its later candidates to the new offer. Refuse
+            // that transition and retain sticky diagnostics for the artifact
+            // workflow instead of emitting candidates under the wrong owner.
+            target->overlappingCandidateGatheringDetected.store(
+                true, std::memory_order_release);
+            target->localCandidateActivitySequence.fetch_add(
+                1, std::memory_order_acq_rel);
             return false;
         }
 
-        audioTrack->onOpen([this]() {
-            spdlog::info("[WebRTC] Audio track opened");
-            audioTrackOpen.store(true);
-        });
-        audioTrack->onClosed([this]() {
-            spdlog::info("[WebRTC] Audio track closed");
-            audioTrackOpen.store(false);
-        });
-
-        audioRtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(audioSsrc, "gamecapture-audio", kAudioPayloadType, kAudioClockRate);
-        audioPacketizer = std::make_shared<rtc::OpusRtpPacketizer>(audioRtpConfig);
-        auto audioReporter = std::make_shared<rtc::RtcpSrReporter>(audioRtpConfig);
-        auto audioNack = std::make_shared<rtc::RtcpNackResponder>();
-        audioPacketizer->addToChain(audioReporter);
-        audioPacketizer->addToChain(audioNack);
-        audioTrack->setMediaHandler(audioPacketizer);
-        if (audioTrack->isOpen()) {
-            audioTrackOpen.store(true);
-            spdlog::info("[WebRTC] Audio track already open after addTrack");
+        target->localCandidateContext.store(
+            localCandidateContext, std::memory_order_release);
+        target->localCandidateActivitySequence.fetch_add(
+            1, std::memory_order_acq_rel);
+        if (gatheringState == rtc::PeerConnection::GatheringState::New) {
+            target->localCandidatesAfterGatheringComplete.store(
+                0, std::memory_order_release);
+            target->localCandidateGatheringEpoch.fetch_add(
+                1, std::memory_order_acq_rel);
+            target->gatheringComplete.store(false, std::memory_order_release);
+        } else {
+            // libdatachannel gathers only while its state is New. A normal
+            // same-PC renegotiation in Complete state changes SDP/context but
+            // creates no second gathering-complete callback.
+            target->gatheringComplete.store(true, std::memory_order_release);
         }
         return true;
     }
 
-    void setupBootstrapTransport() {
-        clearDataChannel();
-        dataChannelOpen.store(false);
-        bindDataChannel(pc->createDataChannel("sendChannel"), "local");
+    void bindPeerCallbacks(const std::shared_ptr<TransportState> &target) {
+        std::weak_ptr<Impl> weakSelf = weak_from_this();
+        std::weak_ptr<TransportState> weakTarget = target;
+        const uint64_t generation = target->generation;
+        const IceMode mode = target->mode;
+
+        target->pc->onStateChange([weakSelf, weakTarget, generation](rtc::PeerConnection::State rawState) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            const auto [mapped, name] = mapConnectionState(rawState);
+            spdlog::info("[WebRTC] PeerConnection state: {}", name);
+            self->invokeBeforeStateCommitTestHook(generation);
+            if (!self->publishConnectionState(state, mapped)) return;
+            self->invokeCallback(generation, &Impl::stateCallback, mapped, generation);
+        });
+
+        target->pc->onLocalCandidate([weakSelf, weakTarget, generation, mode](rtc::Candidate candidate) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+
+            // Capture the local-description owner before callback admission.
+            // Do not take callbackDispatchMutex here: reset must be able to
+            // retire a callback parked before CallbackLease admission. The
+            // lease below supplies dispatch ordering, and its generation check
+            // drops that callback after a transport replacement.
+            const uint64_t localCandidateContext =
+                state->localCandidateContext.load(std::memory_order_acquire);
+
+            const bool arrivedAfterComplete =
+                state->gatheringComplete.load(std::memory_order_acquire);
+            if (arrivedAfterComplete) {
+                state->localCandidatesAfterGatheringComplete.fetch_add(
+                    1, std::memory_order_relaxed);
+            }
+            state->localCandidateCallbacksInFlight.fetch_add(
+                1, std::memory_order_acq_rel);
+            state->localCandidateActivitySequence.fetch_add(
+                1, std::memory_order_acq_rel);
+            const auto finishActivity = [&state](void *) {
+                state->localCandidateActivitySequence.fetch_add(
+                    1, std::memory_order_acq_rel);
+                state->localCandidateCallbacksInFlight.fetch_sub(
+                    1, std::memory_order_acq_rel);
+            };
+            const std::unique_ptr<void, decltype(finishActivity)> activityLease(
+                state.get(), finishActivity);
+
+            // A candidate delivered after libdatachannel declared gathering
+            // complete cannot be assigned safely to a later same-PC offer.
+            // Preserve terminal state, count the violation, and fail closed.
+            if (arrivedAfterComplete) return;
+
+            if (!candidateAllowedForMode(candidate.candidate(), mode)) return;
+            self->invokeCallback(generation,
+                                 &Impl::iceCallback,
+                                 candidate.candidate(),
+                                 candidate.mid(),
+                                 0,
+                                 generation,
+                                 localCandidateContext);
+        });
+
+        target->pc->onLocalDescription([weakSelf, weakTarget](rtc::Description description) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            std::lock_guard<std::mutex> lock(state->descriptionMutex);
+            if (!self->isCurrentTransport(state)) return;
+            state->localDescription = std::string(description);
+        });
+
+        target->pc->onGatheringStateChange([weakSelf, weakTarget](
+                                               rtc::PeerConnection::GatheringState gathering) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !self->isCurrentTransport(state)) return;
+            if (gathering == rtc::PeerConnection::GatheringState::Complete) {
+                std::lock_guard<std::recursive_mutex> callbackDispatchLock(
+                    self->callbackDispatchMutex);
+                if (!self->isCurrentTransport(state)) return;
+                state->localCandidateActivitySequence.fetch_add(
+                    1, std::memory_order_acq_rel);
+                state->gatheringComplete.store(true, std::memory_order_release);
+            }
+        });
+
+        target->pc->onDataChannel([weakSelf, weakTarget](std::shared_ptr<rtc::DataChannel> channel) {
+            auto self = weakSelf.lock();
+            auto state = weakTarget.lock();
+            if (!self || !state || !channel || !self->isCurrentTransport(state)) return;
+            self->bindDataChannel(state, channel, "remote");
+        });
+    }
+
+    std::shared_ptr<TransportState> buildTransport(const rtc::Configuration &rtcConfig,
+                                                   IceMode mode,
+                                                   bool initialVideo,
+                                                   bool initialAudio,
+                                                   bool initialAlpha) {
+        auto target = std::make_shared<TransportState>();
+        const auto hooks = std::atomic_load_explicit(&testHooks, std::memory_order_acquire);
+        storeTestHooks(target->testHooks, target->testHooksEnabled, hooks);
+        target->generation = nextGeneration.fetch_add(1, std::memory_order_acq_rel) + 1;
+        target->mode = mode;
+        target->videoCodec = configuredVideoCodec;
+        target->dataChannelEnabled = enableDataChannel;
+        target->videoWidth = configuredVideoWidth;
+        target->videoHeight = configuredVideoHeight;
+        target->videoFps = configuredVideoFps;
+
+        const bool buildVideo = initialVideo || videoSectionNegotiated;
+        const bool buildAudio = initialAudio || audioSectionNegotiated;
+        const bool buildAlpha = initialAlpha || alphaSectionNegotiated;
+        target->alphaTrackEnabled = enableAlphaTrack || buildAlpha;
+
+        try {
+            target->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
+            bindPeerCallbacks(target);
+            // libdatachannel emits tracks in insertion order and application
+            // last. This order is therefore an invariant across generations.
+            if (buildVideo && !ensureVideoTrack(target)) return {};
+            if (buildAudio && !ensureAudioTrack(target)) return {};
+            if (buildVideo && buildAlpha && !ensureAlphaVideoTrack(target)) return {};
+            if (target->dataChannelEnabled && !setupBootstrapTransport(target)) return {};
+            return target;
+        } catch (const std::exception &e) {
+            spdlog::warn("[WebRTC] Failed to build transport generation {}: {}",
+                         target->generation,
+                         e.what());
+        } catch (...) {
+            spdlog::warn("[WebRTC] Failed to build transport generation {}", target->generation);
+        }
+        return {};
     }
 };
 
-WebRtcClient::WebRtcClient() : impl_(std::make_unique<Impl>()) {}
+WebRtcClient::WebRtcClient() : impl_(std::make_shared<Impl>()) {}
 WebRtcClient::~WebRtcClient() { shutdown(); }
 
 bool WebRtcClient::initialize(const PeerConfig &config) {
-    impl_->videoCodec = config.videoCodec;
-    impl_->enableAlphaTrack = config.enableAlphaTrack;
-    impl_->enableDataChannel = config.enableDataChannel;
-    impl_->configuredVideoWidth = std::max(1, config.videoWidth);
-    impl_->configuredVideoHeight = std::max(1, config.videoHeight);
-    impl_->configuredVideoFps = std::max(1, config.videoFps);
-    impl_->iceMode = config.iceMode;
+    const IceConfigBindingValidation iceBinding = validateIceConfigBinding(
+        config.iceMode,
+        config.iceServers,
+        config.turnRegistry);
+    if (!iceBinding.accepted) {
+        spdlog::warn(
+            "[WebRTC] Rejected ICE configuration mode={} ice_server_count={} turn_server_count={} reason={}",
+            iceModeName(config.iceMode),
+            iceBinding.iceServerCount,
+            iceBinding.turnServerCount,
+            iceBinding.failureReason);
+        return false;
+    }
 
     rtc::Configuration rtcConfig;
-    for (const auto &ice : config.iceServers) {
-        rtc::IceServer server(ice.url);
-        if (!ice.username.empty()) {
-            server.username = ice.username;
-        }
-        if (!ice.credential.empty()) {
-            server.password = ice.credential;
-        }
-        rtcConfig.iceServers.emplace_back(std::move(server));
+    try {
+        rtcConfig = Impl::makeRtcConfiguration(config.iceServers, config.iceMode);
+    } catch (const std::exception &error) {
+        spdlog::warn("[WebRTC] Rejected ICE configuration mode={} reason=rtc-config-error detail={}",
+                     iceModeName(config.iceMode),
+                     error.what());
+        return false;
+    } catch (...) {
+        spdlog::warn("[WebRTC] Rejected ICE configuration mode={} reason=rtc-config-error",
+                     iceModeName(config.iceMode));
+        return false;
     }
-    if (config.iceMode == IceMode::Relay) {
-        rtcConfig.iceTransportPolicy = rtc::TransportPolicy::Relay;
+    {
+        std::lock_guard<std::mutex> lock(impl_->configMutex);
+        impl_->iceMode = config.iceMode;
+        impl_->config = rtcConfig;
     }
-    // libdatachannel skips SRTP transport setup for datachannel-only sessions
-    // unless this is forced up front, which breaks late addTrack renegotiation.
-    rtcConfig.forceMediaTransport = true;
-    impl_->config = rtcConfig;
-    impl_->suppressCallbacks.store(false, std::memory_order_relaxed);
-    impl_->resetRemoteCandidateState();
 
-    impl_->pc = std::make_shared<rtc::PeerConnection>(rtcConfig);
-    impl_->resetMediaState();
-
-    impl_->pc->onStateChange([this](rtc::PeerConnection::State state) {
-        const char* stateStr = "unknown";
-        ConnectionState mapped = ConnectionState::Disconnected;
-        if (state == rtc::PeerConnection::State::Connecting) {
-            mapped = ConnectionState::Connecting;
-            stateStr = "connecting";
-        } else if (state == rtc::PeerConnection::State::Connected) {
-            mapped = ConnectionState::Connected;
-            stateStr = "connected";
-        } else if (state == rtc::PeerConnection::State::Failed) {
-            mapped = ConnectionState::Failed;
-            stateStr = "failed";
-        } else if (state == rtc::PeerConnection::State::Closed) {
-            mapped = ConnectionState::Closed;
-            stateStr = "closed";
-        } else if (state == rtc::PeerConnection::State::Disconnected) {
-            stateStr = "disconnected";
-        } else if (state == rtc::PeerConnection::State::New) {
-            stateStr = "new";
+    impl_->suppressCallbacksAndWait();
+    std::shared_ptr<Impl::TransportState> replacement;
+    std::shared_ptr<Impl::TransportState> retired;
+    {
+        std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+        impl_->shutdownRequested = false;
+        impl_->configuredVideoCodec = config.videoCodec;
+        impl_->enableAlphaTrack = config.enableAlphaTrack;
+        impl_->enableDataChannel = config.enableDataChannel;
+        impl_->videoSectionNegotiated = false;
+        impl_->audioSectionNegotiated = false;
+        impl_->alphaSectionNegotiated = false;
+        impl_->configuredVideoWidth = std::max(1, config.videoWidth);
+        impl_->configuredVideoHeight = std::max(1, config.videoHeight);
+        impl_->configuredVideoFps = std::max(1, config.videoFps);
+        replacement = impl_->buildTransport(
+            rtcConfig, config.iceMode, config.initialVideo, config.initialAudio, config.initialAlpha);
+        if (replacement) {
+            impl_->videoSectionNegotiated = replacement->hasVideoSection;
+            impl_->audioSectionNegotiated = replacement->hasAudioSection;
+            impl_->alphaSectionNegotiated = replacement->hasAlphaSection;
         }
-        spdlog::info("[WebRTC] PeerConnection state: {}", stateStr);
-        impl_->state.store(mapped);
-        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->stateCallback) {
-            impl_->stateCallback(mapped);
-        }
-    });
-
-    impl_->pc->onLocalCandidate([this](rtc::Candidate candidate) {
-        if (!candidateAllowedForMode(candidate.candidate(), impl_->iceMode)) {
-            spdlog::info("[WebRTC] Dropping local ICE candidate due to mode={}: {}",
-                         iceModeName(impl_->iceMode),
-                         candidate.candidate());
-            return;
-        }
-        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->iceCallback) {
-            impl_->iceCallback(candidate.candidate(), candidate.mid(), 0);
-        }
-    });
-
-    impl_->pc->onLocalDescription([this](rtc::Description desc) {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        impl_->localDescription = std::string(desc);
-        spdlog::debug("[WebRTC] Local description set");
-    });
-
-    impl_->pc->onGatheringStateChange([this](rtc::PeerConnection::GatheringState state) {
-        const char* stateStr = "unknown";
-        if (state == rtc::PeerConnection::GatheringState::New) stateStr = "new";
-        else if (state == rtc::PeerConnection::GatheringState::InProgress) stateStr = "in_progress";
-        else if (state == rtc::PeerConnection::GatheringState::Complete) stateStr = "complete";
-        spdlog::info("[WebRTC] ICE gathering state: {}", stateStr);
-        if (state == rtc::PeerConnection::GatheringState::Complete) {
-            impl_->gatheringComplete.store(true);
-        }
-    });
-
-    impl_->pc->onDataChannel([this](std::shared_ptr<rtc::DataChannel> channel) {
-        if (!channel) {
-            return;
-        }
-        impl_->bindDataChannel(channel, "remote");
-    });
-
-    if (impl_->enableDataChannel) {
-        if (config.initialVideo && !impl_->ensureVideoTrack()) {
-            return false;
-        }
-        if (config.initialVideo && config.initialAlpha && impl_->enableAlphaTrack && !impl_->ensureAlphaVideoTrack()) {
-            return false;
-        }
-        if (config.initialAudio && !impl_->ensureAudioTrack()) {
-            return false;
-        }
-        impl_->setupBootstrapTransport();
-    } else {
-        impl_->resetMediaState();
-        impl_->dataChannelOpen.store(false);
-        impl_->clearDataChannel();
+        retired = impl_->swapTransport(
+            replacement,
+            ConnectionState::Disconnected);
     }
-    return true;
+    retired.reset();
+    if (replacement) {
+        impl_->resumeCallbacks();
+        spdlog::info(
+            "{}",
+            consumedIceConfigDiagnostic(config.iceMode, iceBinding, config.turnRegistry));
+    }
+    return static_cast<bool>(replacement);
 }
 
 void WebRtcClient::shutdown() {
-    impl_->suppressCallbacks.store(true, std::memory_order_relaxed);
-    impl_->clearDataChannel();
-    if (impl_->pc) {
-        impl_->pc->close();
-        impl_->pc.reset();
+    impl_->suppressCallbacksAndWait();
+    std::shared_ptr<Impl::TransportState> retired;
+    {
+        std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+        impl_->shutdownRequested = true;
+        retired = impl_->swapTransport({}, ConnectionState::Closed);
     }
-    impl_->resetMediaState();
-    impl_->resetRemoteCandidateState();
+    // A send or callback that already captured this generation keeps it alive;
+    // the final holder closes it after returning from libdatachannel.
+    retired.reset();
 }
 
 bool WebRtcClient::resetPeerConnection(bool initialVideo, bool initialAudio, bool initialAlpha) {
-    spdlog::info("[WebRTC] Resetting PeerConnection");
-    const bool previousSuppress = impl_->suppressCallbacks.exchange(true, std::memory_order_relaxed);
-
-    // Close old connection
-    impl_->clearDataChannel(true);
-    if (impl_->pc) {
-        impl_->pc->resetCallbacks();
-        impl_->pc->close();
-        impl_->pc.reset();
-    }
-    impl_->resetMediaState();
-    impl_->resetRemoteCandidateState();
-    impl_->gatheringComplete.store(false);
+    // User callbacks may call reset recursively. A reset from another thread
+    // waits for an already-admitted callback to finish, while a callback still
+    // parked before admission observes the replacement generation and drops.
+    // This removes the need for app callbacks to hold the peer operation mutex.
+    std::lock_guard<std::recursive_mutex> callbackDispatchLock(
+        impl_->callbackDispatchMutex);
+    rtc::Configuration rtcConfig;
+    IceMode mode = IceMode::All;
     {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        impl_->localDescription.clear();
+        std::lock_guard<std::mutex> lock(impl_->configMutex);
+        rtcConfig = impl_->config;
+        mode = impl_->iceMode;
     }
 
-    // Create fresh PeerConnection
-    impl_->pc = std::make_shared<rtc::PeerConnection>(impl_->config);
-    impl_->suppressCallbacks.store(previousSuppress, std::memory_order_relaxed);
-
-    impl_->pc->onStateChange([this](rtc::PeerConnection::State state) {
-        const char* stateStr = "unknown";
-        ConnectionState mapped = ConnectionState::Disconnected;
-        if (state == rtc::PeerConnection::State::Connecting) {
-            mapped = ConnectionState::Connecting;
-            stateStr = "connecting";
-        } else if (state == rtc::PeerConnection::State::Connected) {
-            mapped = ConnectionState::Connected;
-            stateStr = "connected";
-        } else if (state == rtc::PeerConnection::State::Failed) {
-            mapped = ConnectionState::Failed;
-            stateStr = "failed";
-        } else if (state == rtc::PeerConnection::State::Closed) {
-            mapped = ConnectionState::Closed;
-            stateStr = "closed";
-        } else if (state == rtc::PeerConnection::State::Disconnected) {
-            stateStr = "disconnected";
-        } else if (state == rtc::PeerConnection::State::New) {
-            stateStr = "new";
+    std::shared_ptr<Impl::TransportState> replacement;
+    std::shared_ptr<Impl::TransportState> retired;
+    {
+        std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+        if (impl_->shutdownRequested) return false;
+        replacement = impl_->buildTransport(rtcConfig, mode, initialVideo, initialAudio, initialAlpha);
+        if (replacement) {
+            impl_->videoSectionNegotiated =
+                impl_->videoSectionNegotiated || replacement->hasVideoSection;
+            impl_->audioSectionNegotiated =
+                impl_->audioSectionNegotiated || replacement->hasAudioSection;
+            impl_->alphaSectionNegotiated =
+                impl_->alphaSectionNegotiated || replacement->hasAlphaSection;
         }
-        spdlog::info("[WebRTC] PeerConnection state: {}", stateStr);
-        impl_->state.store(mapped);
-        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->stateCallback) {
-            impl_->stateCallback(mapped);
-        }
-    });
-
-    impl_->pc->onLocalCandidate([this](rtc::Candidate candidate) {
-        if (!candidateAllowedForMode(candidate.candidate(), impl_->iceMode)) {
-            spdlog::info("[WebRTC] Dropping local ICE candidate due to mode={}: {}",
-                         iceModeName(impl_->iceMode),
-                         candidate.candidate());
-            return;
-        }
-        if (!impl_->suppressCallbacks.load(std::memory_order_relaxed) && impl_->iceCallback) {
-            impl_->iceCallback(candidate.candidate(), candidate.mid(), 0);
-        }
-    });
-
-    impl_->pc->onLocalDescription([this](rtc::Description desc) {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        impl_->localDescription = std::string(desc);
-    });
-
-    impl_->pc->onGatheringStateChange([this](rtc::PeerConnection::GatheringState state) {
-        if (state == rtc::PeerConnection::GatheringState::Complete) {
-            impl_->gatheringComplete.store(true);
-        }
-    });
-
-    impl_->pc->onDataChannel([this](std::shared_ptr<rtc::DataChannel> channel) {
-        if (!channel) {
-            return;
-        }
-        impl_->bindDataChannel(channel, "remote");
-    });
-
-    if (impl_->enableDataChannel) {
-        if (initialVideo && !impl_->ensureVideoTrack()) {
-            return false;
-        }
-        if (initialVideo && initialAlpha && impl_->enableAlphaTrack && !impl_->ensureAlphaVideoTrack()) {
-            return false;
-        }
-        if (initialAudio && !impl_->ensureAudioTrack()) {
-            return false;
-        }
-        impl_->setupBootstrapTransport();
-    } else {
-        impl_->resetMediaState();
-        impl_->dataChannelOpen.store(false);
-        impl_->clearDataChannel();
+        retired = impl_->swapTransport(
+            replacement,
+            ConnectionState::Disconnected);
     }
-    spdlog::info("[WebRTC] PeerConnection reset complete");
-    return true;
+    retired.reset();
+    return static_cast<bool>(replacement);
 }
 
 void WebRtcClient::setVideoCodec(PeerConfig::VideoCodec codec, bool enableAlphaTrack) {
-    impl_->videoCodec = codec;
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    impl_->configuredVideoCodec = codec;
     impl_->enableAlphaTrack = enableAlphaTrack;
 }
 
-
 bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::string &type) {
-    if (!impl_->pc) {
-        return false;
-    }
-    // Log the received SDP for debugging
-    spdlog::info("[WebRTC] === SDP {} START ===", type);
-    spdlog::info("{}", sdp);
-    spdlog::info("[WebRTC] === SDP {} END ===", type);
-
-    rtc::Description::Type descType = rtc::Description::Type::Offer;
-    if (type == "answer") {
-        descType = rtc::Description::Type::Answer;
-    }
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc || !impl_->isCurrentTransport(target)) return false;
+    const auto descType = type == "answer"
+        ? rtc::Description::Type::Answer
+        : rtc::Description::Type::Offer;
     try {
-        impl_->pc->setRemoteDescription(rtc::Description(sdp, descType));
+        target->pc->setRemoteDescription(rtc::Description(sdp, descType));
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to set remote {} description: {}", type, e.what());
         return false;
@@ -806,329 +1167,496 @@ bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::strin
         spdlog::warn("[WebRTC] Failed to set remote {} description", type);
         return false;
     }
-    impl_->remoteDescriptionSet.store(true, std::memory_order_relaxed);
-    impl_->drainPendingRemoteCandidates();
+    if (!impl_->isCurrentTransport(target)) return false;
+    {
+        std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
+        target->remoteDescriptionSet = true;
+    }
+    impl_->drainPendingRemoteCandidates(target);
     return true;
 }
 
-std::string WebRtcClient::createOffer() {
-    if (!impl_->pc) {
+std::string WebRtcClient::createOffer(uint64_t localCandidateContext) {
+    std::lock_guard<std::recursive_mutex> callbackDispatchLock(
+        impl_->callbackDispatchMutex);
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc || !impl_->isCurrentTransport(target)) return {};
+    {
+        std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
+        target->pendingRemoteCandidates.clear();
+        target->remoteDescriptionSet = false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(target->descriptionMutex);
+        target->localDescription.clear();
+    }
+    if (!impl_->beginLocalCandidateGathering(
+            target, localCandidateContext)) {
+        spdlog::warn(
+            "[WebRTC] Refused local offer while ICE gathering is still in progress");
         return {};
     }
-    impl_->resetRemoteCandidateState();
-    {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        impl_->localDescription.clear();
+    try {
+        target->pc->setLocalDescription(rtc::Description::Type::Offer);
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to create local offer: {}", e.what());
+        return {};
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to create local offer");
+        return {};
     }
-    impl_->gatheringComplete.store(false);
 
-    spdlog::info("[WebRTC] Creating offer with trickle ICE enabled...");
-    impl_->pc->setLocalDescription(rtc::Description::Type::Offer);
-
-    auto hasFreshLocalDescription = [this]() {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        return !impl_->localDescription.empty();
-    };
-
-    // Wait only for the initial local description so we can send the SDP promptly and trickle candidates.
-    auto start = std::chrono::steady_clock::now();
-    while (!hasFreshLocalDescription()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(2)) {
-            spdlog::warn("[WebRTC] Timed out waiting for initial local description; proceeding with current SDP state");
-            break;
+    const auto started = std::chrono::steady_clock::now();
+    for (;;) {
+        {
+            std::lock_guard<std::mutex> lock(target->descriptionMutex);
+            if (!target->localDescription.empty()) break;
         }
+        if (!impl_->isCurrentTransport(target)) return {};
+        if (std::chrono::steady_clock::now() - started > std::chrono::seconds(2)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    if (!impl_->isCurrentTransport(target)) return {};
 
-    // Return whatever SDP is currently available; remaining ICE candidates will trickle separately.
     std::string sdp;
     {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        sdp = impl_->localDescription;
+        std::lock_guard<std::mutex> lock(target->descriptionMutex);
+        sdp = target->localDescription;
     }
     if (sdp.empty()) {
-        auto desc = impl_->pc->localDescription();
-        if (desc) {
-            sdp = std::string(*desc);
-        }
+        auto description = target->pc->localDescription();
+        if (description) sdp = std::string(*description);
     }
-
-    if (!sdp.empty()) {
-        sdp = filterSessionDescriptionForMode(sdp, impl_->iceMode);
-        spdlog::info("[WebRTC] Offer created with {} bytes, gathering complete={}",
-                     sdp.size(), impl_->gatheringComplete.load());
-        // Log full SDP for debugging
-        spdlog::info("[WebRTC] === SDP OFFER START ===");
-        spdlog::info("{}", sdp);
-        spdlog::info("[WebRTC] === SDP OFFER END ===");
-        return sdp;
-    }
-
-    std::lock_guard<std::mutex> lock(impl_->descMutex);
-    if (!impl_->localDescription.empty()) {
-        return filterSessionDescriptionForMode(impl_->localDescription, impl_->iceMode);
-    }
-    return impl_->localDescription;
+    return sdp.empty() ? std::string{} : filterSessionDescriptionForMode(sdp, target->mode);
 }
 
 std::string WebRtcClient::createAnswer(const std::string &offer) {
-    if (!impl_->pc) {
-        return {};
-    }
+    std::lock_guard<std::recursive_mutex> callbackDispatchLock(
+        impl_->callbackDispatchMutex);
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc || !impl_->isCurrentTransport(target)) return {};
     {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        impl_->localDescription.clear();
+        std::lock_guard<std::mutex> lock(target->descriptionMutex);
+        target->localDescription.clear();
     }
     try {
-        impl_->pc->setRemoteDescription(rtc::Description(offer, rtc::Description::Type::Offer));
+        target->pc->setRemoteDescription(rtc::Description(offer, rtc::Description::Type::Offer));
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to set remote offer description: {}", e.what());
         return {};
     } catch (...) {
-        spdlog::warn("[WebRTC] Failed to set remote offer description");
         return {};
     }
-    impl_->remoteDescriptionSet.store(true, std::memory_order_relaxed);
-    impl_->drainPendingRemoteCandidates();
-    impl_->pc->setLocalDescription(rtc::Description::Type::Answer);
-
-    auto hasFreshLocalDescription = [this]() {
-        std::lock_guard<std::mutex> lock(impl_->descMutex);
-        return !impl_->localDescription.empty();
-    };
-
-    auto start = std::chrono::steady_clock::now();
-    while (!hasFreshLocalDescription()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        if (std::chrono::steady_clock::now() - start > std::chrono::seconds(5)) {
-            break;
-        }
+    if (!impl_->isCurrentTransport(target)) return {};
+    {
+        std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
+        target->remoteDescriptionSet = true;
     }
-    return impl_->localDescription;
-}
-
-bool WebRtcClient::addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex) {
-    if (!impl_->pc) {
-        spdlog::warn("[WebRTC] Dropping remote ICE candidate because peer connection is not initialized");
-        return false;
-    }
-    Impl::RemoteCandidate remote{candidate, mid, mlineIndex};
-    if (!impl_->remoteDescriptionSet.load(std::memory_order_relaxed)) {
-        return impl_->queueRemoteCandidate(std::move(remote));
+    impl_->drainPendingRemoteCandidates(target);
+    if (!impl_->beginLocalCandidateGathering(target, 0)) {
+        spdlog::warn(
+            "[WebRTC] Refused local answer while ICE gathering is still in progress");
+        return {};
     }
     try {
-        return impl_->tryAddRemoteCandidate(remote);
+        target->pc->setLocalDescription(rtc::Description::Type::Answer);
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to create local answer: {}", e.what());
+        return {};
+    } catch (...) {
+        return {};
+    }
+
+    const auto started = std::chrono::steady_clock::now();
+    for (;;) {
+        {
+            std::lock_guard<std::mutex> lock(target->descriptionMutex);
+            if (!target->localDescription.empty()) break;
+        }
+        if (!impl_->isCurrentTransport(target)) return {};
+        if (std::chrono::steady_clock::now() - started > std::chrono::seconds(5)) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    if (!impl_->isCurrentTransport(target)) return {};
+    std::lock_guard<std::mutex> lock(target->descriptionMutex);
+    return target->localDescription;
+}
+
+bool WebRtcClient::addRemoteCandidate(const std::string &candidate,
+                                      const std::string &mid,
+                                      int mlineIndex) {
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc || !impl_->isCurrentTransport(target)) return false;
+    Impl::RemoteCandidate remote{candidate, mid, mlineIndex, target->generation};
+    bool descriptionReady = false;
+    {
+        std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
+        descriptionReady = target->remoteDescriptionSet;
+    }
+    if (!descriptionReady) return impl_->queueRemoteCandidate(target, std::move(remote));
+    try {
+        return impl_->tryAddRemoteCandidate(target, remote);
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to add remote ICE candidate: {}", e.what());
-        return false;
     } catch (...) {
         spdlog::warn("[WebRTC] Failed to add remote ICE candidate");
-        return false;
     }
+    return false;
 }
 
-void WebRtcClient::prepareForShutdown() {
-    impl_->suppressCallbacks.store(true, std::memory_order_relaxed);
-}
+void WebRtcClient::prepareForShutdown() { impl_->suppressCallbacksAndWait(); }
 
 void WebRtcClient::setIceCandidateCallback(IceCandidateCallback cb) {
+    std::lock_guard<std::mutex> lock(impl_->callbackMutex);
     impl_->iceCallback = std::move(cb);
 }
 
 void WebRtcClient::setStateCallback(StateCallback cb) {
+    std::lock_guard<std::mutex> lock(impl_->callbackMutex);
     impl_->stateCallback = std::move(cb);
 }
 
 void WebRtcClient::setKeyframeRequestCallback(KeyframeRequestCallback cb) {
+    std::lock_guard<std::mutex> lock(impl_->callbackMutex);
     impl_->keyframeCallback = std::move(cb);
 }
 
 void WebRtcClient::setDataMessageCallback(DataMessageCallback cb) {
+    std::lock_guard<std::mutex> lock(impl_->callbackMutex);
     impl_->dataMessageCallback = std::move(cb);
 }
 
 void WebRtcClient::setDataChannelStateCallback(DataChannelStateCallback cb) {
+    std::lock_guard<std::mutex> lock(impl_->callbackMutex);
     impl_->dataChannelStateCallback = std::move(cb);
 }
 
-MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo, bool enableAudio, bool enableAlpha) {
+void WebRtcClient::setConcurrencyTestHooks(
+    std::function<void(uint64_t)> beforeVideoSend,
+    std::function<void(uint64_t)> beforeCallbackAdmission,
+    std::function<void(uint64_t)> afterTransportClose,
+    std::function<void(uint64_t)> beforeStateCommit) {
+    if (!beforeVideoSend && !beforeCallbackAdmission && !afterTransportClose &&
+        !beforeStateCommit) {
+        impl_->setConcurrencyTestHooks({});
+        return;
+    }
+
+    auto hooks = std::make_shared<Impl::ConcurrencyTestHooks>();
+    hooks->beforeVideoSend = std::move(beforeVideoSend);
+    hooks->beforeCallbackAdmission = std::move(beforeCallbackAdmission);
+    hooks->afterTransportClose = std::move(afterTransportClose);
+    hooks->beforeStateCommit = std::move(beforeStateCommit);
+    impl_->setConcurrencyTestHooks(std::move(hooks));
+}
+
+void WebRtcClient::invokeDataMessageCallbackForTesting(
+    const std::string &message,
+    uint64_t transportGeneration) {
+    if (!impl_) {
+        return;
+    }
+    impl_->invokeCallback(
+        transportGeneration,
+        &Impl::dataMessageCallback,
+        message,
+        transportGeneration);
+}
+
+void WebRtcClient::invokeIceCandidateCallbackForTesting(
+    const std::string &candidate,
+    const std::string &mid,
+    int mlineIndex,
+    uint64_t transportGeneration,
+    uint64_t localCandidateContext) {
+    if (!impl_) {
+        return;
+    }
+    impl_->invokeCallback(
+        transportGeneration,
+        &Impl::iceCallback,
+        candidate,
+        mid,
+        mlineIndex,
+        transportGeneration,
+        localCandidateContext);
+}
+
+void WebRtcClient::invokeStateCallbackForTesting(
+    ConnectionState state,
+    uint64_t transportGeneration) {
+    if (!impl_) {
+        return;
+    }
+    impl_->invokeBeforeStateCommitTestHook(transportGeneration);
+    (void)impl_->publishConnectionState(transportGeneration, state);
+    impl_->invokeCallback(
+        transportGeneration,
+        &Impl::stateCallback,
+        state,
+        transportGeneration);
+}
+
+void WebRtcClient::invokeDataChannelStateCallbackForTesting(
+    bool open,
+    uint64_t transportGeneration) {
+    if (!impl_) {
+        return;
+    }
+    impl_->invokeCallback(
+        transportGeneration,
+        &Impl::dataChannelStateCallback,
+        open,
+        transportGeneration);
+}
+
+std::size_t WebRtcClient::callbacksInFlightForTesting() const {
+    if (!impl_) {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(impl_->callbackLifecycleMutex);
+    return impl_->callbacksInFlight;
+}
+
+std::pair<uint16_t, uint16_t> WebRtcClient::vp9SequenceNumbersForTesting() const {
+    std::scoped_lock lock(impl_->vp9VideoSequenceMutex, impl_->vp9AlphaSequenceMutex);
+    return {impl_->vp9VideoSequenceNumber, impl_->vp9AlphaSequenceNumber};
+}
+
+MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo,
+                                                bool enableAudio,
+                                                bool enableAlpha) {
     MediaPlanChange change;
-    if (!impl_->pc) {
-        return change;
-    }
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    if (impl_->shutdownRequested) return change;
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc || !impl_->isCurrentTransport(target)) return change;
 
-    if (enableVideo && !impl_->videoTrack && impl_->ensureVideoTrack()) {
-        change.changed = true;
-        change.videoAdded = true;
+    if (enableVideo) {
+        bool hasVideo = false;
+        {
+            std::lock_guard<std::mutex> lock(target->videoSendMutex);
+            hasVideo = static_cast<bool>(target->videoTrack);
+            if (!hasVideo) target->videoCodec = impl_->configuredVideoCodec;
+        }
+        if (!hasVideo && impl_->ensureVideoTrack(target)) {
+            change.changed = true;
+            change.videoAdded = true;
+            impl_->videoSectionNegotiated = true;
+        }
     }
-    // Keep alpha after the primary video section; absolute SDP m-line index is not significant.
-    if (enableVideo && enableAlpha && impl_->enableAlphaTrack && !impl_->alphaVideoTrack && impl_->ensureAlphaVideoTrack()) {
-        change.changed = true;
-        change.alphaAdded = true;
+    if (enableAudio) {
+        bool hasAudio = false;
+        {
+            std::lock_guard<std::mutex> lock(target->audioSendMutex);
+            hasAudio = static_cast<bool>(target->audioTrack);
+        }
+        if (!hasAudio && impl_->ensureAudioTrack(target)) {
+            change.changed = true;
+            change.audioAdded = true;
+            impl_->audioSectionNegotiated = true;
+        }
     }
-    if (enableAudio && !impl_->audioTrack && impl_->ensureAudioTrack()) {
-        change.changed = true;
-        change.audioAdded = true;
-    }
-
-    if (change.changed) {
-        spdlog::info("[WebRTC] Applied media plan: videoAdded={} alphaAdded={} audioAdded={}",
-                     change.videoAdded,
-                     change.alphaAdded,
-                     change.audioAdded);
+    if (enableVideo && enableAlpha && impl_->enableAlphaTrack) {
+        bool hasAlpha = false;
+        {
+            std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
+            target->alphaTrackEnabled = true;
+            hasAlpha = static_cast<bool>(target->alphaVideoTrack);
+        }
+        if (!hasAlpha && impl_->ensureAlphaVideoTrack(target)) {
+            change.changed = true;
+            change.alphaAdded = true;
+            impl_->alphaSectionNegotiated = true;
+        }
     }
     return change;
 }
 
 bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
-    if (!impl_->videoTrack || !impl_->videoTrack->isOpen()) {
+    auto target = impl_->transportSnapshot();
+    if (!target || packet.data.empty() || !impl_->isCurrentTransport(target)) return false;
+    std::lock_guard<std::mutex> sendLock(target->videoSendMutex);
+    if (!target->videoTrack || !target->videoTrack->isOpen() ||
+        !impl_->isCurrentTransport(target)) {
         return false;
     }
-    if (packet.data.empty()) {
-        return false;
+    if (target->testHooksEnabled.load(std::memory_order_acquire)) {
+        const auto hooks =
+            std::atomic_load_explicit(&target->testHooks, std::memory_order_acquire);
+        if (hooks && hooks->beforeVideoSend) {
+            try {
+                hooks->beforeVideoSend(target->generation);
+            } catch (...) {
+                spdlog::debug("[WebRTC] Video send test hook raised an exception");
+            }
+        }
     }
-
-    // Log first packet info (with GOP=1, every frame is a keyframe)
-    if (!impl_->sentFirstKeyframe.load()) {
+    if (!target->sentFirstKeyframe.exchange(true)) {
         spdlog::info("[WebRTC] Starting video transmission, isKeyframe={}", packet.isKeyframe);
-        impl_->sentFirstKeyframe.store(true);
     }
-
-    // Update RTP timestamp from packet PTS
-    // H.264 RTP uses 90kHz clock. If PTS is in 100ns units (MF timestamps), convert accordingly.
-    // MF timestamps: 100ns units, so PTS / 10000 = ms, * 90 = RTP ticks
-    // Or: PTS * 90 / 10000 = PTS * 9 / 1000
-    uint32_t rtpTimestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
-    bool sent = false;
-    if (impl_->videoCodec == PeerConfig::VideoCodec::VP9) {
-        sent = sendVp9FrameRtp(
-            impl_->videoTrack, impl_->videoSequenceNumber, rtpTimestamp, impl_->videoSsrc, kVideoPayloadType, packet.data);
-    } else {
-        if (!impl_->videoRtpConfig) {
-            return false;
-        }
-        impl_->videoRtpConfig->timestamp = rtpTimestamp;
-        rtc::binary binaryPayload = toBinary(packet.data);
-        try {
-            impl_->videoTrack->send(binaryPayload);
-            sent = true;
-        } catch (const std::exception &e) {
-            spdlog::warn("[WebRTC] Failed to send video packet: {}", e.what());
-        } catch (...) {
-            spdlog::warn("[WebRTC] Failed to send video packet");
-        }
+    const uint32_t timestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
+    if (target->videoCodec == PeerConfig::VideoCodec::VP9) {
+        std::lock_guard<std::mutex> sequenceLock(impl_->vp9VideoSequenceMutex);
+        return sendVp9FrameRtp(target->videoTrack,
+                               impl_->vp9VideoSequenceNumber,
+                               timestamp,
+                               target->videoSsrc,
+                               kVideoPayloadType,
+                               packet.data);
     }
-    if (!sent) {
-        return false;
+    if (!target->videoRtpConfig) return false;
+    target->videoRtpConfig->timestamp = timestamp;
+    try {
+        target->videoTrack->send(toBinary(packet.data));
+        return true;
+    } catch (const std::exception &e) {
+        spdlog::warn("[WebRTC] Failed to send video packet: {}", e.what());
+    } catch (...) {
+        spdlog::warn("[WebRTC] Failed to send video packet");
     }
-    return true;
+    return false;
 }
 
 bool WebRtcClient::sendAlphaVideo(const EncodedVideoPacket &packet) {
-    if (!impl_->alphaVideoTrack || !impl_->alphaVideoTrack->isOpen()) {
+    auto target = impl_->transportSnapshot();
+    if (!target || packet.data.empty() || !impl_->isCurrentTransport(target)) return false;
+    std::lock_guard<std::mutex> sendLock(target->alphaVideoSendMutex);
+    if (!target->alphaVideoTrack || !target->alphaVideoTrack->isOpen() ||
+        !impl_->isCurrentTransport(target)) {
         return false;
     }
-    if (packet.data.empty()) {
-        return false;
-    }
-    uint32_t rtpTimestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
-    if (!sendVp9FrameRtp(impl_->alphaVideoTrack,
-                         impl_->alphaVideoSequenceNumber,
-                         rtpTimestamp,
-                         impl_->alphaVideoSsrc,
-                         kAlphaVideoPayloadType,
-                         packet.data)) {
-        return false;
-    }
-    return true;
+    const uint32_t timestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
+    std::lock_guard<std::mutex> sequenceLock(impl_->vp9AlphaSequenceMutex);
+    return sendVp9FrameRtp(target->alphaVideoTrack,
+                           impl_->vp9AlphaSequenceNumber,
+                           timestamp,
+                           target->alphaVideoSsrc,
+                           kAlphaVideoPayloadType,
+                           packet.data);
 }
 
 bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet) {
-    if (!impl_->audioTrack || !impl_->audioTrack->isOpen() || !impl_->audioRtpConfig) {
+    auto target = impl_->transportSnapshot();
+    if (!target || packet.data.empty() || !impl_->isCurrentTransport(target)) return false;
+    std::lock_guard<std::mutex> sendLock(target->audioSendMutex);
+    if (!target->audioTrack || !target->audioTrack->isOpen() || !target->audioRtpConfig ||
+        !impl_->isCurrentTransport(target)) {
         return false;
     }
-
-    // Update RTP timestamp from packet PTS
-    // Opus uses 48kHz clock. MF timestamps are in 100ns units.
-    // PTS * 48000 / 10000000 = PTS * 48 / 10000 = PTS * 0.0048
-    uint32_t rtpTimestamp = static_cast<uint32_t>((packet.pts * 48) / 10000);
-    impl_->audioRtpConfig->timestamp = rtpTimestamp;
-
-    // Send raw Opus data to the track - the media handler chain will packetize it
-    rtc::binary binaryPayload = toBinary(packet.data);
+    target->audioRtpConfig->timestamp = static_cast<uint32_t>((packet.pts * 48) / 10000);
     try {
-        impl_->audioTrack->send(binaryPayload);
+        target->audioTrack->send(toBinary(packet.data));
+        return true;
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to send audio packet: {}", e.what());
-        return false;
     } catch (...) {
         spdlog::warn("[WebRTC] Failed to send audio packet");
-        return false;
     }
-    return true;
+    return false;
 }
 
 bool WebRtcClient::sendDataMessage(const std::string &message) {
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return false;
     std::shared_ptr<rtc::DataChannel> channel;
     {
-        std::lock_guard<std::mutex> lock(impl_->dataChannelMutex);
-        channel = impl_->sendChannel;
+        std::lock_guard<std::mutex> lock(target->dataChannelMutex);
+        channel = target->sendChannel;
     }
-
-    if (!channel || !channel->isOpen()) {
-        return false;
-    }
+    if (!channel || !channel->isOpen() || !impl_->isCurrentTransport(target)) return false;
     try {
         return channel->send(message);
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to send data message: {}", e.what());
-        return false;
     } catch (...) {
         spdlog::warn("[WebRTC] Failed to send data message");
-        return false;
     }
+    return false;
 }
 
 bool WebRtcClient::isDataChannelOpen() const {
-    return impl_->dataChannelOpen.load();
+    auto target = impl_->transportSnapshot();
+    return target && impl_->isCurrentTransport(target) && target->dataChannelOpen.load();
+}
+
+ConnectionState WebRtcClient::connectionState() const {
+    return impl_->connectionStateSnapshot();
+}
+
+uint64_t WebRtcClient::transportGeneration() const {
+    return impl_->activeGeneration.load(std::memory_order_acquire);
+}
+
+LocalCandidateDiagnostics WebRtcClient::localCandidateDiagnostics() const {
+    const auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) {
+        return {};
+    }
+    return {
+        target->gatheringComplete.load(std::memory_order_acquire),
+        target->localCandidateCallbacksInFlight.load(std::memory_order_acquire),
+        target->localCandidateActivitySequence.load(std::memory_order_acquire),
+        target->localCandidateGatheringEpoch.load(std::memory_order_acquire),
+        target->localCandidatesAfterGatheringComplete.load(std::memory_order_acquire),
+        target->overlappingCandidateGatheringDetected.load(std::memory_order_acquire),
+    };
 }
 
 bool WebRtcClient::hasActiveVideoTrack() const {
-    if (!impl_->videoTrack) {
-        impl_->videoTrackOpen.store(false);
-        return false;
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return false;
+    std::shared_ptr<rtc::Track> track;
+    {
+        std::lock_guard<std::mutex> lock(target->videoSendMutex);
+        track = target->videoTrack;
     }
-    const bool open = impl_->videoTrack->isOpen();
-    impl_->videoTrackOpen.store(open);
+    const bool open = track && track->isOpen();
+    target->videoTrackOpen.store(open);
     return open;
 }
 
 bool WebRtcClient::hasActiveAlphaVideoTrack() const {
-    if (!impl_->alphaVideoTrack) {
-        impl_->alphaVideoTrackOpen.store(false);
-        return false;
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return false;
+    std::shared_ptr<rtc::Track> track;
+    {
+        std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
+        track = target->alphaVideoTrack;
     }
-    const bool open = impl_->alphaVideoTrack->isOpen();
-    impl_->alphaVideoTrackOpen.store(open);
+    const bool open = track && track->isOpen();
+    target->alphaVideoTrackOpen.store(open);
     return open;
 }
 
 bool WebRtcClient::hasActiveAudioTrack() const {
-    if (!impl_->audioTrack) {
-        impl_->audioTrackOpen.store(false);
-        return false;
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return false;
+    std::shared_ptr<rtc::Track> track;
+    {
+        std::lock_guard<std::mutex> lock(target->audioSendMutex);
+        track = target->audioTrack;
     }
-    const bool open = impl_->audioTrack->isOpen();
-    impl_->audioTrackOpen.store(open);
+    const bool open = track && track->isOpen();
+    target->audioTrackOpen.store(open);
     return open;
 }
 
 bool WebRtcClient::hasConfiguredVideoTrack() const {
-    return static_cast<bool>(impl_->videoTrack);
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return false;
+    std::lock_guard<std::mutex> lock(target->videoSendMutex);
+    return static_cast<bool>(target->videoTrack);
 }
 
 bool WebRtcClient::hasConfiguredAudioTrack() const {
-    return static_cast<bool>(impl_->audioTrack);
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return false;
+    std::lock_guard<std::mutex> lock(target->audioSendMutex);
+    return static_cast<bool>(target->audioTrack);
 }
 
 }  // namespace versus::webrtc

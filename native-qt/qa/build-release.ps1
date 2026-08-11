@@ -1,13 +1,24 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.48",
+    [string]$Version = "0.2.49",
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9a-f]{64}$')]
+    [string]$ExpectedSourceSnapshotSha256,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, [long]::MaxValue)]
+    [long]$ExpectedSourceSnapshotFileCount,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ExpectedSourceSnapshotAlgorithm,
     [string]$FfmpegBundleRoot = "",
     [switch]$AllowMissingFfmpeg = $false,
-    [switch]$SkipVirusTotal = $false
+    [switch]$SkipVirusTotal = $false,
+    [switch]$RequireReleaseArtifacts = $false
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'release-source-snapshot.ps1')
 
 function Resolve-ExecutablePath([string]$RepoRoot, [string]$BuildDir, [string]$Configuration) {
     $candidates = @(
@@ -105,6 +116,141 @@ function Test-TextContains([string]$Text, [string]$Needle) {
     return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
 }
 
+function ConvertTo-RootRelativePath([string]$Root, [string]$Path) {
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([char[]]@('\', '/'))
+    $pathFull = [System.IO.Path]::GetFullPath($Path)
+    $rootPrefix = $rootFull + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $pathFull.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside the release source root: $pathFull"
+    }
+    return $pathFull.Substring($rootPrefix.Length).Replace('\', '/')
+}
+
+function Get-ReleasePayloadInventory {
+    param(
+        [Parameter(Mandatory = $true)][string]$StageRoot,
+        [Parameter(Mandatory = $true)][string]$ExcludedRelativePath
+    )
+
+    $rootItem = Get-Item -LiteralPath $StageRoot -ErrorAction Stop
+    if (-not $rootItem.PSIsContainer -or
+        ($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+        throw "Release payload root must be a regular directory: $StageRoot"
+    }
+
+    $normalizedExcludedPath = $ExcludedRelativePath.Replace('\', '/')
+    if ([string]::IsNullOrWhiteSpace($normalizedExcludedPath) -or
+        [System.IO.Path]::IsPathRooted($normalizedExcludedPath) -or
+        $normalizedExcludedPath -match '(^|/)\.\.(/|$)' -or
+        $normalizedExcludedPath.Contains('\')) {
+        throw "Excluded release payload path is not normalized: $ExcludedRelativePath"
+    }
+
+    $entriesByPath = [System.Collections.Generic.SortedDictionary[string, object]]::new(
+        [System.StringComparer]::Ordinal)
+    $pendingDirectories = [System.Collections.Generic.Queue[System.IO.DirectoryInfo]]::new()
+    $pendingDirectories.Enqueue([System.IO.DirectoryInfo]$rootItem)
+    while ($pendingDirectories.Count -gt 0) {
+        $directory = $pendingDirectories.Dequeue()
+        foreach ($item in @(Get-ChildItem -LiteralPath $directory.FullName -Force -ErrorAction Stop)) {
+            if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+                throw "Release payload contains a reparse point: $($item.FullName)"
+            }
+            if ($item.PSIsContainer) {
+                $pendingDirectories.Enqueue([System.IO.DirectoryInfo]$item)
+                continue
+            }
+            if ($item -isnot [System.IO.FileInfo]) {
+                throw "Release payload contains an unsupported filesystem object: $($item.FullName)"
+            }
+
+            $relativePath = ConvertTo-RootRelativePath -Root $rootItem.FullName -Path $item.FullName
+            if ($relativePath -ieq $normalizedExcludedPath) {
+                if ($relativePath -cne $normalizedExcludedPath) {
+                    throw "Release manifest path has non-canonical casing: $relativePath"
+                }
+                continue
+            }
+            if ([string]::IsNullOrWhiteSpace($relativePath) -or
+                [System.IO.Path]::IsPathRooted($relativePath) -or
+                $relativePath.Contains('\') -or
+                $relativePath -match '(^|/)\.\.(/|$)') {
+                throw "Release payload path is not normalized: $relativePath"
+            }
+            if ([int64]$item.Length -lt 1) {
+                throw "Release payload files must have positive size: $relativePath"
+            }
+            if ($entriesByPath.ContainsKey($relativePath)) {
+                throw "Release payload contains a duplicate normalized path: $relativePath"
+            }
+
+            $entry = [pscustomobject]([ordered]@{
+                relativePath = $relativePath
+                size = [int64]$item.Length
+                sha256 = (Microsoft.PowerShell.Utility\Get-FileHash `
+                    -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            })
+            $entriesByPath.Add($relativePath, $entry)
+        }
+    }
+
+    if ($entriesByPath.Count -lt 1) {
+        throw 'Release payload inventory is empty.'
+    }
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        foreach ($entry in $entriesByPath.Values) {
+            $line = "$($entry.relativePath)`0$($entry.size)`0$($entry.sha256)`n"
+            $bytes = [System.Text.Encoding]::UTF8.GetBytes($line)
+            [void]$hasher.TransformBlock($bytes, 0, $bytes.Length, $bytes, 0)
+        }
+        [void]$hasher.TransformFinalBlock([byte[]]@(), 0, 0)
+        $aggregateSha256 = ([System.BitConverter]::ToString($hasher.Hash)).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $hasher.Dispose()
+    }
+
+    return [pscustomobject]([ordered]@{
+        algorithm = 'sha256(utf8(relative-path-nul-size-nul-sha256-lf))/ordinal-sort/v1'
+        fileCount = [int64]$entriesByPath.Count
+        aggregateSha256 = $aggregateSha256
+        files = @($entriesByPath.Values)
+    })
+}
+
+function Get-ReleaseSourceProvenance([string]$SourceRoot) {
+    $gitCommit = $null
+    $dirty = $null
+    $statusEntryCount = $null
+    $git = Get-Command git -ErrorAction SilentlyContinue
+    if ($git) {
+        $insideWorktree = (& $git.Source -C $SourceRoot rev-parse --is-inside-work-tree 2>$null) -join ''
+        if ($LASTEXITCODE -eq 0 -and $insideWorktree.Trim() -eq 'true') {
+            $commitText = (& $git.Source -C $SourceRoot rev-parse HEAD 2>$null) -join ''
+            if ($LASTEXITCODE -eq 0 -and
+                $commitText.Trim() -match '^(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})$') {
+                $gitCommit = $commitText.Trim().ToLowerInvariant()
+            }
+            $statusEntries = @(& $git.Source -C $SourceRoot status --porcelain=v1 --untracked-files=all 2>$null)
+            if ($LASTEXITCODE -eq 0) {
+                $statusEntryCount = $statusEntries.Count
+                $dirty = $statusEntryCount -gt 0
+            }
+        }
+    }
+
+    $snapshot = Get-ReleaseSourceSnapshot -SourceRoot $SourceRoot
+    return [pscustomobject]([ordered]@{
+        gitCommit = $gitCommit
+        dirty = $dirty
+        statusEntryCount = $statusEntryCount
+        snapshotSha256 = if ($snapshot) { $snapshot.sha256 } else { $null }
+        snapshotFileCount = if ($snapshot) { $snapshot.fileCount } else { $null }
+        snapshotAlgorithm = if ($snapshot) { $snapshot.algorithm } else { $null }
+        snapshotScope = 'native-qt tracked and untracked non-ignored files at packaging time; not a reproducible-build claim'
+    })
+}
+
 function Assert-FfmpegBundle([string]$BundleRoot) {
     $ffmpegExe = Join-Path $BundleRoot "bin\ffmpeg.exe"
     $manifestPath = Join-Path $BundleRoot "bundle-manifest.json"
@@ -144,6 +290,13 @@ function Assert-FfmpegBundle([string]$BundleRoot) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version must use numeric semantic version format (for example, 0.2.48)."
+}
+if ($Configuration -cne 'Release') {
+    throw "Release packaging requires Configuration=Release."
+}
+
 if ([string]::IsNullOrWhiteSpace($FfmpegBundleRoot)) {
     $FfmpegBundleRoot = Join-Path $repoRoot "third_party\ffmpeg-win64"
 }
@@ -155,6 +308,9 @@ if (-not $exePath) {
 if (-not (Test-BinaryContainsAsciiString -Path $exePath -Needle $Version)) {
     throw "Selected executable does not contain the requested version string '$Version': $exePath. Rebuild before packaging."
 }
+$sourceExecutableRelativePath = ConvertTo-RootRelativePath -Root $repoRoot -Path $exePath
+$sourceExecutableInfo = Get-Item -LiteralPath $exePath -ErrorAction Stop
+$sourceExecutableSha256 = (Get-FileHash -LiteralPath $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
 
 $artifactPrefix = "game-capture"
 $distRoot = Join-Path $repoRoot "dist"
@@ -167,13 +323,94 @@ $portableVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-portable.
 $portableStablePath = Join-Path $distRoot "$artifactPrefix-portable.exe"
 $ffmpegSourceInfoVersionedPath = Join-Path $distRoot "$artifactPrefix-$Version-ffmpeg-source-info.zip"
 $ffmpegSourceInfoStablePath = Join-Path $distRoot "$artifactPrefix-ffmpeg-source-info.zip"
+$sourceInfoDir = Join-Path $distRoot "$artifactPrefix-$Version-ffmpeg-source-info"
+$portableArchive = Join-Path $distRoot "$artifactPrefix-$Version-portable.7z"
+$releaseManifestPath = Join-Path $stageDir "release-artifact-manifest.json"
+
+$sevenZipExe = "C:\Program Files\7-Zip\7z.exe"
+$sevenZipSfx = "C:\Program Files\7-Zip\7z.sfx"
+$portableConfig = Join-Path $repoRoot "portable-sfx-config.txt"
+$makensis = Get-Command makensis -ErrorAction SilentlyContinue
+if (-not $makensis) {
+    foreach ($candidate in @(
+        "C:\Program Files (x86)\NSIS\makensis.exe",
+        "C:\Program Files\NSIS\makensis.exe"
+    )) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            $makensis = [pscustomobject]@{ Source = $candidate }
+            break
+        }
+    }
+}
+if (-not (Test-Path -LiteralPath $sevenZipExe -PathType Leaf) -or
+     -not (Test-Path -LiteralPath $sevenZipSfx -PathType Leaf) -or
+     -not (Test-Path -LiteralPath $portableConfig -PathType Leaf)) {
+    throw "7-Zip, its SFX module, and portable-sfx-config.txt are required for release artifacts."
+}
+if (-not $makensis) {
+    throw "NSIS makensis is required for release artifacts."
+}
+
+$ffmpegManifest = $null
+if (Test-Path -LiteralPath (Join-Path $FfmpegBundleRoot "bin\ffmpeg.exe") -PathType Leaf) {
+    $ffmpegManifest = Assert-FfmpegBundle -BundleRoot $FfmpegBundleRoot
+} elseif (-not $AllowMissingFfmpeg) {
+    throw "FFmpeg bundle missing. Run native-qt/tools/fetch-ffmpeg-lgpl.ps1 before release packaging, or pass -AllowMissingFfmpeg for dev-only packaging."
+}
+
+if (Test-Path -LiteralPath $stageDir) {
+    Remove-Item -LiteralPath $stageDir -Recurse -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $stageDir) { throw "Stale stage directory survived cleanup." }
+}
+if (Test-Path -LiteralPath $zipPath) {
+    Remove-Item -LiteralPath $zipPath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $zipPath) { throw "Stale versioned ZIP survived cleanup." }
+}
+if (Test-Path -LiteralPath $zipStablePath) {
+    Remove-Item -LiteralPath $zipStablePath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $zipStablePath) { throw "Stale stable ZIP survived cleanup." }
+}
+if (Test-Path -LiteralPath $installerVersionedPath) {
+    Remove-Item -LiteralPath $installerVersionedPath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $installerVersionedPath) { throw "Stale versioned installer survived cleanup." }
+}
+if (Test-Path -LiteralPath $installerStablePath) {
+    Remove-Item -LiteralPath $installerStablePath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $installerStablePath) { throw "Stale stable installer survived cleanup." }
+}
+if (Test-Path -LiteralPath $portableVersionedPath) {
+    Remove-Item -LiteralPath $portableVersionedPath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $portableVersionedPath) { throw "Stale versioned portable survived cleanup." }
+}
+if (Test-Path -LiteralPath $portableStablePath) {
+    Remove-Item -LiteralPath $portableStablePath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $portableStablePath) { throw "Stale stable portable survived cleanup." }
+}
+if (Test-Path -LiteralPath $ffmpegSourceInfoVersionedPath) {
+    Remove-Item -LiteralPath $ffmpegSourceInfoVersionedPath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $ffmpegSourceInfoVersionedPath) { throw "Stale versioned FFmpeg info survived cleanup." }
+}
+if (Test-Path -LiteralPath $ffmpegSourceInfoStablePath) {
+    Remove-Item -LiteralPath $ffmpegSourceInfoStablePath -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $ffmpegSourceInfoStablePath) { throw "Stale stable FFmpeg info survived cleanup." }
+}
+if (Test-Path -LiteralPath $sourceInfoDir) {
+    Remove-Item -LiteralPath $sourceInfoDir -Recurse -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $sourceInfoDir) { throw "Stale FFmpeg info directory survived cleanup." }
+}
+if (Test-Path -LiteralPath $portableArchive) {
+    Remove-Item -LiteralPath $portableArchive -Force -ErrorAction Stop
+    if (Test-Path -LiteralPath $portableArchive) { throw "Stale portable archive survived cleanup." }
+}
 
 Write-Step "Stage Artifacts"
-if (Test-Path $stageDir) {
-    Remove-Item -Recurse -Force $stageDir
-}
 New-Item -ItemType Directory -Path $stageDir -Force | Out-Null
-Copy-Item -Path $exePath -Destination (Join-Path $stageDir "game-capture.exe") -Force
+$stagedExecutablePath = Join-Path $stageDir "game-capture.exe"
+Copy-Item -Path $exePath -Destination $stagedExecutablePath -Force
+$stagedCopySha256 = (Get-FileHash -LiteralPath $stagedExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($stagedCopySha256 -ne $sourceExecutableSha256) {
+    throw "Staged game-capture.exe does not match the selected build executable before signing."
+}
 Copy-Item -Path (Join-Path $repoRoot "resources/vdoninja.ico") -Destination (Join-Path $stageDir "vdoninja.ico") -Force
 
 $windeployqt = Resolve-Windeployqt
@@ -268,10 +505,8 @@ foreach ($dll in $runtimeDlls) {
 }
 
 Write-Step "FFmpeg Bundle"
-$ffmpegManifest = $null
 $ffmpegStageDir = Join-Path $stageDir "ffmpeg"
-if (Test-Path (Join-Path $FfmpegBundleRoot "bin\ffmpeg.exe")) {
-    $ffmpegManifest = Assert-FfmpegBundle -BundleRoot $FfmpegBundleRoot
+if ($ffmpegManifest) {
     if (Test-Path $ffmpegStageDir) {
         Remove-Item -Recurse -Force $ffmpegStageDir
     }
@@ -279,16 +514,9 @@ if (Test-Path (Join-Path $FfmpegBundleRoot "bin\ffmpeg.exe")) {
     Copy-Item -Path (Join-Path $FfmpegBundleRoot "*") -Destination $ffmpegStageDir -Recurse -Force
     Write-Host "Staged FFmpeg: $ffmpegStageDir"
     Write-Host "FFmpeg: $($ffmpegManifest.ffmpeg_version)"
-} elseif ($AllowMissingFfmpeg) {
-    Write-Warning "FFmpeg bundle missing; continuing because -AllowMissingFfmpeg was set."
 } else {
-    throw "FFmpeg bundle missing. Run native-qt/tools/fetch-ffmpeg-lgpl.ps1 before release packaging, or pass -AllowMissingFfmpeg for dev-only packaging."
+    Write-Warning "FFmpeg bundle missing; continuing because -AllowMissingFfmpeg was set."
 }
-
-$reportDir = Join-Path $repoRoot "qa/reports"
-$latestReport = Get-ChildItem -Path $reportDir -Filter "release-readiness-*.md" -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
 
 $notes = @()
 $notes += "Game Capture Native Qt Release"
@@ -297,11 +525,6 @@ $notes += "BuildDir: $BuildDir"
 $notes += "Configuration: $Configuration"
 $notes += "Built: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
 $notes += ""
-if ($latestReport) {
-    $notes += "Latest readiness report:"
-    $notes += $latestReport.FullName
-    $notes += ""
-}
 $notes += "Contents:"
 $notes += "- game-capture.exe"
 $notes += "- Qt runtime files (if windeployqt is available)"
@@ -315,10 +538,6 @@ Set-Content -Path (Join-Path $stageDir "RELEASE-NOTES.txt") -Value $notes -Encod
 
 if ($ffmpegManifest) {
     Write-Step "FFmpeg Source/Build Info Archive"
-    $sourceInfoDir = Join-Path $distRoot "$artifactPrefix-$Version-ffmpeg-source-info"
-    if (Test-Path $sourceInfoDir) {
-        Remove-Item -Recurse -Force $sourceInfoDir
-    }
     New-Item -ItemType Directory -Path $sourceInfoDir -Force | Out-Null
     foreach ($name in @("bundle-manifest.json", "BUILDINFO.txt", "SOURCES.txt", "SHA256SUMS.txt", "README.txt", "LICENSE.txt", "VERSION.txt")) {
         $source = Join-Path $FfmpegBundleRoot $name
@@ -330,19 +549,27 @@ if ($ffmpegManifest) {
     if (Test-Path $licensesSource) {
         Copy-Item -Path $licensesSource -Destination (Join-Path $sourceInfoDir "licenses") -Recurse -Force
     }
-    if (Test-Path $ffmpegSourceInfoVersionedPath) {
-        Remove-Item -Force $ffmpegSourceInfoVersionedPath
-    }
     Compress-Archive -Path (Join-Path $sourceInfoDir "*") -DestinationPath $ffmpegSourceInfoVersionedPath -Force
     Copy-Item -Path $ffmpegSourceInfoVersionedPath -Destination $ffmpegSourceInfoStablePath -Force
     Remove-Item -Recurse -Force $sourceInfoDir
 }
 
+$utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+$qtConfiguration = @'
+[Paths]
+Prefix=.
+Plugins=.
+'@
+[System.IO.File]::WriteAllText(
+    (Join-Path $stageDir 'qt.conf'),
+    $qtConfiguration.Replace("`r`n", "`n") + "`n",
+    $utf8WithoutBom)
+
 Write-Step "Code Signing (Best Effort - Staged Binary)"
 $signScript = Join-Path $PSScriptRoot "sign-artifacts.ps1"
 if (Test-Path $signScript) {
     try {
-        & $signScript -FilePaths @(Join-Path $stageDir "game-capture.exe")
+        & $signScript -FilePaths @($stagedExecutablePath)
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Code-signing staged binary reported errors; continuing."
         }
@@ -354,25 +581,90 @@ if (Test-Path $signScript) {
     Write-Host "Code-signing script not found ($signScript); skipped signing."
 }
 
-Write-Step "Zip Package"
-if (Test-Path $zipPath) {
-    Remove-Item -Force $zipPath
+Write-Step "Release Artifact Manifest"
+if (-not (Test-Path -LiteralPath $stagedExecutablePath -PathType Leaf)) {
+    throw "Final staged game-capture.exe is missing after signing: $stagedExecutablePath"
 }
+$payloadInventory = Get-ReleasePayloadInventory -StageRoot $stageDir -ExcludedRelativePath `
+    'release-artifact-manifest.json'
+$stagedExecutableInfo = Get-Item -LiteralPath $stagedExecutablePath -ErrorAction Stop
+$stagedExecutableSha256 = (Get-FileHash -LiteralPath $stagedExecutablePath -Algorithm SHA256).Hash.ToLowerInvariant()
+$payloadExecutableEntries = @($payloadInventory.files | Where-Object {
+    $_.relativePath -ceq 'game-capture.exe'
+})
+if ($payloadExecutableEntries.Count -ne 1 -or
+    [int64]$payloadExecutableEntries[0].size -ne [int64]$stagedExecutableInfo.Length -or
+    [string]$payloadExecutableEntries[0].sha256 -cne $stagedExecutableSha256) {
+    throw 'Complete release payload inventory does not bind the final staged executable identity.'
+}
+$sourceProvenance = Get-ReleaseSourceProvenance -SourceRoot $repoRoot
+if ($sourceProvenance.snapshotSha256 -cne $ExpectedSourceSnapshotSha256 -or
+    [int64]$sourceProvenance.snapshotFileCount -ne $ExpectedSourceSnapshotFileCount -or
+    $sourceProvenance.snapshotAlgorithm -cne $ExpectedSourceSnapshotAlgorithm) {
+    throw "Release source snapshot changed between orchestration and packaging."
+}
+if ($sourceProvenance.gitCommit -notmatch '^(?:[0-9a-f]{40}|[0-9a-f]{64})$') {
+    throw "Release source provenance requires a lowercase Git commit object id."
+}
+if ($sourceProvenance.dirty -isnot [bool]) {
+    throw "Release source provenance requires a definitive Git dirty state."
+}
+if ($sourceProvenance.snapshotSha256 -notmatch '^[0-9a-f]{64}$') {
+    throw "Release source provenance requires a complete source snapshot SHA-256."
+}
+if ($null -eq $sourceProvenance.snapshotFileCount -or
+    [int64]$sourceProvenance.snapshotFileCount -lt 1) {
+    throw "Release source provenance requires a positive source snapshot file count."
+}
+if ([string]::IsNullOrWhiteSpace([string]$sourceProvenance.snapshotAlgorithm)) {
+    throw "Release source provenance requires a named source snapshot algorithm."
+}
+$releaseManifest = [ordered]@{
+    schema = 'game-capture-release-artifact/v1'
+    version = $Version
+    packagedAtUtc = [System.DateTime]::UtcNow.ToString('o', [System.Globalization.CultureInfo]::InvariantCulture)
+    artifact = [ordered]@{
+        relativePath = 'game-capture.exe'
+        size = [int64]$stagedExecutableInfo.Length
+        sha256 = $stagedExecutableSha256
+    }
+    payload = [ordered]@{
+        algorithm = $payloadInventory.algorithm
+        fileCount = $payloadInventory.fileCount
+        aggregateSha256 = $payloadInventory.aggregateSha256
+        files = @($payloadInventory.files)
+    }
+    build = [ordered]@{
+        configuration = $Configuration
+        directory = ([string]$BuildDir).Replace('\', '/')
+        sourceExecutable = [ordered]@{
+            relativePath = $sourceExecutableRelativePath
+            size = [int64]$sourceExecutableInfo.Length
+            sha256 = $sourceExecutableSha256
+        }
+    }
+    source = [ordered]@{
+        gitCommit = $sourceProvenance.gitCommit
+        dirty = $sourceProvenance.dirty
+        statusEntryCount = $sourceProvenance.statusEntryCount
+        snapshotSha256 = $sourceProvenance.snapshotSha256
+        snapshotFileCount = $sourceProvenance.snapshotFileCount
+        snapshotAlgorithm = $sourceProvenance.snapshotAlgorithm
+        snapshotScope = $sourceProvenance.snapshotScope
+    }
+}
+$releaseManifestJson = $releaseManifest | ConvertTo-Json -Depth 8
+[System.IO.File]::WriteAllText($releaseManifestPath, $releaseManifestJson + "`n", $utf8WithoutBom)
+$releaseManifestSha256 = (Get-FileHash -LiteralPath $releaseManifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Host "Release artifact manifest: $releaseManifestPath"
+Write-Host "Release artifact manifest SHA-256: $releaseManifestSha256"
+
+Write-Step "Zip Package"
 Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $zipPath -Force
 Copy-Item -Path $zipPath -Destination $zipStablePath -Force
 
 Write-Step "Portable EXE"
-$sevenZipExe = "C:\Program Files\7-Zip\7z.exe"
-$sevenZipSfx = "C:\Program Files\7-Zip\7z.sfx"
-$portableConfig = Join-Path $repoRoot "portable-sfx-config.txt"
-$portableArchive = Join-Path $distRoot "$artifactPrefix-$Version-portable.7z"
 if ((Test-Path $sevenZipExe) -and (Test-Path $sevenZipSfx) -and (Test-Path $portableConfig)) {
-    if (Test-Path $portableArchive) {
-        Remove-Item -Force $portableArchive
-    }
-    if (Test-Path $portableVersionedPath) {
-        Remove-Item -Force $portableVersionedPath
-    }
     & $sevenZipExe a -t7z -mx=9 $portableArchive (Join-Path $stageDir "*")
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create portable archive via 7-Zip."
@@ -381,43 +673,27 @@ if ((Test-Path $sevenZipExe) -and (Test-Path $sevenZipSfx) -and (Test-Path $port
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to create portable executable SFX."
     }
-    Copy-Item -Path $portableVersionedPath -Destination $portableStablePath -Force
     Remove-Item -Force $portableArchive
 } else {
     Write-Host "7-Zip or portable config missing; skipped portable SFX creation."
 }
 
 Write-Step "Optional NSIS Installer"
-$makensis = Get-Command makensis -ErrorAction SilentlyContinue
-if (-not $makensis) {
-    foreach ($candidate in @(
-        "C:\Program Files (x86)\NSIS\makensis.exe",
-        "C:\Program Files\NSIS\makensis.exe"
-    )) {
-        if (Test-Path $candidate) {
-            $makensis = [pscustomobject]@{ Source = $candidate }
-            break
-        }
-    }
-}
 if ($makensis) {
     $buildBinDir = $stageDir
-    if (Test-Path $installerVersionedPath) {
-        Remove-Item -Force $installerVersionedPath
-    }
     & $makensis.Source /V2 "/DVERSION=$Version" "/DBUILD_BIN_DIR=$buildBinDir" "/DOUTFILE=$installerVersionedPath" installer.nsi
     if ($LASTEXITCODE -ne 0) {
         throw "NSIS installer build failed."
     }
-    Copy-Item -Path $installerVersionedPath -Destination $installerStablePath -Force
 } else {
     Write-Host "makensis not found; skipped installer build."
 }
 
 Write-Step "Code Signing (Best Effort - Release EXEs)"
+$releaseExePaths = @($portableVersionedPath, $installerVersionedPath)
 if (Test-Path $signScript) {
     try {
-        & $signScript -DistDir $distRoot -Version $Version
+        & $signScript -FilePaths $releaseExePaths
         if ($LASTEXITCODE -ne 0) {
             Write-Warning "Code-signing script reported errors; continuing."
         }
@@ -428,6 +704,49 @@ if (Test-Path $signScript) {
 } else {
     Write-Host "Code-signing script not found ($signScript); skipped signing."
 }
+
+if (Test-Path -LiteralPath $portableVersionedPath -PathType Leaf) {
+    Copy-Item -Path $portableVersionedPath -Destination $portableStablePath -Force
+}
+if (Test-Path -LiteralPath $installerVersionedPath -PathType Leaf) {
+    Copy-Item -Path $installerVersionedPath -Destination $installerStablePath -Force
+}
+
+if ($RequireReleaseArtifacts) {
+    $requiredReleaseArtifacts = @(
+        (Join-Path $stageDir "game-capture.exe"),
+        $releaseManifestPath,
+        $zipPath,
+        $zipStablePath,
+        $portableVersionedPath,
+        $portableStablePath,
+        $installerVersionedPath,
+        $installerStablePath
+    )
+    if ($ffmpegManifest) {
+        $requiredReleaseArtifacts += @(
+            $ffmpegSourceInfoVersionedPath,
+            $ffmpegSourceInfoStablePath
+        )
+    }
+    foreach ($requiredReleaseArtifact in $requiredReleaseArtifacts) {
+        if (-not (Test-Path -LiteralPath $requiredReleaseArtifact -PathType Leaf)) {
+            throw "Required release artifact was not generated by this invocation: $requiredReleaseArtifact"
+        }
+    }
+}
+
+$buildAliasIdentityArgs = @(
+    '-NoProfile',
+    '-ExecutionPolicy', 'Bypass',
+    '-File', (Join-Path $PSScriptRoot '../e2e/release-artifact-alias-identity-regression.ps1'),
+    '-DistDir', $distRoot,
+    '-Version', $Version
+)
+if ($AllowMissingFfmpeg) { $buildAliasIdentityArgs += '-AllowMissingFfmpeg' }
+& powershell.exe @buildAliasIdentityArgs
+$buildAliasIdentityExit = $LASTEXITCODE
+if ($buildAliasIdentityExit -ne 0) { throw 'Built release artifact alias identity validation failed.' }
 
 Write-Step "VirusTotal Submission (Best Effort)"
 if ($SkipVirusTotal) {
@@ -452,6 +771,8 @@ if ($SkipVirusTotal) {
 Write-Host ""
 Write-Host "Release staging dir: $stageDir"
 Write-Host "Release zip: $zipPath"
+Write-Host "Release artifact manifest: $releaseManifestPath"
+Write-Host "Release artifact manifest SHA-256: $releaseManifestSha256"
 if (Test-Path $zipStablePath) {
     Write-Host "Release zip (stable): $zipStablePath"
 }

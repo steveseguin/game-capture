@@ -1,6 +1,6 @@
 # Dual-Stream Test Requirements
 
-Last updated: 2026-02-23
+Last updated: 2026-08-07
 Status: LOCKED (required before enabling by default)
 Related spec: `native-qt/qa/DUAL_STREAM_PLAN.md`
 
@@ -86,6 +86,18 @@ These requirements validate that HQ/LQ role-based routing is real, complete, and
 `DS-REQ-016` Release gate script must include dual-stream checks.
 - `run-fast-gate.ps1` or release-readiness flow must call new dual-stream E2E command(s).
 - Dual-stream tests are blocking for release once feature flag is enabled by default.
+
+`DS-REQ-017` Explicit codec and alpha settings must survive room routing.
+- Run the packaged publisher in a real room with Room Quality requested and VP9 plus the alpha workflow selected.
+- Verify the publisher does not silently replace VP9 with H.264 or disable alpha.
+- Use an alpha-capable ninja-plugin receiver identified as a normal guest/viewer (not `scene`) and require both primary and alpha tracks to decode and advance.
+- Composite multiple moving-frame samples and reject temporal edge artifacts, missing foreground, or opaque transparency.
+- Verify the publisher reports `assigned_tier=hq`, emits no LQ assignment for that peer, and explains that Room Quality is unavailable with the selected codec while continuing HQ-only without changing codec/alpha.
+
+`DS-REQ-018` VP9 alpha negotiation must keep a stable media-section layout.
+- The first packaged offer must contain `video`, `audio`, `video-alpha`, then `application` in that exact order.
+- Trigger an ICE transport rebuild before the receiver sends its alpha capability and require the replacement offer to keep the exact same section set and order.
+- Verify no alpha packets are sent before capability, capability activation emits no second offer, and both primary and alpha media advance afterward on the same logical session.
 
 ## Pass Criteria
 

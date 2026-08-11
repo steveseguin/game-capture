@@ -120,6 +120,25 @@ Release readiness:
 powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-release-readiness.ps1 -BuildDir build-review2 -Configuration Release
 ```
 
+Packaged signaling and interoperability workflows:
+
+```powershell
+cd native-qt
+npm run e2e:signaling-regressions
+npm run e2e:control-center:edge
+npm run e2e:control-center:firefox
+npm run e2e:ninja-plugin-alpha
+```
+
+The signaling regression workflow runs a staged `dist/game-capture-*-win64/game-capture.exe`
+against a local VDO-compatible WebSocket server and a real Edge/Firefox WebRTC peer. It covers
+initial-offer timing, duplicate offer requests, stale answers, data-channel setup, stable first-offer
+VP9 alpha reservation and capability activation, and failed-peer ICE restart recovery. The Control Center workflows use the real
+VDO.Ninja director page. The ninja-plugin alpha workflow uses packaged Game Capture, a synthetic
+Spout RGBA sender, portable OBS, and pixel-level transparency validation.
+The Firefox Control Center workflow selects VP9 and disables the H.264-only room LQ tier because
+Playwright's Firefox runtime does not expose platform H.264; the Edge workflow covers default H.264.
+
 ## Releases
 
 Use `docs/RELEASES.md` for the exact release checklist, including fixed asset names, signing commands, VirusTotal commands, and troubleshooting.

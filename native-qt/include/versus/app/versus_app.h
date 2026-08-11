@@ -2,10 +2,12 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <future>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <memory>
 #include <string>
@@ -14,7 +16,9 @@
 #include <vector>
 
 #include "versus/signaling/vdo_signaling.h"
+#include "versus/app/alpha_frame_pairer.h"
 #include "versus/app/dual_stream_policy.h"
+#include "versus/app/peer_operation_executor.h"
 #include "versus/webrtc/webrtc_client.h"
 #include "versus/video/camera_capture.h"
 #include "versus/video/spout_capture.h"
@@ -24,6 +28,18 @@
 #include "versus/audio/window_audio_capture_core.h"
 
 namespace versus::app {
+
+namespace detail {
+
+// Deliberately excludes DTLS fingerprints and trickled candidates. VDO.Ninja
+// does not carry an offer id, so the stable answer origin/version, ICE
+// credentials, and MID set are the best available generation identity.
+std::string normalizeAnswerIdentity(const std::string &sdp);
+std::string candidateIceUfrag(const std::string &candidate);
+bool answerIdentityMatchesCandidate(const std::string &answerIdentity,
+                                    const std::string &candidate);
+
+}  // namespace detail
 
 enum class AudioSourceMode {
     SelectedWindow,
@@ -145,7 +161,7 @@ class VersusApp {
   public:
     using RuntimeEventCallback = std::function<void(const std::string &, bool fatal)>;
 
-    VersusApp();
+    explicit VersusApp(std::size_t peerOperationMaxQueued = 1024);
     ~VersusApp();
 
     bool initialize();
@@ -185,6 +201,7 @@ class VersusApp {
     std::shared_ptr<const versus::video::CapturedFrame> getPublisherPreviewFrame();
     std::string buildDiagnosticsJson() const;
     bool writeDiagnosticsJson(const std::string &path) const;
+    int refreshPeerTransportsForLocalControl();
 
     bool isLive() const { return live_; }
 
@@ -192,7 +209,12 @@ class VersusApp {
     void onRuntimeEvent(RuntimeEventCallback cb);
 
   private:
+    friend class VersusAppTestAccess;
     struct PeerSession;
+    struct PendingDuplicateOfferRecheck;
+    enum class DuplicateOfferRecheckDisposition;
+    using PeerCallbackOperation =
+        std::function<void(const std::shared_ptr<PeerSession> &, uint64_t)>;
     struct PeerCounts {
         int total = 0;
         int hq = 0;
@@ -202,6 +224,30 @@ class VersusApp {
         int roomGuests = 0;
         int roomScenes = 0;
         int roomNonGuestViewers = 0;
+    };
+    struct RoomQualityWarningTicket {
+        bool pending = false;
+        versus::video::VideoCodec codec = versus::video::VideoCodec::H264;
+        uint64_t generation = 0;
+    };
+    struct DiagnosticsPeerSnapshot {
+        std::shared_ptr<PeerSession> peer;
+        std::string uuid;
+        std::string session;
+        std::string streamId;
+        std::string candidateType;
+        int64_t createdAtMs = 0;
+        StreamTier assignedTier = StreamTier::None;
+        bool activeVideo = false;
+        bool activeAudio = false;
+    };
+    struct RoomQualityDiagnosticsSnapshot {
+        uint64_t generation = 0;
+        RoomQualityDecision decision;
+        std::string activeRoom;
+        versus::video::VideoCodec codec = versus::video::VideoCodec::H264;
+        PeerCounts counts;
+        std::vector<DiagnosticsPeerSnapshot> peers;
     };
     struct VideoStateSnapshot {
         versus::video::EncoderConfig config;
@@ -235,6 +281,9 @@ class VersusApp {
         std::string mid;
         int mlineIndex = 0;
         int64_t queuedAtMs = 0;
+        uint64_t offerGeneration = 0;
+        uint64_t transportGeneration = 0;
+        std::string iceUfrag;
     };
     void setupCallbacks();
     void startAudioCapture(uint32_t selectedWindowProcessId);
@@ -247,12 +296,28 @@ class VersusApp {
                                 std::atomic<float> &rmsTarget,
                                 std::atomic<float> &peakTarget);
     void encodeNormalizedAudio(std::vector<float> &normalizedSamples);
-    StreamMetrics buildStreamMetricsSnapshot(bool updateRecentWindow) const;
+    StreamMetrics buildStreamMetricsSnapshot(
+        bool updateRecentWindow,
+        const PeerCounts *peerCountsOverride = nullptr) const;
     void resetSourceHealth(VideoSourceMode mode, const std::string &sourceId);
     void updateSourceHealthFromFrame(const versus::video::CapturedFrame &frame);
     void resetMetricsWindow(int64_t nowMs);
     void populateSystemResourceUsage(ConnectionHealth &health) const;
     void setupSignalingCallbacks();
+    void installPeerOperationCallbacks(const std::shared_ptr<PeerSession> &peer);
+    bool enqueuePeerCallbackOperation(const std::shared_ptr<PeerSession> &peer,
+                                      uint64_t clientTransportGeneration,
+                                      const char *kind,
+                                      GenerationTaggedPeerOperationExecutor::Priority priority,
+                                      GenerationTaggedPeerOperationExecutor::Criticality criticality,
+                                      std::string coalesceKey,
+                                      PeerCallbackOperation operation);
+    void handlePeerConnectionState(const std::shared_ptr<PeerSession> &peer,
+                                   webrtc::ConnectionState state,
+                                   uint64_t clientTransportGeneration);
+    void handlePeerDataChannelState(const std::shared_ptr<PeerSession> &peer,
+                                    bool open,
+                                    uint64_t clientTransportGeneration);
     void startSignalingRecovery();
     void stopSignalingRecoveryThread();
     void startVideoMaintenanceThread();
@@ -262,9 +327,14 @@ class VersusApp {
     void startAlphaEncodeThread();
     void stopAlphaEncodeThread();
     void clearAlphaEncodeQueues();
-    void queueAlphaEncodeFrame(int width, int height, int64_t timestamp, std::vector<uint8_t> gray);
+    AlphaFrameAdmission queueAlphaEncodeFrame(int width,
+                                              int height,
+                                              int64_t timestamp,
+                                              std::vector<uint8_t> gray);
     void queueAlphaEncoderReconfigure(versus::video::EncoderConfig config);
-    bool takeLatestAlphaPacket(versus::video::EncodedPacket &packet);
+    bool takeLatestAlphaPacket(ExactAlphaFramePacket &packet);
+    void reservePeerAlphaAdmissionCutoff(const std::shared_ptr<PeerSession> &peer);
+    void refreshPeerTrackObservations(bool observeVideo, bool observeAudio) const;
     bool hasAnyActiveVideoTrack() const;
     bool hasAnyActiveAudioTrack() const;
     void sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet);
@@ -287,12 +357,83 @@ class VersusApp {
                                    bool ok,
                                    const std::string &deviceId,
                                    const std::string &error);
+    bool handleDuplicatePeerOfferRequest(const std::shared_ptr<PeerSession> &peer,
+                                         const char *reason);
+    bool startDuplicateOfferRecheckScheduler();
+    void stopDuplicateOfferRecheckScheduler();
+    void resetDuplicateOfferRecheckSchedulerForLive();
+    void cancelDuplicateOfferRechecks(bool disableAdmission, const char *reason);
+    void cancelDuplicateOfferRecheck(const std::shared_ptr<PeerSession> &peer,
+                                     const char *reason);
+    bool scheduleDuplicateOfferRecheck(const std::shared_ptr<PeerSession> &peer,
+                                       const char *reason);
+    void duplicateOfferRecheckSchedulerLoop();
+    void runDuplicateOfferRecheck(const PendingDuplicateOfferRecheck &job);
+    void completeDuplicateOfferRecheck(
+        const PendingDuplicateOfferRecheck &job,
+        DuplicateOfferRecheckDisposition disposition,
+        const char *detail);
+    void cancelDuplicateOfferRecheckJob(
+        const PendingDuplicateOfferRecheck &job,
+        DuplicateOfferRecheckDisposition disposition,
+        const char *detail);
+    void handleDuplicateOfferRecheckExecutorCompletion(
+        const PendingDuplicateOfferRecheck &job,
+        GenerationTaggedPeerOperationExecutor::CompletionDisposition disposition);
+    bool dispatchPeerOfferToSignaling(
+        const std::shared_ptr<PeerSession> &peer,
+        const signaling::SignalOffer &offer,
+        uint64_t offerGeneration,
+        uint64_t transportGeneration,
+        const std::string &reason);
+    void completePeerLocalCandidateWork(
+        const std::shared_ptr<PeerSession> &peer,
+        uint64_t workId,
+        uint64_t offerGeneration,
+        uint64_t clientTransportGeneration,
+        const std::string &wireSession,
+        bool superseded,
+        const char *reason);
+    bool completePeerLocalCandidateWorkLocked(
+        PeerSession &peer,
+        uint64_t workId,
+        uint64_t offerGeneration,
+        uint64_t clientTransportGeneration,
+        const std::string &wireSession,
+        bool superseded);
+    bool dispatchPeerCandidateToSignaling(
+        const std::shared_ptr<PeerSession> &peer,
+        const signaling::SignalCandidate &candidate,
+        bool relayCandidate);
     bool sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason, bool rebuildPeerConnection = false);
-    void applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source);
+    void runQueuedPeerTransition(const std::shared_ptr<PeerSession> &peer, const char *trigger);
+    void applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
+                         const std::string &sdp,
+                         const char *source,
+                         const std::string &expectedWireSession = {});
     int renegotiatePeersForH264CodecFallback(const char *reason);
     bool fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<PeerSession> &peer, const char *source);
     void applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, const char *reason);
-    bool enforceRoomCodecLock();
+    RoomQualityDecision syncRoomQualityDecision();
+    RoomQualityDecision commitRoomQualityDecisionLocked(
+        const std::string &activeRoom,
+        bool requested,
+        bool *enteredCodecUnavailable = nullptr,
+        uint64_t *committedGeneration = nullptr);
+    RoomQualityDecision updateRoomQualityDecisionForCodecLocked(
+        bool *enteredCodecUnavailable = nullptr,
+        uint64_t *committedGeneration = nullptr);
+    RoomQualityDecision roomQualityDecisionSnapshot() const;
+    bool lqRoutingAllowedLocked(const RoomQualityDecision &decision) const;
+    StreamTier roomQualityPeerTierLocked(
+        const std::shared_ptr<PeerSession> &peer,
+        const RoomQualityDecision &decision,
+        bool lqRoutingAllowed) const;
+    void refreshRoomQualityPeerTiersLocked(const RoomQualityDecision &decision);
+    void emitRoomQualityCodecUnavailable(const RoomQualityWarningTicket &ticket);
+    RoomQualityWarningTicket transitionRoomQualityLifecycle(
+        const StartOptions *activationOptions,
+        const std::string &sessionSalt);
     void applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
                             bool roleValid,
                             PeerRole role,
@@ -308,11 +449,24 @@ class VersusApp {
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
     std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
                                                                 const std::string &session) const;
-    void queuePendingRemoteCandidateLocked(const signaling::SignalCandidate &cand, int64_t nowMs);
+    void handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &peer,
+                                   const signaling::SignalCandidate &cand,
+                                   const char *source);
+    void queuePendingRemoteCandidateLocked(const signaling::SignalCandidate &cand,
+                                           int64_t nowMs,
+                                           uint64_t offerGeneration = 0,
+                                           uint64_t transportGeneration = 0);
     std::vector<PendingRemoteCandidate> takePendingRemoteCandidatesLocked(const std::string &uuid,
                                                                           const std::string &session,
-                                                                          int64_t nowMs);
-    void drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer, const char *reason);
+                                                                          int64_t nowMs,
+                                                                          uint64_t offerGeneration,
+                                                                          uint64_t transportGeneration,
+                                                                          const std::string &answerIdentity);
+    void drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer,
+                                      uint64_t offerGeneration,
+                                      uint64_t transportGeneration,
+                                      const std::string &answerIdentity,
+                                      const char *reason);
     void shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer);
     void reapCompletedPeerShutdowns();
     void waitForPendingPeerShutdowns();
@@ -322,6 +476,8 @@ class VersusApp {
     void handleVideoFrame(versus::video::CapturedFrame frame);
     void recordPeerEvent(const std::shared_ptr<PeerSession> &peer, const std::string &event) const;
     PeerCounts collectPeerCounts() const;
+    RoomQualityDiagnosticsSnapshot roomQualityDiagnosticsSnapshot() const;
+    void refreshDiagnosticsTrackObservationsForTesting() const;
     VideoStateSnapshot buildVideoStateSnapshotLocked() const;
     void publishVideoStateSnapshotLocked() const;
     VideoStateSnapshot videoStateSnapshot() const;
@@ -337,6 +493,19 @@ class VersusApp {
     std::atomic<int64_t> lastVideoSendMs_{0};
     std::atomic<int64_t> lastKeyframeSendMs_{0};
     std::atomic<int64_t> lastPrimaryAudioChunkMs_{0};
+    GenerationTaggedPeerOperationExecutor peerOperationExecutor_;
+    std::atomic<int64_t> lastPeerOperationOverloadLogMs_{0};
+    mutable std::mutex peerCallbackTestHookMutex_;
+    std::function<void(const std::string &, uint64_t)> beforePeerCallbackEnqueueForTesting_;
+    std::function<bool(const std::string &, const std::string &, uint64_t)>
+        peerCallbackOperationForTesting_;
+    mutable std::mutex duplicateOfferRecheckTestHookMutex_;
+    std::function<void(uint64_t)>
+        afterDuplicateOfferRecheckMapInsertForTesting_;
+    std::function<void(uint64_t)>
+        beforeDuplicateOfferRecheckExecutionForTesting_;
+    std::function<void(uint64_t)>
+        beforeDuplicateOfferRecheckSendForTesting_;
     StartOptions startOptions_;
     std::string streamId_;
     std::string room_;
@@ -377,7 +546,6 @@ class VersusApp {
     std::atomic<int> lastSentWidth_{0};
     std::atomic<int> lastSentHeight_{0};
     std::atomic<int> maxViewers_{10};
-    std::atomic<bool> roomModeLqEnabled_{true};
     std::atomic<bool> remoteControlEnabled_{false};
     std::atomic<int64_t> lastRelayWarningMs_{0};
     std::atomic<int64_t> lastPacketLossWarningMs_{0};
@@ -389,6 +557,7 @@ class VersusApp {
     std::atomic<bool> relayCandidateSeen_{false};
     std::atomic<bool> directCandidateSeen_{false};
     std::vector<versus::webrtc::IceServerConfig> resolvedIceServers_;
+    versus::webrtc::TurnRegistryProvenance resolvedTurnRegistry_;
     versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::StunOnly;
     std::thread signalingRecoveryThread_;
     std::thread videoMaintenanceThread_;
@@ -402,7 +571,7 @@ class VersusApp {
         std::vector<uint8_t> gray;
         int width = 0;
         int height = 0;
-        int64_t timestamp = 0;
+        AlphaFrameAdmission admission;
     };
     std::thread alphaEncodeThread_;
     std::atomic<bool> alphaEncodeThreadRunning_{false};
@@ -414,14 +583,22 @@ class VersusApp {
     bool pendingAlphaEncoderReconfigure_ = false;
     std::mutex alphaEncoderMutex_;
     std::mutex alphaPacketMutex_;
-    versus::video::EncodedPacket latestAlphaPacket_;
+    ExactAlphaFramePacket latestAlphaPacket_;
     bool latestAlphaPacketReady_ = false;
+    std::atomic<uint64_t> alphaPipelineGeneration_{1};
+    AlphaFrameAdmissionTracker alphaFrameAdmissionTracker_{256};
+    ExactAlphaFramePairer alphaFramePairer_{16};
+    AlphaContractRecoveryController alphaContractRecovery_{1000};
+    std::atomic<int64_t> lastAlphaContractDiagnosticMs_{0};
     mutable std::mutex peerSessionsMutex_;
     std::mutex peerShutdownTasksMutex_;
     mutable std::mutex lifecycleStateMutex_;
     mutable std::mutex signalingOpsMutex_;
     mutable std::mutex iceConfigMutex_;
     mutable std::mutex runtimeEventMutex_;
+    mutable std::mutex roomQualityDecisionMutex_;
+    mutable std::mutex roomQualitySyncTestHookMutex_;
+    mutable std::mutex roomQualityArchitectureTestHookMutex_;
     mutable std::mutex additionalAudioMutex_;
     std::mutex audioEncodeMutex_;
     mutable std::mutex healthStateMutex_;
@@ -446,13 +623,46 @@ class VersusApp {
     mutable double lastSystemCpuPercent_ = -1.0;
     std::string lastPeerDisconnectReason_;
     RuntimeEventCallback runtimeEventCallback_;
+    std::function<void()> beforeRoomQualityDecisionCommitForTesting_;
+    std::function<void()> beforePeerActiveVideoTrackQueryForTesting_;
+    std::function<bool()> beforeLqEncoderInitializeForTesting_;
+    std::function<void()> duringRoomQualityLifecycleMutationForTesting_;
+    std::function<void()> afterRoomQualityLifecycleMutationForTesting_;
+    std::function<void()> afterDiagnosticsVideoSnapshotForTesting_;
+    std::function<bool()> peerActiveVideoTrackForDiagnosticsTesting_;
     struct PendingCandidate {
         std::string candidate;
         std::string mid;
         int mlineIndex;
+        uint64_t workId = 0;
+        uint64_t offerGeneration = 0;
+        uint64_t clientTransportGeneration = 0;
+        std::string wireSession;
+    };
+    struct LocalCandidateWorkOwner {
+        uint64_t offerGeneration = 0;
+        uint64_t clientTransportGeneration = 0;
+        std::string wireSession;
+    };
+    struct AttemptedAnswerIdentity {
+        uint64_t offerGeneration = 0;
+        uint64_t transportGeneration = 0;
+        bool transportRetired = false;
+        std::string wireSession;
+        std::string identity;
+    };
+    struct OfferDispatchObservation {
+        uint64_t sequence = 0;
+        uint64_t offerGeneration = 0;
+        uint64_t transportGeneration = 0;
+        std::string wireSession;
+        std::string sdpSha256;
+        std::string reason;
     };
     struct PeerSession {
         std::string uuid;
+        // Immutable owner key. The active VDO.Ninja wire session is separate
+        // because a logical UUID owner can replace its PeerConnection.
         std::string session;
         std::string streamId;
         // VDO.Ninja uses this as a routing hint ("local" vs "remote"), not candidate transport type.
@@ -477,9 +687,23 @@ class VersusApp {
         std::atomic<bool> alphaAllowed{false};
         std::atomic<bool> sawPeerInfoMessage{false};
         std::atomic<bool> waitingForKeyframe{true};
+        // Wire/RTP clock watermark. This must never be compared with a source
+        // capture timestamp because late exact pairs receive a newer wire PTS.
+        std::atomic<int64_t> lastPrimaryPtsSent{std::numeric_limits<int64_t>::min()};
+        // Reserved before any wire send, including failed alpha-first pairs,
+        // so a later frame can never reuse a timestamp already exposed to the
+        // receiver on either track.
+        std::atomic<int64_t> lastVideoWirePtsReserved{std::numeric_limits<int64_t>::min()};
+        // Captured-frame watermark reserved by reset/capability transitions.
+        // A pair at or before it is pre-transition content even if the pairer
+        // later assigns that pair a larger transport PTS.
+        std::atomic<int64_t> alphaSourceCutoffTimestamp{std::numeric_limits<int64_t>::min()};
+        std::atomic<uint64_t> alphaAdmissionCutoffSequence{0};
         std::atomic<bool> dataChannelOpen{false};
         std::atomic<int64_t> disconnectedSinceMs{0};
         std::atomic<bool> statsContinuous{false};
+        std::atomic<bool> lastObservedVideoTrackActive{false};
+        std::atomic<bool> lastObservedAudioTrackActive{false};
         std::atomic<int> requestedVideoBitrateKbps{-1};
         std::atomic<int> requestedAudioBitrateKbps{-1};
         std::atomic<bool> renegotiationQueued{false};
@@ -489,20 +713,132 @@ class VersusApp {
         std::atomic<int> recoveryOfferCount{0};
         std::atomic<int> answerCount{0};
         std::atomic<int> localCandidatesSent{0};
+        std::atomic<int> localCandidateSendFailures{0};
         std::atomic<int> remoteCandidatesApplied{0};
+        std::atomic<int> sessionlessWssAnswersRejected{0};
+        std::atomic<int> sessionlessWssRemoteCandidatesRejected{0};
         std::atomic<int> rejectedControlCount{0};
+        std::atomic<bool> duplicateOfferRecheckPending{false};
+        std::atomic<uint64_t> duplicateOfferRechecksScheduled{0};
+        std::atomic<uint64_t> duplicateOfferRechecksCoalesced{0};
+        std::atomic<uint64_t> duplicateOfferRechecksFired{0};
+        std::atomic<uint64_t> duplicateOfferRechecksRebuilt{0};
+        std::atomic<uint64_t> duplicateOfferRechecksIgnoredConnected{0};
+        std::atomic<uint64_t> duplicateOfferRechecksStale{0};
+        std::atomic<uint64_t> duplicateOfferRechecksCanceled{0};
+        // Persistent within this logical owner. Admission updates every same-
+        // UUID owner so diagnostics retain evidence of even a brief overlap.
+        std::atomic<int> uuidOwnerHighWatermark{1};
+        // Guards state decisions only. Never hold it across signaling or
+        // WebRTC calls, both of which can synchronously re-enter app callbacks.
+        std::mutex negotiationMutex;
+        // Leases the current client generation across an executor-dispatched
+        // App handler and serializes replacement/teardown against that lease.
+        // Recursive entry permits a current data-channel handler to request its
+        // own restart. Encode/send paths never acquire this mutex.
+        std::recursive_mutex callbackOperationMutex;
+        // Serializes WebRtcClient use with async teardown. Recursive re-entry
+        // is needed for callbacks delivered synchronously by libdatachannel.
+        std::recursive_mutex clientOperationMutex;
+        bool sessionInitializing = true;
+        bool removed = false;
+        bool offerCreationInProgress = false;
+        bool answerApplicationInProgress = false;
+        bool mediaPlanApplicationInProgress = false;
+        bool transportRetired = false;
+        bool queuedOfferTransition = false;
+        bool queuedOfferRebuild = false;
+        bool queuedMediaPlan = false;
+        bool directFailureNoticeEmitted = false;
+        std::string queuedOfferReason;
+        uint64_t activeOfferGeneration = 0;
+        uint64_t activeTransportGeneration = 0;
+        uint64_t clientTransportGeneration = 0;
+        uint64_t answeredOfferGeneration = 0;
+        uint64_t localCandidateWorkOfferGeneration = 0;
+        uint64_t localCandidateWorkOutstanding = 0;
+        uint64_t nextLocalCandidateWorkId = 0;
+        uint64_t localCandidateWorkAdmitted = 0;
+        uint64_t localCandidateWorkCompleted = 0;
+        uint64_t localCandidateWorkSuperseded = 0;
+        uint64_t localCandidateOutcomeSequence = 0;
+        bool localCandidateAccountingViolation = false;
+        std::unordered_map<uint64_t, LocalCandidateWorkOwner>
+            localCandidateOutstandingWork;
+        webrtc::IceMode activeIceMode = webrtc::IceMode::All;
+        // Guarded by negotiationMutex. VDO.Ninja assigns one publisher-owned
+        // session per PeerConnection, so a full transport replacement rotates
+        // this value while ordinary renegotiation retains it.
+        std::string activeWireSession;
+        std::string lastLocalOfferSdp;
+        std::string activeAnswerIdentity;
+        std::deque<AttemptedAnswerIdentity> attemptedAnswerIdentities;
         mutable std::mutex diagnosticsMutex;
         std::string lastConnectionState = "new";
         std::string lastOfferReason;
         std::string lastAnswerSource;
         std::string lastRemovalReason;
         std::deque<std::string> timeline;
-        std::mutex mediaPlanMutex;
+        uint64_t offerDispatchSequence = 0;
+        std::deque<OfferDispatchObservation> offerDispatches;
         std::vector<PendingCandidate> pendingCandidates;
         std::unique_ptr<versus::webrtc::WebRtcClient> client;
     };
+    enum class DuplicateOfferRecheckDisposition {
+        None,
+        Stale,
+        Connected,
+        Rebuilt,
+        RebuildFailed,
+        Canceled,
+        ExecutorEvicted,
+        ExecutorRejected,
+        ExecutorDropped,
+        ExecutorSuperseded,
+        ExecutorStale,
+        ExecutorThrew,
+    };
+    struct DuplicateOfferRecheckControl {
+        std::mutex barrierMutex;
+        bool canceled = false;
+        DuplicateOfferRecheckDisposition disposition =
+            DuplicateOfferRecheckDisposition::None;
+    };
+    struct PendingDuplicateOfferRecheck {
+        enum class State {
+            Waiting,
+            Dispatched,
+            Canceling,
+        };
+
+        std::weak_ptr<PeerSession> peer;
+        std::string ownerKey;
+        std::string uuid;
+        std::string ownerSession;
+        std::string activeWireSession;
+        std::string reason;
+        int64_t deadlineMs = 0;
+        uint64_t offerGeneration = 0;
+        uint64_t transportGeneration = 0;
+        uint64_t clientGeneration = 0;
+        uint64_t serial = 0;
+        uint64_t schedulerEpoch = 0;
+        State state = State::Waiting;
+        std::shared_ptr<DuplicateOfferRecheckControl> control;
+    };
     std::unordered_map<std::string, std::shared_ptr<PeerSession>> peerSessions_;
     std::unordered_map<std::string, std::vector<PendingRemoteCandidate>> pendingRemoteCandidates_;
+    std::mutex duplicateOfferRecheckMutex_;
+    std::condition_variable duplicateOfferRecheckCv_;
+    std::thread duplicateOfferRecheckThread_;
+    std::unordered_map<std::string, PendingDuplicateOfferRecheck>
+        duplicateOfferRechecks_;
+    bool duplicateOfferRecheckRunning_ = false;
+    bool duplicateOfferRecheckStopRequested_ = false;
+    bool duplicateOfferRecheckAccepting_ = false;
+    uint64_t duplicateOfferRecheckRevision_ = 0;
+    uint64_t duplicateOfferRecheckEpoch_ = 0;
+    uint64_t duplicateOfferRecheckSerial_ = 0;
     std::vector<std::future<void>> peerShutdownFutures_;
     versus::video::EncoderConfig videoConfig_{};
     std::atomic<int> configuredVideoBitrateKbps_{12000};
@@ -527,7 +863,18 @@ class VersusApp {
     int softwareExternalEncodeFailCount_ = 0;
     int64_t softwareExternalFailWindowStartMs_ = 0;
     std::atomic<bool> lqEncoderInitialized_{false};
-    bool roomCodecWarningEmitted_ = false;
+    struct RoomQualityState {
+        uint64_t generation = 0;
+        std::string activeRoom;
+        bool roomMode = false;
+        versus::video::VideoCodec codec = versus::video::VideoCodec::H264;
+        bool alphaWorkflowEnabled = false;
+        RoomQualityDecision decision{
+            true,
+            false,
+            RoomQualityReason::NotInRoom};
+    };
+    RoomQualityState roomQualityState_;
     AudioSourceMode audioSourceMode_ = AudioSourceMode::SelectedWindow;
     bool includeMicrophone_ = false;
     std::string microphoneDeviceId_;

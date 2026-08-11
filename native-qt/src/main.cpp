@@ -21,6 +21,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_sinks.h>
+#include <rtc/rtc.hpp>
 
 #include "versus/app/versus_app.h"
 #include "versus/control/local_control_server.h"
@@ -206,6 +207,7 @@ int main(int argc, char *argv[]) {
     int durationMs = 120000;
     int maxViewers = 10;
     bool remoteControlEnabled = false;
+    bool roomModeLqEnabled = true;
     std::string remoteControlToken;
     bool alphaWorkflowEnabled = false;
     bool alphaBackgroundConfigured = false;
@@ -214,6 +216,10 @@ int main(int argc, char *argv[]) {
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
     std::string diagnosticsOutArg;
+    bool uiWheelE2eRequested = false;
+    std::string uiWheelE2eOutArg;
+    std::string uiWheelE2eExpectedSha256Arg;
+    std::string uiWheelE2eRunIdArg;
     bool localControlEnabled = false;
     int localControlPort = 0;
     std::string localControlTokenArg;
@@ -351,6 +357,8 @@ int main(int argc, char *argv[]) {
             }
         } else if (arg == "--remote-control") {
             remoteControlEnabled = true;
+        } else if (arg == "--disable-room-lq") {
+            roomModeLqEnabled = false;
         } else if (arg.find("--remote-token=") == 0) {
             remoteControlToken = arg.substr(15);
         } else if (arg == "--include-microphone" || arg == "--include-mic") {
@@ -363,6 +371,13 @@ int main(int argc, char *argv[]) {
             includeMicrophone = true;
         } else if (arg.find("--diagnostics-out=") == 0) {
             diagnosticsOutArg = arg.substr(18);
+        } else if (arg.find("--ui-wheel-e2e-out=") == 0) {
+            uiWheelE2eRequested = true;
+            uiWheelE2eOutArg = arg.substr(19);
+        } else if (arg.find("--ui-wheel-e2e-expected-sha256=") == 0) {
+            uiWheelE2eExpectedSha256Arg = arg.substr(31);
+        } else if (arg.find("--ui-wheel-e2e-run-id=") == 0) {
+            uiWheelE2eRunIdArg = arg.substr(22);
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
         } else if (arg.find("--alpha-background=") == 0) {
@@ -442,6 +457,25 @@ int main(int argc, char *argv[]) {
     } catch (...) {
         // Fall back to default logger
     }
+    if (const char *rtcLog = std::getenv("GAME_CAPTURE_RTC_LOG"); rtcLog && *rtcLog) {
+        std::string normalized = rtcLog;
+        std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        const rtc::LogLevel rtcLevel = normalized == "verbose"
+            ? rtc::LogLevel::Verbose
+            : rtc::LogLevel::Debug;
+        rtc::InitLogger(rtcLevel, [](rtc::LogLevel level, std::string message) {
+            if (level <= rtc::LogLevel::Error) {
+                spdlog::error("[libdatachannel] {}", message);
+            } else if (level == rtc::LogLevel::Warning) {
+                spdlog::warn("[libdatachannel] {}", message);
+            } else {
+                spdlog::debug("[libdatachannel] {}", message);
+            }
+        });
+        spdlog::info("[Main] libdatachannel diagnostic logging enabled ({})", normalized);
+    }
     versus::diagnostics::installCrashReporter({
         versus::diagnostics::defaultCrashDirectory(),
         logPath,
@@ -483,6 +517,16 @@ int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setWindowIcon(QIcon(":/icons/vdoninja.ico"));
     app.setProperty("force_exit_without_shutdown", false);
+    if (uiWheelE2eRequested) {
+        versus::ui::MainWindow::RuntimeOptions runtimeOptions;
+        runtimeOptions.persistedSettingsEnabled = false;
+        runtimeOptions.systemIntegrationsEnabled = false;
+        versus::ui::MainWindow window(nullptr, runtimeOptions);
+        return window.runUiWheelEndToEnd(
+            QString::fromLocal8Bit(uiWheelE2eOutArg.c_str()),
+            QString::fromLatin1(uiWheelE2eExpectedSha256Arg.c_str()),
+            QString::fromLatin1(uiWheelE2eRunIdArg.c_str()));
+    }
     auto coreHolder = std::make_unique<versus::app::VersusApp>();
     auto &core = *coreHolder;
     core.initialize();
@@ -553,6 +597,9 @@ int main(int argc, char *argv[]) {
                 core.stopCapture();
                 QApplication::quit();
             }, Qt::QueuedConnection);
+        });
+        localControlServer->setRefreshPeerTransportsCallback([&core]() {
+            return core.refreshPeerTransportsForLocalControl();
         });
 
         versus::control::LocalControlServerConfig controlConfig;
@@ -680,7 +727,7 @@ int main(int argc, char *argv[]) {
 
     if (headless) {
         // Headless mode - auto-configure and start streaming
-        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} iceMode={} source={} camera={} spoutSender={} audioSource={} includeMicrophone={} microphoneDevice={}",
+        spdlog::info("[Headless] Auto-starting streamId={} room={} password={} server={} durationMs={} maxViewers={} remoteControl={} roomModeLq={} iceMode={} source={} camera={} spoutSender={} audioSource={} includeMicrophone={} microphoneDevice={}",
                      streamId,
                      room.empty() ? "(none)" : room,
                      passwordLogValue(password),
@@ -688,6 +735,7 @@ int main(int argc, char *argv[]) {
                      durationMs,
                      maxViewers,
                      remoteControlEnabled,
+                     roomModeLqEnabled,
                      versus::webrtc::iceModeName(iceMode),
                      videoSourceArg,
                      cameraFilterArg.empty() ? "(auto)" : cameraFilterArg,
@@ -715,6 +763,7 @@ int main(int argc, char *argv[]) {
         options.maxViewers = maxViewers;
         options.remoteControlEnabled = remoteControlEnabled;
         options.remoteControlToken = remoteControlToken;
+        options.roomModeLqEnabled = roomModeLqEnabled;
         options.iceMode = iceMode;
 
         QTimer::singleShot(

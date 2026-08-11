@@ -1,9 +1,60 @@
 #include <QtTest/QtTest>
 
+#include <spdlog/sinks/ostream_sink.h>
+#include <spdlog/spdlog.h>
+
 #include <limits>
+#include <sstream>
 #include <vector>
 
+#include "versus/app/versus_app.h"
 #include "versus/signaling/vdo_signaling.h"
+
+namespace versus::signaling {
+
+class VdoSignalingTestAccess {
+  public:
+    struct OfferAttempt {
+        uint64_t sequence = 0;
+        std::string uuid;
+        std::string session;
+        std::string sdpSha256;
+        std::size_t sdpBytes = 0;
+    };
+
+    static std::vector<OfferAttempt> offerAttempts(
+        const VdoSignaling &signaling) {
+        const auto observations = signaling.offerAttemptsForTesting();
+        std::vector<OfferAttempt> result;
+        result.reserve(observations.size());
+        for (const auto &observation : observations) {
+            result.push_back({
+                observation.sequence,
+                observation.uuid,
+                observation.session,
+                observation.sdpSha256,
+                observation.sdpBytes,
+            });
+        }
+        return result;
+    }
+
+    static bool dispatchInboundPayload(VdoSignaling &signaling,
+                                       const std::string &payload) {
+        return signaling.dispatchInboundPayloadForTesting(payload);
+    }
+
+    static void forceEncryptionFailure(VdoSignaling &signaling,
+                                       bool forceFailure) {
+        signaling.forceEncryptionFailureForTesting(forceFailure);
+    }
+
+    static uint64_t outboundSendAttempts(const VdoSignaling &signaling) {
+        return signaling.outboundSendAttemptsForTesting();
+    }
+};
+
+}  // namespace versus::signaling
 
 class TestVdoSignaling : public QObject {
     Q_OBJECT
@@ -12,13 +63,60 @@ class TestVdoSignaling : public QObject {
     void testViewUrlEncodesPasswordAndRoom();
     void testViewUrlKeepsPasswordFalseLiteral();
     void testDisconnectedSignalSendsFail();
+    void testEncryptionFailureRefusesPlaintextForEverySignalKind();
+    void testOfferAttemptObservationsAreCompleteBoundedAndHashed();
+    void testSignalingLogsMetadataWithoutRawPrivatePayload();
     void testParsesOfficialRoomListingAliases();
     void testParsesOfferRequestAliases();
     void testParsesCleanupAndIceRestartControls();
     void testParsesServerAlertAliases();
     void testRejectsEmptyCandidatePayloads();
     void testParserTorturePayloads();
+    void testAnswerIdentityIgnoresFingerprintAndCandidateNoise();
+    void testAnswerIdentityPreservesGenerationDiscriminators();
+    void testCandidateUfragMatchesOnlyItsAnswerIdentity();
 };
+
+void TestVdoSignaling::testSignalingLogsMetadataWithoutRawPrivatePayload() {
+    std::ostringstream captured;
+    const auto previousLogger = spdlog::default_logger();
+    auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(captured);
+    auto logger = std::make_shared<spdlog::logger>("signaling-privacy-test", sink);
+    logger->set_pattern("%v");
+    logger->set_level(spdlog::level::info);
+    spdlog::set_default_logger(logger);
+
+    versus::signaling::VdoSignaling signaling;
+    const std::string payload = R"({
+        "UUID":"private-peer-identity",
+        "session":"private-wire-session",
+        "description":{
+            "type":"answer",
+            "sdp":"v=0\r\na=ice-ufrag:private-ufrag\r\na=candidate:1 1 UDP 1 192.0.2.55 50000 typ host\r\n"
+        }
+    })";
+    const bool dispatched =
+        versus::signaling::VdoSignalingTestAccess::dispatchInboundPayload(
+            signaling, payload);
+    const bool published = signaling.publish(
+        "private-stream-identity", "private-publisher-label");
+    logger->flush();
+    spdlog::set_default_logger(previousLogger);
+
+    const QString output = QString::fromStdString(captured.str());
+    QVERIFY(dispatched);
+    QVERIFY(!published);
+    QVERIFY(!output.contains(QStringLiteral("private-peer-identity")));
+    QVERIFY(!output.contains(QStringLiteral("private-wire-session")));
+    QVERIFY(!output.contains(QStringLiteral("private-ufrag")));
+    QVERIFY(!output.contains(QStringLiteral("192.0.2.55")));
+    QVERIFY(!output.contains(QStringLiteral("candidate:1")));
+    QVERIFY(!output.contains(QStringLiteral("private-stream-identity")));
+    QVERIFY(!output.contains(QStringLiteral("private_stream_identity")));
+    QVERIFY(!output.contains(QStringLiteral("private-publisher-label")));
+    QVERIFY(output.contains(QStringLiteral(
+        "[Signaling] Received message kind=answer bytes=")));
+}
 
 void TestVdoSignaling::testViewUrlEncodesPasswordAndRoom() {
     versus::signaling::VdoSignaling signaling;
@@ -73,6 +171,81 @@ void TestVdoSignaling::testDisconnectedSignalSendsFail() {
     candidate.mid = "0";
     candidate.mlineIndex = 0;
     QVERIFY(signaling.sendCandidate(candidate) == false);
+}
+
+void TestVdoSignaling::testEncryptionFailureRefusesPlaintextForEverySignalKind() {
+    versus::signaling::VdoSignaling signaling;
+    signaling.setPassword("private-room-password");
+    versus::signaling::VdoSignalingTestAccess::forceEncryptionFailure(
+        signaling, true);
+
+    int encryptionErrors = 0;
+    signaling.onError([&encryptionErrors](const std::string &) {
+        ++encryptionErrors;
+    });
+
+    versus::signaling::SignalOffer offer;
+    offer.uuid = "viewer";
+    offer.session = "offer-session";
+    offer.streamId = "private-stream";
+    offer.sdp = "v=0\r\na=ice-pwd:private-offer-secret\r\n";
+    QVERIFY(!signaling.sendOffer(offer));
+
+    versus::signaling::SignalAnswer answer;
+    answer.uuid = "viewer";
+    answer.session = "answer-session";
+    answer.streamId = "private-stream";
+    answer.sdp = "v=0\r\na=ice-pwd:private-answer-secret\r\n";
+    QVERIFY(!signaling.sendAnswer(answer));
+
+    versus::signaling::SignalCandidate candidate;
+    candidate.uuid = "viewer";
+    candidate.session = "candidate-session";
+    candidate.candidate =
+        "candidate:1 1 UDP 1 192.0.2.55 50000 typ host";
+    candidate.mid = "0";
+    candidate.mlineIndex = 0;
+    QVERIFY(!signaling.sendCandidate(candidate));
+
+    const auto sendAttempts =
+        versus::signaling::VdoSignalingTestAccess::outboundSendAttempts(
+            signaling);
+    qInfo().noquote()
+        << QStringLiteral(
+               "ENCRYPTION_FAILURE_BRANCH forced=1 offer=1 answer=1 candidate=1 transport_attempts=%1 errors=%2")
+               .arg(sendAttempts)
+               .arg(encryptionErrors);
+
+    QCOMPARE(sendAttempts, uint64_t{0});
+    QCOMPARE(encryptionErrors, 3);
+}
+
+void TestVdoSignaling::testOfferAttemptObservationsAreCompleteBoundedAndHashed() {
+    versus::signaling::VdoSignaling signaling;
+    for (int index = 1; index <= 65; ++index) {
+        versus::signaling::SignalOffer offer;
+        offer.uuid = "viewer-" + std::to_string(index);
+        offer.session = "session-" + std::to_string(index);
+        offer.streamId = "stream-name";
+        offer.sdp = "v=0\r\na=x-attempt:" + std::to_string(index) + "\r\n";
+        QVERIFY(!signaling.sendOffer(offer));
+    }
+
+    const auto attempts =
+        versus::signaling::VdoSignalingTestAccess::offerAttempts(signaling);
+    QCOMPARE(attempts.size(), std::size_t{60});
+    QCOMPARE(attempts.front().sequence, uint64_t{6});
+    QCOMPARE(attempts.back().sequence, uint64_t{65});
+    QCOMPARE(QString::fromStdString(attempts.front().uuid),
+             QStringLiteral("viewer-6"));
+    QCOMPARE(QString::fromStdString(attempts.back().session),
+             QStringLiteral("session-65"));
+    QCOMPARE(attempts.back().sdpBytes,
+             std::string("v=0\r\na=x-attempt:65\r\n").size());
+    QCOMPARE(attempts.back().sdpSha256.size(), std::size_t{64});
+    QCOMPARE(QString::fromStdString(attempts.back().sdpSha256),
+             QStringLiteral(
+                 "7a7896f3545440bb29ae3dd52ac94c4d9590de65899a832b611828b36e03ca07"));
 }
 
 void TestVdoSignaling::testParsesOfficialRoomListingAliases() {
@@ -215,6 +388,99 @@ void TestVdoSignaling::testParserTorturePayloads() {
         R"({"iceRestartRequest":false,"UUID":"viewer","session":"default","streamID":"stream"})",
         parsed));
     QVERIFY(parsed.hasIceRestartRequest);
+}
+
+void TestVdoSignaling::testAnswerIdentityIgnoresFingerprintAndCandidateNoise() {
+    const std::string answerA =
+        "v=0\r\n"
+        "o=- 1491456385890009412 2 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:3Ci0\r\n"
+        "a=ice-pwd:answer-a-password\r\n"
+        "a=fingerprint:sha-256 00:00:00:00\r\n"
+        "m=video 9 UDP/TLS/RTP/SAVPF 96\r\n"
+        "a=mid:video\r\n"
+        "a=candidate:1 1 udp 1 10.0.0.1 5000 typ host ufrag 3Ci0\r\n"
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n"
+        "a=mid:0\r\n";
+    const std::string fingerprintOnlyRepair =
+        "v=0\n"
+        "o=-   1491456385890009412   2 IN IP4 127.0.0.1\n"
+        "a=ice-ufrag:3Ci0\n"
+        "a=ice-pwd:answer-a-password\n"
+        "a=fingerprint:sha-256 AA:BB:CC:DD\n"
+        "m=video 9 UDP/TLS/RTP/SAVPF 96\n"
+        "a=mid:video\n"
+        "a=candidate:99 1 udp 2 10.0.0.2 6000 typ host ufrag 3Ci0\n"
+        "m=application 9 UDP/DTLS/SCTP webrtc-datachannel\n"
+        "a=mid:0\n";
+
+    QCOMPARE(QString::fromStdString(versus::app::detail::normalizeAnswerIdentity(answerA)),
+             QString::fromStdString(versus::app::detail::normalizeAnswerIdentity(fingerprintOnlyRepair)));
+}
+
+void TestVdoSignaling::testAnswerIdentityPreservesGenerationDiscriminators() {
+    const std::string answerA =
+        "o=- 100 2 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:oldUfrag\r\n"
+        "a=ice-pwd:oldPassword\r\n"
+        "a=mid:video\r\n"
+        "a=mid:0\r\n";
+    const std::string nextOriginVersion =
+        "o=- 100 3 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:oldUfrag\r\n"
+        "a=ice-pwd:oldPassword\r\n"
+        "a=mid:video\r\n"
+        "a=mid:0\r\n";
+    const std::string nextIceGeneration =
+        "o=- 200 2 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:newUfrag\r\n"
+        "a=ice-pwd:newPassword\r\n"
+        "a=mid:video\r\n"
+        "a=mid:0\r\n";
+    const std::string alphaRenegotiation =
+        "o=- 100 3 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:oldUfrag\r\n"
+        "a=ice-pwd:oldPassword\r\n"
+        "a=mid:video\r\n"
+        "a=mid:0\r\n"
+        "a=mid:video-alpha\r\n";
+
+    const auto identityA = versus::app::detail::normalizeAnswerIdentity(answerA);
+    QVERIFY(identityA != versus::app::detail::normalizeAnswerIdentity(nextOriginVersion));
+    QVERIFY(identityA != versus::app::detail::normalizeAnswerIdentity(nextIceGeneration));
+    QVERIFY(identityA != versus::app::detail::normalizeAnswerIdentity(alphaRenegotiation));
+}
+
+void TestVdoSignaling::testCandidateUfragMatchesOnlyItsAnswerIdentity() {
+    const std::string answer =
+        "o=- 100 2 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:CTHH\r\n"
+        "a=ice-pwd:currentPassword\r\n"
+        "a=mid:video\r\n";
+    const auto identity = versus::app::detail::normalizeAnswerIdentity(answer);
+    const std::string sameTransportAlphaAnswer =
+        "o=- 100 3 IN IP4 127.0.0.1\r\n"
+        "a=ice-ufrag:CTHH\r\n"
+        "a=ice-pwd:currentPassword\r\n"
+        "a=mid:video\r\n"
+        "a=mid:video-alpha\r\n";
+    const auto alphaIdentity =
+        versus::app::detail::normalizeAnswerIdentity(sameTransportAlphaAnswer);
+    const std::string currentTransportCandidate =
+        "candidate:1 1 udp 1 10.0.0.1 5000 typ host ufrag CTHH";
+
+    QVERIFY(versus::app::detail::answerIdentityMatchesCandidate(
+        identity,
+        currentTransportCandidate));
+    QVERIFY(versus::app::detail::answerIdentityMatchesCandidate(
+        alphaIdentity,
+        currentTransportCandidate));
+    QVERIFY(!versus::app::detail::answerIdentityMatchesCandidate(
+        identity,
+        "candidate:2 1 udp 1 10.0.0.2 5001 typ host ufrag 3Ci0"));
+    QVERIFY(versus::app::detail::answerIdentityMatchesCandidate(
+        identity,
+        "candidate:3 1 udp 1 10.0.0.3 5002 typ host"));
 }
 
 QTEST_MAIN(TestVdoSignaling)

@@ -1,5 +1,6 @@
 param(
     [string]$DistDir = "",
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
     [string]$Version = "",
     [string]$CodeSigningRepo = "C:\Users\Steve\code\code-signing",
     [string[]]$FilePaths = @(),
@@ -52,8 +53,8 @@ function Resolve-CodeSigningPassword([string]$CodeSigningRepoPath) {
 }
 
 function Sign-File([string]$signtoolPath, [string]$pfxPath, [string]$password, [string]$filePath, [string[]]$timestampServers) {
-    $attempts = if ($timestampServers -and $timestampServers.Count -gt 0) {
-        $timestampServers
+    $attempts = if ($timestampServers -and @($timestampServers).Count -gt 0) {
+        @($timestampServers)
     } else {
         @("http://timestamp.digicert.com")
     }
@@ -89,101 +90,142 @@ function Test-SignatureAcceptable($signature) {
     return $true
 }
 
-if (-not $DistDir) {
-    $DistDir = Join-Path (Resolve-Path (Join-Path $PSScriptRoot "..")) "dist"
+if ($DistDir -and [string]::IsNullOrWhiteSpace($Version)) {
+    throw 'Version is required with DistDir.'
 }
 
-if (-not (Test-Path $DistDir)) {
-    Write-Host "Code signing: dist directory not found ($DistDir); skipping."
+if ($DistDir -and $FilePaths -and @($FilePaths).Count -gt 0) {
+    throw "Specify either DistDir or FilePaths, not both."
+}
+
+if (-not $DistDir -and (-not $FilePaths -or @($FilePaths).Count -eq 0)) {
+    Write-Host "Code signing: no DistDir or FilePaths were provided; skipping."
     exit 0
 }
 
-$signtoolPath = Resolve-SigntoolPath
-if (-not $signtoolPath) {
-    $msg = "Code signing: signtool.exe not found; skipping."
-    if ($FailOnError) {
-        throw $msg
+if ($DistDir) {
+    if (-not (Test-Path -LiteralPath $DistDir -PathType Container)) {
+        throw "Code signing: dist directory not found: $DistDir"
     }
-    Write-Warning $msg
-    exit 0
-}
-
-$pfxPath = Join-Path $CodeSigningRepo "secrets\decrypted\certs\socialstream.pfx"
-if (-not (Test-Path $pfxPath)) {
-    $msg = "Code signing: certificate not found at $pfxPath; skipping."
-    if ($FailOnError) {
-        throw $msg
-    }
-    Write-Warning $msg
-    exit 0
-}
-
-$password = Resolve-CodeSigningPassword -CodeSigningRepoPath $CodeSigningRepo
-if (-not $password) {
-    $msg = "Code signing: WIN_CSC_KEY_PASSWORD missing (env or decrypted build-config.env); skipping."
-    if ($FailOnError) {
-        throw $msg
-    }
-    Write-Warning $msg
-    exit 0
+    $DistDir = [System.IO.Path]::GetFullPath($DistDir)
 }
 
 $allExes = @()
-if ($FilePaths -and $FilePaths.Count -gt 0) {
+if ($FilePaths -and @($FilePaths).Count -gt 0) {
     foreach ($path in $FilePaths) {
         if ([string]::IsNullOrWhiteSpace($path)) {
-            continue
+            throw 'Explicit signing input must be a literal file.'
         }
-        if (Test-Path $path) {
-            $resolved = Resolve-Path $path
-            $allExes += Get-Item $resolved
-        } else {
-            Write-Warning "Code signing: file path not found, skipping '$path'"
-        }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Explicit signing input must be a literal file.' }
+        $resolved = Resolve-Path -LiteralPath $path
+        $allExes += Get-Item -LiteralPath $resolved
     }
-    $allExes = $allExes | Where-Object { $_.Extension -ieq ".exe" }
+    $allExes = @($allExes | Where-Object { $_.Extension -ieq ".exe" })
 } else {
-    $allExes = Get-ChildItem -Path $DistDir -File -Filter "*.exe" -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -like "game-capture*.exe" -and $_.Name -notlike "*uninstall*" }
-
-    if ($Version) {
-        $stableNames = @("game-capture-setup.exe", "game-capture-portable.exe")
-        $versionPrefix = "game-capture-$Version-"
-        $allExes = $allExes | Where-Object {
-            ($stableNames -contains $_.Name) -or $_.Name.StartsWith($versionPrefix, [System.StringComparison]::OrdinalIgnoreCase)
-        }
-    }
+    $versionedSetupPath = Join-Path $DistDir "game-capture-$Version-setup.exe"
+    $versionedPortablePath = Join-Path $DistDir "game-capture-$Version-portable.exe"
+    if (-not (Test-Path -LiteralPath $versionedSetupPath -PathType Leaf)) { throw 'Versioned setup EXE is required.' }
+    if (-not (Test-Path -LiteralPath $versionedPortablePath -PathType Leaf)) { throw 'Versioned portable EXE is required.' }
+    $allExes = @(
+        Get-Item -LiteralPath $versionedSetupPath
+        Get-Item -LiteralPath $versionedPortablePath
+    )
 }
 
-$allExes = $allExes | Sort-Object FullName -Unique
-if (-not $allExes) {
+$allExes = @($allExes | Sort-Object FullName -Unique)
+if (@($allExes).Count -eq 0) {
     Write-Host "Code signing: no matching game-capture EXEs found; skipping."
     exit 0
 }
 
-$failures = @()
-Write-Host "Code signing: signing $($allExes.Count) EXE artifact(s)..."
-foreach ($file in $allExes) {
-    try {
-        Sign-File -signtoolPath $signtoolPath -pfxPath $pfxPath -password $password -filePath $file.FullName -timestampServers $TimestampServers
-        $sig = Get-AuthenticodeSignature -FilePath $file.FullName
-        if (-not (Test-SignatureAcceptable -signature $sig)) {
-            throw "Signature check failed (status=$($sig.Status), message=$($sig.StatusMessage))"
+$signingAvailable = $true
+$signtoolPath = Resolve-SigntoolPath
+if (-not $signtoolPath) {
+    $msg = "Code signing: signtool.exe not found; skipping signing."
+    if ($FailOnError) {
+        throw $msg
+    }
+    Write-Warning $msg
+    $signingAvailable = $false
+}
+
+$pfxPath = Join-Path $CodeSigningRepo "secrets\decrypted\certs\socialstream.pfx"
+if ($signingAvailable -and -not (Test-Path -LiteralPath $pfxPath -PathType Leaf)) {
+    $msg = "Code signing: certificate not found at $pfxPath; skipping signing."
+    if ($FailOnError) {
+        throw $msg
+    }
+    Write-Warning $msg
+    $signingAvailable = $false
+}
+
+$password = ""
+if ($signingAvailable) {
+    $password = Resolve-CodeSigningPassword -CodeSigningRepoPath $CodeSigningRepo
+    if (-not $password) {
+        $msg = "Code signing: WIN_CSC_KEY_PASSWORD missing (env or decrypted build-config.env); skipping signing."
+        if ($FailOnError) {
+            throw $msg
         }
-        $subject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { "(none)" }
-        Write-Host "  PASS $($file.Name) (status=$($sig.Status), signer=$subject)"
-    } catch {
-        $message = $_.Exception.Message
-        Write-Warning "  FAIL $($file.Name): $message"
-        $failures += [pscustomobject]@{
-            Name = $file.Name
-            Error = $message
+        Write-Warning $msg
+        $signingAvailable = $false
+    }
+}
+
+$failures = @()
+if ($signingAvailable) {
+    Write-Host "Code signing: signing $(@($allExes).Count) EXE artifact(s)..."
+    foreach ($file in $allExes) {
+        try {
+            Sign-File -signtoolPath $signtoolPath -pfxPath $pfxPath -password $password -filePath $file.FullName -timestampServers $TimestampServers
+            $signature = Microsoft.PowerShell.Security\Get-AuthenticodeSignature -LiteralPath $file.FullName
+            if (-not (Test-SignatureAcceptable -signature $signature)) {
+                throw "Signature check failed (status=$($signature.Status), message=$($signature.StatusMessage))"
+            }
+            $subject = if ($signature.SignerCertificate) { $signature.SignerCertificate.Subject } else { "(none)" }
+            Write-Host "  PASS $($file.Name) (status=$($signature.Status), signer=$subject)"
+        } catch {
+            $message = $_.Exception.Message
+            Write-Warning "  FAIL $($file.Name): $message"
+            $failures += [pscustomobject]@{
+                Name = $file.Name
+                Error = $message
+            }
         }
     }
 }
 
+if ($DistDir) {
+    $stableSetupPath = Join-Path $DistDir 'game-capture-setup.exe'
+    $stablePortablePath = Join-Path $DistDir 'game-capture-portable.exe'
+
+    if ((Test-Path -LiteralPath $stableSetupPath) -and -not (Test-Path -LiteralPath $stableSetupPath -PathType Leaf)) {
+        throw 'Stable setup destination must be absent or a literal file.'
+    }
+    Copy-Item -LiteralPath $versionedSetupPath -Destination $stableSetupPath -Force -ErrorAction Stop
+    if (-not (Test-Path -LiteralPath $stableSetupPath -PathType Leaf)) {
+        throw 'Stable setup alias was not created as a literal file.'
+    }
+    if ((Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $versionedSetupPath -Algorithm SHA256).Hash -cne
+        (Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $stableSetupPath -Algorithm SHA256).Hash) {
+        throw 'Stable setup alias hash mismatch.'
+    }
+
+    if ((Test-Path -LiteralPath $stablePortablePath) -and -not (Test-Path -LiteralPath $stablePortablePath -PathType Leaf)) {
+        throw 'Stable portable destination must be absent or a literal file.'
+    }
+    Copy-Item -LiteralPath $versionedPortablePath -Destination $stablePortablePath -Force -ErrorAction Stop
+    if (-not (Test-Path -LiteralPath $stablePortablePath -PathType Leaf)) {
+        throw 'Stable portable alias was not created as a literal file.'
+    }
+    if ((Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $versionedPortablePath -Algorithm SHA256).Hash -cne
+        (Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $stablePortablePath -Algorithm SHA256).Hash) {
+        throw 'Stable portable alias hash mismatch.'
+    }
+}
+
 if ($failures.Count -gt 0) {
-    Write-Warning "Code signing: $($failures.Count) artifact(s) failed to sign."
+    Write-Warning "Code signing: $(@($failures).Count) artifact(s) failed to sign."
     if ($FailOnError) {
         exit 1
     }

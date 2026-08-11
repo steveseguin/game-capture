@@ -18,9 +18,24 @@ enum class StreamTier {
     LQ
 };
 
+enum class RoomQualityReason {
+    Enabled,
+    NotInRoom,
+    NotRequested,
+    CodecNotH264
+};
+
+struct RoomQualityDecision {
+    bool requested = false;
+    bool effective = false;
+    RoomQualityReason reason = RoomQualityReason::NotRequested;
+
+    bool operator==(const RoomQualityDecision &) const = default;
+};
+
 struct PeerRouteState {
     bool roomMode = false;
-    bool roomModeLqEnabled = true;
+    bool roomQualityEffective = false;
     bool initReceived = false;
     bool roleValid = false;
     PeerRole role = PeerRole::Unknown;
@@ -30,7 +45,15 @@ struct PeerRouteState {
 
 PeerRole parsePeerRole(const std::string &value);
 const char *peerRoleName(PeerRole role);
-StreamTier assignStreamTier(bool roomMode, bool roomModeLqEnabled, bool roleValid, PeerRole role);
+RoomQualityDecision resolveRoomQualityDecision(bool roomMode,
+                                               bool requested,
+                                               bool selectedCodecIsH264);
+const char *roomQualityReasonName(RoomQualityReason reason);
+StreamTier assignStreamTier(bool roomMode,
+                            bool roomQualityEffective,
+                            bool roleValid,
+                            PeerRole role);
+StreamTier selectEffectiveStreamTier(StreamTier policyTier, bool forceHq);
 const char *streamTierName(StreamTier tier);
 bool canSendVideo(const PeerRouteState &state);
 bool canSendAudio(const PeerRouteState &state);

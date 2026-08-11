@@ -7,7 +7,10 @@ class TestDualStreamPolicy : public QObject {
 
   private slots:
     void testParsePeerRole();
+    void testRoomQualityDecision();
     void testAssignStreamTier();
+    void testEffectiveTierNeverMixesLqH264IntoAnotherCodec();
+    void testHqPolicyTierCannotBeDemotedByPeerBitrate();
     void testCanSendVideoRequiresRoomInit();
     void testCanSendAudioHonorsFlags();
 };
@@ -22,6 +25,33 @@ void TestDualStreamPolicy::testParsePeerRole() {
     QCOMPARE(parsePeerRole("viewer"), PeerRole::Viewer);
     QCOMPARE(parsePeerRole(""), PeerRole::Unknown);
     QCOMPARE(parsePeerRole("host"), PeerRole::Unknown);
+}
+
+void TestDualStreamPolicy::testRoomQualityDecision() {
+    using versus::app::RoomQualityReason;
+    using versus::app::resolveRoomQualityDecision;
+    using versus::app::roomQualityReasonName;
+
+    const auto enabled = resolveRoomQualityDecision(true, true, true);
+    QVERIFY(enabled.requested);
+    QVERIFY(enabled.effective);
+    QCOMPARE(enabled.reason, RoomQualityReason::Enabled);
+    QCOMPARE(QString::fromLatin1(roomQualityReasonName(enabled.reason)), QStringLiteral("enabled"));
+
+    const auto notInRoom = resolveRoomQualityDecision(false, true, true);
+    QVERIFY(notInRoom.requested);
+    QVERIFY(!notInRoom.effective);
+    QCOMPARE(QString::fromLatin1(roomQualityReasonName(notInRoom.reason)), QStringLiteral("not-in-room"));
+
+    const auto notRequested = resolveRoomQualityDecision(true, false, true);
+    QVERIFY(!notRequested.requested);
+    QVERIFY(!notRequested.effective);
+    QCOMPARE(QString::fromLatin1(roomQualityReasonName(notRequested.reason)), QStringLiteral("not-requested"));
+
+    const auto incompatible = resolveRoomQualityDecision(true, true, false);
+    QVERIFY(incompatible.requested);
+    QVERIFY(!incompatible.effective);
+    QCOMPARE(QString::fromLatin1(roomQualityReasonName(incompatible.reason)), QStringLiteral("codec-not-h264"));
 }
 
 void TestDualStreamPolicy::testAssignStreamTier() {
@@ -40,6 +70,39 @@ void TestDualStreamPolicy::testAssignStreamTier() {
     QCOMPARE(assignStreamTier(true, true, false, PeerRole::Unknown), StreamTier::None);
 }
 
+void TestDualStreamPolicy::testEffectiveTierNeverMixesLqH264IntoAnotherCodec() {
+    using versus::app::StreamTier;
+    using versus::app::selectEffectiveStreamTier;
+
+    QCOMPARE(selectEffectiveStreamTier(StreamTier::HQ, false), StreamTier::HQ);
+    QCOMPARE(selectEffectiveStreamTier(StreamTier::LQ, false), StreamTier::LQ);
+    QCOMPARE(selectEffectiveStreamTier(StreamTier::LQ, true), StreamTier::HQ);
+    QCOMPARE(selectEffectiveStreamTier(StreamTier::None, true), StreamTier::None);
+}
+
+void TestDualStreamPolicy::testHqPolicyTierCannotBeDemotedByPeerBitrate() {
+    using versus::app::PeerRole;
+    using versus::app::StreamTier;
+    using versus::app::assignStreamTier;
+    using versus::app::selectEffectiveStreamTier;
+
+    const auto effectiveTier = [&](bool roomMode,
+                                   bool roomQualityRequested,
+                                   PeerRole role) {
+        const StreamTier policyTier = assignStreamTier(
+            roomMode,
+            roomQualityRequested,
+            true,
+            role);
+        return selectEffectiveStreamTier(policyTier, false);
+    };
+
+    QCOMPARE(effectiveTier(false, true, PeerRole::Viewer), StreamTier::HQ);
+    QCOMPARE(effectiveTier(true, false, PeerRole::Viewer), StreamTier::HQ);
+    QCOMPARE(effectiveTier(true, true, PeerRole::Scene), StreamTier::HQ);
+    QCOMPARE(effectiveTier(true, true, PeerRole::Viewer), StreamTier::LQ);
+}
+
 void TestDualStreamPolicy::testCanSendVideoRequiresRoomInit() {
     using versus::app::PeerRole;
     using versus::app::PeerRouteState;
@@ -47,7 +110,7 @@ void TestDualStreamPolicy::testCanSendVideoRequiresRoomInit() {
 
     PeerRouteState direct;
     direct.roomMode = false;
-    direct.roomModeLqEnabled = true;
+    direct.roomQualityEffective = false;
     direct.initReceived = false;
     direct.roleValid = false;
     direct.role = PeerRole::Unknown;
@@ -56,7 +119,7 @@ void TestDualStreamPolicy::testCanSendVideoRequiresRoomInit() {
 
     PeerRouteState roomPending;
     roomPending.roomMode = true;
-    roomPending.roomModeLqEnabled = true;
+    roomPending.roomQualityEffective = true;
     roomPending.initReceived = false;
     roomPending.roleValid = false;
     roomPending.role = PeerRole::Unknown;
@@ -82,7 +145,7 @@ void TestDualStreamPolicy::testCanSendAudioHonorsFlags() {
 
     PeerRouteState roomViewer;
     roomViewer.roomMode = true;
-    roomViewer.roomModeLqEnabled = true;
+    roomViewer.roomQualityEffective = true;
     roomViewer.initReceived = true;
     roomViewer.roleValid = true;
     roomViewer.role = PeerRole::Viewer;

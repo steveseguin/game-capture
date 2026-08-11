@@ -1,7 +1,10 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$PublisherPath = "",
+    [string]$Version = "0.2.49",
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$FirefoxPath,
     [string]$RefreshPassword = "",
     [string]$RefreshVideoEncoder = "nvenc",
     [string]$ControlPassword = "",
@@ -13,30 +16,13 @@
     [int]$ViewerChurnCycles = 4,
     [int]$ViewerChurnTimeoutMs = 45000,
     [int]$ViewerChurnHoldMs = 3000,
-    [int]$ViewerChurnJoinGapMs = 250
+    [int]$ViewerChurnJoinGapMs = 250,
+    [string]$RoomAlphaPluginRepo = "",
+    [switch]$SkipRoomAlpha = $true
 )
 
 $ErrorActionPreference = "Stop"
-
-function Resolve-PublisherExecutable([string]$RepoRoot, [string]$BuildDir, [string]$Configuration, [string]$ExplicitPath) {
-    if ($ExplicitPath) {
-        if (Test-Path $ExplicitPath) {
-            return (Resolve-Path $ExplicitPath).Path
-        }
-        throw "Publisher executable not found at explicit path: $ExplicitPath"
-    }
-
-    $candidates = @(
-        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/game-capture.exe"),
-        (Join-Path $RepoRoot "$BuildDir/bin/game-capture.exe")
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) {
-            return (Resolve-Path $candidate).Path
-        }
-    }
-    return ""
-}
+. (Join-Path $PSScriptRoot 'release-source-snapshot.ps1')
 
 function Quote-ProcessArgument([string]$Value) {
     return '"' + ($Value -replace '"', '\"') + '"'
@@ -73,10 +59,29 @@ function Stop-E2eCaptureSource($Process) {
 }
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-$publisherExe = Resolve-PublisherExecutable -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration -ExplicitPath $PublisherPath
-if (-not $publisherExe) {
-    throw "Could not locate game-capture.exe for BuildDir '$BuildDir' and Configuration '$Configuration'. Build first or pass -PublisherPath."
+$sourceSnapshot = Get-ReleaseSourceSnapshot -SourceRoot $repoRoot
+if ($null -eq $sourceSnapshot) {
+    throw "Could not establish the source snapshot for the packaged fast gate."
 }
+$buildScript = Join-Path $PSScriptRoot "build-release.ps1"
+$buildParams = @{
+    BuildDir = $BuildDir
+    Configuration = $Configuration
+    Version = $Version
+    ExpectedSourceSnapshotSha256 = $sourceSnapshot.sha256
+    ExpectedSourceSnapshotFileCount = $sourceSnapshot.fileCount
+    ExpectedSourceSnapshotAlgorithm = $sourceSnapshot.algorithm
+    SkipVirusTotal = $true
+    RequireReleaseArtifacts = $true
+}
+& $buildScript @buildParams
+$packagedPublisher = Join-Path $repoRoot "dist/game-capture-$Version-win64/game-capture.exe"
+$artifactManifestPath = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName([System.IO.Path]::GetFullPath($packagedPublisher)), 'release-artifact-manifest.json')
+if (-not (Test-Path -LiteralPath $packagedPublisher -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $artifactManifestPath -PathType Leaf)) {
+    throw "Fast-gate release package or co-located manifest is missing."
+}
+$artifactManifestSha256 = (Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $artifactManifestPath -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
 
 $previousCaptureWindowFilter = [Environment]::GetEnvironmentVariable("GAME_CAPTURE_WINDOW_FILTER", "Process")
 $captureWindowFilter = "Game Capture Fast Gate Source $(Get-Date -Format "yyyyMMdd-HHmmss")"
@@ -91,7 +96,10 @@ try {
     $params = @{
         BuildDir = $BuildDir
         Configuration = $Configuration
-        PublisherPath = $publisherExe
+        PublisherPath = $packagedPublisher
+        ArtifactManifestPath = $artifactManifestPath
+        ArtifactManifestSha256 = $artifactManifestSha256
+        FirefoxPath = $FirefoxPath
         SkipSoak = $true
         CheckHardwareEncoders = $false
         BitrateRetries = $BitrateRetries
@@ -100,6 +108,8 @@ try {
         ControlPassword = $ControlPassword
         ControlToken = $ControlToken
         SkipDualStream = $SkipDualStream
+        RoomAlphaPluginRepo = $RoomAlphaPluginRepo
+        SkipRoomAlpha = $SkipRoomAlpha
     }
     if ($FfmpegPath) {
         $params.FfmpegPath = $FfmpegPath
@@ -112,7 +122,7 @@ try {
 
     Write-Host ""
     Write-Host "=== E2E Viewer Churn ==="
-    $viewerChurnCmd = "npm --prefix `"$repoRoot`" run e2e:viewer-churn -- --publisher-path=`"$publisherExe`" --password=$RefreshPassword --viewers=$ViewerChurnViewers --cycles=$ViewerChurnCycles --timeout-ms=$ViewerChurnTimeoutMs --hold-ms=$ViewerChurnHoldMs --join-gap-ms=$ViewerChurnJoinGapMs"
+    $viewerChurnCmd = "npm --prefix `"$repoRoot`" run e2e:viewer-churn -- --publisher-path=`"$packagedPublisher`" --password=$RefreshPassword --viewers=$ViewerChurnViewers --cycles=$ViewerChurnCycles --timeout-ms=$ViewerChurnTimeoutMs --hold-ms=$ViewerChurnHoldMs --join-gap-ms=$ViewerChurnJoinGapMs"
     if ($RefreshVideoEncoder) {
         $viewerChurnCmd += " --video-encoder=$RefreshVideoEncoder"
     }

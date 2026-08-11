@@ -1,10 +1,12 @@
 #include "versus/app/versus_app.h"
+#include "versus/app/keyframe_request_policy.h"
 
 #include "versus/audio/audio_format_converter.h"
 #include "versus/video/aspect_fit.h"
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
+#include <QtCore/QCryptographicHash>
 
 #include <algorithm>
 #include <array>
@@ -15,6 +17,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <thread>
 #include <utility>
@@ -24,6 +27,148 @@
 #endif
 
 namespace versus::app {
+
+namespace detail {
+
+std::string sha256Hex(const std::string &value) {
+    return QCryptographicHash::hash(
+               QByteArray::fromStdString(value),
+               QCryptographicHash::Sha256)
+        .toHex()
+        .toStdString();
+}
+
+std::string normalizeAnswerIdentity(const std::string &sdp) {
+    auto trim = [](std::string value) {
+        const auto first = value.find_first_not_of(" \t\r");
+        if (first == std::string::npos) {
+            return std::string{};
+        }
+        const auto last = value.find_last_not_of(" \t\r");
+        return value.substr(first, last - first + 1);
+    };
+    auto collapseWhitespace = [&](const std::string &value) {
+        std::istringstream words(value);
+        std::ostringstream normalized;
+        std::string word;
+        bool first = true;
+        while (words >> word) {
+            if (!first) {
+                normalized << ' ';
+            }
+            normalized << word;
+            first = false;
+        }
+        return normalized.str();
+    };
+
+    std::string origin;
+    std::vector<std::string> iceUfrags;
+    std::vector<std::string> icePasswords;
+    std::vector<std::string> mids;
+    std::vector<std::string> fingerprintFreeFallback;
+    std::istringstream input(sdp);
+    std::string line;
+    while (std::getline(input, line)) {
+        line = trim(std::move(line));
+        if (line.empty()) {
+            continue;
+        }
+        std::string lower = line;
+        std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (lower.rfind("a=fingerprint:", 0) == 0 ||
+            lower.rfind("a=candidate:", 0) == 0 ||
+            lower == "a=end-of-candidates") {
+            continue;
+        }
+        fingerprintFreeFallback.push_back(collapseWhitespace(line));
+        if (lower.rfind("o=", 0) == 0 && origin.empty()) {
+            origin = collapseWhitespace(line.substr(2));
+        } else if (lower.rfind("a=ice-ufrag:", 0) == 0) {
+            iceUfrags.push_back(trim(line.substr(12)));
+        } else if (lower.rfind("a=ice-pwd:", 0) == 0) {
+            icePasswords.push_back(trim(line.substr(10)));
+        } else if (lower.rfind("a=mid:", 0) == 0) {
+            mids.push_back(trim(line.substr(6)));
+        }
+    }
+
+    auto normalizeSet = [](std::vector<std::string> &values) {
+        values.erase(std::remove_if(values.begin(), values.end(), [](const std::string &value) {
+            return value.empty();
+        }), values.end());
+        std::sort(values.begin(), values.end());
+        values.erase(std::unique(values.begin(), values.end()), values.end());
+    };
+    normalizeSet(iceUfrags);
+    normalizeSet(icePasswords);
+    normalizeSet(mids);
+
+    std::ostringstream identity;
+    identity << "origin=" << origin << "|ufrag=";
+    for (const auto &value : iceUfrags) {
+        identity << ';' << value.size() << ':' << value;
+    }
+    identity << "|pwd=";
+    for (const auto &value : icePasswords) {
+        identity << ';' << value.size() << ':' << value;
+    }
+    identity << "|mids=";
+    for (const auto &value : mids) {
+        identity << ';' << value.size() << ':' << value;
+    }
+
+    if (!origin.empty() || !iceUfrags.empty() || !icePasswords.empty() || !mids.empty()) {
+        return identity.str();
+    }
+
+    // Malformed answers still need a replay identity. This fallback remains
+    // fingerprint-insensitive while excluding trickled candidate noise.
+    std::ostringstream fallback;
+    for (const auto &value : fingerprintFreeFallback) {
+        fallback << value.size() << ':' << value;
+    }
+    return fallback.str();
+}
+
+std::string candidateIceUfrag(const std::string &candidate) {
+    std::istringstream tokens(candidate);
+    std::string token;
+    while (tokens >> token) {
+        std::transform(token.begin(), token.end(), token.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (token != "ufrag") {
+            continue;
+        }
+        std::string ufrag;
+        if (tokens >> ufrag) {
+            return ufrag;
+        }
+        break;
+    }
+    return {};
+}
+
+bool answerIdentityMatchesCandidate(const std::string &answerIdentity,
+                                    const std::string &candidate) {
+    const std::string ufrag = candidateIceUfrag(candidate);
+    if (ufrag.empty()) {
+        return true;
+    }
+    const auto start = answerIdentity.find("|ufrag=");
+    if (start == std::string::npos) {
+        return false;
+    }
+    const auto end = answerIdentity.find("|pwd=", start + 7);
+    const std::string encoded = ";" + std::to_string(ufrag.size()) + ':' + ufrag;
+    return answerIdentity.substr(start + 7, end - (start + 7)).find(encoded) != std::string::npos;
+}
+
+}  // namespace detail
+
 namespace {
 
 #ifndef APP_VERSION
@@ -36,7 +181,7 @@ constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kPrimaryAudioActiveWindowMs = 250;
 constexpr int64_t kRoomInitGracePeriodMs = 1500;
 constexpr int64_t kDirectInitGracePeriodMs = 1000;
-constexpr int64_t kDisconnectedPeerPruneMs = 10000;
+constexpr int64_t kDisconnectedPeerPruneMs = 90000;
 constexpr int64_t kResizeKeyframeCooldownMs = 700;
 constexpr int64_t kPendingRemoteCandidateTtlMs = 15000;
 constexpr int kHardwareFailSampleWindow = 300;
@@ -47,11 +192,115 @@ constexpr int kLqHeight = 360;
 constexpr int kLqFps = 30;
 constexpr int kLqBitrateKbps = 2000;
 constexpr std::size_t kPendingRemoteCandidatesMaxPerPeer = 100;
+constexpr std::size_t kAttemptedAnswerIdentityHistoryMax = 64;
 
 int64_t steadyNowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now().time_since_epoch())
         .count();
+}
+
+struct PeerCallbackSchedule {
+    GenerationTaggedPeerOperationExecutor::Priority priority =
+        GenerationTaggedPeerOperationExecutor::Priority::Ordinary;
+    GenerationTaggedPeerOperationExecutor::Criticality criticality =
+        GenerationTaggedPeerOperationExecutor::Criticality::State;
+    std::string coalesceKey;
+};
+
+PeerCallbackSchedule schedulePeerDataMessage(const std::string &message) {
+    using Priority = GenerationTaggedPeerOperationExecutor::Priority;
+    using Criticality = GenerationTaggedPeerOperationExecutor::Criticality;
+    const auto msg = nlohmann::json::parse(message, nullptr, false);
+    if (msg.is_discarded() || !msg.is_object()) {
+        return {};
+    }
+    if (msg.contains("hangup")) {
+        return {Priority::Critical, Criticality::Convergent, "remote-hangup"};
+    }
+    bool cleanupRequested = false;
+    if (msg.contains("request") && msg["request"].is_string()) {
+        std::string request = msg["request"].get<std::string>();
+        std::transform(
+            request.begin(),
+            request.end(),
+            request.begin(),
+            [](unsigned char ch) {
+                return static_cast<char>(std::tolower(ch));
+            });
+        cleanupRequested = request == "cleanup";
+    }
+    if (msg.contains("bye") || cleanupRequested) {
+        return {Priority::Critical, Criticality::Convergent, "peer-cleanup"};
+    }
+    if (msg.contains("iceRestartRequest")) {
+        return {Priority::Critical, Criticality::Convergent, "ice-restart"};
+    }
+    if (msg.contains("refreshAll")) {
+        return {Priority::Critical, Criticality::Convergent, "refresh-all"};
+    }
+    if (msg.contains("refreshConnection")) {
+        return {Priority::Critical, Criticality::Convergent, "refresh-connection"};
+    }
+    if (msg.contains("description")) {
+        // Only the newest queued answer/offer description for one peer can
+        // describe the recoverable transport state. Trickle candidates remain
+        // ordinary, bounded per peer, and ordered within that peer's queue.
+        return {Priority::Critical, Criticality::Replaceable, "signal-description"};
+    }
+    return {};
+}
+
+const char *peerOperationEnqueueResultName(
+    GenerationTaggedPeerOperationExecutor::EnqueueResult result) {
+    using Result = GenerationTaggedPeerOperationExecutor::EnqueueResult;
+    switch (result) {
+        case Result::Queued:
+            return "queued";
+        case Result::CoalescedCritical:
+            return "coalesced-critical";
+        case Result::QueuedAfterEvictingOrdinary:
+            return "queued-after-ordinary-eviction";
+        case Result::QueuedAfterEvictingCritical:
+            return "queued-after-critical-eviction";
+        case Result::RejectedInvalid:
+            return "rejected-invalid";
+        case Result::RejectedStopped:
+            return "rejected-stopped";
+        case Result::RejectedOrdinaryCapacity:
+            return "rejected-ordinary-capacity";
+        case Result::RejectedCriticalCapacity:
+            return "rejected-critical-capacity";
+    }
+    return "unknown";
+}
+
+void advanceMonotonic(std::atomic<int64_t> &target, int64_t value) {
+    int64_t current = target.load(std::memory_order_relaxed);
+    while (value > current &&
+           !target.compare_exchange_weak(
+               current,
+               value,
+               std::memory_order_relaxed,
+               std::memory_order_relaxed)) {
+    }
+}
+
+void advanceMonotonic(std::atomic<uint64_t> &target, uint64_t value) {
+    uint64_t current = target.load(std::memory_order_relaxed);
+    while (value > current &&
+           !target.compare_exchange_weak(
+               current,
+               value,
+               std::memory_order_relaxed,
+               std::memory_order_relaxed)) {
+    }
+}
+
+std::string generatePeerSessionId() {
+    static std::atomic<uint64_t> sequence{0};
+    return "gc-" + std::to_string(steadyNowMs()) + "-" +
+        std::to_string(sequence.fetch_add(1, std::memory_order_relaxed) + 1);
 }
 
 #ifdef _WIN32
@@ -522,6 +771,22 @@ const char *connectionStateName(webrtc::ConnectionState state) {
     }
 }
 
+GenerationTaggedPeerOperationExecutor::Criticality connectionStateCriticality(
+    webrtc::ConnectionState state) {
+    using Criticality = GenerationTaggedPeerOperationExecutor::Criticality;
+    switch (state) {
+        case webrtc::ConnectionState::Disconnected:
+        case webrtc::ConnectionState::Failed:
+        case webrtc::ConnectionState::Closed:
+            // These states drive retention, transport retirement, and recovery.
+            return Criticality::Convergent;
+        case webrtc::ConnectionState::Connecting:
+        case webrtc::ConnectionState::Connected:
+        default:
+            return Criticality::State;
+    }
+}
+
 const char *audioSourceModeName(AudioSourceMode mode) {
     switch (mode) {
         case AudioSourceMode::SelectedWindow:
@@ -611,6 +876,7 @@ video::EncoderConfig primaryVideoEncoderConfig(video::EncoderConfig config) {
     if (usesVp9AlphaTrack(config)) {
         // Dual-track alpha sends color and alpha through separate encoders.
         // The primary can be VP9 or H.264; the alpha mask is always VP9.
+        config.requireEveryFrameKeyframe = config.codec == video::VideoCodec::VP9;
         config.enableAlpha = false;
     }
     return config;
@@ -620,6 +886,7 @@ video::EncoderConfig alphaVideoEncoderConfig(video::EncoderConfig config) {
     const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(config, config.width, config.height);
     config.codec = video::VideoCodec::VP9;
     config.enableAlpha = true;
+    config.requireEveryFrameKeyframe = true;
     config.width = alphaWidth;
     config.height = alphaHeight;
     config.bitrate = std::max(500, config.bitrate / 4);
@@ -631,18 +898,28 @@ video::EncoderConfig alphaVideoEncoderConfig(video::EncoderConfig config) {
 
 }  // namespace
 
-VersusApp::VersusApp() = default;
+VersusApp::VersusApp(std::size_t peerOperationMaxQueued)
+    : peerOperationExecutor_(peerOperationMaxQueued) {}
 VersusApp::~VersusApp() { shutdown(); }
 
 bool VersusApp::initialize() {
+    if (!peerOperationExecutor_.start()) {
+        return false;
+    }
+    if (!startDuplicateOfferRecheckScheduler()) {
+        peerOperationExecutor_.stop();
+        return false;
+    }
     setupCallbacks();
     return true;
 }
 
 void VersusApp::shutdown() {
+    stopDuplicateOfferRecheckScheduler();
     stopLive();
     stopCapture();
     waitForPendingPeerShutdowns();
+    peerOperationExecutor_.stop();
 }
 
 std::vector<versus::video::WindowInfo> VersusApp::listWindows() {
@@ -711,6 +988,8 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     alphaFramesQueued_.store(0, std::memory_order_relaxed);
     alphaFramesDropped_.store(0, std::memory_order_relaxed);
     alphaSendFailures_.store(0, std::memory_order_relaxed);
+    alphaContractRecovery_.reset();
+    lastAlphaContractDiagnosticMs_.store(0, std::memory_order_relaxed);
     audioSendFailures_.store(0, std::memory_order_relaxed);
     const int64_t metricsStartMs = steadyNowMs();
     metricsStartMs_.store(metricsStartMs, std::memory_order_relaxed);
@@ -868,6 +1147,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
             config = fallbackConfig;
             primaryConfig = fallbackConfig;
             videoConfig_ = fallbackConfig;
+            updateRoomQualityDecisionForCodecLocked();
             emitRuntimeEvent(
                 std::string("Selected ") + videoCodecName(selectedCodec) +
                     " encoder failed to initialize; switched to H.264 fallback.",
@@ -890,10 +1170,12 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         if (alphaRequested && !alphaEncoderOk) {
             config.enableAlpha = false;
             videoConfig_.enableAlpha = false;
+            updateRoomQualityDecisionForCodecLocked();
         }
         clearAlphaEncodeQueues();
         publishVideoStateSnapshotLocked();
     }
+    syncRoomQualityDecision();
     if (activeEncoderName.empty()) {
         windowCapture_.stopCapture();
         spoutCapture_.stopCapture();
@@ -1004,17 +1286,30 @@ void VersusApp::setVideoSourceMode(VideoSourceMode mode) {
 }
 
 void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
-    std::lock_guard<std::mutex> lock(videoSendMutex_);
-    videoConfig_ = config;
-    if (config.bitrate > 0) {
-        configuredVideoBitrateKbps_.store(config.bitrate, std::memory_order_relaxed);
+    bool enteredCodecUnavailable = false;
+    video::VideoCodec committedCodec = config.codec;
+    uint64_t committedGeneration = 0;
+    {
+        std::lock_guard<std::mutex> lock(videoSendMutex_);
+        videoConfig_ = config;
+        if (config.bitrate > 0) {
+            configuredVideoBitrateKbps_.store(config.bitrate, std::memory_order_relaxed);
+        }
+        if (!capturing_) {
+            activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
+            activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
+            hqAspectLocked_ = false;
+        }
+        updateRoomQualityDecisionForCodecLocked(
+            &enteredCodecUnavailable,
+            &committedGeneration);
+        committedCodec = videoConfig_.codec;
+        publishVideoStateSnapshotLocked();
     }
-    if (!capturing_) {
-        activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
-        activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
-        hqAspectLocked_ = false;
-    }
-    publishVideoStateSnapshotLocked();
+    emitRoomQualityCodecUnavailable({
+        enteredCodecUnavailable,
+        committedCodec,
+        committedGeneration});
 }
 
 void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
@@ -1044,15 +1339,10 @@ bool VersusApp::goLive(const StartOptions &options) {
     }
 
     const std::string sessionSalt = options.salt.empty() ? "vdo.ninja" : options.salt;
-    {
-        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
-        startOptions_ = options;
-        room_ = options.room;
-        password_ = options.password;
-        salt_ = sessionSalt;
-        remoteControlToken_ = options.remoteControlToken;
-    }
+    const RoomQualityWarningTicket roomQualityWarning =
+        transitionRoomQualityLifecycle(&options, sessionSalt);
     stopRequested_.store(false);
+    resetDuplicateOfferRecheckSchedulerForLive();
     reconnecting_.store(false);
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(true);
@@ -1087,6 +1377,8 @@ bool VersusApp::goLive(const StartOptions &options) {
     alphaFramesQueued_.store(0, std::memory_order_relaxed);
     alphaFramesDropped_.store(0, std::memory_order_relaxed);
     alphaSendFailures_.store(0, std::memory_order_relaxed);
+    alphaContractRecovery_.reset();
+    lastAlphaContractDiagnosticMs_.store(0, std::memory_order_relaxed);
     audioSendFailures_.store(0, std::memory_order_relaxed);
     const int64_t metricsStartMs = steadyNowMs();
     metricsStartMs_.store(metricsStartMs, std::memory_order_relaxed);
@@ -1099,34 +1391,56 @@ bool VersusApp::goLive(const StartOptions &options) {
     }
 
     maxViewers_.store(std::max(0, options.maxViewers), std::memory_order_relaxed);
-    roomModeLqEnabled_.store(options.roomModeLqEnabled, std::memory_order_relaxed);
     remoteControlEnabled_.store(options.remoteControlEnabled, std::memory_order_relaxed);
-    roomCodecWarningEmitted_ = false;
-    const auto resolvedIce = webrtc::resolveIceConfig(options.iceMode);
+    webrtc::ResolvedIceConfig resolvedIce;
+    try {
+        resolvedIce = webrtc::resolveIceConfig(options.iceMode);
+    } catch (const std::exception &error) {
+        spdlog::error("[App] ICE configuration resolution failed: {}", error.what());
+        emitRuntimeEvent("ICE server configuration could not be resolved; streaming was not started.", true);
+        stopLive();
+        return false;
+    } catch (...) {
+        spdlog::error("[App] ICE configuration resolution failed");
+        emitRuntimeEvent("ICE server configuration could not be resolved; streaming was not started.", true);
+        stopLive();
+        return false;
+    }
+
+    const webrtc::IceConfigBindingValidation iceBinding = webrtc::validateIceConfigBinding(
+        options.iceMode,
+        resolvedIce.servers,
+        resolvedIce.turn);
+    if (!iceBinding.accepted) {
+        spdlog::error("[App] ICE configuration rejected mode={} reason={}",
+                      webrtc::iceModeName(options.iceMode),
+                      iceBinding.failureReason);
+        emitRuntimeEvent(
+            "The authoritative TURN configuration was unavailable or invalid; streaming was not started.",
+            true);
+        stopLive();
+        return false;
+    }
     {
         std::lock_guard<std::mutex> lock(iceConfigMutex_);
         iceMode_ = options.iceMode;
         resolvedIceServers_ = resolvedIce.servers;
-    }
-    if (options.iceMode == webrtc::IceMode::Relay && !resolvedIce.hasTurnServers()) {
-        emitRuntimeEvent("Relay-only ICE mode was requested, but no TURN servers were available.", true);
-        return false;
+        resolvedTurnRegistry_ = resolvedIce.turn;
     }
 
     clearPeerSessions();
     setupSignalingCallbacks();
 
-    if (!enforceRoomCodecLock()) {
-        return false;
-    }
-
     spdlog::info("[App] Connecting to signaling server: {}", options.server);
+    bool signalingConnected = false;
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        if (!signaling_.connect(options.server)) {
-            spdlog::error("[App] Failed to connect to signaling server");
-            return false;
-        }
+        signalingConnected = signaling_.connect(options.server);
+    }
+    if (!signalingConnected) {
+        spdlog::error("[App] Failed to connect to signaling server");
+        stopLive();
+        return false;
     }
     spdlog::info("[App] Connected to signaling server");
 
@@ -1147,13 +1461,18 @@ bool VersusApp::goLive(const StartOptions &options) {
         roomConfig.label = options.label;
         roomConfig.streamId = options.streamId;
         roomConfig.salt = sessionSalt;
+        bool roomJoined = false;
         {
             std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-            if (!signaling_.joinRoom(roomConfig)) {
-                spdlog::error("[App] Failed to join room");
+            roomJoined = signaling_.joinRoom(roomConfig);
+            if (!roomJoined) {
                 signaling_.disconnect();
-                return false;
             }
+        }
+        if (!roomJoined) {
+            spdlog::error("[App] Failed to join room");
+            stopLive();
+            return false;
         }
     }
 
@@ -1185,13 +1504,18 @@ bool VersusApp::goLive(const StartOptions &options) {
     }
 
     spdlog::info("[App] Publishing stream: {}", resolvedStreamId);
+    bool streamPublished = false;
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        if (!signaling_.publish(resolvedStreamId, options.label)) {
-            spdlog::error("[App] Failed to publish stream");
+        streamPublished = signaling_.publish(resolvedStreamId, options.label);
+        if (!streamPublished) {
             signaling_.disconnect();
-            return false;
         }
+    }
+    if (!streamPublished) {
+        spdlog::error("[App] Failed to publish stream");
+        stopLive();
+        return false;
     }
 
     std::string viewUrl;
@@ -1205,34 +1529,26 @@ bool VersusApp::goLive(const StartOptions &options) {
 
     live_ = true;
     startVideoMaintenanceThread();
+    emitRoomQualityCodecUnavailable(roomQualityWarning);
     return true;
 }
 
 void VersusApp::stopLive() {
-    if (!live_) {
-        stopRequested_.store(true);
-        reconnecting_.store(false);
-        videoTrackActive_.store(false);
-        pendingGlobalKeyframe_.store(false);
-        stopSignalingRecoveryThread();
-        stopVideoMaintenanceThread();
-        clearPeerSessions();
-        return;
-    }
-
+    const bool wasLive = live_.exchange(false);
     stopRequested_.store(true);
+    cancelDuplicateOfferRechecks(true, "stop-live");
     reconnecting_.store(false);
-    live_ = false;
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
     stopSignalingRecoveryThread();
     stopVideoMaintenanceThread();
-    {
+    if (wasLive) {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
         signaling_.unpublish();
         signaling_.disconnect();
     }
     clearPeerSessions();
+    transitionRoomQualityLifecycle(nullptr, {});
 }
 
 std::string VersusApp::getShareLink() const {
@@ -1317,7 +1633,9 @@ void VersusApp::resetMetricsWindow(int64_t nowMs) {
     recentMetricsInitialized_ = false;
 }
 
-StreamMetrics VersusApp::buildStreamMetricsSnapshot(bool updateRecentWindow) const {
+StreamMetrics VersusApp::buildStreamMetricsSnapshot(
+    bool updateRecentWindow,
+    const PeerCounts *peerCountsOverride) const {
     StreamMetrics metrics;
     const VideoStateSnapshot videoState = videoStateSnapshot();
 
@@ -1417,7 +1735,9 @@ StreamMetrics VersusApp::buildStreamMetricsSnapshot(bool updateRecentWindow) con
     metrics.codec = videoState.codecName;
     metrics.encoder = videoState.encoderName;
 
-    const PeerCounts counts = collectPeerCounts();
+    const PeerCounts counts = peerCountsOverride
+        ? *peerCountsOverride
+        : collectPeerCounts();
     metrics.peerCount = counts.total;
     metrics.hqPeerCount = counts.hq;
     metrics.lqPeerCount = counts.lq;
@@ -1649,12 +1969,27 @@ std::string VersusApp::buildDiagnosticsJson() const {
     root["version"] = publisherVersionTag();
     root["generated_steady_ms"] = steadyNowMs();
 
-    const StreamMetrics metrics = getStreamMetrics();
+    refreshDiagnosticsTrackObservationsForTesting();
+    const RoomQualityDiagnosticsSnapshot roomQualitySnapshot =
+        roomQualityDiagnosticsSnapshot();
+    const StreamMetrics metrics = buildStreamMetricsSnapshot(
+        true,
+        &roomQualitySnapshot.counts);
     const SourceHealth sourceHealth = getSourceHealth();
     ConnectionHealth health;
     populateSystemResourceUsage(health);
     const VideoStateSnapshot videoState = videoStateSnapshot();
-    const PeerCounts counts = collectPeerCounts();
+    std::function<void()> afterVideoSnapshot;
+    {
+        std::lock_guard<std::mutex> hookLock(roomQualityArchitectureTestHookMutex_);
+        afterVideoSnapshot = afterDiagnosticsVideoSnapshotForTesting_;
+    }
+    if (afterVideoSnapshot) {
+        afterVideoSnapshot();
+    }
+    const RoomQualityDecision &roomQuality = roomQualitySnapshot.decision;
+    const PeerCounts &counts = roomQualitySnapshot.counts;
+    const auto peerOperationStats = peerOperationExecutor_.stats();
     const video::FfmpegProbeInfo ffmpegInfo = video::VideoEncoder::probeFfmpeg(videoState.config.ffmpegPath);
     std::string diagnosticsServer;
     std::string diagnosticsRoom;
@@ -1668,7 +2003,6 @@ std::string VersusApp::buildDiagnosticsJson() const {
     {
         std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
         diagnosticsServer = startOptions_.server;
-        diagnosticsRoom = room_;
         diagnosticsStreamId = streamId_;
         diagnosticsPasswordSet = !password_.empty();
         diagnosticsPasswordDisabled = password_ == "false" || password_ == "0" || password_ == "off";
@@ -1677,6 +2011,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         diagnosticsIncludeMicrophone = includeMicrophone_;
         diagnosticsMicrophoneSource = activeMicrophoneSourceName_;
     }
+    diagnosticsRoom = roomQualitySnapshot.activeRoom;
     std::string diagnosticsIceMode;
     int diagnosticsIceServerCount = 0;
     {
@@ -1702,6 +2037,14 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"capturing", capturing_.load(std::memory_order_relaxed)},
         {"reconnecting", reconnecting_.load(std::memory_order_relaxed)},
         {"stop_requested", stopRequested_.load(std::memory_order_relaxed)}
+    };
+    root["room_quality"] = {
+        {"generation", roomQualitySnapshot.generation},
+        {"active_room", roomQualitySnapshot.activeRoom},
+        {"committed_codec", videoCodecName(roomQualitySnapshot.codec)},
+        {"requested", roomQuality.requested},
+        {"effective", roomQuality.effective},
+        {"reason", roomQualityReasonName(roomQuality.reason)}
     };
     root["source"] = {
         {"mode", videoSourceModeName(sourceHealth.mode)},
@@ -1735,12 +2078,28 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"direct_candidate_seen", directCandidateSeen_.load(std::memory_order_relaxed)},
         {"max_viewers", maxViewers_.load(std::memory_order_relaxed)}
     };
+    root["peer_operation_executor"] = {
+        {"queued_critical", peerOperationStats.queuedCritical},
+        {"queued_ordinary", peerOperationStats.queuedOrdinary},
+        {"in_flight", peerOperationStats.inFlight},
+        {"accepted_critical", peerOperationStats.acceptedCritical},
+        {"accepted_ordinary", peerOperationStats.acceptedOrdinary},
+        {"coalesced_critical", peerOperationStats.coalescedCritical},
+        {"dropped_ordinary_capacity", peerOperationStats.droppedOrdinaryCapacity},
+        {"evicted_ordinary_for_critical", peerOperationStats.evictedOrdinaryForCritical},
+        {"evicted_critical_for_critical", peerOperationStats.evictedCriticalForCritical},
+        {"rejected_critical_capacity", peerOperationStats.rejectedCriticalCapacity},
+        {"rejected_invalid", peerOperationStats.rejectedInvalid},
+        {"rejected_stopped", peerOperationStats.rejectedStopped},
+        {"stale_generation", peerOperationStats.staleGeneration},
+        {"dropped_on_stop", peerOperationStats.droppedOnStop}
+    };
     root["video"] = {
         {"configured_width", videoState.config.width},
         {"configured_height", videoState.config.height},
         {"configured_fps", videoState.config.frameRate},
         {"configured_bitrate_kbps", videoState.config.bitrate},
-        {"configured_codec", videoCodecName(videoState.config.codec)},
+        {"configured_codec", videoCodecName(roomQualitySnapshot.codec)},
         {"active_codec", videoState.codecName},
         {"encoder", videoState.encoderName},
         {"encoder_input_format", videoState.encoderInputFormat},
@@ -1783,6 +2142,12 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"alpha_frames_queued", alphaFramesQueued_.load(std::memory_order_relaxed)},
         {"alpha_frames_dropped", alphaFramesDropped_.load(std::memory_order_relaxed)},
         {"alpha_send_failures", alphaSendFailures_.load(std::memory_order_relaxed)},
+        {"alpha_contract_rejected_pairs", alphaContractRecovery_.rejectedPairCount()},
+        {"alpha_contract_recovery_attempts", alphaContractRecovery_.recoveryAttemptCount()},
+        {"alpha_contract_recovery_successes", alphaContractRecovery_.recoverySuccessCount()},
+        {"alpha_contract_recovery_active", alphaContractRecovery_.recoveryActive()},
+        {"alpha_contract_last_rejection",
+         protectedAlphaContractRejectionName(alphaContractRecovery_.lastRejection())},
         {"frames_captured", videoFramesCaptured_.load(std::memory_order_relaxed)},
         {"frames_sent", videoFramesSent_.load(std::memory_order_relaxed)},
         {"frames_dropped", videoFramesDropped_.load(std::memory_order_relaxed)},
@@ -1841,6 +2206,10 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"alpha_frames_queued", metrics.alphaFramesQueued},
         {"alpha_frames_dropped", metrics.alphaFramesDropped},
         {"alpha_send_failures", metrics.alphaSendFailures},
+        {"alpha_contract_rejected_pairs", alphaContractRecovery_.rejectedPairCount()},
+        {"alpha_contract_recovery_attempts", alphaContractRecovery_.recoveryAttemptCount()},
+        {"alpha_contract_recovery_successes", alphaContractRecovery_.recoverySuccessCount()},
+        {"alpha_contract_recovery_active", alphaContractRecovery_.recoveryActive()},
         {"audio_send_failures", metrics.audioSendFailures}
     };
     root["system"] = {
@@ -1860,17 +2229,13 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"room_non_guest_viewers", counts.roomNonGuestViewers}
     };
 
-    std::vector<std::shared_ptr<PeerSession>> peers;
     nlohmann::json pendingRemoteCandidateQueues = nlohmann::json::array();
+    std::unordered_map<std::string, int> pendingRemoteCandidateCounts;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        peers.reserve(peerSessions_.size());
-        for (const auto &entry : peerSessions_) {
-            if (entry.second) {
-                peers.push_back(entry.second);
-            }
-        }
         for (const auto &entry : pendingRemoteCandidates_) {
+            pendingRemoteCandidateCounts[entry.first] =
+                static_cast<int>(entry.second.size());
             pendingRemoteCandidateQueues.push_back({
                 {"key", entry.first},
                 {"count", static_cast<int>(entry.second.size())}
@@ -1880,31 +2245,172 @@ std::string VersusApp::buildDiagnosticsJson() const {
 
     root["pending_remote_candidate_queues"] = std::move(pendingRemoteCandidateQueues);
     root["peers"] = nlohmann::json::array();
-    for (const auto &peer : peers) {
+    for (const auto &peerSnapshot : roomQualitySnapshot.peers) {
+        const auto &peer = peerSnapshot.peer;
         if (!peer) {
             continue;
         }
 
         nlohmann::json item;
-        item["uuid"] = peer->uuid;
-        item["session"] = peer->session;
-        item["stream_id"] = peer->streamId;
-        item["candidate_type"] = peer->candidateType;
-        item["created_steady_ms"] = peer->createdAtMs;
+        item["uuid"] = peerSnapshot.uuid;
+        item["session"] = peerSnapshot.session;
+        item["stream_id"] = peerSnapshot.streamId;
+        item["candidate_type"] = peerSnapshot.candidateType;
+        item["created_steady_ms"] = peerSnapshot.createdAtMs;
+        item["uuid_owner_high_watermark"] =
+            peer->uuidOwnerHighWatermark.load(std::memory_order_relaxed);
         item["last_state_change_steady_ms"] = peer->lastStateChangeMs.load(std::memory_order_relaxed);
         int bufferedLocalCandidateCount = 0;
+        bool offerDispatched = false;
+        bool answerReceived = false;
+        bool offerCreationInProgress = false;
+        bool transportRetired = false;
+        uint64_t activeOfferGeneration = 0;
+        uint64_t activeTransportGeneration = 0;
+        uint64_t clientTransportGeneration = 0;
+        uint64_t localCandidateWorkOfferGeneration = 0;
+        uint64_t localCandidateWorkOutstanding = 0;
+        uint64_t localCandidateWorkAdmitted = 0;
+        uint64_t localCandidateWorkCompleted = 0;
+        uint64_t localCandidateWorkSuperseded = 0;
+        uint64_t localCandidateRetiredOutstanding = 0;
+        uint64_t localCandidateOutcomeSequence = 0;
+        bool localCandidateAccountingViolation = false;
+        bool localCandidateWorkInvariantConsistent = false;
+        int attemptedAnswerIdentityCount = 0;
+        webrtc::LocalCandidateDiagnostics candidateDiagnosticsBefore;
+        webrtc::LocalCandidateDiagnostics candidateDiagnosticsAfter;
         {
-            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+            std::lock_guard<std::recursive_mutex> clientLock(
+                peer->clientOperationMutex);
+            if (peer->client) {
+                candidateDiagnosticsBefore =
+                    peer->client->localCandidateDiagnostics();
+            }
+            std::lock_guard<std::mutex> lock(peer->negotiationMutex);
             bufferedLocalCandidateCount = static_cast<int>(peer->pendingCandidates.size());
+            offerDispatched = peer->offerDispatched;
+            answerReceived = peer->answerReceived;
+            offerCreationInProgress = peer->offerCreationInProgress;
+            transportRetired = peer->transportRetired;
+            activeOfferGeneration = peer->activeOfferGeneration;
+            activeTransportGeneration = peer->activeTransportGeneration;
+            clientTransportGeneration = peer->clientTransportGeneration;
+            localCandidateWorkOfferGeneration =
+                peer->localCandidateWorkOfferGeneration;
+            localCandidateWorkOutstanding =
+                peer->localCandidateWorkOutstanding;
+            localCandidateWorkAdmitted =
+                peer->localCandidateWorkAdmitted;
+            localCandidateWorkCompleted =
+                peer->localCandidateWorkCompleted;
+            localCandidateWorkSuperseded =
+                peer->localCandidateWorkSuperseded;
+            for (const auto &[workId, owner] :
+                 peer->localCandidateOutstandingWork) {
+                (void)workId;
+                if (owner.offerGeneration != activeOfferGeneration) {
+                    ++localCandidateRetiredOutstanding;
+                }
+            }
+            localCandidateOutcomeSequence =
+                peer->localCandidateOutcomeSequence;
+            localCandidateAccountingViolation =
+                peer->localCandidateAccountingViolation;
+            localCandidateWorkInvariantConsistent =
+                localCandidateWorkOutstanding ==
+                    peer->localCandidateOutstandingWork.size() &&
+                localCandidateWorkAdmitted ==
+                    localCandidateWorkCompleted +
+                        localCandidateWorkOutstanding;
+            attemptedAnswerIdentityCount = static_cast<int>(peer->attemptedAnswerIdentities.size());
+            if (peer->client) {
+                candidateDiagnosticsAfter =
+                    peer->client->localCandidateDiagnostics();
+            }
         }
+        const bool localCandidateSnapshotCoherent =
+            candidateDiagnosticsBefore.gatheringComplete ==
+                candidateDiagnosticsAfter.gatheringComplete &&
+            candidateDiagnosticsBefore.callbacksInFlight ==
+                candidateDiagnosticsAfter.callbacksInFlight &&
+            candidateDiagnosticsBefore.activitySequence ==
+                candidateDiagnosticsAfter.activitySequence &&
+            candidateDiagnosticsBefore.gatheringEpoch ==
+                candidateDiagnosticsAfter.gatheringEpoch &&
+            candidateDiagnosticsBefore.candidatesAfterGatheringComplete ==
+                candidateDiagnosticsAfter.candidatesAfterGatheringComplete &&
+            candidateDiagnosticsBefore.overlappingGatheringDetected ==
+                candidateDiagnosticsAfter.overlappingGatheringDetected;
         item["signaling"] = {
-            {"offer_dispatched", peer->offerDispatched},
-            {"answer_received", peer->answerReceived},
+            {"offer_dispatched", offerDispatched},
+            {"offer_creation_in_progress", offerCreationInProgress},
+            {"answer_received", answerReceived},
+            {"active_offer_generation", activeOfferGeneration},
+            {"active_transport_generation", activeTransportGeneration},
+            {"client_transport_generation", clientTransportGeneration},
+            {"attempted_answer_identities", attemptedAnswerIdentityCount},
             {"offer_count", peer->offerCount.load(std::memory_order_relaxed)},
             {"recovery_offer_count", peer->recoveryOfferCount.load(std::memory_order_relaxed)},
             {"answer_count", peer->answerCount.load(std::memory_order_relaxed)},
             {"local_candidates_sent", peer->localCandidatesSent.load(std::memory_order_relaxed)},
+            {"local_candidate_send_failures",
+             peer->localCandidateSendFailures.load(std::memory_order_relaxed)},
+            {"local_candidate_gathering_complete",
+             candidateDiagnosticsAfter.gatheringComplete},
+            {"local_candidate_callbacks_in_flight",
+             candidateDiagnosticsAfter.callbacksInFlight},
+            {"local_candidate_activity_sequence",
+             candidateDiagnosticsAfter.activitySequence},
+            {"local_candidate_gathering_epoch",
+             candidateDiagnosticsAfter.gatheringEpoch},
+            {"local_candidates_after_gathering_complete",
+             candidateDiagnosticsAfter.candidatesAfterGatheringComplete},
+            {"local_candidate_overlapping_gathering_detected",
+             candidateDiagnosticsAfter.overlappingGatheringDetected},
+            {"local_candidate_work_offer_generation",
+             localCandidateWorkOfferGeneration},
+            {"local_candidate_work_outstanding",
+             localCandidateWorkOutstanding},
+            {"local_candidate_work_admitted",
+             localCandidateWorkAdmitted},
+            {"local_candidate_work_completed",
+             localCandidateWorkCompleted},
+            {"local_candidate_work_superseded",
+             localCandidateWorkSuperseded},
+            {"local_candidate_retired_outstanding",
+             localCandidateRetiredOutstanding},
+            {"local_candidate_work_invariant_consistent",
+             localCandidateWorkInvariantConsistent},
+            {"local_candidate_outcome_sequence",
+             localCandidateOutcomeSequence},
+            {"local_candidate_accounting_violation",
+             localCandidateAccountingViolation},
+            {"local_candidate_snapshot_coherent",
+             localCandidateSnapshotCoherent},
             {"remote_candidates_applied", peer->remoteCandidatesApplied.load(std::memory_order_relaxed)},
+            {"pending_remote_candidates", pendingRemoteCandidateCounts[
+                makePeerKey(peerSnapshot.uuid, peerSnapshot.session)]},
+            {"sessionless_wss_answers_rejected",
+             peer->sessionlessWssAnswersRejected.load(std::memory_order_relaxed)},
+            {"sessionless_wss_remote_candidates_rejected",
+             peer->sessionlessWssRemoteCandidatesRejected.load(std::memory_order_relaxed)},
+            {"duplicate_offer_recheck_pending",
+             peer->duplicateOfferRecheckPending.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_scheduled",
+             peer->duplicateOfferRechecksScheduled.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_coalesced",
+             peer->duplicateOfferRechecksCoalesced.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_fired",
+             peer->duplicateOfferRechecksFired.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_rebuilt",
+             peer->duplicateOfferRechecksRebuilt.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_ignored_connected",
+             peer->duplicateOfferRechecksIgnoredConnected.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_stale",
+             peer->duplicateOfferRechecksStale.load(std::memory_order_relaxed)},
+            {"duplicate_offer_rechecks_canceled",
+             peer->duplicateOfferRechecksCanceled.load(std::memory_order_relaxed)},
             {"buffered_local_candidates", bufferedLocalCandidateCount}
         };
         item["room"] = {
@@ -1912,22 +2418,30 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"init_received", peer->initReceived.load(std::memory_order_relaxed)},
             {"role_valid", peer->roleValid.load(std::memory_order_relaxed)},
             {"role", peerRoleName(peer->role.load(std::memory_order_relaxed))},
-            {"assigned_tier", streamTierName(peer->assignedTier.load(std::memory_order_relaxed))},
+            {"assigned_tier", streamTierName(peerSnapshot.assignedTier)},
             {"init_deadline_steady_ms", peer->initDeadlineMs.load(std::memory_order_relaxed)}
         };
         item["media"] = {
             {"video_enabled", peer->videoEnabled.load(std::memory_order_relaxed)},
             {"audio_enabled", peer->audioEnabled.load(std::memory_order_relaxed)},
+            {"last_observed_video_track_active", peerSnapshot.activeVideo},
+            {"last_observed_audio_track_active", peerSnapshot.activeAudio},
             {"waiting_for_keyframe", peer->waitingForKeyframe.load(std::memory_order_relaxed)},
             {"requested_video_bitrate_kbps", peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed)},
             {"requested_audio_bitrate_kbps", peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed)},
             {"renegotiation_queued", peer->renegotiationQueued.load(std::memory_order_relaxed)},
             {"codec_fallback_attempted", peer->codecFallbackAttempted.load(std::memory_order_relaxed)},
-            {"alpha_allowed", peer->alphaAllowed.load(std::memory_order_relaxed)}
+            {"alpha_allowed", peer->alphaAllowed.load(std::memory_order_relaxed)},
+            {"last_primary_transport_pts", peer->lastPrimaryPtsSent.load(std::memory_order_relaxed)},
+            {"last_video_wire_pts_reserved",
+             peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed)},
+            {"alpha_source_cutoff_timestamp", peer->alphaSourceCutoffTimestamp.load(std::memory_order_relaxed)},
+            {"alpha_admission_cutoff_sequence", peer->alphaAdmissionCutoffSequence.load(std::memory_order_relaxed)}
         };
         item["transport"] = {
             {"data_channel_open", peer->dataChannelOpen.load(std::memory_order_relaxed)},
             {"disconnected_since_steady_ms", peer->disconnectedSinceMs.load(std::memory_order_relaxed)},
+            {"transport_retired", transportRetired},
             {"stats_continuous", peer->statsContinuous.load(std::memory_order_relaxed)}
         };
         item["controls"] = {
@@ -1991,6 +2505,41 @@ bool VersusApp::writeDiagnosticsJson(const std::string &path) const {
         spdlog::warn("[Diagnostics] Failed to write diagnostics '{}'", path);
     }
     return false;
+}
+
+int VersusApp::refreshPeerTransportsForLocalControl() {
+    std::vector<std::shared_ptr<PeerSession>> peersToRefresh;
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        peersToRefresh.reserve(peerSessions_.size());
+        for (const auto &entry : peerSessions_) {
+            if (entry.second && entry.second->client &&
+                entry.second->dataChannelOpen.load(std::memory_order_relaxed)) {
+                peersToRefresh.push_back(entry.second);
+            }
+        }
+    }
+
+    int acceptedPeerCount = 0;
+    spdlog::info("[App] Authenticated local control requested peer transport rebuild for {} peer(s)",
+                 peersToRefresh.size());
+    for (const auto &peer : peersToRefresh) {
+        if (!peer || !peer->client) {
+            continue;
+        }
+        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        reservePeerAlphaAdmissionCutoff(peer);
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        if (sendPeerOffer(peer, "local-control-refresh", true)) {
+            ++acceptedPeerCount;
+        } else {
+            spdlog::warn("[App] Authenticated local control could not refresh peer {}:{}",
+                         peer->uuid,
+                         peer->session);
+        }
+    }
+    return acceptedPeerCount;
 }
 
 void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
@@ -2337,6 +2886,342 @@ void VersusApp::setupCallbacks() {
     });
 }
 
+bool VersusApp::enqueuePeerCallbackOperation(
+    const std::shared_ptr<PeerSession> &peer,
+    uint64_t clientTransportGeneration,
+    const char *kind,
+    GenerationTaggedPeerOperationExecutor::Priority priority,
+    GenerationTaggedPeerOperationExecutor::Criticality criticality,
+    std::string coalesceKey,
+    PeerCallbackOperation operation) {
+    if (!peer || !peer->client || clientTransportGeneration == 0 || !operation) {
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed ||
+            peer->clientTransportGeneration != clientTransportGeneration) {
+            return false;
+        }
+    }
+
+    const std::string operationKind = kind ? kind : "peer-callback";
+    std::function<void(const std::string &, uint64_t)> beforeEnqueue;
+    {
+        std::lock_guard<std::mutex> hookLock(peerCallbackTestHookMutex_);
+        beforeEnqueue = beforePeerCallbackEnqueueForTesting_;
+    }
+    if (beforeEnqueue) {
+        beforeEnqueue(operationKind, clientTransportGeneration);
+    }
+
+    std::weak_ptr<PeerSession> weakPeer = peer;
+    const auto enqueueResult = peerOperationExecutor_.enqueue(
+        clientTransportGeneration,
+        makePeerKey(peer->uuid, peer->session),
+        priority,
+        std::move(coalesceKey),
+        [weakPeer](uint64_t generation) {
+            const auto currentPeer = weakPeer.lock();
+            if (!currentPeer) {
+                return false;
+            }
+            std::lock_guard<std::mutex> negotiationLock(currentPeer->negotiationMutex);
+            return !currentPeer->removed &&
+                currentPeer->clientTransportGeneration == generation;
+        },
+        [this,
+         weakPeer,
+         operationKind,
+         operation = std::move(operation)](uint64_t generation) {
+            const auto currentPeer = weakPeer.lock();
+            if (!currentPeer) {
+                return;
+            }
+
+            // Callback handlers may acquire videoSendMutex, stop capture and
+            // join the encode thread, or enter a narrowly scoped peer-client
+            // operation themselves. Holding clientOperationMutex around the
+            // whole handler would invert the encode path's video->peer order
+            // and can deadlock shutdown. Revalidate immediately before dispatch
+            // and let each transport operation own its existing narrow lock.
+            // A separate callback lease coordinates the validated generation
+            // with replacement and async teardown; encode/send paths never
+            // acquire it.
+            std::lock_guard<std::recursive_mutex> callbackOperationLock(
+                currentPeer->callbackOperationMutex);
+            if (!currentPeer->client) {
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> negotiationLock(
+                    currentPeer->negotiationMutex);
+                if (currentPeer->removed ||
+                    currentPeer->clientTransportGeneration != generation) {
+                    return;
+                }
+            }
+
+            std::function<bool(const std::string &, const std::string &, uint64_t)>
+                testOperation;
+            {
+                std::lock_guard<std::mutex> hookLock(peerCallbackTestHookMutex_);
+                testOperation = peerCallbackOperationForTesting_;
+            }
+            if (testOperation &&
+                testOperation(
+                    makePeerKey(currentPeer->uuid, currentPeer->session),
+                    operationKind,
+                    generation)) {
+                return;
+            }
+            operation(currentPeer, generation);
+        },
+        criticality);
+    const bool queued =
+        GenerationTaggedPeerOperationExecutor::accepted(enqueueResult);
+    const bool overloadEvent =
+        enqueueResult == GenerationTaggedPeerOperationExecutor::EnqueueResult::
+                             QueuedAfterEvictingOrdinary ||
+        enqueueResult == GenerationTaggedPeerOperationExecutor::EnqueueResult::
+                             QueuedAfterEvictingCritical ||
+        enqueueResult == GenerationTaggedPeerOperationExecutor::EnqueueResult::
+                             RejectedOrdinaryCapacity ||
+        enqueueResult == GenerationTaggedPeerOperationExecutor::EnqueueResult::
+                             RejectedCriticalCapacity;
+    if (overloadEvent) {
+        const int64_t nowMs = steadyNowMs();
+        int64_t lastLogMs =
+            lastPeerOperationOverloadLogMs_.load(std::memory_order_relaxed);
+        if ((lastLogMs == 0 || nowMs - lastLogMs >= 5000) &&
+            lastPeerOperationOverloadLogMs_.compare_exchange_strong(
+                lastLogMs,
+                nowMs,
+                std::memory_order_relaxed,
+                std::memory_order_relaxed)) {
+            const auto stats = peerOperationExecutor_.stats();
+            spdlog::warn(
+                "[PeerOperations] Callback queue overload result={} kind={} generation={} peer={}:{} pendingCritical={} pendingOrdinary={} ordinaryDropped={} ordinaryEvicted={} criticalEvicted={} criticalRejected={} criticalCoalesced={}",
+                peerOperationEnqueueResultName(enqueueResult),
+                operationKind,
+                clientTransportGeneration,
+                peer->uuid,
+                peer->session,
+                stats.queuedCritical,
+                stats.queuedOrdinary,
+                stats.droppedOrdinaryCapacity,
+                stats.evictedOrdinaryForCritical,
+                stats.evictedCriticalForCritical,
+                stats.rejectedCriticalCapacity,
+                stats.coalescedCritical);
+        }
+    }
+    return queued;
+}
+
+void VersusApp::installPeerOperationCallbacks(
+    const std::shared_ptr<PeerSession> &peer) {
+    if (!peer || !peer->client) {
+        return;
+    }
+    std::weak_ptr<PeerSession> weakPeer = peer;
+    peer->client->setStateCallback(
+        [this, weakPeer](webrtc::ConnectionState state,
+                         uint64_t clientTransportGeneration) {
+            const auto peerPtr = weakPeer.lock();
+            if (!peerPtr) {
+                return;
+            }
+            enqueuePeerCallbackOperation(
+                peerPtr,
+                clientTransportGeneration,
+                "connection-state",
+                GenerationTaggedPeerOperationExecutor::Priority::Critical,
+                connectionStateCriticality(state),
+                "connection-state",
+                [this, state](const std::shared_ptr<PeerSession> &queuedPeer,
+                              uint64_t generation) {
+                    handlePeerConnectionState(queuedPeer, state, generation);
+                });
+        });
+    peer->client->setDataMessageCallback(
+        [this, weakPeer](const std::string &message,
+                         uint64_t clientTransportGeneration) {
+            const auto peerPtr = weakPeer.lock();
+            if (!peerPtr) {
+                return;
+            }
+            const PeerCallbackSchedule schedule =
+                schedulePeerDataMessage(message);
+            enqueuePeerCallbackOperation(
+                peerPtr,
+                clientTransportGeneration,
+                "data-message",
+                schedule.priority,
+                schedule.criticality,
+                schedule.coalesceKey,
+                [this, message](const std::shared_ptr<PeerSession> &queuedPeer,
+                                uint64_t) {
+                    queuedPeer->dataChannelOpen.store(true, std::memory_order_relaxed);
+                    if (!queuedPeer->initReceived.load(std::memory_order_relaxed) &&
+                        queuedPeer->initDeadlineMs.load(std::memory_order_relaxed) <= 0) {
+                        const int64_t graceMs = queuedPeer->roomMode
+                            ? kRoomInitGracePeriodMs
+                            : kDirectInitGracePeriodMs;
+                        queuedPeer->initDeadlineMs.store(
+                            steadyNowMs() + graceMs,
+                            std::memory_order_relaxed);
+                    }
+                    try {
+                        handlePeerDataMessage(queuedPeer, message);
+                    } catch (const std::exception &e) {
+                        spdlog::warn(
+                            "[App] Failed to handle peer data message from {}:{}: {}",
+                            queuedPeer->uuid,
+                            queuedPeer->session,
+                            e.what());
+                    } catch (...) {
+                        spdlog::warn(
+                            "[App] Failed to handle peer data message from {}:{}",
+                            queuedPeer->uuid,
+                            queuedPeer->session);
+                    }
+                });
+        });
+    peer->client->setDataChannelStateCallback(
+        [this, weakPeer](bool open, uint64_t clientTransportGeneration) {
+            const auto peerPtr = weakPeer.lock();
+            if (!peerPtr) {
+                return;
+            }
+            enqueuePeerCallbackOperation(
+                peerPtr,
+                clientTransportGeneration,
+                "datachannel-state",
+                GenerationTaggedPeerOperationExecutor::Priority::Critical,
+                open
+                    ? GenerationTaggedPeerOperationExecutor::Criticality::State
+                    : GenerationTaggedPeerOperationExecutor::Criticality::Convergent,
+                "datachannel-state",
+                [this, open](const std::shared_ptr<PeerSession> &queuedPeer,
+                             uint64_t generation) {
+                    handlePeerDataChannelState(queuedPeer, open, generation);
+                });
+        });
+}
+
+void VersusApp::handlePeerConnectionState(
+    const std::shared_ptr<PeerSession> &peer,
+    webrtc::ConnectionState state,
+    uint64_t) {
+    if (!peer) {
+        return;
+    }
+    const char *stateName = connectionStateName(state);
+    peer->lastStateChangeMs.store(steadyNowMs(), std::memory_order_relaxed);
+    {
+        std::lock_guard<std::mutex> lock(peer->diagnosticsMutex);
+        peer->lastConnectionState = stateName;
+    }
+    recordPeerEvent(peer, std::string("connection-state ") + stateName);
+    if (state == webrtc::ConnectionState::Connected) {
+        {
+            std::lock_guard<std::mutex> lock(peer->negotiationMutex);
+            peer->transportRetired = false;
+            peer->directFailureNoticeEmitted = false;
+        }
+        peer->disconnectedSinceMs.store(0, std::memory_order_relaxed);
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        reservePeerAlphaAdmissionCutoff(peer);
+        spdlog::info("[WebRTC] Peer connected {}:{}", peer->uuid, peer->session);
+        return;
+    }
+    if (state == webrtc::ConnectionState::Disconnected) {
+        int64_t expected = 0;
+        peer->disconnectedSinceMs.compare_exchange_strong(
+            expected,
+            steadyNowMs(),
+            std::memory_order_relaxed,
+            std::memory_order_relaxed);
+        spdlog::warn(
+            "[WebRTC] Peer connection disconnected {}:{}; keeping session for ICE recovery",
+            peer->uuid,
+            peer->session);
+        return;
+    }
+    if (state != webrtc::ConnectionState::Failed &&
+        state != webrtc::ConnectionState::Closed) {
+        return;
+    }
+
+    int64_t expected = 0;
+    peer->disconnectedSinceMs.compare_exchange_strong(
+        expected,
+        steadyNowMs(),
+        std::memory_order_relaxed,
+        std::memory_order_relaxed);
+    bool emitDirectFailure = false;
+    {
+        std::lock_guard<std::mutex> lock(peer->negotiationMutex);
+        peer->transportRetired = true;
+        for (auto &attempt : peer->attemptedAnswerIdentities) {
+            if (attempt.transportGeneration == peer->activeTransportGeneration) {
+                attempt.transportRetired = true;
+            }
+        }
+        if (!peer->directFailureNoticeEmitted) {
+            emitDirectFailure = peer->activeIceMode == webrtc::IceMode::StunOnly ||
+                peer->activeIceMode == webrtc::IceMode::HostOnly;
+            peer->directFailureNoticeEmitted = emitDirectFailure;
+        }
+    }
+    if (emitDirectFailure && !stopRequested_.load(std::memory_order_relaxed)) {
+        emitRuntimeEvent(
+            "Direct-only ICE failed; TURN was not enabled. Select Auto or Relay only and reconnect.",
+            false);
+    }
+    spdlog::warn("[WebRTC] {} transport {}:{}; retaining logical session for {}ms",
+                 state == webrtc::ConnectionState::Failed ? "Failed" : "Closed",
+                 peer->uuid,
+                 peer->session,
+                 kDisconnectedPeerPruneMs);
+    runQueuedPeerTransition(peer, "transport-retired");
+}
+
+void VersusApp::handlePeerDataChannelState(
+    const std::shared_ptr<PeerSession> &peer,
+    bool open,
+    uint64_t) {
+    if (!peer) {
+        return;
+    }
+    peer->dataChannelOpen.store(open, std::memory_order_relaxed);
+    recordPeerEvent(peer, open ? "datachannel-open" : "datachannel-closed");
+    if (open) {
+        peer->disconnectedSinceMs.store(0, std::memory_order_relaxed);
+        if (!peer->initReceived.load(std::memory_order_relaxed)) {
+            const int64_t graceMs = peer->roomMode
+                ? kRoomInitGracePeriodMs
+                : kDirectInitGracePeriodMs;
+            peer->initDeadlineMs.store(
+                steadyNowMs() + graceMs,
+                std::memory_order_relaxed);
+        }
+        sendPeerDataInfo(peer, true);
+        applyPeerMediaPlan(peer, "datachannel-open");
+        return;
+    }
+    peer->initDeadlineMs.store(0, std::memory_order_relaxed);
+    int64_t expected = 0;
+    peer->disconnectedSinceMs.compare_exchange_strong(
+        expected,
+        steadyNowMs(),
+        std::memory_order_relaxed,
+        std::memory_order_relaxed);
+}
+
 void VersusApp::setupSignalingCallbacks() {
     signaling_.onDisconnected([this]() {
         spdlog::warn("[Signaling] Disconnected");
@@ -2391,7 +3276,9 @@ void VersusApp::setupSignalingCallbacks() {
         std::shared_ptr<PeerSession> peer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            peer = findPeerSessionForSignalLocked(uuid, session);
+            // VDO.Ninja cleanup/bye is UUID-scoped. A request-side session is
+            // only a hint and may name a PeerConnection already replaced.
+            peer = findPeerSessionForSignalLocked(uuid, {});
         }
         if (!peer) {
             spdlog::warn("[Signaling] No matching peer for cleanup uuid={} session={}", uuid, session);
@@ -2405,7 +3292,9 @@ void VersusApp::setupSignalingCallbacks() {
         std::shared_ptr<PeerSession> peer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            peer = findPeerSessionForSignalLocked(uuid, session);
+            // VDO.Ninja routes restart controls to the active UUID owner. The
+            // supplied session may be stale and must not select the transport.
+            peer = findPeerSessionForSignalLocked(uuid, {});
         }
         if (!peer) {
             spdlog::warn("[Signaling] No matching peer for ICE restart uuid={} session={}", uuid, session);
@@ -2413,6 +3302,7 @@ void VersusApp::setupSignalingCallbacks() {
         }
 
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        reservePeerAlphaAdmissionCutoff(peer);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         if (!sendPeerOffer(peer, "signaling-ice-restart", true)) {
@@ -2427,66 +3317,119 @@ void VersusApp::setupSignalingCallbacks() {
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
 
-        std::string resolvedSession = session;
-        if (resolvedSession.empty()) {
-            std::shared_ptr<PeerSession> existingPeer;
-            {
-                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-                existingPeer = findPeerSessionForSignalLocked(uuid, "");
-            }
-            resolvedSession = existingPeer && !existingPeer->session.empty() ? existingPeer->session : "default";
-            spdlog::info("[Signaling] Using stable default session ID for uuid={}: {}", uuid, resolvedSession);
-        }
-        const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
-        const std::string resolvedStreamId = lifecycleState.streamId.empty() ? streamId : lifecycleState.streamId;
-        const std::string key = makePeerKey(uuid, resolvedSession);
-        const int maxViewers = maxViewers_.load(std::memory_order_relaxed);
-        if (maxViewers > 0) {
-            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            const bool replacingExisting = (peerSessions_.find(key) != peerSessions_.end());
-            if (!replacingExisting && static_cast<int>(peerSessions_.size()) >= maxViewers) {
-                spdlog::warn("[Signaling] Viewer limit reached (max={}); rejecting {}:{}",
-                             maxViewers,
-                             uuid,
-                             resolvedSession);
-                return;
-            }
-        }
-
-        std::shared_ptr<PeerSession> replacedPeer;
+        std::shared_ptr<PeerSession> existingPeer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            const auto existing = peerSessions_.find(key);
-            if (existing != peerSessions_.end()) {
-                replacedPeer = existing->second;
-                peerSessions_.erase(existing);
-            }
+            // offerSDP is UUID-scoped in VDO.Ninja; request-side session values
+            // are not publisher identity and cannot create another owner.
+            existingPeer = findPeerSessionForSignalLocked(uuid, {});
         }
-        shutdownPeerClientAsync(replacedPeer);
+        if (existingPeer) {
+            handleDuplicatePeerOfferRequest(existingPeer, "duplicate-offer-request");
+            return;
+        }
 
+        const std::string resolvedSession = generatePeerSessionId();
+        const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+        const std::string resolvedStreamId = lifecycleState.streamId.empty() ? streamId : lifecycleState.streamId;
+        const std::string key = uuid;
         auto peer = std::make_shared<PeerSession>();
         peer->uuid = uuid;
         peer->session = resolvedSession;
+        peer->activeWireSession = resolvedSession;
         peer->streamId = resolvedStreamId;
         peer->candidateType = "local";
         peer->createdAtMs = steadyNowMs();
+        reservePeerAlphaAdmissionCutoff(peer);
         peer->lastStateChangeMs.store(peer->createdAtMs, std::memory_order_relaxed);
         peer->answerReceived = false;
         peer->roomMode = !lifecycleState.room.empty();
         peer->initReceived.store(false, std::memory_order_relaxed);
         peer->roleValid.store(false, std::memory_order_relaxed);
         peer->role.store(PeerRole::Unknown, std::memory_order_relaxed);
-        peer->assignedTier.store(StreamTier::None, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+            peer->assignedTier.store(StreamTier::None, std::memory_order_relaxed);
+        }
         peer->videoEnabled.store(true, std::memory_order_relaxed);
         peer->audioEnabled.store(true, std::memory_order_relaxed);
         peer->initDeadlineMs.store(0, std::memory_order_relaxed);
+        // Publish a stable client pointer with the logical reservation. The
+        // object is initialized only after admission, under its operation lock.
         peer->client = std::make_unique<webrtc::WebRtcClient>();
 
+        // Admission and reservation are one map operation. Initialization is
+        // intentionally outside the map lock; duplicate requests observe the
+        // reserved logical peer and no-op until its first offer is ready.
+        std::shared_ptr<PeerSession> racedPeer;
+        bool admitted = false;
+        const int maxViewers = maxViewers_.load(std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+            racedPeer = findPeerSessionForSignalLocked(uuid, {});
+            if (!racedPeer && (maxViewers <= 0 || static_cast<int>(peerSessions_.size()) < maxViewers)) {
+                admitted = peerSessions_.emplace(key, peer).second;
+                if (admitted) {
+                    int sameUuidOwnerCount = 0;
+                    for (const auto &entry : peerSessions_) {
+                        if (entry.second && entry.second->uuid == uuid) {
+                            ++sameUuidOwnerCount;
+                        }
+                    }
+                    for (const auto &entry : peerSessions_) {
+                        if (entry.second && entry.second->uuid == uuid) {
+                            const int previous = entry.second->uuidOwnerHighWatermark.load(
+                                std::memory_order_relaxed);
+                            entry.second->uuidOwnerHighWatermark.store(
+                                std::max(previous, sameUuidOwnerCount),
+                                std::memory_order_relaxed);
+                        }
+                    }
+                }
+                if (!admitted) {
+                    const auto it = peerSessions_.find(key);
+                    racedPeer = it == peerSessions_.end() ? nullptr : it->second;
+                }
+            }
+        }
+        if (racedPeer) {
+            handleDuplicatePeerOfferRequest(
+                racedPeer,
+                "concurrent-duplicate-offer-request");
+            return;
+        }
+        if (!admitted) {
+            spdlog::warn("[Signaling] Viewer limit reached (max={}); rejecting {}:{}",
+                         maxViewers,
+                         uuid,
+                         resolvedSession);
+            return;
+        }
+        spdlog::info("[Signaling] Assigned publisher-owned wire session for uuid={}: {} requestHint={}",
+                     uuid,
+                     resolvedSession,
+                     session.empty() ? "none" : "ignored");
+
+        // Keep initialization and callback installation serialized with
+        // teardown. A cleanup can arrive as soon as the logical peer is
+        // reserved.
+        std::unique_lock<std::recursive_mutex> initializationLock(peer->clientOperationMutex);
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            if (peer->removed) {
+                return;
+            }
+        }
         webrtc::PeerConfig peerConfig;
         {
             std::lock_guard<std::mutex> lock(iceConfigMutex_);
             peerConfig.iceServers = resolvedIceServers_;
             peerConfig.iceMode = iceMode_;
+            peerConfig.turnRegistry = resolvedTurnRegistry_;
+        }
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            peer->activeIceMode = peerConfig.iceMode;
         }
         const VideoStateSnapshot videoState = videoStateSnapshot();
         peerConfig.videoCodec = toPeerVideoCodec(videoState.config.codec);
@@ -2498,93 +3441,130 @@ void VersusApp::setupSignalingCallbacks() {
         // does not need a second negotiation before it can attach the stream.
         peerConfig.initialVideo = true;
         peerConfig.initialAudio = true;
-        peerConfig.initialAlpha = false;
+        // Reserve the optional alpha transceiver in the first offer. Adding it
+        // behind an already-negotiated data m-line and then rebuilding a fresh
+        // libdatachannel transport would reorder the m-lines on ICE recovery.
+        // Alpha packets remain gated per peer until the native receiver opts in.
+        peerConfig.initialAlpha = peerConfig.enableAlphaTrack;
         peerConfig.videoWidth = std::max(1, videoState.config.width);
         peerConfig.videoHeight = std::max(1, videoState.config.height);
         peerConfig.videoFps = std::max(1, videoState.config.frameRate);
         if (!peer->client->initialize(peerConfig)) {
             spdlog::error("[WebRTC] Failed to initialize peer session {}:{}", uuid, resolvedSession);
+            removePeerSession(peer, "peer-initialize-failed");
             return;
+        }
+        // Do not call into WebRtcClient while holding negotiationMutex. Some
+        // client operations synchronously invoke callbacks which re-enter the
+        // peer's negotiation state.
+        const uint64_t initialClientTransportGeneration = peer->client->transportGeneration();
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            peer->clientTransportGeneration = initialClientTransportGeneration;
         }
         recordPeerEvent(peer, "session-created stream=" + resolvedStreamId);
 
         std::weak_ptr<PeerSession> weakPeer = peer;
-        peer->client->setStateCallback([this, weakPeer](webrtc::ConnectionState state) {
-            auto peerPtr = weakPeer.lock();
-            if (!peerPtr) {
-                return;
-            }
-            const char *stateName = connectionStateName(state);
-            peerPtr->lastStateChangeMs.store(steadyNowMs(), std::memory_order_relaxed);
-            {
-                std::lock_guard<std::mutex> lock(peerPtr->diagnosticsMutex);
-                peerPtr->lastConnectionState = stateName;
-            }
-            recordPeerEvent(peerPtr, std::string("connection-state ") + stateName);
-            if (state == webrtc::ConnectionState::Connected) {
-                peerPtr->disconnectedSinceMs.store(0, std::memory_order_relaxed);
-                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
-                peerPtr->waitingForKeyframe.store(true, std::memory_order_relaxed);
-                spdlog::info("[WebRTC] Peer connected {}:{}", peerPtr->uuid, peerPtr->session);
-                return;
-            }
-            if (state == webrtc::ConnectionState::Disconnected) {
-                int64_t expected = 0;
-                peerPtr->disconnectedSinceMs.compare_exchange_strong(
-                    expected,
-                    steadyNowMs(),
-                    std::memory_order_relaxed,
-                    std::memory_order_relaxed);
-                spdlog::warn("[WebRTC] Peer connection disconnected {}:{}; keeping session for ICE recovery",
-                             peerPtr->uuid,
-                             peerPtr->session);
-                return;
-            }
-            if (state == webrtc::ConnectionState::Closed) {
-                peerPtr->disconnectedSinceMs.store(0, std::memory_order_relaxed);
-                spdlog::info("[WebRTC] Peer connection closed {}:{}; removing session",
-                             peerPtr->uuid,
-                             peerPtr->session);
-                removePeerSession(peerPtr, "connection-closed");
-                return;
-            }
-            if (state == webrtc::ConnectionState::Failed) {
-                spdlog::warn("[WebRTC] Peer connection degraded {}:{} state={}",
-                             peerPtr->uuid,
-                             peerPtr->session,
-                             "failed");
-                bool shouldTryTurnFallback = false;
-                {
-                    std::lock_guard<std::mutex> lock(iceConfigMutex_);
-                    shouldTryTurnFallback = iceMode_ == webrtc::IceMode::StunOnly;
-                }
-                if (shouldTryTurnFallback && !stopRequested_.load(std::memory_order_relaxed)) {
-                    const auto fallbackIce = webrtc::resolveIceConfig(webrtc::IceMode::All, 1000);
-                    if (fallbackIce.hasTurnServers()) {
-                        {
-                            std::lock_guard<std::mutex> lock(iceConfigMutex_);
-                            resolvedIceServers_ = fallbackIce.servers;
-                            iceMode_ = webrtc::IceMode::All;
-                        }
-                        {
-                            std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
-                            startOptions_.iceMode = webrtc::IceMode::All;
-                        }
-                        emitRuntimeEvent(
-                            "Direct STUN connection failed; retrying new room connections with TURN fallback.",
-                            false);
-                    }
-                }
-                removePeerSession(peerPtr, "connection-failed");
-            }
-        });
+        installPeerOperationCallbacks(peer);
 
         peer->client->setIceCandidateCallback([this, weakPeer](const std::string &candidate,
                                                                 const std::string &mid,
-                                                                int mlineIndex) {
+                                                                int mlineIndex,
+                                                                uint64_t clientTransportGeneration,
+                                                                uint64_t localCandidateOfferGeneration) {
             auto peerPtr = weakPeer.lock();
             if (!peerPtr || candidate.empty()) {
+                return;
+            }
+            bool shouldSend = false;
+            bool accountingViolation = false;
+            bool supersededCandidate = false;
+            std::string uuidLocal;
+            std::string sessionLocal;
+            std::string typeLocal;
+            uint64_t candidateWorkId = 0;
+            uint64_t candidateGeneration = 0;
+            {
+                std::lock_guard<std::mutex> lock(peerPtr->negotiationMutex);
+                if (peerPtr->removed || peerPtr->activeOfferGeneration == 0 ||
+                    peerPtr->clientTransportGeneration != clientTransportGeneration) {
+                    if (!peerPtr->removed &&
+                        peerPtr->clientTransportGeneration != clientTransportGeneration) {
+                        recordPeerEvent(peerPtr, "local-candidate-dropped retired-transport-generation");
+                    }
+                    return;
+                }
+                candidateGeneration = localCandidateOfferGeneration;
+                if (candidateGeneration == 0) {
+                    peerPtr->localCandidateAccountingViolation = true;
+                    accountingViolation = true;
+                    ++peerPtr->localCandidateOutcomeSequence;
+                } else if (candidateGeneration !=
+                           peerPtr->activeOfferGeneration) {
+                    // The callback began under an older local description and
+                    // crossed an App-level offer reservation. It owns no new
+                    // work in the active generation and is dropped explicitly.
+                    supersededCandidate = true;
+                    ++peerPtr->localCandidateOutcomeSequence;
+                } else {
+                    candidateWorkId = ++peerPtr->nextLocalCandidateWorkId;
+                    if (candidateWorkId == 0) {
+                        peerPtr->localCandidateAccountingViolation = true;
+                        accountingViolation = true;
+                        ++peerPtr->localCandidateOutcomeSequence;
+                    } else {
+                        uuidLocal = peerPtr->uuid;
+                        sessionLocal = peerPtr->activeWireSession;
+                        typeLocal = peerPtr->candidateType;
+                        const bool inserted =
+                            peerPtr->localCandidateOutstandingWork.emplace(
+                                candidateWorkId,
+                                LocalCandidateWorkOwner{
+                                    candidateGeneration,
+                                    clientTransportGeneration,
+                                    sessionLocal}).second;
+                        if (!inserted) {
+                            peerPtr->localCandidateAccountingViolation = true;
+                            accountingViolation = true;
+                        } else {
+                            ++peerPtr->localCandidateWorkAdmitted;
+                            peerPtr->localCandidateWorkOutstanding =
+                                static_cast<uint64_t>(
+                                    peerPtr->localCandidateOutstandingWork.size());
+                            ++peerPtr->localCandidateOutcomeSequence;
+                            if (peerPtr->localCandidateWorkAdmitted !=
+                                peerPtr->localCandidateWorkCompleted +
+                                    peerPtr->localCandidateWorkOutstanding) {
+                                peerPtr->localCandidateAccountingViolation = true;
+                                accountingViolation = true;
+                            }
+                        }
+                    }
+                }
+                if (!accountingViolation && !supersededCandidate &&
+                    !peerPtr->offerDispatched) {
+                    peerPtr->pendingCandidates.push_back({
+                        candidate,
+                        mid,
+                        mlineIndex,
+                        candidateWorkId,
+                        candidateGeneration,
+                        clientTransportGeneration,
+                        sessionLocal});
+                    recordPeerEvent(peerPtr, "local-candidate-buffered");
+                } else if (!accountingViolation && !supersededCandidate) {
+                    shouldSend = true;
+                }
+            }
+
+            if (accountingViolation) {
+                recordPeerEvent(peerPtr, "local-candidate-accounting-violation reason=admission-generation");
+                return;
+            }
+            if (supersededCandidate) {
+                recordPeerEvent(
+                    peerPtr,
+                    "local-candidate-dropped superseded-offer-context");
                 return;
             }
 
@@ -2595,30 +3575,6 @@ void VersusApp::setupSignalingCallbacks() {
                 relayCandidateSeen_.store(true, std::memory_order_relaxed);
             } else {
                 directCandidateSeen_.store(true, std::memory_order_relaxed);
-            }
-
-            bool shouldSend = false;
-            std::string uuidLocal;
-            std::string sessionLocal;
-            std::string typeLocal;
-            {
-                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-                const auto it = peerSessions_.find(makePeerKey(peerPtr->uuid, peerPtr->session));
-                if (it == peerSessions_.end() || !it->second) {
-                    return;
-                }
-
-                auto &sessionState = it->second;
-                if (!sessionState->offerDispatched) {
-                    sessionState->pendingCandidates.push_back({candidate, mid, mlineIndex});
-                    recordPeerEvent(peerPtr, "local-candidate-buffered");
-                    return;
-                }
-
-                shouldSend = true;
-                uuidLocal = sessionState->uuid;
-                sessionLocal = sessionState->session;
-                typeLocal = sessionState->candidateType;
             }
 
             if (!shouldSend) {
@@ -2645,13 +3601,55 @@ void VersusApp::setupSignalingCallbacks() {
             cand.type = typeLocal;
             {
                 std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-                signaling_.sendCandidate(cand);
+                bool stillCurrent = false;
+                {
+                    std::lock_guard<std::mutex> negotiationLock(peerPtr->negotiationMutex);
+                    stillCurrent = !peerPtr->removed &&
+                        peerPtr->clientTransportGeneration == clientTransportGeneration &&
+                        peerPtr->activeOfferGeneration == candidateGeneration &&
+                        peerPtr->activeWireSession == sessionLocal &&
+                        peerPtr->offerDispatched;
+                }
+                if (!stillCurrent) {
+                    recordPeerEvent(peerPtr, "local-candidate-dropped superseded-generation");
+                    completePeerLocalCandidateWork(
+                        peerPtr,
+                        candidateWorkId,
+                        candidateGeneration,
+                        clientTransportGeneration,
+                        sessionLocal,
+                        true,
+                        "immediate-superseded");
+                    return;
+                }
+                const bool candidateSent =
+                    dispatchPeerCandidateToSignaling(peerPtr, cand, relayCandidate);
+                completePeerLocalCandidateWork(
+                    peerPtr,
+                    candidateWorkId,
+                    candidateGeneration,
+                    clientTransportGeneration,
+                    sessionLocal,
+                    false,
+                    "immediate-dispatch");
+                if (!candidateSent) {
+                    return;
+                }
             }
-            peerPtr->localCandidatesSent.fetch_add(1, std::memory_order_relaxed);
-            recordPeerEvent(peerPtr, relayCandidate ? "local-candidate-sent relay" : "local-candidate-sent");
         });
 
-        peer->client->setKeyframeRequestCallback([this]() {
+        peer->client->setKeyframeRequestCallback([this, weakPeer](uint64_t clientTransportGeneration) {
+            auto peerPtr = weakPeer.lock();
+            if (!peerPtr) {
+                return;
+            }
+            {
+                std::lock_guard<std::mutex> negotiationLock(peerPtr->negotiationMutex);
+                if (peerPtr->removed ||
+                    peerPtr->clientTransportGeneration != clientTransportGeneration) {
+                    return;
+                }
+            }
             spdlog::info("[App] Browser requested keyframe via PLI/FIR");
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
@@ -2678,70 +3676,19 @@ void VersusApp::setupSignalingCallbacks() {
             }
         });
 
-        peer->client->setDataMessageCallback([this, weakPeer](const std::string &message) {
-            auto peerPtr = weakPeer.lock();
-            if (!peerPtr) {
-                return;
-            }
-            peerPtr->dataChannelOpen.store(true, std::memory_order_relaxed);
-            if (!peerPtr->initReceived.load(std::memory_order_relaxed) &&
-                peerPtr->initDeadlineMs.load(std::memory_order_relaxed) <= 0) {
-                const int64_t graceMs = peerPtr->roomMode ? kRoomInitGracePeriodMs : kDirectInitGracePeriodMs;
-                peerPtr->initDeadlineMs.store(steadyNowMs() + graceMs, std::memory_order_relaxed);
-            }
-            // Peer-supplied JSON can contain unexpected value types; never let a
-            // malformed message escape as an exception on the transport thread.
-            try {
-                handlePeerDataMessage(peerPtr, message);
-            } catch (const std::exception &e) {
-                spdlog::warn("[App] Failed to handle peer data message from {}:{}: {}",
-                             peerPtr->uuid,
-                             peerPtr->session,
-                             e.what());
-            } catch (...) {
-                spdlog::warn("[App] Failed to handle peer data message from {}:{}",
-                             peerPtr->uuid,
-                             peerPtr->session);
-            }
-        });
-
-        peer->client->setDataChannelStateCallback([this, weakPeer](bool open) {
-            auto peerPtr = weakPeer.lock();
-            if (!peerPtr) {
-                return;
-            }
-            peerPtr->dataChannelOpen.store(open, std::memory_order_relaxed);
-            recordPeerEvent(peerPtr, open ? "datachannel-open" : "datachannel-closed");
-            if (open) {
-                peerPtr->disconnectedSinceMs.store(0, std::memory_order_relaxed);
-                if (!peerPtr->initReceived.load(std::memory_order_relaxed)) {
-                    const int64_t graceMs = peerPtr->roomMode ? kRoomInitGracePeriodMs : kDirectInitGracePeriodMs;
-                    peerPtr->initDeadlineMs.store(steadyNowMs() + graceMs, std::memory_order_relaxed);
-                }
-                sendPeerDataInfo(peerPtr, true);
-                applyPeerMediaPlan(peerPtr, "datachannel-open");
-            } else {
-                peerPtr->initDeadlineMs.store(0, std::memory_order_relaxed);
-                int64_t expected = 0;
-                peerPtr->disconnectedSinceMs.compare_exchange_strong(
-                    expected,
-                    steadyNowMs(),
-                    std::memory_order_relaxed,
-                    std::memory_order_relaxed);
-            }
-        });
-
         if (!peer->roomMode) {
             applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
             peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            reservePeerAlphaAdmissionCutoff(peer);
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         }
 
         {
-            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-            peerSessions_[key] = peer;
+            std::lock_guard<std::mutex> lock(peer->negotiationMutex);
+            peer->sessionInitializing = false;
         }
+        initializationLock.unlock();
 
         if (!sendPeerOffer(peer, "bootstrap")) {
             return;
@@ -2757,23 +3704,104 @@ void VersusApp::setupSignalingCallbacks() {
     signaling_.onAnswer([this](const signaling::SignalAnswer &answer) {
         spdlog::info("[Signaling] onAnswer uuid={} session={}", answer.uuid, answer.session);
 
+        // WSS answers are not transport-bound. Without the publisher-owned
+        // wire session there is no way to distinguish a late answer for a
+        // retired PeerConnection from an answer for its replacement. Current
+        // VDO.Ninja and ninja-plugin receivers echo the non-empty session from
+        // our offer, so fail closed before UUID routing when it is absent.
+        if (answer.session.empty()) {
+            std::shared_ptr<PeerSession> activePeer;
+            std::string activeWireSession;
+            {
+                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+                activePeer = findPeerSessionForSignalLocked(answer.uuid, {});
+                if (activePeer) {
+                    std::lock_guard<std::mutex> negotiationLock(
+                        activePeer->negotiationMutex);
+                    if (!activePeer->removed) {
+                        activeWireSession = activePeer->activeWireSession;
+                        activePeer->sessionlessWssAnswersRejected.fetch_add(
+                            1,
+                            std::memory_order_relaxed);
+                    }
+                }
+            }
+            const std::string answerSdpSha256 = detail::sha256Hex(answer.sdp);
+            spdlog::warn(
+                "[Signaling] Rejecting publisher WebSocket answer reason=missing-session uuid={} source=signaling-wss receivedSession=missing activeSession={} answerSdpSha256={}",
+                answer.uuid,
+                activeWireSession,
+                answerSdpSha256);
+            if (activePeer && !activeWireSession.empty()) {
+                recordPeerEvent(
+                    activePeer,
+                    "answer-ignored sessionless-wss answer-sdp-sha256=" +
+                        answerSdpSha256);
+            }
+            return;
+        }
+
         std::shared_ptr<PeerSession> peer;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
             peer = findPeerSessionForSignalLocked(answer.uuid, answer.session);
             if (!peer) {
-                spdlog::warn("[Signaling] No matching peer for answer uuid={} session={}",
-                             answer.uuid,
-                             answer.session);
+                const auto activePeer = findPeerSessionForSignalLocked(answer.uuid, {});
+                if (activePeer && !answer.session.empty()) {
+                    spdlog::warn(
+                        "[Signaling] Rejecting stale-session answer before SDP routing uuid={} session={}",
+                        answer.uuid,
+                        answer.session);
+                    recordPeerEvent(activePeer, "answer-ignored stale-wire-session");
+                } else {
+                    spdlog::warn("[Signaling] No matching peer for answer uuid={} session={}",
+                                 answer.uuid,
+                                 answer.session);
+                }
                 return;
             }
         }
 
-        applyPeerAnswer(peer, answer.sdp, "signaling-wss");
+        applyPeerAnswer(peer, answer.sdp, "signaling-wss", answer.session);
     });
 
     signaling_.onCandidate([this](const signaling::SignalCandidate &cand) {
         if (cand.candidate.empty()) {
+            return;
+        }
+
+        // Unlike data-channel signaling, a WSS candidate has no callback
+        // generation proving which PeerConnection produced it. Require the
+        // wire session before touching connectivity diagnostics or queues.
+        if (cand.session.empty()) {
+            std::shared_ptr<PeerSession> activePeer;
+            std::string activeWireSession;
+            {
+                std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+                activePeer = findPeerSessionForSignalLocked(cand.uuid, {});
+                if (activePeer) {
+                    std::lock_guard<std::mutex> negotiationLock(
+                        activePeer->negotiationMutex);
+                    if (!activePeer->removed) {
+                        activeWireSession = activePeer->activeWireSession;
+                        activePeer->sessionlessWssRemoteCandidatesRejected.fetch_add(
+                            1,
+                            std::memory_order_relaxed);
+                    }
+                }
+            }
+            const std::string candidateSha256 = detail::sha256Hex(cand.candidate);
+            spdlog::warn(
+                "[Signaling] Rejecting publisher WebSocket remote ICE candidate reason=missing-session uuid={} source=signaling-wss receivedSession=missing activeSession={} candidateSha256={}",
+                cand.uuid,
+                activeWireSession,
+                candidateSha256);
+            if (activePeer && !activeWireSession.empty()) {
+                recordPeerEvent(
+                    activePeer,
+                    "remote-candidate-dropped sessionless-wss candidate-sha256=" +
+                        candidateSha256);
+            }
             return;
         }
 
@@ -2789,14 +3817,34 @@ void VersusApp::setupSignalingCallbacks() {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
             peer = findPeerSessionForSignalLocked(cand.uuid, cand.session);
             if (!peer || !peer->client) {
+                const auto activePeer = findPeerSessionForSignalLocked(cand.uuid, {});
+                if (activePeer && !cand.session.empty()) {
+                    std::string activeWireSession;
+                    {
+                        std::lock_guard<std::mutex> negotiationLock(
+                            activePeer->negotiationMutex);
+                        activeWireSession = activePeer->activeWireSession;
+                    }
+                    const std::string candidateSha256 =
+                        detail::sha256Hex(cand.candidate);
+                    spdlog::warn(
+                        "[Signaling] Rejecting stale-session remote ICE candidate before content routing uuid={} session={} activeSession={} source=signaling-wss sha256={}",
+                        cand.uuid,
+                        cand.session,
+                        activeWireSession,
+                        candidateSha256);
+                    recordPeerEvent(
+                        activePeer,
+                        "remote-candidate-dropped stale-wire-session sha256=" +
+                            candidateSha256);
+                    return;
+                }
                 queuePendingRemoteCandidateLocked(cand, steadyNowMs());
                 return;
             }
         }
 
-        peer->client->addRemoteCandidate(cand.candidate, cand.mid, cand.mlineIndex);
-        peer->remoteCandidatesApplied.fetch_add(1, std::memory_order_relaxed);
-        recordPeerEvent(peer, "remote-candidate-applied signaling");
+        handlePeerRemoteCandidate(peer, cand, "signaling");
     });
 }
 
@@ -2992,7 +4040,12 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         clearAlphaEncodeQueues();
     }
 
+    const bool roomQualityRoutingChanged =
+        usesVp9AlphaTrack(videoConfig_) != usesVp9AlphaTrack(nextConfig);
     videoConfig_ = nextConfig;
+    if (roomQualityRoutingChanged) {
+        updateRoomQualityDecisionForCodecLocked();
+    }
     publishVideoStateSnapshotLocked();
     if (hasResolutionRequest || bitrateRequested) {
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -3023,65 +4076,217 @@ bool VersusApp::applyRuntimeAudioControl(int bitrateKbps) {
     return true;
 }
 
-bool VersusApp::enforceRoomCodecLock() {
-    if (lifecycleStateSnapshot().room.empty()) {
-        return true;
-    }
-    if (!roomModeLqEnabled_.load(std::memory_order_relaxed)) {
-        return true;
-    }
-    bool needsCodecLock = false;
+RoomQualityDecision VersusApp::syncRoomQualityDecision() {
+    std::function<void()> beforeDecisionCommit;
     {
-        std::lock_guard<std::mutex> lock(videoSendMutex_);
-        needsCodecLock = videoConfig_.codec != video::VideoCodec::H264;
+        std::lock_guard<std::mutex> hookLock(roomQualitySyncTestHookMutex_);
+        beforeDecisionCommit = beforeRoomQualityDecisionCommitForTesting_;
     }
-    if (!needsCodecLock) {
-        return true;
+    bool enteredCodecUnavailable = false;
+    video::VideoCodec committedCodec = video::VideoCodec::H264;
+    uint64_t committedGeneration = 0;
+    RoomQualityDecision next;
+    {
+        // Room-quality transitions serialize behind the video path. The nested
+        // order is video -> lifecycle snapshot -> decision -> peer sessions.
+        std::lock_guard<std::mutex> videoLock(videoSendMutex_);
+        const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+        const bool requested = lifecycleState.startOptions.roomModeLqEnabled;
+        committedCodec = videoConfig_.codec;
+
+        if (beforeDecisionCommit) {
+            beforeDecisionCommit();
+        }
+
+        next = commitRoomQualityDecisionLocked(
+            lifecycleState.room,
+            requested,
+            &enteredCodecUnavailable,
+            &committedGeneration);
+        if (!next.effective) {
+            shutdownLqEncoderLocked();
+        }
     }
 
-    if (!roomCodecWarningEmitted_) {
-        roomCodecWarningEmitted_ = true;
-        emitRuntimeEvent(
-            "Room Quality uses H.264 for mixed-tier room compatibility. Disable Room Quality to try the selected codec in room mode.",
-            false);
+    emitRoomQualityCodecUnavailable({
+        enteredCodecUnavailable,
+        committedCodec,
+        committedGeneration});
+    return next;
+}
+
+RoomQualityDecision VersusApp::commitRoomQualityDecisionLocked(
+    const std::string &activeRoom,
+    bool requested,
+    bool *enteredCodecUnavailable,
+    uint64_t *committedGeneration) {
+    // The caller owns videoSendMutex_. Keep the authoritative codec, decision,
+    // alpha routing, and cached peer tiers coherent until that lock is released.
+    const bool roomMode = !activeRoom.empty();
+    const video::VideoCodec codec = videoConfig_.codec;
+    const RoomQualityDecision next = resolveRoomQualityDecision(
+        roomMode,
+        requested,
+        codec == video::VideoCodec::H264);
+
+    bool entered = false;
+    {
+        std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+        entered =
+            next.reason == RoomQualityReason::CodecNotH264 &&
+            (roomQualityState_.decision.reason != RoomQualityReason::CodecNotH264 ||
+             roomQualityState_.codec != codec);
+        ++roomQualityState_.generation;
+        roomQualityState_.activeRoom = activeRoom;
+        roomQualityState_.roomMode = roomMode;
+        roomQualityState_.codec = codec;
+        roomQualityState_.alphaWorkflowEnabled = usesVp9AlphaTrack(videoConfig_);
+        roomQualityState_.decision = next;
+        refreshRoomQualityPeerTiersLocked(next);
+        if (committedGeneration) {
+            *committedGeneration = roomQualityState_.generation;
+        }
     }
 
-    std::lock_guard<std::mutex> lock(videoSendMutex_);
-    if (videoConfig_.codec == video::VideoCodec::H264) {
-        return true;
+    if (enteredCodecUnavailable) {
+        *enteredCodecUnavailable = entered;
     }
-    const auto previousConfig = videoConfig_;
-    videoConfig_.codec = video::VideoCodec::H264;
-    videoConfig_.enableAlpha = false;
-    videoConfig_.forceFfmpegNvenc = false;
+    return next;
+}
 
-    if (!capturing_) {
-        publishVideoStateSnapshotLocked();
-        return true;
+RoomQualityDecision VersusApp::updateRoomQualityDecisionForCodecLocked(
+    bool *enteredCodecUnavailable,
+    uint64_t *committedGeneration) {
+    // Caller owns videoSendMutex_; lifecycle is a short inner snapshot.
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+    const RoomQualityDecision next = commitRoomQualityDecisionLocked(
+        lifecycleState.room,
+        lifecycleState.startOptions.roomModeLqEnabled,
+        enteredCodecUnavailable,
+        committedGeneration);
+    if (!next.effective) {
+        shutdownLqEncoderLocked();
+    }
+    return next;
+}
+
+RoomQualityDecision VersusApp::roomQualityDecisionSnapshot() const {
+    std::lock_guard<std::mutex> lock(roomQualityDecisionMutex_);
+    return roomQualityState_.decision;
+}
+
+bool VersusApp::lqRoutingAllowedLocked(
+    const RoomQualityDecision &decision) const {
+    // Caller owns videoSendMutex_ then roomQualityDecisionMutex_. This is the
+    // single admission predicate for both routing and the LQ encoder backend.
+    return decision.effective &&
+        videoConfig_.codec == video::VideoCodec::H264 &&
+        roomQualityState_.codec == video::VideoCodec::H264 &&
+        videoConfig_.codec == roomQualityState_.codec;
+}
+
+StreamTier VersusApp::roomQualityPeerTierLocked(
+    const std::shared_ptr<PeerSession> &peer,
+    const RoomQualityDecision &decision,
+    bool lqRoutingAllowed) const {
+    if (!peer) {
+        return StreamTier::None;
+    }
+    const StreamTier policyTier = assignStreamTier(
+        peer->roomMode,
+        decision.effective && lqRoutingAllowed,
+        peer->roleValid.load(std::memory_order_relaxed),
+        peer->role.load(std::memory_order_relaxed));
+    const bool alphaReceiverNeedsHq =
+        roomQualityState_.alphaWorkflowEnabled &&
+        peer->alphaAllowed.load(std::memory_order_relaxed);
+    return selectEffectiveStreamTier(policyTier, alphaReceiverNeedsHq);
+}
+
+void VersusApp::refreshRoomQualityPeerTiersLocked(
+    const RoomQualityDecision &decision) {
+    // Caller owns videoSendMutex_ and roomQualityDecisionMutex_.
+    const bool lqRoutingAllowed = lqRoutingAllowedLocked(decision);
+    std::lock_guard<std::mutex> peersLock(peerSessionsMutex_);
+    for (const auto &entry : peerSessions_) {
+        const auto &peer = entry.second;
+        if (!peer) {
+            continue;
+        }
+        peer->assignedTier.store(
+            roomQualityPeerTierLocked(peer, decision, lqRoutingAllowed),
+            std::memory_order_relaxed);
+    }
+}
+
+void VersusApp::emitRoomQualityCodecUnavailable(
+    const RoomQualityWarningTicket &ticket) {
+    if (!ticket.pending) {
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+        if (roomQualityState_.generation != ticket.generation ||
+            roomQualityState_.activeRoom.empty() ||
+            roomQualityState_.codec != ticket.codec ||
+            roomQualityState_.decision.reason != RoomQualityReason::CodecNotH264) {
+            return;
+        }
+    }
+    emitRuntimeEvent(
+        std::string("Room Quality is unavailable with ") +
+            videoCodecName(ticket.codec) +
+            "; continuing HQ-only without changing the selected codec or alpha workflow.",
+        false);
+}
+
+VersusApp::RoomQualityWarningTicket VersusApp::transitionRoomQualityLifecycle(
+    const StartOptions *activationOptions,
+    const std::string &sessionSalt) {
+    std::function<void()> duringLifecycleMutation;
+    std::function<void()> afterLifecycleMutation;
+    {
+        std::lock_guard<std::mutex> hookLock(roomQualityArchitectureTestHookMutex_);
+        duringLifecycleMutation = duringRoomQualityLifecycleMutationForTesting_;
+        afterLifecycleMutation = afterRoomQualityLifecycleMutationForTesting_;
     }
 
-    videoEncoder_.shutdown();
-    shutdownLqEncoderLocked();
-    if (videoEncoder_.initialize(videoConfig_)) {
-        activeHqWidth_ = std::max(2, videoConfig_.width & ~1);
-        activeHqHeight_ = std::max(2, videoConfig_.height & ~1);
-        lastHqReconfigureMs_ = steadyNowMs();
-        hqAspectLocked_ = false;
-        publishVideoStateSnapshotLocked();
-        return true;
+    RoomQualityWarningTicket warning;
+    RoomQualityDecision next;
+    {
+        std::unique_lock<std::mutex> videoLock(videoSendMutex_);
+        {
+            std::unique_lock<std::mutex> lifecycleLock(lifecycleStateMutex_);
+            if (activationOptions) {
+                startOptions_ = *activationOptions;
+                room_ = activationOptions->room;
+                password_ = activationOptions->password;
+                salt_ = sessionSalt;
+                remoteControlToken_ = activationOptions->remoteControlToken;
+            } else {
+                room_.clear();
+                startOptions_.room.clear();
+            }
+            if (duringLifecycleMutation) {
+                duringLifecycleMutation();
+            }
+
+            next = commitRoomQualityDecisionLocked(
+                room_,
+                startOptions_.roomModeLqEnabled,
+                &warning.pending,
+                &warning.generation);
+            warning.codec = videoConfig_.codec;
+        }
+        if (!next.effective) {
+            shutdownLqEncoderLocked();
+        }
     }
 
-    spdlog::error("[App] Failed to enforce room-mode H.264 lock; restoring previous codec");
-    videoConfig_ = previousConfig;
-    if (!videoEncoder_.initialize(primaryVideoEncoderConfig(previousConfig))) {
-        spdlog::error("[App] Failed to restore previous encoder config after room codec lock failure");
-    } else {
-        activeHqWidth_ = std::max(2, previousConfig.width & ~1);
-        activeHqHeight_ = std::max(2, previousConfig.height & ~1);
-        hqAspectLocked_ = false;
-        publishVideoStateSnapshotLocked();
+    if (afterLifecycleMutation) {
+        afterLifecycleMutation();
     }
-    return false;
+    return warning;
 }
 
 void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
@@ -3100,13 +4305,17 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
 
     if (peer->roomMode) {
         const bool initReady = roleValid;
-        const StreamTier tier = assignStreamTier(
-            true,
-            roomModeLqEnabled_.load(std::memory_order_relaxed),
-            roleValid,
-            role);
+        StreamTier tier = StreamTier::None;
+        {
+            std::lock_guard<std::mutex> videoLock(videoSendMutex_);
+            std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+            tier = roomQualityPeerTierLocked(
+                peer,
+                roomQualityState_.decision,
+                lqRoutingAllowedLocked(roomQualityState_.decision));
+            peer->assignedTier.store(tier, std::memory_order_relaxed);
+        }
         peer->initReceived.store(initReady, std::memory_order_relaxed);
-        peer->assignedTier.store(tier, std::memory_order_relaxed);
         if (initReady) {
             peer->initDeadlineMs.store(0, std::memory_order_relaxed);
         }
@@ -3137,6 +4346,7 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
 }
 
 void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
+    const RoomQualityDecision roomQuality = roomQualityDecisionSnapshot();
     std::vector<std::shared_ptr<PeerSession>> expired;
     std::vector<std::shared_ptr<PeerSession>> disconnected;
     {
@@ -3197,7 +4407,7 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
         if (peer->roomMode) {
             const StreamTier fallbackTier = assignStreamTier(
                 true,
-                roomModeLqEnabled_.load(std::memory_order_relaxed),
+                roomQuality.effective,
                 true,
                 PeerRole::Viewer);
             spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/{}",
@@ -3217,8 +4427,25 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
 }
 
 bool VersusApp::ensureLqEncoderInitializedLocked() {
+    bool lqRoutingAllowed = false;
+    {
+        std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+        lqRoutingAllowed = lqRoutingAllowedLocked(roomQualityState_.decision);
+    }
+    if (!lqRoutingAllowed) {
+        shutdownLqEncoderLocked();
+        return false;
+    }
     if (lqEncoderInitialized_.load(std::memory_order_relaxed)) {
         return true;
+    }
+    std::function<bool()> beforeLqInitialize;
+    {
+        std::lock_guard<std::mutex> hookLock(roomQualityArchitectureTestHookMutex_);
+        beforeLqInitialize = beforeLqEncoderInitializeForTesting_;
+    }
+    if (beforeLqInitialize && !beforeLqInitialize()) {
+        return false;
     }
 
     video::EncoderConfig lqConfig = videoConfig_;
@@ -3273,27 +4500,30 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
     const bool videoEnabled = peer->videoEnabled.load(std::memory_order_relaxed);
     const bool audioEnabled = peer->audioEnabled.load(std::memory_order_relaxed);
-    StreamTier assignedTier = assignStreamTier(
-        peer->roomMode,
-        roomModeLqEnabled_.load(std::memory_order_relaxed),
-        roleValid,
-        peerRole);
-
     const VideoStateSnapshot videoState = videoStateSnapshot();
     const int requestedVideoBitrate = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
-    const bool alphaReceiverUsesHq =
-        assignedTier != StreamTier::None &&
-        videoEnabled &&
-        usesVp9AlphaTrack(videoState.config) &&
-        peer->alphaAllowed.load(std::memory_order_relaxed);
-    if (alphaReceiverUsesHq) {
-        assignedTier = StreamTier::HQ;
-    } else if (assignedTier != StreamTier::None &&
-               requestedVideoBitrate > 0 &&
-               requestedVideoBitrate <= kLqBitrateKbps) {
-        assignedTier = StreamTier::LQ;
+    RoomQualityDecision roomQuality;
+    StreamTier assignedTier = StreamTier::None;
+    bool alphaReceiverUsesHq = false;
+    {
+        std::lock_guard<std::mutex> videoLock(videoSendMutex_);
+        std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+        roomQuality = roomQualityState_.decision;
+        const StreamTier policyTier = assignStreamTier(
+            peer->roomMode,
+            roomQuality.effective,
+            roleValid,
+            peerRole);
+        assignedTier = roomQualityPeerTierLocked(
+            peer,
+            roomQuality,
+            lqRoutingAllowedLocked(roomQuality));
+        alphaReceiverUsesHq =
+            videoEnabled &&
+            policyTier == StreamTier::LQ &&
+            assignedTier == StreamTier::HQ;
+        peer->assignedTier.store(assignedTier, std::memory_order_relaxed);
     }
-    peer->assignedTier.store(assignedTier, std::memory_order_relaxed);
 
     const bool peerWantsLq = assignedTier == StreamTier::LQ;
     const int effectiveBitrate =
@@ -3348,6 +4578,9 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     info["proaudio_init"] = false;
     info["assigned_role"] = peerRoleName(peerRole);
     info["assigned_tier"] = streamTierName(assignedTier);
+    info["room_quality_requested"] = roomQuality.requested;
+    info["room_quality_effective"] = roomQuality.effective;
+    info["room_quality_reason"] = roomQualityReasonName(roomQuality.reason);
     info["requested_video_bitrate_kbps"] = requestedVideoBitrate;
     info["requested_audio_bitrate_kbps"] = peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed);
     info["audio_source"] = audioSourceModeName(lifecycleState.audioSourceMode);
@@ -3390,7 +4623,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     if (includeMiniStats) {
         const PeerCounts counts = collectPeerCounts();
         const int roomOnlyTier =
-            roomModeLqEnabled_.load(std::memory_order_relaxed) &&
+            roomQuality.effective &&
                 counts.roomGuests > 0 &&
                 counts.roomScenes == 0 &&
                 counts.roomNonGuestViewers == 0 &&
@@ -3439,8 +4672,9 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
     const double aggregateVideoKbps = streamMetrics.videoBitrateKbps;
     const double aggregateAudioKbps = streamMetrics.audioBitrateKbps;
     const PeerCounts counts = collectPeerCounts();
+    const RoomQualityDecision roomQuality = roomQualityDecisionSnapshot();
     const int roomOnlyTier =
-        roomModeLqEnabled_.load(std::memory_order_relaxed) &&
+        roomQuality.effective &&
                 counts.roomGuests > 0 &&
                 counts.roomScenes == 0 &&
                 counts.roomNonGuestViewers == 0 &&
@@ -3464,6 +4698,9 @@ void VersusApp::sendPeerRemoteStats(const std::shared_ptr<PeerSession> &peer) {
     stats["video_frames_dropped"] = streamMetrics.videoFramesDropped;
     stats["dropped_frame_rate"] = streamMetrics.droppedFrameRate;
     stats["room_only_tier"] = roomOnlyTier;
+    stats["room_quality_requested"] = roomQuality.requested;
+    stats["room_quality_effective"] = roomQuality.effective;
+    stats["room_quality_reason"] = roomQualityReasonName(roomQuality.reason);
     stats["peers"] = counts.total;
     stats["active_video"] = counts.activeVideo;
     stats["active_audio"] = counts.activeAudio;
@@ -3723,6 +4960,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("iceRestartRequest")) {
         spdlog::info("[WebRTC] Peer requested data-channel ICE restart {}:{}", peer->uuid, peer->session);
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        reservePeerAlphaAdmissionCutoff(peer);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         if (!sendPeerOffer(peer, "datachannel-ice-restart", true)) {
@@ -3782,27 +5020,24 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             }
         }
 
-        bool alphaFieldPresent = false;
+        const bool alphaFieldPresent = info.contains("alpha_receive");
         std::string alphaReceiveMode;
-        if (info.contains("alpha_receive")) {
-            alphaFieldPresent = true;
-            if (info["alpha_receive"].is_string()) {
-                alphaReceiveMode = info["alpha_receive"].get<std::string>();
-            } else if (jsonBoolLike(info["alpha_receive"], false)) {
-                alphaReceiveMode = "vp9-dualtrack-v1";
-            }
-        } else if (info.contains("alphaReceive")) {
-            alphaFieldPresent = true;
-            if (info["alphaReceive"].is_string()) {
-                alphaReceiveMode = info["alphaReceive"].get<std::string>();
-            } else if (jsonBoolLike(info["alphaReceive"], false)) {
-                alphaReceiveMode = "vp9-dualtrack-v1";
-            }
+        if (alphaFieldPresent && info["alpha_receive"].is_string()) {
+            alphaReceiveMode = info["alpha_receive"].get<std::string>();
         }
         if (alphaFieldPresent) {
             const bool alphaAllowed = alphaReceiveMode == "vp9-dualtrack-v1";
             const bool previousAlphaAllowed = peer->alphaAllowed.load(std::memory_order_relaxed);
             peer->alphaAllowed.store(alphaAllowed, std::memory_order_relaxed);
+            if (alphaAllowed && !previousAlphaAllowed) {
+                // Do not replay a completed pair from before capability was
+                // acknowledged; that peer has already consumed newer primary
+                // RTP timestamps without alpha.
+                reservePeerAlphaAdmissionCutoff(peer);
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            }
             {
                 std::lock_guard<std::mutex> diagnosticsLock(peer->diagnosticsMutex);
                 peer->alphaReceiveMode = alphaAllowed ? alphaReceiveMode : "";
@@ -4244,6 +5479,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             const bool muted = jsonBoolLike(msg["remoteVideoMuted"], false);
             peer->videoEnabled.store(!muted, std::memory_order_relaxed);
             peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            reservePeerAlphaAdmissionCutoff(peer);
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
             nlohmann::json confirm;
@@ -4282,6 +5518,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         peer->requestedVideoBitrateKbps.store(requestedPeerBitrate, std::memory_order_relaxed);
         peerMediaRateChanged = true;
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        reservePeerAlphaAdmissionCutoff(peer);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
     }
@@ -4303,6 +5540,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                 requestedBitrate = configuredVideoBitrateKbps_.load(std::memory_order_relaxed);
             }
             peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            reservePeerAlphaAdmissionCutoff(peer);
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         }
@@ -4316,6 +5554,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             peer->requestedVideoBitrateKbps.store(requestedOptimizedBitrate, std::memory_order_relaxed);
             peerMediaRateChanged = true;
             peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            reservePeerAlphaAdmissionCutoff(peer);
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         }
@@ -4505,6 +5744,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                     continue;
                 }
                 refreshPeer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                reservePeerAlphaAdmissionCutoff(refreshPeer);
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                 if (!sendPeerOffer(refreshPeer, reason, true)) {
@@ -4546,30 +5786,82 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     int64_t hqEncodeElapsedMs = 0;
     int64_t lqEncodeElapsedMs = 0;
     int64_t sendElapsedMs = 0;
+
+    struct VideoPeerCandidate {
+        std::string mapKey;
+        std::shared_ptr<PeerSession> peer;
+        bool activeVideo = false;
+    };
+    std::function<void()> beforeActiveVideoTrackQuery;
+    {
+        std::lock_guard<std::mutex> hookLock(roomQualityArchitectureTestHookMutex_);
+        beforeActiveVideoTrackQuery = beforePeerActiveVideoTrackQueryForTesting_;
+    }
+    std::vector<VideoPeerCandidate> candidates;
+    {
+        std::lock_guard<std::mutex> peersLock(peerSessionsMutex_);
+        candidates.reserve(peerSessions_.size());
+        for (const auto &entry : peerSessions_) {
+            if (entry.second) {
+                candidates.push_back({entry.first, entry.second, false});
+            }
+        }
+    }
+    for (auto &candidate : candidates) {
+        const auto &peer = candidate.peer;
+        if (!peer) {
+            continue;
+        }
+        std::unique_lock<std::recursive_mutex> clientLock(
+            peer->clientOperationMutex,
+            std::try_to_lock);
+        if (clientLock.owns_lock() && peer->client) {
+            if (beforeActiveVideoTrackQuery) {
+                beforeActiveVideoTrackQuery();
+            }
+            const bool activeVideo = peer->client->hasActiveVideoTrack();
+            const bool activeAudio = peer->client->hasActiveAudioTrack();
+            peer->lastObservedVideoTrackActive.store(
+                activeVideo,
+                std::memory_order_relaxed);
+            peer->lastObservedAudioTrackActive.store(
+                activeAudio,
+                std::memory_order_relaxed);
+        }
+        candidate.activeVideo = peer->lastObservedVideoTrackActive.load(
+            std::memory_order_relaxed);
+    }
+
+    const auto lockWaitStart = std::chrono::steady_clock::now();
     std::unique_lock<std::mutex> lock(videoSendMutex_);
     lockWaitElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                            std::chrono::steady_clock::now() - totalStart)
+                            std::chrono::steady_clock::now() - lockWaitStart)
                             .count();
     if (!live_) {
         return false;
     }
     bool renegotiateH264CodecFallback = false;
+    std::unique_lock<std::mutex> decisionLock(roomQualityDecisionMutex_);
+    const RoomQualityDecision roomQuality = roomQualityState_.decision;
+    const bool lqRoutingAllowed = lqRoutingAllowedLocked(roomQuality);
 
     std::vector<std::shared_ptr<PeerSession>> hqPeers;
     std::vector<std::shared_ptr<PeerSession>> lqPeers;
     {
         std::lock_guard<std::mutex> peersLock(peerSessionsMutex_);
-        hqPeers.reserve(peerSessions_.size());
-        lqPeers.reserve(peerSessions_.size());
-        for (const auto &entry : peerSessions_) {
-            if (!entry.second || !entry.second->client || !entry.second->client->hasActiveVideoTrack()) {
+        hqPeers.reserve(candidates.size());
+        lqPeers.reserve(candidates.size());
+        for (const auto &candidate : candidates) {
+            const auto current = peerSessions_.find(candidate.mapKey);
+            if (current == peerSessions_.end() ||
+                current->second != candidate.peer ||
+                !candidate.activeVideo) {
                 continue;
             }
-
-            auto &peer = entry.second;
+            const auto &peer = current->second;
             const PeerRouteState route{
                 peer->roomMode,
-                roomModeLqEnabled_.load(std::memory_order_relaxed),
+                lqRoutingAllowed,
                 peer->initReceived.load(std::memory_order_relaxed),
                 peer->roleValid.load(std::memory_order_relaxed),
                 peer->role.load(std::memory_order_relaxed),
@@ -4583,20 +5875,10 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             if (requestedVideoBitrate == 0) {
                 continue;
             }
-            const bool alphaReceiverNeedsHq =
-                usesVp9AlphaTrack(videoConfig_) &&
-                peer->alphaAllowed.load(std::memory_order_relaxed);
-            const StreamTier policyTier = assignStreamTier(
-                route.roomMode,
-                route.roomModeLqEnabled,
-                route.roleValid,
-                route.role);
-            StreamTier tier = policyTier;
-            if (alphaReceiverNeedsHq) {
-                tier = StreamTier::HQ;
-            } else if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
-                tier = StreamTier::LQ;
-            }
+            const StreamTier tier = roomQualityPeerTierLocked(
+                peer,
+                roomQuality,
+                lqRoutingAllowed);
             peer->assignedTier.store(tier, std::memory_order_relaxed);
             if (tier == StreamTier::HQ) {
                 hqPeers.push_back(peer);
@@ -4605,6 +5887,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             }
         }
     }
+    decisionLock.unlock();
 
     if (hqPeers.empty() && lqPeers.empty()) {
         shutdownLqEncoderLocked();
@@ -4625,6 +5908,37 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
     video::EncodedPacket lqPacket;
     bool haveHqPacket = false;
     bool haveLqPacket = false;
+
+    const bool alphaWorkflowForFrame = !hqPeers.empty() && usesVp9AlphaTrack(videoConfig_);
+    const int primaryFrameWidth = activeHqWidth_ > 0
+        ? activeHqWidth_
+        : std::max(2, videoConfig_.width & ~1);
+    const int primaryFrameHeight = activeHqHeight_ > 0
+        ? activeHqHeight_
+        : std::max(2, videoConfig_.height & ~1);
+    AlphaFrameAdmission alphaFrameAdmission;
+    if (alphaWorkflowForFrame) {
+        if (requestKeyframe) {
+            std::lock_guard<std::mutex> alphaEncoderLock(alphaEncoderMutex_);
+            // The protected VP9 contract is explicit and non-overrideable;
+            // every other backend must honor a real keyframe request.
+            if (!videoEncoderAlpha_.guaranteesEveryFrameKeyframe()) {
+                videoEncoderAlpha_.requestKeyframe();
+            }
+        }
+        const auto [alphaWidth, alphaHeight] =
+            alphaTrackDimensions(videoConfig_, primaryFrameWidth, primaryFrameHeight);
+        if (buildAspectFitAlphaPlane(frame, alphaWidth, alphaHeight, alphaGrayBuffer_)) {
+            // Start the independent alpha encoder before the primary encode so
+            // both pipelines overlap. Dispatch remains delayed until the exact
+            // generation+admission mate from each encoder has completed.
+            alphaFrameAdmission = queueAlphaEncodeFrame(
+                alphaWidth,
+                alphaHeight,
+                frame.timestamp,
+                std::move(alphaGrayBuffer_));
+        }
+    }
 
     if (!hqPeers.empty()) {
         const bool externalFfmpegEncoder =
@@ -4680,6 +5994,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             }
 
             videoConfig_ = fallbackConfig;
+            updateRoomQualityDecisionForCodecLocked();
             publishVideoStateSnapshotLocked();
             softwareExternalEncodeFailCount_ = 0;
             softwareExternalFailWindowStartMs_ = 0;
@@ -4693,13 +6008,21 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                          videoEncoder_.activeCodecName());
             return true;
         };
-        if (requestKeyframe && !externalFfmpegEncoder) {
+        if (keyframe_policy::shouldDispatchEncoderRequest(
+                requestKeyframe,
+                externalFfmpegEncoder,
+                videoEncoder_.guaranteesEveryFrameKeyframe())) {
             videoEncoder_.requestKeyframe();
         }
 
         const auto encodeStart = std::chrono::steady_clock::now();
         const bool hardwareEncodingBefore = videoEncoder_.isHardwareEncoderActive();
-        const bool encodeOk = videoEncoder_.encode(frame, hqPacket);
+        const bool encodeOk = alphaFrameAdmission.valid()
+            ? videoEncoder_.encodeWithSourceTimestamp(
+                  frame,
+                  hqPacket,
+                  alphaFrameAdmission.sourceTimestamp)
+            : videoEncoder_.encode(frame, hqPacket);
         hqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now() - encodeStart)
                                  .count();
@@ -4781,6 +6104,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                                                             video::EncoderConfig recoveredConfig) {
                         recoveredConfig.enableAlpha = preserveVp9AlphaTrack;
                         videoConfig_ = std::move(recoveredConfig);
+                        updateRoomQualityDecisionForCodecLocked();
                         publishVideoStateSnapshotLocked();
                     };
                     bool switchedToHardware = false;
@@ -4877,7 +6201,21 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         }
 
         if (encodeOk) {
-            haveHqPacket = true;
+            const bool hasTrustedSourceTimestamp =
+                hqPacket.sourceTimestamp != std::numeric_limits<int64_t>::min();
+            haveHqPacket = hasTrustedSourceTimestamp;
+            if (!hasTrustedSourceTimestamp) {
+                videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                videoEncodeHardFailures_.fetch_add(1, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                static uint64_t missingHqSourceTimestampCount = 0;
+                if (++missingHqSourceTimestampCount <= 5 ||
+                    (missingHqSourceTimestampCount % 300) == 0) {
+                    spdlog::error(
+                        "[VideoPath] Dropping encoded primary packet without a trusted source timestamp (count={})",
+                        missingHqSourceTimestampCount);
+                }
+            }
             const bool softwareEncoding = !videoEncoder_.isHardwareEncoderActive();
             if (softwareEncoding) {
                 const int frameIntervalMs = std::max(1, 1000 / std::max(1, videoConfig_.frameRate));
@@ -4912,7 +6250,18 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 softwareExternalFailWindowStartMs_ = 0;
             }
 
-            if (requestKeyframe && !hqPacket.isKeyframe && !externalFfmpegEncoder) {
+            if (keyframe_policy::shouldRearmAfterPacket(
+                    requestKeyframe,
+                    hqPacket.isKeyframe,
+                    externalFfmpegEncoder)) {
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            }
+            if (alphaWorkflowForFrame &&
+                videoEncoder_.guaranteesEveryFrameKeyframe() &&
+                !hqPacket.isKeyframe) {
+                spdlog::error(
+                    "[VideoPath] Protected VP9 primary encoder produced a delta frame; restarting before alpha startup can continue");
+                videoEncoder_.requestKeyframe();
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
         } else {
@@ -4949,7 +6298,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 softwareExternalEncodeFailCount_ = 0;
                 softwareExternalFailWindowStartMs_ = 0;
             }
-            if (requestKeyframe && !externalFfmpegEncoder) {
+            if (keyframe_policy::shouldRearmAfterEncodeFailure(
+                    requestKeyframe,
+                    externalFfmpegEncoder)) {
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
         }
@@ -4971,8 +6322,19 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         std::chrono::steady_clock::now() - lqEncodeStart)
                                         .count();
-                haveLqPacket = true;
-                if (requestKeyframe && !lqPacket.isKeyframe) {
+                haveLqPacket =
+                    lqPacket.sourceTimestamp != std::numeric_limits<int64_t>::min();
+                if (!haveLqPacket) {
+                    videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    static uint64_t missingLqSourceTimestampCount = 0;
+                    if (++missingLqSourceTimestampCount <= 5 ||
+                        (missingLqSourceTimestampCount % 300) == 0) {
+                        spdlog::error(
+                            "[VideoPath] Dropping encoded LQ packet without a trusted source timestamp (count={})",
+                            missingLqSourceTimestampCount);
+                    }
+                } else if (requestKeyframe && !lqPacket.isKeyframe) {
                     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
             } else {
@@ -4989,34 +6351,64 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
         shutdownLqEncoderLocked();
     }
 
-    if (!haveHqPacket && !haveLqPacket) {
+    std::vector<ExactAlphaFramePair> completedAlphaPairs;
+    if (alphaWorkflowForFrame) {
+        ExactAlphaFramePacket completedAlpha;
+        if (takeLatestAlphaPacket(completedAlpha)) {
+            if (auto pair = alphaFramePairer_.submitAlpha(std::move(completedAlpha))) {
+                completedAlphaPairs.push_back(std::move(*pair));
+            }
+        }
+    }
+
+    if (!haveHqPacket && !haveLqPacket && completedAlphaPairs.empty()) {
         return false;
     }
 
     bool sentAny = false;
     bool sentKeyframe = false;
     uint64_t videoBytesSentThisCall = 0;
+    std::vector<int64_t> primaryPtsSentThisCall;
     int sentWidth = 0;
     int sentHeight = 0;
+    const std::size_t hqPacketBytes = hqPacket.data.size();
     const auto sendStart = std::chrono::steady_clock::now();
 
     if (haveHqPacket) {
         webrtc::EncodedVideoPacket packet;
         packet.data = hqPacket.data;
-        packet.pts = hqPacket.pts;
+        packet.pts = hqPacket.sourceTimestamp;
         packet.isKeyframe = hqPacket.isKeyframe;
         for (const auto &peer : hqPeers) {
             if (!peer || !peer->client) {
                 continue;
             }
+            // Alpha-capable peers are handled only after both independently
+            // encoded halves with this exact source PTS are available.
+            if (alphaWorkflowForFrame &&
+                peer->alphaAllowed.load(std::memory_order_relaxed)) {
+                continue;
+            }
             if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !packet.isKeyframe) {
                 continue;
             }
+            std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            const int64_t lastReserved =
+                peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed);
+            packet.pts = nextMonotonicVideoTransportPts(
+                hqPacket.sourceTimestamp,
+                lastReserved);
+            if (packet.pts <= lastReserved) {
+                continue;
+            }
+            advanceMonotonic(peer->lastVideoWirePtsReserved, packet.pts);
             if (peer->client->sendVideo(packet)) {
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
-                sentWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
-                sentHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
+                primaryPtsSentThisCall.push_back(packet.pts);
+                advanceMonotonic(peer->lastPrimaryPtsSent, packet.pts);
+                sentWidth = primaryFrameWidth;
+                sentHeight = primaryFrameHeight;
                 if (packet.isKeyframe) {
                     sentKeyframe = true;
                     peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
@@ -5025,48 +6417,204 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
             }
         }
+
+        if (alphaWorkflowForFrame) {
+            ExactAlphaFramePacket completedPrimary;
+            const auto admission = alphaFrameAdmissionTracker_.resolvePrimary(
+                hqPacket.sourceTimestamp);
+            if (admission &&
+                admission->pipelineGeneration ==
+                    alphaPipelineGeneration_.load(std::memory_order_acquire)) {
+                completedPrimary.packet = std::move(hqPacket);
+                completedPrimary.pipelineGeneration = admission->pipelineGeneration;
+                completedPrimary.sourceAdmissionSequence = admission->sequence;
+                completedPrimary.encodedWidth = primaryFrameWidth;
+                completedPrimary.encodedHeight = primaryFrameHeight;
+                if (auto pair = alphaFramePairer_.submitPrimary(std::move(completedPrimary))) {
+                    completedAlphaPairs.push_back(std::move(*pair));
+                }
+            }
+        }
     }
 
-    // VP9 alpha: queue the alpha plane for a dedicated encoder thread and send
-    // the latest completed alpha packet without blocking primary video. The
-    // packet may be one frame behind, so stamp it to the primary frame it ships
-    // beside; the OBS receiver pairs tracks by RTP timestamp.
-    if (haveHqPacket && usesVp9AlphaTrack(videoConfig_)) {
-        const int primaryWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
-        const int primaryHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
-        const auto [alphaWidth, alphaHeight] = alphaTrackDimensions(videoConfig_, primaryWidth, primaryHeight);
-        if (buildAspectFitAlphaPlane(frame, alphaWidth, alphaHeight, alphaGrayBuffer_)) {
-            queueAlphaEncodeFrame(alphaWidth, alphaHeight, frame.timestamp, std::move(alphaGrayBuffer_));
+    // The ninja-plugin consumes alpha by RTP timestamp at primary decode time.
+    // Queue alpha first, then the exact matching primary, while holding the
+    // peer operation lock so a transport reset cannot split the pair.
+    for (const auto &pair : completedAlphaPairs) {
+        if (pair.primary.pipelineGeneration !=
+                alphaPipelineGeneration_.load(std::memory_order_acquire)) {
+            continue;
         }
-
-        video::EncodedPacket alphaPacket;
-        if (takeLatestAlphaPacket(alphaPacket)) {
-            webrtc::EncodedVideoPacket alphaVPacket;
-            alphaVPacket.data = std::move(alphaPacket.data);
-            alphaVPacket.pts = hqPacket.pts;
-            alphaVPacket.isKeyframe = alphaPacket.isKeyframe;
+        // This pair-level preflight is deliberately outside the peer loop.
+        // One malformed completed pair yields one telemetry increment and at
+        // most one cooldown-bounded recovery request, regardless of viewers.
+        const auto contract = alphaContractRecovery_.observe(pair, nowMs);
+        if (!contract.validation.valid()) {
             for (const auto &peer : hqPeers) {
-                if (!peer || !peer->client) {
+                if (!peer ||
+                    !peer->alphaAllowed.load(std::memory_order_relaxed)) {
                     continue;
                 }
-                if (!peer->alphaAllowed.load(std::memory_order_relaxed)) {
-                    continue;
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                reservePeerAlphaAdmissionCutoff(peer);
+            }
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+
+            if (contract.recoveryScheduled) {
+                const auto rejection = contract.validation.rejection;
+                const bool recoverPrimary =
+                    rejection == ProtectedAlphaContractRejection::PairIdentityInvalid ||
+                    rejection == ProtectedAlphaContractRejection::PrimaryCodecUnsupported ||
+                    rejection == ProtectedAlphaContractRejection::PrimaryVp9NotKeyframe;
+                const bool recoverAlpha =
+                    rejection == ProtectedAlphaContractRejection::PairIdentityInvalid ||
+                    rejection == ProtectedAlphaContractRejection::AlphaCodecNotVp9 ||
+                    rejection == ProtectedAlphaContractRejection::AlphaNotKeyframe;
+                if (recoverPrimary) {
+                    videoEncoder_.requestKeyframe();
                 }
-                if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !alphaVPacket.isKeyframe) {
-                    continue;
+                if (recoverAlpha) {
+                    std::lock_guard<std::mutex> alphaEncoderLock(alphaEncoderMutex_);
+                    videoEncoderAlpha_.requestKeyframe();
                 }
-                if (peer->client->sendAlphaVideo(alphaVPacket)) {
-                    alphaPacketsSent_.fetch_add(1, std::memory_order_relaxed);
-                } else {
-                    alphaSendFailures_.fetch_add(1, std::memory_order_relaxed);
-                }
+            }
+
+            const int64_t lastDiagnostic =
+                lastAlphaContractDiagnosticMs_.load(std::memory_order_relaxed);
+            if (lastDiagnostic == 0 || nowMs < lastDiagnostic ||
+                nowMs - lastDiagnostic >= 5000) {
+                lastAlphaContractDiagnosticMs_.store(nowMs, std::memory_order_relaxed);
+                spdlog::warn(
+                    "[VideoPath] Rejected completed alpha pair reason={} sequence={} generation={} rejectedPairs={} recoveryAttempts={}",
+                    protectedAlphaContractRejectionName(
+                        contract.validation.rejection),
+                    pair.primary.sourceAdmissionSequence,
+                    pair.primary.pipelineGeneration,
+                    alphaContractRecovery_.rejectedPairCount(),
+                    alphaContractRecovery_.recoveryAttemptCount());
+            }
+            continue;
+        }
+        if (contract.recovered) {
+            spdlog::info(
+                "[VideoPath] Protected alpha pair contract recovered at sequence={} generation={}",
+                pair.primary.sourceAdmissionSequence,
+                pair.primary.pipelineGeneration);
+        }
+        webrtc::EncodedVideoPacket alphaPacket;
+        alphaPacket.data = pair.alpha.packet.data;
+        alphaPacket.pts = pair.transportPts;
+        alphaPacket.isKeyframe = pair.alpha.packet.isKeyframe;
+        webrtc::EncodedVideoPacket primaryPacket;
+        primaryPacket.data = pair.primary.packet.data;
+        primaryPacket.pts = pair.transportPts;
+        primaryPacket.isKeyframe = pair.primary.packet.isKeyframe;
+
+        for (const auto &peer : hqPeers) {
+            if (!peer || !peer->client ||
+                !peer->alphaAllowed.load(std::memory_order_relaxed)) {
+                continue;
+            }
+
+            int64_t peerPairWirePts = std::numeric_limits<int64_t>::min();
+            const auto result = dispatchExactAlphaFramePair(
+                pair,
+                peer->clientOperationMutex,
+                [&]() {
+                    if (!peer->alphaAllowed.load(std::memory_order_relaxed)) {
+                        return false;
+                    }
+                    if (!isAlphaPairNewerThan(
+                            pair,
+                            peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed),
+                            peer->alphaAdmissionCutoffSequence.load(std::memory_order_relaxed))) {
+                        return false;
+                    }
+                    if (peer->waitingForKeyframe.load(std::memory_order_relaxed) &&
+                        !canStartAlphaTransportWithPair(pair)) {
+                        return false;
+                    }
+                    const uint64_t clientGeneration = peer->client->transportGeneration();
+                    {
+                        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+                        if (peer->removed ||
+                            peer->clientTransportGeneration != clientGeneration) {
+                            return false;
+                        }
+                    }
+                    const int64_t lastReserved =
+                        peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed);
+                    peerPairWirePts = nextMonotonicVideoTransportPts(
+                        pair.transportPts,
+                        lastReserved);
+                    if (peerPairWirePts <= lastReserved) {
+                        return false;
+                    }
+                    alphaPacket.pts = peerPairWirePts;
+                    primaryPacket.pts = peerPairWirePts;
+                    advanceMonotonic(
+                        peer->lastVideoWirePtsReserved,
+                        peerPairWirePts);
+                    return true;
+                },
+                [&](const video::EncodedPacket &) {
+                    return peer->client->sendAlphaVideo(alphaPacket);
+                },
+                [&](const video::EncodedPacket &) {
+                    return peer->client->sendVideo(primaryPacket);
+                });
+            if (!result.admitted) {
+                continue;
+            }
+            if (!result.alphaSent) {
+                alphaSendFailures_.fetch_add(1, std::memory_order_relaxed);
+                advanceMonotonic(
+                    peer->alphaSourceCutoffTimestamp,
+                    pair.primary.packet.sourceTimestamp);
+                advanceMonotonic(
+                    peer->alphaAdmissionCutoffSequence,
+                    pair.primary.sourceAdmissionSequence);
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                continue;
+            }
+            alphaPacketsSent_.fetch_add(1, std::memory_order_relaxed);
+            if (!result.primarySent) {
+                videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
+                advanceMonotonic(
+                    peer->alphaSourceCutoffTimestamp,
+                    pair.primary.packet.sourceTimestamp);
+                advanceMonotonic(
+                    peer->alphaAdmissionCutoffSequence,
+                    pair.primary.sourceAdmissionSequence);
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                continue;
+            }
+
+            sentAny = true;
+            videoBytesSentThisCall += primaryPacket.data.size();
+            primaryPtsSentThisCall.push_back(primaryPacket.pts);
+            advanceMonotonic(peer->lastPrimaryPtsSent, primaryPacket.pts);
+            sentWidth = primaryFrameWidth;
+            sentHeight = primaryFrameHeight;
+            if (primaryPacket.isKeyframe) {
+                sentKeyframe = true;
+            }
+            if (canStartAlphaTransportWithPair(pair)) {
+                // A new/replaced alpha transport is ready only after both
+                // keyframe halves were accepted on the same transport bundle.
+                peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
             }
         }
     }
     if (haveLqPacket) {
         webrtc::EncodedVideoPacket packet;
         packet.data = lqPacket.data;
-        packet.pts = lqPacket.pts;
+        packet.pts = lqPacket.sourceTimestamp;
         packet.isKeyframe = lqPacket.isKeyframe;
         for (const auto &peer : lqPeers) {
             if (!peer || !peer->client) {
@@ -5075,9 +6623,21 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !packet.isKeyframe) {
                 continue;
             }
+            std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            const int64_t lastReserved =
+                peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed);
+            packet.pts = nextMonotonicVideoTransportPts(
+                lqPacket.sourceTimestamp,
+                lastReserved);
+            if (packet.pts <= lastReserved) {
+                continue;
+            }
+            advanceMonotonic(peer->lastVideoWirePtsReserved, packet.pts);
             if (peer->client->sendVideo(packet)) {
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
+                primaryPtsSentThisCall.push_back(packet.pts);
+                advanceMonotonic(peer->lastPrimaryPtsSent, packet.pts);
                 if (sentWidth <= 0 || sentHeight <= 0) {
                     sentWidth = kLqWidth;
                     sentHeight = kLqHeight;
@@ -5096,8 +6656,14 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         .count();
 
     if (sentAny) {
+        std::sort(primaryPtsSentThisCall.begin(), primaryPtsSentThisCall.end());
+        primaryPtsSentThisCall.erase(
+            std::unique(primaryPtsSentThisCall.begin(), primaryPtsSentThisCall.end()),
+            primaryPtsSentThisCall.end());
         videoBytesSent_.fetch_add(videoBytesSentThisCall, std::memory_order_relaxed);
-        videoFramesSent_.fetch_add(1, std::memory_order_relaxed);
+        videoFramesSent_.fetch_add(
+            std::max<std::size_t>(1, primaryPtsSentThisCall.size()),
+            std::memory_order_relaxed);
         if (sentWidth > 0 && sentHeight > 0) {
             lastSentWidth_.store(sentWidth, std::memory_order_relaxed);
             lastSentHeight_.store(sentHeight, std::memory_order_relaxed);
@@ -5122,7 +6688,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                          hqEncodeElapsedMs,
                          lqEncodeElapsedMs,
                          sendElapsedMs,
-                         hqPacket.data.size(),
+                         hqPacketBytes,
                          lqPacket.data.size(),
                          hqPeers.size(),
                          lqPeers.size(),
@@ -5470,7 +7036,7 @@ void VersusApp::startAlphaEncodeThread() {
                 }
                 {
                     std::lock_guard<std::mutex> packetLock(alphaPacketMutex_);
-                    latestAlphaPacket_ = video::EncodedPacket{};
+                    latestAlphaPacket_ = ExactAlphaFramePacket{};
                     latestAlphaPacketReady_ = false;
                 }
                 if (initialized) {
@@ -5484,6 +7050,7 @@ void VersusApp::startAlphaEncodeThread() {
                         std::lock_guard<std::mutex> videoLock(videoSendMutex_);
                         if (usesVp9AlphaTrack(videoConfig_)) {
                             videoConfig_.enableAlpha = false;
+                            updateRoomQualityDecisionForCodecLocked();
                             publishVideoStateSnapshotLocked();
                         }
                     }
@@ -5499,7 +7066,8 @@ void VersusApp::startAlphaEncodeThread() {
                 continue;
             }
 
-            if (job.gray.empty() || job.width <= 0 || job.height <= 0) {
+            if (job.gray.empty() || job.width <= 0 || job.height <= 0 ||
+                !job.admission.valid()) {
                 continue;
             }
 
@@ -5508,7 +7076,7 @@ void VersusApp::startAlphaEncodeThread() {
             alphaFrame.width = job.width;
             alphaFrame.height = job.height;
             alphaFrame.stride = job.width;
-            alphaFrame.timestamp = job.timestamp;
+            alphaFrame.timestamp = job.admission.sourceTimestamp;
             alphaFrame.data = std::move(job.gray);
 
             video::EncodedPacket alphaPacket;
@@ -5524,8 +7092,45 @@ void VersusApp::startAlphaEncodeThread() {
             }
 
             if (encoded) {
+                if (alphaPacket.sourceTimestamp == std::numeric_limits<int64_t>::min()) {
+                    alphaEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                    alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    static uint64_t missingAlphaSourceTimestampCount = 0;
+                    if (++missingAlphaSourceTimestampCount <= 5 ||
+                        (missingAlphaSourceTimestampCount % 300) == 0) {
+                        spdlog::error(
+                            "[AlphaEncodeThread] Dropping encoded alpha packet without a trusted source timestamp (count={})",
+                            missingAlphaSourceTimestampCount);
+                    }
+                    continue;
+                }
+                const auto admission = alphaFrameAdmissionTracker_.resolveAlpha(
+                    alphaPacket.sourceTimestamp);
+                if (!admission ||
+                    admission->pipelineGeneration !=
+                        alphaPipelineGeneration_.load(std::memory_order_acquire)) {
+                    alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+                    continue;
+                }
+                if (!alphaPacket.isKeyframe) {
+                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    std::lock_guard<std::mutex> encoderLock(alphaEncoderMutex_);
+                    videoEncoderAlpha_.requestKeyframe();
+                    if (videoEncoderAlpha_.guaranteesEveryFrameKeyframe()) {
+                        spdlog::error(
+                            "[AlphaEncodeThread] Protected VP9 alpha encoder produced a delta frame; restarting before alpha startup can continue");
+                    }
+                }
                 std::lock_guard<std::mutex> packetLock(alphaPacketMutex_);
-                latestAlphaPacket_ = std::move(alphaPacket);
+                if (latestAlphaPacketReady_) {
+                    alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+                }
+                latestAlphaPacket_.packet = std::move(alphaPacket);
+                latestAlphaPacket_.pipelineGeneration = admission->pipelineGeneration;
+                latestAlphaPacket_.sourceAdmissionSequence = admission->sequence;
+                latestAlphaPacket_.encodedWidth = job.width;
+                latestAlphaPacket_.encodedHeight = job.height;
                 latestAlphaPacketReady_ = true;
                 continue;
             }
@@ -5565,6 +7170,8 @@ void VersusApp::stopAlphaEncodeThread() {
 void VersusApp::clearAlphaEncodeQueues() {
     {
         std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
+        alphaPipelineGeneration_.fetch_add(1, std::memory_order_acq_rel);
+        alphaFrameAdmissionTracker_.clearPending();
         pendingAlphaEncodeJob_ = AlphaEncodeJob{};
         pendingAlphaEncodeJobReady_ = false;
         pendingAlphaEncoderConfig_ = video::EncoderConfig{};
@@ -5572,35 +7179,45 @@ void VersusApp::clearAlphaEncodeQueues() {
     }
     {
         std::lock_guard<std::mutex> lock(alphaPacketMutex_);
-        latestAlphaPacket_ = video::EncodedPacket{};
+        latestAlphaPacket_ = ExactAlphaFramePacket{};
         latestAlphaPacketReady_ = false;
     }
+    alphaFramePairer_.clear();
 }
 
-void VersusApp::queueAlphaEncodeFrame(int width,
-                                      int height,
-                                      int64_t timestamp,
-                                      std::vector<uint8_t> gray) {
+AlphaFrameAdmission VersusApp::queueAlphaEncodeFrame(int width,
+                                                     int height,
+                                                     int64_t timestamp,
+                                                     std::vector<uint8_t> gray) {
     if (!alphaEncodeThreadRunning_.load(std::memory_order_acquire) ||
         gray.empty() ||
         width <= 0 ||
         height <= 0) {
-        return;
+        return {};
     }
 
+    AlphaFrameAdmission admission;
     {
         std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
+        const uint64_t pipelineGeneration =
+            alphaPipelineGeneration_.load(std::memory_order_acquire);
+        admission = alphaFrameAdmissionTracker_.admit(timestamp, pipelineGeneration);
+        if (!admission.valid()) {
+            alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+            return {};
+        }
         if (pendingAlphaEncodeJobReady_) {
             alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
         }
         pendingAlphaEncodeJob_.gray = std::move(gray);
         pendingAlphaEncodeJob_.width = width;
         pendingAlphaEncodeJob_.height = height;
-        pendingAlphaEncodeJob_.timestamp = timestamp;
+        pendingAlphaEncodeJob_.admission = admission;
         pendingAlphaEncodeJobReady_ = true;
         alphaFramesQueued_.fetch_add(1, std::memory_order_relaxed);
     }
     alphaEncodeCV_.notify_one();
+    return admission;
 }
 
 void VersusApp::queueAlphaEncoderReconfigure(video::EncoderConfig config) {
@@ -5610,21 +7227,49 @@ void VersusApp::queueAlphaEncoderReconfigure(video::EncoderConfig config) {
 
     {
         std::lock_guard<std::mutex> lock(alphaEncodeMutex_);
+        alphaPipelineGeneration_.fetch_add(1, std::memory_order_acq_rel);
+        alphaFrameAdmissionTracker_.clearPending();
+        if (pendingAlphaEncodeJobReady_) {
+            alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+        }
+        pendingAlphaEncodeJob_ = AlphaEncodeJob{};
+        pendingAlphaEncodeJobReady_ = false;
         pendingAlphaEncoderConfig_ = std::move(config);
         pendingAlphaEncoderReconfigure_ = true;
     }
+    {
+        std::lock_guard<std::mutex> lock(alphaPacketMutex_);
+        if (latestAlphaPacketReady_) {
+            alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+        }
+        latestAlphaPacket_ = ExactAlphaFramePacket{};
+        latestAlphaPacketReady_ = false;
+    }
+    alphaFramePairer_.clear();
     alphaEncodeCV_.notify_one();
 }
 
-bool VersusApp::takeLatestAlphaPacket(video::EncodedPacket &packet) {
+bool VersusApp::takeLatestAlphaPacket(ExactAlphaFramePacket &packet) {
     std::lock_guard<std::mutex> lock(alphaPacketMutex_);
-    if (!latestAlphaPacketReady_ || latestAlphaPacket_.data.empty()) {
+    if (!latestAlphaPacketReady_ || latestAlphaPacket_.packet.data.empty()) {
         return false;
     }
     packet = std::move(latestAlphaPacket_);
-    latestAlphaPacket_ = video::EncodedPacket{};
+    latestAlphaPacket_ = ExactAlphaFramePacket{};
     latestAlphaPacketReady_ = false;
     return true;
+}
+
+void VersusApp::reservePeerAlphaAdmissionCutoff(const std::shared_ptr<PeerSession> &peer) {
+    if (!peer) {
+        return;
+    }
+    const AlphaFrameAdmission watermark = alphaFrameAdmissionTracker_.latestAdmission();
+    if (!watermark.valid()) {
+        return;
+    }
+    advanceMonotonic(peer->alphaAdmissionCutoffSequence, watermark.sequence);
+    advanceMonotonic(peer->alphaSourceCutoffTimestamp, watermark.sourceTimestamp);
 }
 
 void VersusApp::startEncodeThread() {
@@ -5699,110 +7344,159 @@ void VersusApp::stopEncodeThread() {
     stopAlphaEncodeThread();
 }
 
-bool VersusApp::hasAnyActiveVideoTrack() const {
-    std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-    for (const auto &entry : peerSessions_) {
-        if (!entry.second || !entry.second->client || !entry.second->client->hasActiveVideoTrack()) {
-            continue;
-        }
-        const PeerRouteState route{
-            entry.second->roomMode,
-            roomModeLqEnabled_.load(std::memory_order_relaxed),
-            entry.second->initReceived.load(std::memory_order_relaxed),
-            entry.second->roleValid.load(std::memory_order_relaxed),
-            entry.second->role.load(std::memory_order_relaxed),
-            entry.second->videoEnabled.load(std::memory_order_relaxed),
-            entry.second->audioEnabled.load(std::memory_order_relaxed)};
-        if (entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed) != 0 &&
-            canSendVideo(route)) {
-            return true;
+void VersusApp::refreshPeerTrackObservations(
+    bool observeVideo,
+    bool observeAudio) const {
+    std::vector<std::shared_ptr<PeerSession>> peers;
+    {
+        std::lock_guard<std::mutex> peersLock(peerSessionsMutex_);
+        peers.reserve(peerSessions_.size());
+        for (const auto &entry : peerSessions_) {
+            if (entry.second) {
+                peers.push_back(entry.second);
+            }
         }
     }
-    return false;
+    for (const auto &peer : peers) {
+        std::unique_lock<std::recursive_mutex> clientLock(
+            peer->clientOperationMutex,
+            std::try_to_lock);
+        if (!clientLock.owns_lock() || !peer->client) {
+            continue;
+        }
+        if (observeVideo) {
+            peer->lastObservedVideoTrackActive.store(
+                peer->client->hasActiveVideoTrack(),
+                std::memory_order_relaxed);
+        }
+        if (observeAudio) {
+            peer->lastObservedAudioTrackActive.store(
+                peer->client->hasActiveAudioTrack(),
+                std::memory_order_relaxed);
+        }
+    }
+}
+
+bool VersusApp::hasAnyActiveVideoTrack() const {
+    refreshPeerTrackObservations(true, false);
+    return roomQualityDiagnosticsSnapshot().counts.activeVideo > 0;
 }
 
 bool VersusApp::hasAnyActiveAudioTrack() const {
-    std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-    for (const auto &entry : peerSessions_) {
-        if (!entry.second || !entry.second->client || !entry.second->client->hasActiveAudioTrack()) {
-            continue;
-        }
-        const PeerRouteState route{
-            entry.second->roomMode,
-            roomModeLqEnabled_.load(std::memory_order_relaxed),
-            entry.second->initReceived.load(std::memory_order_relaxed),
-            entry.second->roleValid.load(std::memory_order_relaxed),
-            entry.second->role.load(std::memory_order_relaxed),
-            entry.second->videoEnabled.load(std::memory_order_relaxed),
-            entry.second->audioEnabled.load(std::memory_order_relaxed)};
-        if (entry.second->requestedAudioBitrateKbps.load(std::memory_order_relaxed) != 0 &&
-            canSendAudio(route)) {
-            return true;
-        }
-    }
-    return false;
+    refreshPeerTrackObservations(false, true);
+    return roomQualityDiagnosticsSnapshot().counts.activeAudio > 0;
 }
 
 VersusApp::PeerCounts VersusApp::collectPeerCounts() const {
-    PeerCounts counts;
-    const bool alphaWorkflowEnabled = usesVp9AlphaTrack(videoStateSnapshot().config);
-    std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-    counts.total = static_cast<int>(peerSessions_.size());
+    return roomQualityDiagnosticsSnapshot().counts;
+}
+
+void VersusApp::refreshDiagnosticsTrackObservationsForTesting() const {
+    std::function<bool()> activeVideoTrackForDiagnostics;
+    {
+        std::lock_guard<std::mutex> hookLock(roomQualityArchitectureTestHookMutex_);
+        activeVideoTrackForDiagnostics = peerActiveVideoTrackForDiagnosticsTesting_;
+    }
+    if (!activeVideoTrackForDiagnostics) {
+        return;
+    }
+
+    std::vector<std::shared_ptr<PeerSession>> peers;
+    {
+        std::lock_guard<std::mutex> peersLock(peerSessionsMutex_);
+        peers.reserve(peerSessions_.size());
+        for (const auto &entry : peerSessions_) {
+            if (entry.second) {
+                peers.push_back(entry.second);
+            }
+        }
+    }
+    for (const auto &peer : peers) {
+        peer->lastObservedVideoTrackActive.store(
+            activeVideoTrackForDiagnostics(),
+            std::memory_order_relaxed);
+    }
+}
+
+VersusApp::RoomQualityDiagnosticsSnapshot
+VersusApp::roomQualityDiagnosticsSnapshot() const {
+    RoomQualityDiagnosticsSnapshot snapshot;
+    std::lock_guard<std::mutex> decisionLock(roomQualityDecisionMutex_);
+    snapshot.generation = roomQualityState_.generation;
+    snapshot.decision = roomQualityState_.decision;
+    snapshot.activeRoom = roomQualityState_.activeRoom;
+    snapshot.codec = roomQualityState_.codec;
+
+    std::lock_guard<std::mutex> peersLock(peerSessionsMutex_);
+    snapshot.peers.reserve(peerSessions_.size());
     for (const auto &entry : peerSessions_) {
-        if (!entry.second || !entry.second->client) {
+        const auto &peer = entry.second;
+        if (!peer) {
             continue;
         }
+        const StreamTier assignedTier =
+            peer->assignedTier.load(std::memory_order_relaxed);
+        const bool lastObservedVideo =
+            peer->lastObservedVideoTrackActive.load(std::memory_order_relaxed);
+        const bool lastObservedAudio =
+            peer->lastObservedAudioTrackActive.load(std::memory_order_relaxed);
         const PeerRouteState route{
-            entry.second->roomMode,
-            roomModeLqEnabled_.load(std::memory_order_relaxed),
-            entry.second->initReceived.load(std::memory_order_relaxed),
-            entry.second->roleValid.load(std::memory_order_relaxed),
-            entry.second->role.load(std::memory_order_relaxed),
-            entry.second->videoEnabled.load(std::memory_order_relaxed),
-            entry.second->audioEnabled.load(std::memory_order_relaxed)};
+            peer->roomMode,
+            snapshot.decision.effective,
+            peer->initReceived.load(std::memory_order_relaxed),
+            peer->roleValid.load(std::memory_order_relaxed),
+            peer->role.load(std::memory_order_relaxed),
+            peer->videoEnabled.load(std::memory_order_relaxed),
+            peer->audioEnabled.load(std::memory_order_relaxed)};
+
+        ++snapshot.counts.total;
 
         if (route.roomMode && route.initReceived && route.roleValid) {
             if (route.role == PeerRole::Guest) {
-                counts.roomGuests++;
+                ++snapshot.counts.roomGuests;
             } else if (route.role == PeerRole::Scene) {
-                counts.roomScenes++;
+                ++snapshot.counts.roomScenes;
             } else {
-                counts.roomNonGuestViewers++;
+                ++snapshot.counts.roomNonGuestViewers;
             }
         }
 
-        if (entry.second->client->hasActiveVideoTrack() &&
-            entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed) != 0 &&
-            canSendVideo(route)) {
-            counts.activeVideo++;
-            const StreamTier policyTier = assignStreamTier(
-                route.roomMode,
-                route.roomModeLqEnabled,
-                route.roleValid,
-                route.role);
-            StreamTier tier = policyTier;
-            if (alphaWorkflowEnabled && entry.second->alphaAllowed.load(std::memory_order_relaxed)) {
-                tier = StreamTier::HQ;
-            } else {
-                const int requestedVideoBitrate =
-                    entry.second->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
-                if (requestedVideoBitrate > 0 && requestedVideoBitrate <= kLqBitrateKbps) {
-                    tier = StreamTier::LQ;
-                }
-            }
-            if (tier == StreamTier::HQ) {
-                counts.hq++;
-            } else if (tier == StreamTier::LQ) {
-                counts.lq++;
-            }
+        const bool activeVideo = lastObservedVideo &&
+            peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed) != 0 &&
+            canSendVideo(route);
+        if (assignedTier == StreamTier::HQ) {
+            ++snapshot.counts.hq;
+        } else if (assignedTier == StreamTier::LQ) {
+            ++snapshot.counts.lq;
         }
-        if (entry.second->client->hasActiveAudioTrack() &&
-            entry.second->requestedAudioBitrateKbps.load(std::memory_order_relaxed) != 0 &&
-            canSendAudio(route)) {
-            counts.activeAudio++;
+        if (activeVideo) {
+            ++snapshot.counts.activeVideo;
         }
+        const bool activeAudio = lastObservedAudio &&
+            peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed) != 0 &&
+            canSendAudio(route);
+        if (activeAudio) {
+            ++snapshot.counts.activeAudio;
+        }
+
+        std::string activeWireSession;
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            activeWireSession = peer->activeWireSession;
+        }
+
+        snapshot.peers.push_back({
+            peer,
+            peer->uuid,
+            activeWireSession,
+            peer->streamId,
+            peer->candidateType,
+            peer->createdAtMs,
+            assignedTier,
+            activeVideo,
+            activeAudio});
     }
-    return counts;
+    return snapshot;
 }
 
 VersusApp::VideoStateSnapshot VersusApp::buildVideoStateSnapshotLocked() const {
@@ -5861,36 +7555,25 @@ VersusApp::LifecycleStateSnapshot VersusApp::lifecycleStateSnapshot() const {
 }
 
 void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet) {
+    refreshPeerTrackObservations(false, true);
+    const RoomQualityDiagnosticsSnapshot roomQualitySnapshot =
+        roomQualityDiagnosticsSnapshot();
     std::vector<std::shared_ptr<PeerSession>> peers;
-    {
-        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        peers.reserve(peerSessions_.size());
-        for (const auto &entry : peerSessions_) {
-            if (!entry.second || !entry.second->client || !entry.second->client->hasActiveAudioTrack()) {
-                continue;
-            }
-            const PeerRouteState route{
-                entry.second->roomMode,
-                roomModeLqEnabled_.load(std::memory_order_relaxed),
-                entry.second->initReceived.load(std::memory_order_relaxed),
-                entry.second->roleValid.load(std::memory_order_relaxed),
-                entry.second->role.load(std::memory_order_relaxed),
-                entry.second->videoEnabled.load(std::memory_order_relaxed),
-                entry.second->audioEnabled.load(std::memory_order_relaxed)};
-            if (!canSendAudio(route)) {
-                continue;
-            }
-            if (entry.second->requestedAudioBitrateKbps.load(std::memory_order_relaxed) == 0) {
-                continue;
-            }
-            peers.push_back(entry.second);
+    peers.reserve(roomQualitySnapshot.peers.size());
+    for (const auto &peerSnapshot : roomQualitySnapshot.peers) {
+        if (peerSnapshot.activeAudio && peerSnapshot.peer) {
+            peers.push_back(peerSnapshot.peer);
         }
     }
 
     uint64_t bytesSent = 0;
     int packetsSent = 0;
     for (const auto &peer : peers) {
-        if (!peer || !peer->client) {
+        if (!peer) {
+            continue;
+        }
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        if (!peer->client) {
             continue;
         }
         if (peer->client->sendAudio(packet)) {
@@ -5916,6 +7599,15 @@ bool VersusApp::tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &p
         return false;
     }
 
+    std::string activeWireSession;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed) {
+            return true;
+        }
+        activeWireSession = peer->activeWireSession;
+    }
+
     bool handled = false;
     if (parsed.hasOffer) {
         spdlog::warn("[App] Ignoring unexpected datachannel offer {}:{}",
@@ -5926,18 +7618,21 @@ bool VersusApp::tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &p
 
     if (parsed.hasAnswer) {
         const std::string answerUuid = parsed.answer.uuid.empty() ? peer->uuid : parsed.answer.uuid;
-        const std::string answerSession = parsed.answer.session.empty() ? peer->session : parsed.answer.session;
-        const bool sameSession = !parsed.answer.session.empty() && answerSession == peer->session;
+        const std::string answerSession = parsed.answer.session.empty()
+            ? activeWireSession
+            : parsed.answer.session;
+        const bool sameSession = !parsed.answer.session.empty() &&
+            answerSession == activeWireSession;
         const bool sameUuid = answerUuid == peer->uuid;
         const bool channelScoped = parsed.answer.session.empty() && parsed.answer.uuid.empty();
-        if ((sameUuid && answerSession == peer->session) || sameSession || channelScoped) {
+        if ((sameUuid && answerSession == activeWireSession) || sameSession || channelScoped) {
             if (!sameUuid && sameSession) {
                 spdlog::info("[App] Accepting datachannel answer by session match {}:{} payloadUuid={}",
                              peer->uuid,
                              peer->session,
                              parsed.answer.uuid);
             }
-            applyPeerAnswer(peer, parsed.answer.sdp, "datachannel");
+            applyPeerAnswer(peer, parsed.answer.sdp, "datachannel", activeWireSession);
         } else {
             spdlog::warn("[App] Ignoring datachannel answer for mismatched peer uuid={} session={}",
                          parsed.answer.uuid,
@@ -5948,11 +7643,14 @@ bool VersusApp::tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &p
 
     for (const auto &candidate : parsed.candidates) {
         const std::string candidateUuid = candidate.uuid.empty() ? peer->uuid : candidate.uuid;
-        const std::string candidateSession = candidate.session.empty() ? peer->session : candidate.session;
-        const bool sameSession = !candidate.session.empty() && candidateSession == peer->session;
+        const std::string candidateSession = candidate.session.empty()
+            ? activeWireSession
+            : candidate.session;
+        const bool sameSession = !candidate.session.empty() &&
+            candidateSession == activeWireSession;
         const bool sameUuid = candidateUuid == peer->uuid;
         const bool channelScoped = candidate.session.empty() && candidate.uuid.empty();
-        if (!((sameUuid && candidateSession == peer->session) || sameSession || channelScoped)) {
+        if (!((sameUuid && candidateSession == activeWireSession) || sameSession || channelScoped)) {
             spdlog::warn("[App] Ignoring datachannel candidate for mismatched peer uuid={} session={}",
                          candidate.uuid,
                          candidate.session);
@@ -5965,153 +7663,1410 @@ bool VersusApp::tryHandlePeerSignalMessage(const std::shared_ptr<PeerSession> &p
                          peer->session,
                          candidate.uuid);
         }
-        peer->client->addRemoteCandidate(candidate.candidate, candidate.mid, candidate.mlineIndex);
-        peer->remoteCandidatesApplied.fetch_add(1, std::memory_order_relaxed);
-        recordPeerEvent(peer, "remote-candidate-applied datachannel");
+        signaling::SignalCandidate routedCandidate = candidate;
+        routedCandidate.uuid = peer->uuid;
+        routedCandidate.session = activeWireSession;
+        handlePeerRemoteCandidate(peer, routedCandidate, "datachannel");
         handled = true;
     }
 
     return handled;
 }
 
-bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason, bool rebuildPeerConnection) {
+bool VersusApp::handleDuplicatePeerOfferRequest(
+    const std::shared_ptr<PeerSession> &peer,
+    const char *reason) {
     if (!peer || !peer->client) {
         return false;
     }
 
+    std::lock_guard<std::recursive_mutex> callbackGenerationLock(
+        peer->callbackOperationMutex);
+    bool terminalTransport = false;
+    bool sessionInitializing = false;
+    std::string activeWireSession;
     {
-        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
-        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed) {
             return false;
         }
-        it->second->answerReceived = false;
-        it->second->offerDispatched = false;
-        it->second->pendingCandidates.clear();
-        it->second->renegotiationQueued.store(false, std::memory_order_relaxed);
-        it->second->candidateType = "local";
-        it->second->offerCount.fetch_add(1, std::memory_order_relaxed);
-        if (rebuildPeerConnection) {
-            it->second->recoveryOfferCount.fetch_add(1, std::memory_order_relaxed);
+        terminalTransport = peer->transportRetired;
+        sessionInitializing = peer->sessionInitializing;
+        activeWireSession = peer->activeWireSession;
+    }
+    if (sessionInitializing) {
+        spdlog::info(
+            "[Signaling] Ignoring duplicate offer request while peer initializes uuid={} activeSession={} reason={}",
+            peer->uuid,
+            activeWireSession,
+            reason ? reason : "unspecified");
+        return true;
+    }
+
+    const webrtc::ConnectionState connectionState =
+        peer->client->connectionState();
+    if (connectionState == webrtc::ConnectionState::Connected) {
+        peer->duplicateOfferRechecksIgnoredConnected.fetch_add(
+            1,
+            std::memory_order_relaxed);
+        spdlog::info(
+            "[Signaling] Ignoring duplicate offer request for connected transport uuid={} activeSession={} reason={}",
+            peer->uuid,
+            activeWireSession,
+            reason ? reason : "unspecified");
+        return true;
+    }
+
+    if (terminalTransport ||
+        connectionState == webrtc::ConnectionState::Failed ||
+        connectionState == webrtc::ConnectionState::Closed) {
+        spdlog::info(
+            "[Signaling] Duplicate offer request is replacing terminal transport uuid={} activeSession={} reason={}",
+            peer->uuid,
+            activeWireSession,
+            reason ? reason : "unspecified");
+        return sendPeerOffer(peer, reason ? reason : "duplicate-offer-terminal-recovery", true);
+    }
+    return scheduleDuplicateOfferRecheck(peer, reason);
+}
+
+bool VersusApp::startDuplicateOfferRecheckScheduler() {
+    std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+    if (duplicateOfferRecheckRunning_) {
+        return true;
+    }
+    duplicateOfferRecheckStopRequested_ = false;
+    duplicateOfferRecheckAccepting_ = true;
+    duplicateOfferRechecks_.clear();
+    if (++duplicateOfferRecheckEpoch_ == 0) {
+        ++duplicateOfferRecheckEpoch_;
+    }
+    ++duplicateOfferRecheckRevision_;
+    duplicateOfferRecheckRunning_ = true;
+    try {
+        duplicateOfferRecheckThread_ = std::thread(
+            [this]() { duplicateOfferRecheckSchedulerLoop(); });
+    } catch (const std::exception &error) {
+        duplicateOfferRecheckRunning_ = false;
+        duplicateOfferRecheckAccepting_ = false;
+        spdlog::error(
+            "[Signaling] Failed to start duplicate-offer recheck scheduler: {}",
+            error.what());
+        return false;
+    } catch (...) {
+        duplicateOfferRecheckRunning_ = false;
+        duplicateOfferRecheckAccepting_ = false;
+        spdlog::error(
+            "[Signaling] Failed to start duplicate-offer recheck scheduler");
+        return false;
+    }
+    return true;
+}
+
+void VersusApp::stopDuplicateOfferRecheckScheduler() {
+    std::thread scheduler;
+    std::vector<PendingDuplicateOfferRecheck> canceledJobs;
+    {
+        std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+        duplicateOfferRecheckAccepting_ = false;
+        duplicateOfferRecheckStopRequested_ = true;
+        if (++duplicateOfferRecheckEpoch_ == 0) {
+            ++duplicateOfferRecheckEpoch_;
         }
-        {
-            std::lock_guard<std::mutex> diagnosticsLock(it->second->diagnosticsMutex);
-            it->second->lastOfferReason = reason ? reason : "unspecified";
+        ++duplicateOfferRecheckRevision_;
+        canceledJobs.reserve(duplicateOfferRechecks_.size());
+        for (auto &[_, job] : duplicateOfferRechecks_) {
+            job.state = PendingDuplicateOfferRecheck::State::Canceling;
+            canceledJobs.push_back(job);
+        }
+        scheduler.swap(duplicateOfferRecheckThread_);
+    }
+    duplicateOfferRecheckCv_.notify_all();
+    for (const auto &job : canceledJobs) {
+        cancelDuplicateOfferRecheckJob(
+            job,
+            DuplicateOfferRecheckDisposition::Canceled,
+            "scheduler-stop");
+    }
+    if (scheduler.joinable()) {
+        scheduler.join();
+    }
+    {
+        std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+        duplicateOfferRecheckRunning_ = false;
+        duplicateOfferRecheckStopRequested_ = false;
+    }
+}
+
+void VersusApp::resetDuplicateOfferRecheckSchedulerForLive() {
+    std::vector<PendingDuplicateOfferRecheck> canceledJobs;
+    {
+        std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+        if (!duplicateOfferRecheckRunning_ ||
+            duplicateOfferRecheckStopRequested_) {
+            return;
+        }
+        duplicateOfferRecheckAccepting_ = false;
+        canceledJobs.reserve(duplicateOfferRechecks_.size());
+        for (auto &[_, job] : duplicateOfferRechecks_) {
+            job.state = PendingDuplicateOfferRecheck::State::Canceling;
+            canceledJobs.push_back(job);
+        }
+        if (++duplicateOfferRecheckEpoch_ == 0) {
+            ++duplicateOfferRecheckEpoch_;
+        }
+        ++duplicateOfferRecheckRevision_;
+    }
+    duplicateOfferRecheckCv_.notify_all();
+    for (const auto &job : canceledJobs) {
+        cancelDuplicateOfferRecheckJob(
+            job,
+            DuplicateOfferRecheckDisposition::Canceled,
+            "reset-live");
+    }
+    {
+        std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+        if (duplicateOfferRecheckRunning_ &&
+            !duplicateOfferRecheckStopRequested_) {
+            duplicateOfferRecheckAccepting_ = true;
+            ++duplicateOfferRecheckRevision_;
         }
     }
-    recordPeerEvent(peer, std::string("offer-start reason=") + (reason ? reason : "unspecified") +
-                              (rebuildPeerConnection ? " rebuild=1" : " rebuild=0"));
+    duplicateOfferRecheckCv_.notify_all();
+}
 
+void VersusApp::cancelDuplicateOfferRechecks(
+    bool disableAdmission,
+    const char *reason) {
+    std::vector<PendingDuplicateOfferRecheck> canceledJobs;
+    {
+        std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+        if (disableAdmission) {
+            duplicateOfferRecheckAccepting_ = false;
+        }
+        canceledJobs.reserve(duplicateOfferRechecks_.size());
+        for (auto &[_, job] : duplicateOfferRechecks_) {
+            job.state = PendingDuplicateOfferRecheck::State::Canceling;
+            canceledJobs.push_back(job);
+        }
+        if (++duplicateOfferRecheckEpoch_ == 0) {
+            ++duplicateOfferRecheckEpoch_;
+        }
+        ++duplicateOfferRecheckRevision_;
+    }
+    duplicateOfferRecheckCv_.notify_all();
+    for (const auto &job : canceledJobs) {
+        cancelDuplicateOfferRecheckJob(
+            job,
+            DuplicateOfferRecheckDisposition::Canceled,
+            reason ? reason : "unspecified");
+    }
+    if (!canceledJobs.empty()) {
+        spdlog::info(
+            "[Signaling] Completed cancellation barrier for {} duplicate offer recheck(s) reason={}",
+            canceledJobs.size(),
+            reason ? reason : "unspecified");
+    }
+}
+
+void VersusApp::cancelDuplicateOfferRecheck(
+    const std::shared_ptr<PeerSession> &peer,
+    const char *reason) {
+    if (!peer) {
+        return;
+    }
+    const std::string ownerKey = makePeerKey(peer->uuid, peer->session);
+    std::optional<PendingDuplicateOfferRecheck> canceledJob;
+    {
+        std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+        const auto it = duplicateOfferRechecks_.find(ownerKey);
+        if (it != duplicateOfferRechecks_.end() &&
+            it->second.peer.lock().get() == peer.get()) {
+            it->second.state = PendingDuplicateOfferRecheck::State::Canceling;
+            canceledJob = it->second;
+            ++duplicateOfferRecheckRevision_;
+        }
+    }
+    duplicateOfferRecheckCv_.notify_all();
+    if (canceledJob) {
+        cancelDuplicateOfferRecheckJob(
+            *canceledJob,
+            DuplicateOfferRecheckDisposition::Canceled,
+            reason ? reason : "unspecified");
+    }
+}
+
+bool VersusApp::scheduleDuplicateOfferRecheck(
+    const std::shared_ptr<PeerSession> &peer,
+    const char *reason) {
+    if (!peer || !peer->client) {
+        return false;
+    }
+
+    for (;;) {
+        PendingDuplicateOfferRecheck job;
+        job.peer = peer;
+        job.ownerKey = makePeerKey(peer->uuid, peer->session);
+        job.uuid = peer->uuid;
+        job.ownerSession = peer->session;
+        job.reason = reason ? reason : "unspecified";
+        job.deadlineMs = steadyNowMs() + 1000;
+        job.control = std::make_shared<DuplicateOfferRecheckControl>();
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            if (peer->removed || peer->sessionInitializing) {
+                return false;
+            }
+            job.activeWireSession = peer->activeWireSession;
+            job.offerGeneration = peer->activeOfferGeneration;
+            job.transportGeneration = peer->activeTransportGeneration;
+            job.clientGeneration = peer->clientTransportGeneration;
+        }
+        if (job.activeWireSession.empty() || job.transportGeneration == 0 ||
+            job.clientGeneration == 0) {
+            spdlog::info(
+                "[Signaling] Ignoring duplicate offer request without an active transport uuid={} activeSession={} reason={}",
+                job.uuid,
+                job.activeWireSession,
+                job.reason);
+            return true;
+        }
+
+        std::optional<PendingDuplicateOfferRecheck> supersededJob;
+        bool inserted = false;
+        {
+            std::lock_guard<std::mutex> lock(duplicateOfferRecheckMutex_);
+            if (!duplicateOfferRecheckRunning_ ||
+                duplicateOfferRecheckStopRequested_ ||
+                !duplicateOfferRecheckAccepting_) {
+                return false;
+            }
+            const auto existing = duplicateOfferRechecks_.find(job.ownerKey);
+            if (existing != duplicateOfferRechecks_.end()) {
+                const auto existingPeer = existing->second.peer.lock();
+                const bool sameTransport =
+                    existing->second.state !=
+                        PendingDuplicateOfferRecheck::State::Canceling &&
+                    existingPeer.get() == peer.get() &&
+                    existing->second.activeWireSession == job.activeWireSession &&
+                    existing->second.transportGeneration == job.transportGeneration &&
+                    existing->second.clientGeneration == job.clientGeneration;
+                if (sameTransport) {
+                    peer->duplicateOfferRechecksCoalesced.fetch_add(
+                        1,
+                        std::memory_order_relaxed);
+                    spdlog::info(
+                        "[Signaling] Coalesced unresolved duplicate offer recheck uuid={} activeSession={} offerGeneration={} transportGeneration={} clientGeneration={} delayMs=1000 reason={}",
+                        existing->second.uuid,
+                        existing->second.activeWireSession,
+                        existing->second.offerGeneration,
+                        existing->second.transportGeneration,
+                        existing->second.clientGeneration,
+                        existing->second.reason);
+                    return true;
+                }
+                existing->second.state =
+                    PendingDuplicateOfferRecheck::State::Canceling;
+                supersededJob = existing->second;
+                ++duplicateOfferRecheckRevision_;
+            } else {
+                if (++duplicateOfferRecheckSerial_ == 0) {
+                    ++duplicateOfferRecheckSerial_;
+                }
+                job.serial = duplicateOfferRecheckSerial_;
+                job.schedulerEpoch = duplicateOfferRecheckEpoch_;
+                job.state = PendingDuplicateOfferRecheck::State::Waiting;
+                duplicateOfferRechecks_[job.ownerKey] = job;
+                ++duplicateOfferRecheckRevision_;
+                peer->duplicateOfferRecheckPending.store(
+                    true,
+                    std::memory_order_relaxed);
+                peer->duplicateOfferRechecksScheduled.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                spdlog::info(
+                    "[Signaling] Scheduled unresolved duplicate offer recheck uuid={} activeSession={} offerGeneration={} transportGeneration={} clientGeneration={} delayMs=1000 reason={} ownerSession={} serial={}",
+                    job.uuid,
+                    job.activeWireSession,
+                    job.offerGeneration,
+                    job.transportGeneration,
+                    job.clientGeneration,
+                    job.reason,
+                    job.ownerSession,
+                    job.serial);
+                recordPeerEvent(
+                    peer,
+                    "duplicate-offer-recheck-scheduled generation=" +
+                        std::to_string(job.transportGeneration));
+                inserted = true;
+            }
+        }
+
+        if (supersededJob) {
+            cancelDuplicateOfferRecheckJob(
+                *supersededJob,
+                DuplicateOfferRecheckDisposition::Stale,
+                "superseded-transport");
+            continue;
+        }
+        if (!inserted) {
+            return false;
+        }
+
+        {
+            std::function<void(uint64_t)> hook;
+            {
+                std::lock_guard<std::mutex> hookLock(
+                    duplicateOfferRecheckTestHookMutex_);
+                hook = afterDuplicateOfferRecheckMapInsertForTesting_;
+            }
+            if (hook) {
+                hook(job.serial);
+            }
+        }
+        duplicateOfferRecheckCv_.notify_all();
+        return true;
+    }
+}
+
+void VersusApp::duplicateOfferRecheckSchedulerLoop() {
+    std::unique_lock<std::mutex> lock(duplicateOfferRecheckMutex_);
+    for (;;) {
+        duplicateOfferRecheckCv_.wait(lock, [this]() {
+            return duplicateOfferRecheckStopRequested_ ||
+                !duplicateOfferRechecks_.empty();
+        });
+        if (duplicateOfferRecheckStopRequested_) {
+            return;
+        }
+
+        auto due = duplicateOfferRechecks_.end();
+        for (auto it = duplicateOfferRechecks_.begin();
+             it != duplicateOfferRechecks_.end();
+             ++it) {
+            if (it->second.state != PendingDuplicateOfferRecheck::State::Waiting) {
+                continue;
+            }
+            if (due == duplicateOfferRechecks_.end() ||
+                it->second.deadlineMs < due->second.deadlineMs) {
+                due = it;
+            }
+        }
+        if (due == duplicateOfferRechecks_.end()) {
+            const uint64_t revision = duplicateOfferRecheckRevision_;
+            duplicateOfferRecheckCv_.wait(lock, [this, revision]() {
+                return duplicateOfferRecheckStopRequested_ ||
+                    duplicateOfferRecheckRevision_ != revision;
+            });
+            continue;
+        }
+
+        const int64_t nowMs = steadyNowMs();
+        if (due->second.deadlineMs > nowMs) {
+            const uint64_t revision = duplicateOfferRecheckRevision_;
+            duplicateOfferRecheckCv_.wait_for(
+                lock,
+                std::chrono::milliseconds(due->second.deadlineMs - nowMs),
+                [this, revision]() {
+                    return duplicateOfferRecheckStopRequested_ ||
+                        duplicateOfferRecheckRevision_ != revision;
+                });
+            continue;
+        }
+
+        due->second.state = PendingDuplicateOfferRecheck::State::Dispatched;
+        const PendingDuplicateOfferRecheck job = due->second;
+        if (auto peer = job.peer.lock()) {
+            peer->duplicateOfferRechecksFired.fetch_add(1, std::memory_order_relaxed);
+        }
+        lock.unlock();
+        const auto enqueueResult = peerOperationExecutor_.enqueue(
+            job.serial,
+            job.ownerKey,
+            GenerationTaggedPeerOperationExecutor::Priority::Critical,
+            "duplicate-offer-recheck",
+            [this,
+             ownerKey = job.ownerKey,
+             serial = job.serial,
+             epoch = job.schedulerEpoch](uint64_t scheduledSerial) {
+                std::lock_guard<std::mutex> schedulerLock(
+                    duplicateOfferRecheckMutex_);
+                const auto current = duplicateOfferRechecks_.find(ownerKey);
+                return duplicateOfferRecheckRunning_ &&
+                    duplicateOfferRecheckAccepting_ &&
+                    !duplicateOfferRecheckStopRequested_ &&
+                    scheduledSerial == serial &&
+                    current != duplicateOfferRechecks_.end() &&
+                    current->second.serial == serial &&
+                    current->second.schedulerEpoch == epoch &&
+                    current->second.state ==
+                        PendingDuplicateOfferRecheck::State::Dispatched;
+            },
+            [this, job](uint64_t) { runDuplicateOfferRecheck(job); },
+            GenerationTaggedPeerOperationExecutor::Criticality::Convergent,
+            [this, job](
+                uint64_t,
+                GenerationTaggedPeerOperationExecutor::CompletionDisposition
+                    disposition) {
+                handleDuplicateOfferRecheckExecutorCompletion(
+                    job,
+                    disposition);
+            });
+        if (!GenerationTaggedPeerOperationExecutor::accepted(enqueueResult)) {
+            spdlog::warn(
+                "[Signaling] Duplicate offer recheck enqueue rejected uuid={} activeSession={} serial={} result={}",
+                job.uuid,
+                job.activeWireSession,
+                job.serial,
+                peerOperationEnqueueResultName(enqueueResult));
+        }
+        lock.lock();
+    }
+}
+
+void VersusApp::runDuplicateOfferRecheck(
+    const PendingDuplicateOfferRecheck &job) {
+    auto peer = job.peer.lock();
+    if (!peer) {
+        cancelDuplicateOfferRecheckJob(
+            job,
+            DuplicateOfferRecheckDisposition::Stale,
+            "peer-expired");
+        return;
+    }
+    {
+        std::lock_guard<std::mutex> schedulerLock(
+            duplicateOfferRecheckMutex_);
+        const auto current = duplicateOfferRechecks_.find(job.ownerKey);
+        if (!duplicateOfferRecheckRunning_ ||
+            !duplicateOfferRecheckAccepting_ ||
+            duplicateOfferRecheckStopRequested_ ||
+            current == duplicateOfferRechecks_.end() ||
+            current->second.serial != job.serial ||
+            current->second.schedulerEpoch != job.schedulerEpoch ||
+            current->second.state !=
+                PendingDuplicateOfferRecheck::State::Dispatched) {
+            return;
+        }
+    }
+    {
+        std::function<void(uint64_t)> hook;
+        {
+            std::lock_guard<std::mutex> hookLock(
+                duplicateOfferRecheckTestHookMutex_);
+            hook = beforeDuplicateOfferRecheckExecutionForTesting_;
+        }
+        if (hook) {
+            hook(job.serial);
+        }
+    }
+
+    if (!job.control) {
+        completeDuplicateOfferRecheck(
+            job,
+            DuplicateOfferRecheckDisposition::Stale,
+            "missing-control");
+        return;
+    }
+
+    DuplicateOfferRecheckDisposition disposition =
+        DuplicateOfferRecheckDisposition::Stale;
+    {
+        std::lock_guard<std::recursive_mutex> callbackLock(
+            peer->callbackOperationMutex);
+        std::lock_guard<std::recursive_mutex> clientLock(
+            peer->clientOperationMutex);
+
+        std::unique_lock<std::mutex> executionBarrier(
+            job.control->barrierMutex);
+        if (job.control->disposition !=
+            DuplicateOfferRecheckDisposition::None) {
+            disposition = job.control->disposition;
+        } else {
+            bool admitted = false;
+            {
+                std::lock_guard<std::mutex> schedulerLock(
+                    duplicateOfferRecheckMutex_);
+                const auto current = duplicateOfferRechecks_.find(job.ownerKey);
+                admitted = duplicateOfferRecheckRunning_ &&
+                    duplicateOfferRecheckAccepting_ &&
+                    !duplicateOfferRecheckStopRequested_ &&
+                    current != duplicateOfferRechecks_.end() &&
+                    current->second.serial == job.serial &&
+                    current->second.schedulerEpoch == job.schedulerEpoch &&
+                    current->second.state ==
+                        PendingDuplicateOfferRecheck::State::Dispatched;
+            }
+            if (!admitted) {
+                job.control->canceled = true;
+                disposition = DuplicateOfferRecheckDisposition::Canceled;
+            } else {
+                bool mappedOwner = false;
+                {
+                    std::lock_guard<std::mutex> mapLock(peerSessionsMutex_);
+                    const auto current = peerSessions_.find(job.uuid);
+                    mappedOwner = current != peerSessions_.end() &&
+                        current->second && current->second.get() == peer.get();
+                }
+                bool exactTransport = false;
+                {
+                    std::lock_guard<std::mutex> negotiationLock(
+                        peer->negotiationMutex);
+                    // VDO.Ninja keys the grace period to PeerConnection
+                    // identity, not an ordinary offer generation on that same
+                    // transport.
+                    exactTransport = mappedOwner && !peer->removed &&
+                        peer->session == job.ownerSession &&
+                        peer->activeWireSession == job.activeWireSession &&
+                        peer->activeTransportGeneration ==
+                            job.transportGeneration &&
+                        peer->clientTransportGeneration == job.clientGeneration;
+                }
+                if (exactTransport && peer->client) {
+                    const webrtc::ConnectionState state =
+                        peer->client->connectionState();
+                    if (state == webrtc::ConnectionState::Connected) {
+                        disposition =
+                            DuplicateOfferRecheckDisposition::Connected;
+                        spdlog::info(
+                            "[Signaling] Duplicate offer recheck canceled uuid={} activeSession={} offerGeneration={} transportGeneration={} clientGeneration={} reason=connected",
+                            job.uuid,
+                            job.activeWireSession,
+                            job.offerGeneration,
+                            job.transportGeneration,
+                            job.clientGeneration);
+                    } else {
+                        std::function<void(uint64_t)> beforeSendHook;
+                        {
+                            std::lock_guard<std::mutex> hookLock(
+                                duplicateOfferRecheckTestHookMutex_);
+                            beforeSendHook =
+                                beforeDuplicateOfferRecheckSendForTesting_;
+                        }
+                        if (beforeSendHook) {
+                            beforeSendHook(job.serial);
+                        }
+                        spdlog::info(
+                            "[Signaling] Duplicate offer recheck replacing unresolved transport uuid={} activeSession={} offerGeneration={} transportGeneration={} clientGeneration={} reason={}",
+                            job.uuid,
+                            job.activeWireSession,
+                            job.offerGeneration,
+                            job.transportGeneration,
+                            job.clientGeneration,
+                            job.reason);
+                        (void)sendPeerOffer(
+                            peer,
+                            "duplicate-offer-recheck",
+                            true);
+                        bool transportChanged = false;
+                        {
+                            std::lock_guard<std::mutex> negotiationLock(
+                                peer->negotiationMutex);
+                            transportChanged =
+                                peer->activeWireSession !=
+                                    job.activeWireSession &&
+                                peer->activeTransportGeneration >
+                                    job.transportGeneration &&
+                                peer->clientTransportGeneration !=
+                                    job.clientGeneration;
+                        }
+                        disposition = transportChanged
+                            ? DuplicateOfferRecheckDisposition::Rebuilt
+                            : DuplicateOfferRecheckDisposition::RebuildFailed;
+                    }
+                } else {
+                    disposition = DuplicateOfferRecheckDisposition::Stale;
+                }
+            }
+            job.control->disposition = disposition;
+        }
+    }
+    completeDuplicateOfferRecheck(job, disposition, "executed");
+}
+
+void VersusApp::completeDuplicateOfferRecheck(
+    const PendingDuplicateOfferRecheck &job,
+    DuplicateOfferRecheckDisposition disposition,
+    const char *detail) {
+    std::lock_guard<std::mutex> schedulerLock(
+        duplicateOfferRecheckMutex_);
+    const auto current = duplicateOfferRechecks_.find(job.ownerKey);
+    if (current == duplicateOfferRechecks_.end() ||
+        current->second.serial != job.serial ||
+        current->second.schedulerEpoch != job.schedulerEpoch) {
+        return;
+    }
+
+    auto peer = job.peer.lock();
+    duplicateOfferRechecks_.erase(current);
+    ++duplicateOfferRecheckRevision_;
+    if (peer) {
+        peer->duplicateOfferRecheckPending.store(
+            false,
+            std::memory_order_relaxed);
+    }
+
+    switch (disposition) {
+        case DuplicateOfferRecheckDisposition::Connected:
+            if (peer) {
+                peer->duplicateOfferRechecksIgnoredConnected.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                recordPeerEvent(
+                    peer,
+                    "duplicate-offer-recheck-canceled reason=connected");
+            }
+            break;
+        case DuplicateOfferRecheckDisposition::Rebuilt:
+            if (peer) {
+                peer->duplicateOfferRechecksRebuilt.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                recordPeerEvent(
+                    peer,
+                    "duplicate-offer-recheck-rebuilt generation=" +
+                        std::to_string(job.transportGeneration));
+            }
+            break;
+        case DuplicateOfferRecheckDisposition::RebuildFailed:
+            if (peer) {
+                peer->duplicateOfferRechecksCanceled.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            spdlog::warn(
+                "[Signaling] Duplicate offer recheck failed to replace transport uuid={} activeSession={} transportGeneration={} clientGeneration={}",
+                job.uuid,
+                job.activeWireSession,
+                job.transportGeneration,
+                job.clientGeneration);
+            break;
+        case DuplicateOfferRecheckDisposition::Stale:
+            if (peer) {
+                peer->duplicateOfferRechecksStale.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            spdlog::info(
+                "[Signaling] Duplicate offer recheck canceled uuid={} activeSession={} offerGeneration={} transportGeneration={} clientGeneration={} reason=stale-transport detail={}",
+                job.uuid,
+                job.activeWireSession,
+                job.offerGeneration,
+                job.transportGeneration,
+                job.clientGeneration,
+                detail ? detail : "unspecified");
+            break;
+        case DuplicateOfferRecheckDisposition::Canceled:
+        case DuplicateOfferRecheckDisposition::ExecutorEvicted:
+        case DuplicateOfferRecheckDisposition::ExecutorRejected:
+        case DuplicateOfferRecheckDisposition::ExecutorDropped:
+        case DuplicateOfferRecheckDisposition::ExecutorSuperseded:
+        case DuplicateOfferRecheckDisposition::ExecutorStale:
+        case DuplicateOfferRecheckDisposition::ExecutorThrew:
+            if (peer) {
+                peer->duplicateOfferRechecksCanceled.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            spdlog::info(
+                "[Signaling] Canceled duplicate offer recheck uuid={} ownerSession={} activeSession={} serial={} reason={}",
+                job.uuid,
+                job.ownerSession,
+                job.activeWireSession,
+                job.serial,
+                detail ? detail : "unspecified");
+            break;
+        case DuplicateOfferRecheckDisposition::None:
+        default:
+            if (peer) {
+                peer->duplicateOfferRechecksCanceled.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+            }
+            spdlog::warn(
+                "[Signaling] Duplicate offer recheck completed without a disposition uuid={} activeSession={} serial={}",
+                job.uuid,
+                job.activeWireSession,
+                job.serial);
+            break;
+    }
+    duplicateOfferRecheckCv_.notify_all();
+}
+
+void VersusApp::cancelDuplicateOfferRecheckJob(
+    const PendingDuplicateOfferRecheck &job,
+    DuplicateOfferRecheckDisposition disposition,
+    const char *detail) {
+    DuplicateOfferRecheckDisposition finalDisposition = disposition;
+    if (job.control) {
+        std::lock_guard<std::mutex> executionBarrier(
+            job.control->barrierMutex);
+        if (job.control->disposition ==
+            DuplicateOfferRecheckDisposition::None) {
+            job.control->canceled = true;
+            job.control->disposition = disposition;
+        }
+        finalDisposition = job.control->disposition;
+    }
+    completeDuplicateOfferRecheck(job, finalDisposition, detail);
+}
+
+void VersusApp::handleDuplicateOfferRecheckExecutorCompletion(
+    const PendingDuplicateOfferRecheck &job,
+    GenerationTaggedPeerOperationExecutor::CompletionDisposition disposition) {
+    using ExecutorDisposition =
+        GenerationTaggedPeerOperationExecutor::CompletionDisposition;
+    if (disposition == ExecutorDisposition::Executed) {
+        return;
+    }
+
+    DuplicateOfferRecheckDisposition appDisposition =
+        DuplicateOfferRecheckDisposition::ExecutorRejected;
+    const char *detail = "executor-rejected";
+    switch (disposition) {
+        case ExecutorDisposition::Evicted:
+            appDisposition =
+                DuplicateOfferRecheckDisposition::ExecutorEvicted;
+            detail = "executor-evicted";
+            break;
+        case ExecutorDisposition::DroppedOnStop:
+            appDisposition =
+                DuplicateOfferRecheckDisposition::ExecutorDropped;
+            detail = "executor-stopped";
+            break;
+        case ExecutorDisposition::Superseded:
+            appDisposition =
+                DuplicateOfferRecheckDisposition::ExecutorSuperseded;
+            detail = "executor-superseded";
+            break;
+        case ExecutorDisposition::StaleGeneration:
+            appDisposition = DuplicateOfferRecheckDisposition::ExecutorStale;
+            detail = "executor-stale-generation";
+            break;
+        case ExecutorDisposition::OperationThrew:
+            appDisposition = DuplicateOfferRecheckDisposition::ExecutorThrew;
+            detail = "executor-operation-threw";
+            break;
+        case ExecutorDisposition::RejectedInvalid:
+            detail = "executor-rejected-invalid";
+            break;
+        case ExecutorDisposition::RejectedStopped:
+            detail = "executor-rejected-stopped";
+            break;
+        case ExecutorDisposition::RejectedOrdinaryCapacity:
+            detail = "executor-rejected-ordinary-capacity";
+            break;
+        case ExecutorDisposition::RejectedCriticalCapacity:
+            detail = "executor-rejected-critical-capacity";
+            break;
+        case ExecutorDisposition::Executed:
+        default:
+            return;
+    }
+    cancelDuplicateOfferRecheckJob(job, appDisposition, detail);
+}
+
+bool VersusApp::dispatchPeerOfferToSignaling(
+    const std::shared_ptr<PeerSession> &peer,
+    const signaling::SignalOffer &offer,
+    uint64_t offerGeneration,
+    uint64_t transportGeneration,
+    const std::string &reason) {
+    if (!peer || offer.session.empty() || offer.sdp.empty() ||
+        offerGeneration == 0 || transportGeneration == 0) {
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> diagnosticsLock(peer->diagnosticsMutex);
+        if (++peer->offerDispatchSequence == 0) {
+            ++peer->offerDispatchSequence;
+        }
+        peer->offerDispatches.push_back({
+            peer->offerDispatchSequence,
+            offerGeneration,
+            transportGeneration,
+            offer.session,
+            detail::sha256Hex(offer.sdp),
+            reason});
+        while (peer->offerDispatches.size() > 60) {
+            peer->offerDispatches.pop_front();
+        }
+    }
+    return signaling_.sendOffer(offer);
+}
+
+bool VersusApp::completePeerLocalCandidateWorkLocked(
+    PeerSession &peer,
+    uint64_t workId,
+    uint64_t offerGeneration,
+    uint64_t clientTransportGeneration,
+    const std::string &wireSession,
+    bool superseded) {
+    const auto work = peer.localCandidateOutstandingWork.find(workId);
+    const bool ownerMatches =
+        work != peer.localCandidateOutstandingWork.end() &&
+        work->second.offerGeneration == offerGeneration &&
+        work->second.clientTransportGeneration == clientTransportGeneration &&
+        work->second.wireSession == wireSession;
+    if (workId == 0 || offerGeneration == 0 || !ownerMatches) {
+        peer.localCandidateAccountingViolation = true;
+        ++peer.localCandidateOutcomeSequence;
+        return false;
+    }
+
+    peer.localCandidateOutstandingWork.erase(work);
+    ++peer.localCandidateWorkCompleted;
+    if (superseded) {
+        ++peer.localCandidateWorkSuperseded;
+    }
+    peer.localCandidateWorkOutstanding =
+        static_cast<uint64_t>(peer.localCandidateOutstandingWork.size());
+    ++peer.localCandidateOutcomeSequence;
+    if (peer.localCandidateWorkAdmitted !=
+        peer.localCandidateWorkCompleted +
+            peer.localCandidateWorkOutstanding) {
+        peer.localCandidateAccountingViolation = true;
+        return false;
+    }
+    return true;
+}
+
+void VersusApp::completePeerLocalCandidateWork(
+    const std::shared_ptr<PeerSession> &peer,
+    uint64_t workId,
+    uint64_t offerGeneration,
+    uint64_t clientTransportGeneration,
+    const std::string &wireSession,
+    bool superseded,
+    const char *reason) {
+    if (!peer) {
+        return;
+    }
+    bool completed = false;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        completed = completePeerLocalCandidateWorkLocked(
+            *peer,
+            workId,
+            offerGeneration,
+            clientTransportGeneration,
+            wireSession,
+            superseded);
+    }
+    if (!completed) {
+        recordPeerEvent(
+            peer,
+            std::string("local-candidate-accounting-violation reason=") +
+                (reason ? reason : "unspecified"));
+    }
+}
+
+bool VersusApp::dispatchPeerCandidateToSignaling(
+    const std::shared_ptr<PeerSession> &peer,
+    const signaling::SignalCandidate &candidate,
+    bool relayCandidate) {
+    if (!peer) {
+        return false;
+    }
+
+    if (!signaling_.sendCandidate(candidate)) {
+        const int failureCount =
+            peer->localCandidateSendFailures.fetch_add(1, std::memory_order_relaxed) + 1;
+        spdlog::error(
+            "[Signaling] Failed to send local ICE candidate uuid={} wireSessionBytes={} failureCount={}",
+            peer->uuid,
+            candidate.session.size(),
+            failureCount);
+        recordPeerEvent(
+            peer,
+            relayCandidate
+                ? "local-candidate-send-failed relay"
+                : "local-candidate-send-failed");
+        return false;
+    }
+
+    peer->localCandidatesSent.fetch_add(1, std::memory_order_relaxed);
+    recordPeerEvent(
+        peer,
+        relayCandidate ? "local-candidate-sent relay" : "local-candidate-sent");
+    return true;
+}
+
+bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const char *reason, bool rebuildPeerConnection) {
+    if (!peer || !peer->client) {
+        return false;
+    }
+    // App callbacks other than ICE own this lease after their final generation
+    // check. ICE is intentionally excluded: WebRtcClient serializes its
+    // candidate context under callbackDispatchMutex and App accounts its work
+    // by offer generation, avoiding callbackDispatch -> callbackOperation
+    // versus callbackOperation -> reset(callbackDispatch) deadlock.
+    std::lock_guard<std::recursive_mutex> callbackGenerationLock(
+        peer->callbackOperationMutex);
+    // Serialize generation reservation with every callback that can mutate App
+    // peer state. The mutex is recursive because libdatachannel may synchronously
+    // re-enter a callback while an offer/answer operation is in progress.
+    std::lock_guard<std::recursive_mutex> offerClientLock(peer->clientOperationMutex);
+
+    const std::string requestedReason = reason ? reason : "unspecified";
     if (rebuildPeerConnection) {
-        std::lock_guard<std::mutex> mediaPlanLock(peer->mediaPlanMutex);
-        const bool wantVideo = peer->videoEnabled.load(std::memory_order_relaxed);
-        const bool wantAudio = peer->audioEnabled.load(std::memory_order_relaxed);
-        const VideoStateSnapshot videoState = videoStateSnapshot();
-        const bool wantAlpha = wantVideo &&
-            usesVp9AlphaTrack(videoState.config) &&
-            peer->alphaAllowed.load(std::memory_order_relaxed);
+        // The VDO.Ninja watchdog can wait more than 45 seconds before asking
+        // for a restart. Refresh the bounded logical-session retention as soon
+        // as the request is accepted, even if another offer must finish first.
+        peer->disconnectedSinceMs.store(steadyNowMs(), std::memory_order_relaxed);
+    }
+    uint64_t offerGeneration = 0;
+    bool rebuild = rebuildPeerConnection;
+    bool coalescedTransition = false;
+    uint64_t coalescedGeneration = 0;
+    uint64_t supersededBufferedCandidateCount = 0;
+    uint64_t supersededBufferedCandidateFailures = 0;
+    std::string offerWireSession;
+    std::string retiredWireSession;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed || peer->sessionInitializing) {
+            return false;
+        }
 
-        spdlog::info("[App] Rebuilding peer connection {}:{} reason={} media video={} audio={} alpha={}",
+        const bool unresolvedOffer = peer->offerCreationInProgress ||
+            (peer->offerDispatched && !peer->answerReceived);
+        const bool operationBusy = peer->answerApplicationInProgress ||
+            peer->mediaPlanApplicationInProgress;
+        // A requested rebuild means the existing PeerConnection is no longer
+        // an acceptable answer to the request. In particular, an outstanding
+        // offer cannot satisfy an ICE restart. Only an active answer/media
+        // mutation may defer the replacement; its completion drains this
+        // queued rebuild.
+        if (operationBusy ||
+            (unresolvedOffer && !peer->transportRetired && !rebuild)) {
+            coalescedTransition = true;
+            coalescedGeneration = peer->activeOfferGeneration;
+            peer->queuedOfferTransition = true;
+            peer->queuedOfferRebuild = peer->queuedOfferRebuild || rebuild;
+            if (peer->queuedOfferReason.empty() || rebuild) {
+                peer->queuedOfferReason = requestedReason;
+            }
+            peer->renegotiationQueued.store(true, std::memory_order_relaxed);
+        } else {
+            // A terminal transport retires the unresolved wire generation. The
+            // next queued/requested transition must rebuild that transport while
+            // retaining the logical VDO.Ninja session.
+            rebuild = rebuild || peer->transportRetired;
+            rebuild = rebuild || peer->queuedOfferRebuild;
+            peer->queuedOfferTransition = false;
+            peer->queuedOfferRebuild = false;
+            peer->queuedMediaPlan = false;
+            peer->queuedOfferReason.clear();
+            peer->renegotiationQueued.store(false, std::memory_order_relaxed);
+
+            if (peer->activeTransportGeneration == 0) {
+                peer->activeTransportGeneration = 1;
+            } else if (rebuild) {
+                for (auto &attempt : peer->attemptedAnswerIdentities) {
+                    if (attempt.transportGeneration == peer->activeTransportGeneration) {
+                        attempt.transportRetired = true;
+                    }
+                }
+                ++peer->activeTransportGeneration;
+            }
+            if (rebuild) {
+                // Invalidate every callback from the retiring client transport
+                // atomically with reserving the replacement wire generation.
+                peer->clientTransportGeneration = 0;
+                retiredWireSession = peer->activeWireSession;
+                peer->activeWireSession = generatePeerSessionId();
+            }
+            // Buffered candidates were admitted work for the retiring offer.
+            // Settle each item before removing it; immediate callbacks retain
+            // their own per-generation entries until they finish naturally.
+            while (!peer->pendingCandidates.empty()) {
+                const PendingCandidate &pending =
+                    peer->pendingCandidates.back();
+                if (!completePeerLocalCandidateWorkLocked(
+                        *peer,
+                        pending.workId,
+                        pending.offerGeneration,
+                        pending.clientTransportGeneration,
+                        pending.wireSession,
+                        true)) {
+                    ++supersededBufferedCandidateFailures;
+                }
+                ++supersededBufferedCandidateCount;
+                peer->pendingCandidates.pop_back();
+            }
+            offerGeneration = ++peer->activeOfferGeneration;
+            peer->localCandidateWorkOfferGeneration = offerGeneration;
+            ++peer->localCandidateOutcomeSequence;
+            offerWireSession = peer->activeWireSession;
+            peer->offerCreationInProgress = true;
+            peer->answerReceived = false;
+            peer->offerDispatched = false;
+            peer->lastLocalOfferSdp.clear();
+            if (rebuild) {
+                peer->activeAnswerIdentity.clear();
+            }
+            peer->candidateType = "local";
+            peer->transportRetired = false;
+            peer->offerCount.fetch_add(1, std::memory_order_relaxed);
+            if (rebuild) {
+                peer->recoveryOfferCount.fetch_add(1, std::memory_order_relaxed);
+            }
+            {
+                std::lock_guard<std::mutex> diagnosticsLock(peer->diagnosticsMutex);
+                peer->lastOfferReason = requestedReason;
+            }
+        }
+    }
+
+    if (coalescedTransition) {
+        spdlog::info("[App] Coalesced offer transition {}:{} generation={} reason={} rebuild={}",
                      peer->uuid,
                      peer->session,
-                     reason ? reason : "unspecified",
-                     wantVideo,
-                     wantAudio,
-                     wantAlpha);
-        if (!peer->client->resetPeerConnection(wantVideo, wantAudio, wantAlpha)) {
-            spdlog::error("[WebRTC] Failed to rebuild peer connection for {}:{} during recovery offer",
-                          peer->uuid,
-                          peer->session);
-            removePeerSession(peer, "recovery-peerconnection-rebuild-failed");
-            return false;
+                     coalescedGeneration,
+                     requestedReason,
+                     rebuild);
+        recordPeerEvent(peer,
+                        std::string("offer-transition-queued") +
+                            " generation=" + std::to_string(coalescedGeneration) +
+                            " reason=" + requestedReason);
+        return true;
+    }
+    if (supersededBufferedCandidateCount != 0) {
+        recordPeerEvent(
+            peer,
+            std::string("local-candidate-buffered-work-settled count=") +
+                std::to_string(supersededBufferedCandidateCount) +
+                " failures=" +
+                std::to_string(supersededBufferedCandidateFailures));
+    }
+    if (!retiredWireSession.empty() && retiredWireSession != offerWireSession) {
+        std::lock_guard<std::mutex> mapLock(peerSessionsMutex_);
+        pendingRemoteCandidates_.erase(makePeerKey(peer->uuid, retiredWireSession));
+    }
+    recordPeerEvent(peer, std::string("offer-start generation=") + std::to_string(offerGeneration) +
+                              " reason=" + requestedReason +
+                              (rebuild ? " rebuild=1" : " rebuild=0"));
+
+    bool clientOperationOk = true;
+    std::string offerSdp;
+    {
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            clientOperationOk = !peer->removed &&
+                peer->offerCreationInProgress &&
+                peer->activeOfferGeneration == offerGeneration &&
+                peer->activeWireSession == offerWireSession;
         }
-        peer->dataChannelOpen.store(false, std::memory_order_relaxed);
-        if (wantVideo && !peer->client->hasConfiguredVideoTrack()) {
-            spdlog::error("[WebRTC] Failed to restore video track for {}:{} during recovery offer",
-                          peer->uuid,
-                          peer->session);
-            removePeerSession(peer, "recovery-video-track-failed");
-            return false;
+        if (rebuild) {
+            // WebRtcClient owns the immutable, validated ICE snapshot from
+            // initialization. Every reset reuses that exact rtc::Configuration;
+            // recovery cannot substitute a later process-wide server list.
+            peer->disconnectedSinceMs.store(steadyNowMs(), std::memory_order_relaxed);
+            const bool wantVideo = peer->videoEnabled.load(std::memory_order_relaxed);
+            const bool wantAudio = peer->audioEnabled.load(std::memory_order_relaxed);
+            const VideoStateSnapshot videoState = videoStateSnapshot();
+            // Preserve the reserved alpha transceiver on every transport
+            // generation. Receiver capability gates alpha packets, not the
+            // SDP shape; otherwise a restart before capability would move or
+            // remove the alpha m-line relative to the data channel.
+            const bool wantAlpha = wantVideo && usesVp9AlphaTrack(videoState.config);
+
+            spdlog::info("[App] Rebuilding peer connection {}:{} reason={} media video={} audio={} alpha={}",
+                         peer->uuid,
+                         peer->session,
+                         requestedReason,
+                         wantVideo,
+                         wantAudio,
+                         wantAlpha);
+            // Retire every pair completed before this reset reservation. The
+            // operation mutex held by sendPeerOffer also prevents a live pair
+            // from being split across the old and replacement transports.
+            reservePeerAlphaAdmissionCutoff(peer);
+            if (clientOperationOk &&
+                !peer->client->resetPeerConnection(wantVideo, wantAudio, wantAlpha)) {
+                spdlog::error("[WebRTC] Failed to rebuild peer connection for {}:{} during recovery offer",
+                              peer->uuid,
+                              peer->session);
+                clientOperationOk = false;
+            }
+            if (clientOperationOk) {
+                const uint64_t rebuiltClientGeneration = peer->client->transportGeneration();
+                std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+                if (!peer->removed &&
+                    peer->activeOfferGeneration == offerGeneration &&
+                    peer->activeWireSession == offerWireSession) {
+                    peer->clientTransportGeneration = rebuiltClientGeneration;
+                } else {
+                    clientOperationOk = false;
+                }
+            }
+            if (clientOperationOk) {
+                peer->dataChannelOpen.store(false, std::memory_order_relaxed);
+                spdlog::info(
+                    "[App] Rebuilt peer transport uuid={} retiredSession={} activeSession={} generation={} reason={}",
+                    peer->uuid,
+                    retiredWireSession,
+                    offerWireSession,
+                    offerGeneration,
+                    requestedReason);
+            }
+            if (clientOperationOk && wantVideo && !peer->client->hasConfiguredVideoTrack()) {
+                spdlog::error("[WebRTC] Failed to restore video track for {}:{} during recovery offer",
+                              peer->uuid,
+                              peer->session);
+                clientOperationOk = false;
+            }
+            if (clientOperationOk && wantAudio && !peer->client->hasConfiguredAudioTrack()) {
+                spdlog::error("[WebRTC] Failed to restore audio track for {}:{} during recovery offer",
+                              peer->uuid,
+                              peer->session);
+                clientOperationOk = false;
+            }
+            if (clientOperationOk && (wantVideo || wantAudio || wantAlpha)) {
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                reservePeerAlphaAdmissionCutoff(peer);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            }
         }
-        if (wantAudio && !peer->client->hasConfiguredAudioTrack()) {
-            spdlog::error("[WebRTC] Failed to restore audio track for {}:{} during recovery offer",
-                          peer->uuid,
-                          peer->session);
-            removePeerSession(peer, "recovery-audio-track-failed");
-            return false;
-        }
-        if (wantVideo || wantAudio || wantAlpha) {
-            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
-            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+
+        if (clientOperationOk) {
+            spdlog::info("[App] Creating offer {}:{} reason={} rebuildPeerConnection={}",
+                         peer->uuid,
+                         peer->session,
+                         requestedReason,
+                         rebuild);
+            offerSdp = peer->client->createOffer(offerGeneration);
+            clientOperationOk = !offerSdp.empty();
         }
     }
 
-    spdlog::info("[App] Sending offer {}:{} reason={} rebuildPeerConnection={}",
-                 peer->uuid,
-                 peer->session,
-                 reason ? reason : "unspecified",
-                 rebuildPeerConnection);
-
-    const auto offerSdp = peer->client->createOffer();
-    if (offerSdp.empty()) {
+    if (!clientOperationOk || offerSdp.empty()) {
         spdlog::error("[WebRTC] Failed to create offer for {}:{} (reason={})",
                       peer->uuid,
                       peer->session,
-                      reason ? reason : "unspecified");
+                      requestedReason);
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            if (peer->activeOfferGeneration == offerGeneration &&
+                peer->activeWireSession == offerWireSession) {
+                peer->offerCreationInProgress = false;
+                peer->offerDispatched = false;
+                peer->transportRetired = true;
+                for (auto &attempt : peer->attemptedAnswerIdentities) {
+                    if (attempt.transportGeneration == peer->activeTransportGeneration) {
+                        attempt.transportRetired = true;
+                    }
+                }
+            }
+        }
+        int64_t expected = 0;
+        peer->disconnectedSinceMs.compare_exchange_strong(
+            expected,
+            steadyNowMs(),
+            std::memory_order_relaxed,
+            std::memory_order_relaxed);
         recordPeerEvent(peer, "offer-create-failed");
-        removePeerSession(peer, "offer-create-failed");
         return false;
     }
 
     signaling::SignalOffer offer;
     offer.uuid = peer->uuid;
-    offer.session = peer->session;
+    offer.session = offerWireSession;
     offer.streamId = peer->streamId;
     offer.sdp = offerSdp;
-    std::vector<PendingCandidate> bufferedCandidates;
-    std::string candidateType = "local";
+
+    bool sent = false;
     {
-        std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        if (!signaling_.sendOffer(offer)) {
+        std::lock_guard<std::mutex> signalingLock(signalingOpsMutex_);
+        bool stillCurrent = false;
+        uint64_t dispatchTransportGeneration = 0;
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            stillCurrent = !peer->removed &&
+                peer->offerCreationInProgress &&
+                peer->activeOfferGeneration == offerGeneration &&
+                peer->activeWireSession == offerWireSession;
+            if (stillCurrent) {
+                peer->offerCreationInProgress = false;
+                peer->offerDispatched = true;
+                peer->lastLocalOfferSdp = offerSdp;
+                dispatchTransportGeneration =
+                    peer->activeTransportGeneration;
+            }
+        }
+        if (!stillCurrent) {
+            spdlog::warn("[App] Offer generation changed before dispatch {}:{} expected={}",
+                         peer->uuid,
+                         peer->session,
+                         offerGeneration);
+            return false;
+        }
+        sent = dispatchPeerOfferToSignaling(
+            peer,
+            offer,
+            offerGeneration,
+            dispatchTransportGeneration,
+            requestedReason);
+        if (!sent) {
             spdlog::error("[Signaling] Failed to send offer for {}:{} (reason={})",
                           peer->uuid,
                           peer->session,
-                          reason ? reason : "unspecified");
+                          requestedReason);
             recordPeerEvent(peer, "offer-send-failed");
-            removePeerSession(peer, "offer-send-failed");
-            return false;
         }
     }
+    if (!sent) {
+        // Retain the unresolved offer only for late-answer identity checks.
+        // Duplicate requests follow the same-PC grace/rebuild policy and never
+        // replay this SDP as a substitute for fresh ICE.
+        int64_t expected = 0;
+        peer->disconnectedSinceMs.compare_exchange_strong(
+            expected,
+            steadyNowMs(),
+            std::memory_order_relaxed,
+            std::memory_order_relaxed);
+        return false;
+    }
 
+    std::vector<PendingCandidate> bufferedCandidates;
+    std::vector<PendingCandidate> supersededBufferedCandidates;
+    std::string candidateType = "local";
     {
-        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
-        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed ||
+            peer->activeOfferGeneration != offerGeneration ||
+            peer->activeWireSession != offerWireSession) {
             return false;
         }
-        it->second->offerDispatched = true;
-        bufferedCandidates = it->second->pendingCandidates;
-        it->second->pendingCandidates.clear();
-        candidateType = it->second->candidateType;
+        auto pending = peer->pendingCandidates.begin();
+        while (pending != peer->pendingCandidates.end()) {
+            if (pending->offerGeneration == offerGeneration) {
+                bufferedCandidates.push_back(*pending);
+            } else {
+                supersededBufferedCandidates.push_back(*pending);
+            }
+            pending = peer->pendingCandidates.erase(pending);
+        }
+        candidateType = peer->candidateType;
     }
 
+    for (const auto &pending : supersededBufferedCandidates) {
+        recordPeerEvent(
+            peer,
+            "local-candidate-dropped superseded-generation");
+        completePeerLocalCandidateWork(
+            peer,
+            pending.workId,
+            pending.offerGeneration,
+            pending.clientTransportGeneration,
+            pending.wireSession,
+            true,
+            "buffered-stale-extraction");
+    }
+
+    bool allBufferedCandidatesSent = true;
     for (const auto &pending : bufferedCandidates) {
         signaling::SignalCandidate cand;
         cand.uuid = peer->uuid;
         cand.candidate = pending.candidate;
         cand.mid = pending.mid;
         cand.mlineIndex = pending.mlineIndex;
-        cand.session = peer->session;
+        cand.session = pending.wireSession;
         cand.type = candidateType;
         {
-            std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-            signaling_.sendCandidate(cand);
+            std::lock_guard<std::mutex> signalingLock(signalingOpsMutex_);
+            bool stillCurrent = false;
+            {
+                std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+                stillCurrent = !peer->removed &&
+                    peer->clientTransportGeneration ==
+                        pending.clientTransportGeneration &&
+                    peer->activeOfferGeneration == pending.offerGeneration &&
+                    peer->activeWireSession == pending.wireSession &&
+                    peer->offerDispatched;
+            }
+            if (!stillCurrent) {
+                recordPeerEvent(peer, "local-candidate-dropped superseded-generation");
+                completePeerLocalCandidateWork(
+                    peer,
+                    pending.workId,
+                    pending.offerGeneration,
+                    pending.clientTransportGeneration,
+                    pending.wireSession,
+                    true,
+                    "buffered-superseded");
+                continue;
+            }
+            const bool candidateSent = dispatchPeerCandidateToSignaling(
+                    peer,
+                    cand,
+                    toLowerCopy(pending.candidate).find(" typ relay") !=
+                        std::string::npos);
+            completePeerLocalCandidateWork(
+                peer,
+                pending.workId,
+                pending.offerGeneration,
+                pending.clientTransportGeneration,
+                pending.wireSession,
+                false,
+                "buffered-dispatch");
+            if (!candidateSent) {
+                allBufferedCandidatesSent = false;
+            }
         }
-        peer->localCandidatesSent.fetch_add(1, std::memory_order_relaxed);
     }
-    recordPeerEvent(peer, std::string("offer-sent reason=") + (reason ? reason : "unspecified"));
-    return true;
+    recordPeerEvent(peer, std::string("offer-sent generation=") + std::to_string(offerGeneration) +
+                              " reason=" + requestedReason);
+    return allBufferedCandidatesSent;
+}
+
+void VersusApp::runQueuedPeerTransition(const std::shared_ptr<PeerSession> &peer, const char *trigger) {
+    if (!peer || !peer->client) {
+        return;
+    }
+
+    bool rebuild = false;
+    bool applyMediaPlan = false;
+    std::string reason;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed || !peer->queuedOfferTransition) {
+            return;
+        }
+        const bool unresolvedOffer = peer->offerCreationInProgress ||
+            (peer->offerDispatched && !peer->answerReceived);
+        if (peer->answerApplicationInProgress ||
+            peer->mediaPlanApplicationInProgress ||
+            (unresolvedOffer && !peer->transportRetired &&
+             !peer->queuedOfferRebuild)) {
+            return;
+        }
+
+        rebuild = peer->queuedOfferRebuild || peer->transportRetired;
+        applyMediaPlan = peer->queuedMediaPlan && !rebuild;
+        reason = peer->queuedOfferReason.empty() ? "queued-transition" : peer->queuedOfferReason;
+        peer->queuedOfferTransition = false;
+        peer->queuedOfferRebuild = false;
+        peer->queuedMediaPlan = false;
+        peer->queuedOfferReason.clear();
+        peer->renegotiationQueued.store(false, std::memory_order_relaxed);
+    }
+
+    spdlog::info("[App] Running queued peer transition {}:{} trigger={} reason={} rebuild={} mediaPlan={}",
+                 peer->uuid,
+                 peer->session,
+                 trigger ? trigger : "unspecified",
+                 reason,
+                 rebuild,
+                 applyMediaPlan);
+    if (applyMediaPlan) {
+        applyPeerMediaPlan(peer, reason.c_str());
+    } else {
+        sendPeerOffer(peer, reason.c_str(), rebuild);
+    }
 }
 
 int VersusApp::renegotiatePeersForH264CodecFallback(const char *reason) {
@@ -6131,7 +9086,10 @@ int VersusApp::renegotiatePeersForH264CodecFallback(const char *reason) {
         if (!peer || !peer->client) {
             continue;
         }
-        peer->client->setVideoCodec(webrtc::PeerConfig::VideoCodec::H264, false);
+        {
+            std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            peer->client->setVideoCodec(webrtc::PeerConfig::VideoCodec::H264, false);
+        }
         if (sendPeerOffer(peer, reason ? reason : "codec-fallback-h264", true)) {
             sentOffers++;
         }
@@ -6185,6 +9143,7 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
                           videoCodecName(previousCodec));
             if (videoEncoder_.initialize(primaryVideoEncoderConfig(previousConfig))) {
                 videoConfig_ = previousConfig;
+                updateRoomQualityDecisionForCodecLocked();
                 activeHqWidth_ = std::max(2, previousConfig.width & ~1);
                 activeHqHeight_ = std::max(2, previousConfig.height & ~1);
                 publishVideoStateSnapshotLocked();
@@ -6196,6 +9155,7 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
         }
 
         videoConfig_ = fallbackConfig;
+        updateRoomQualityDecisionForCodecLocked();
         activeHqWidth_ = std::max(2, fallbackConfig.width & ~1);
         activeHqHeight_ = std::max(2, fallbackConfig.height & ~1);
         hqAspectLocked_ = false;
@@ -6207,6 +9167,7 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
         fallbackEncoderName = videoEncoder_.activeEncoderName();
         publishVideoStateSnapshotLocked();
     }
+    syncRoomQualityDecision();
 
     emitRuntimeEvent(
         std::string("Viewer rejected ") + videoCodecName(previousCodec) +
@@ -6235,7 +9196,10 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
         if (!session || !session->client) {
             continue;
         }
-        session->client->setVideoCodec(webrtc::PeerConfig::VideoCodec::H264, false);
+        {
+            std::lock_guard<std::recursive_mutex> clientLock(session->clientOperationMutex);
+            session->client->setVideoCodec(webrtc::PeerConfig::VideoCodec::H264, false);
+        }
         const char *reason = session.get() == peer.get()
             ? "video-codec-fallback-h264"
             : "global-video-codec-fallback-h264";
@@ -6246,17 +9210,86 @@ bool VersusApp::fallbackToH264AfterRejectedVideoAnswer(const std::shared_ptr<Pee
     return sentTriggerPeerOffer;
 }
 
-void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const std::string &sdp, const char *source) {
+void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer,
+                                const std::string &sdp,
+                                const char *source,
+                                const std::string &expectedWireSession) {
     if (!peer || !peer->client || sdp.empty()) {
         return;
     }
 
+    const std::string answerIdentity = detail::normalizeAnswerIdentity(sdp);
+    uint64_t answerGeneration = 0;
+    uint64_t answerTransportGeneration = 0;
+    std::string answerWireSession;
     {
-        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
-        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed) {
             return;
         }
+        if (!expectedWireSession.empty() &&
+            peer->activeWireSession != expectedWireSession) {
+            spdlog::warn(
+                "[App] Rejecting stale-session answer before SDP apply uuid={} session={} activeSession={} source={}",
+                peer->uuid,
+                expectedWireSession,
+                peer->activeWireSession,
+                source ? source : "unknown");
+            recordPeerEvent(peer, "answer-ignored stale-wire-session");
+            return;
+        }
+        answerWireSession = peer->activeWireSession;
+        if (peer->offerCreationInProgress || !peer->offerDispatched) {
+            spdlog::warn("[App] Ignoring answer before offer dispatch {}:{} source={}",
+                         peer->uuid,
+                         peer->session,
+                         source ? source : "unknown");
+            recordPeerEvent(peer, "answer-ignored offer-not-dispatched");
+            return;
+        }
+
+        const auto previousAttempt = std::find_if(
+            peer->attemptedAnswerIdentities.begin(),
+            peer->attemptedAnswerIdentities.end(),
+            [&](const AttemptedAnswerIdentity &attempt) {
+                return attempt.wireSession == answerWireSession &&
+                    attempt.identity == answerIdentity;
+            });
+        if (previousAttempt != peer->attemptedAnswerIdentities.end()) {
+            spdlog::info("[App] Ignoring stale or replayed answer identity {}:{} source={} attemptedGeneration={} activeGeneration={}",
+                         peer->uuid,
+                         peer->session,
+                         source ? source : "unknown",
+                         previousAttempt->offerGeneration,
+                         peer->activeOfferGeneration);
+            recordPeerEvent(peer, "answer-ignored stale-identity attempted-generation=" +
+                                      std::to_string(previousAttempt->offerGeneration) +
+                                      " active-generation=" + std::to_string(peer->activeOfferGeneration));
+            return;
+        }
+        if (peer->answerReceived || peer->answerApplicationInProgress) {
+            spdlog::info("[App] Ignoring stale or replayed answer {}:{} source={} generation={}",
+                         peer->uuid,
+                         peer->session,
+                         source ? source : "unknown",
+                         peer->activeOfferGeneration);
+            recordPeerEvent(peer, "answer-ignored stale-or-replayed");
+            return;
+        }
+
+        answerGeneration = peer->activeOfferGeneration;
+        answerTransportGeneration = peer->activeTransportGeneration;
+        peer->attemptedAnswerIdentities.push_back({
+            answerGeneration,
+            answerTransportGeneration,
+            false,
+            answerWireSession,
+            answerIdentity,
+        });
+        while (peer->attemptedAnswerIdentities.size() > kAttemptedAnswerIdentityHistoryMax) {
+            peer->attemptedAnswerIdentities.pop_front();
+        }
+        peer->answerApplicationInProgress = true;
     }
 
     spdlog::info("[App] Applying peer answer {}:{} source={}",
@@ -6264,62 +9297,95 @@ void VersusApp::applyPeerAnswer(const std::shared_ptr<PeerSession> &peer, const 
                  peer->session,
                  source ? source : "unknown");
 
-    if (sdpAnswerRejectsVideoMLine(sdp) &&
+    const bool codecFallbackQueued = sdpAnswerRejectsVideoMLine(sdp) &&
         videoStateSnapshot().config.codec != video::VideoCodec::H264 &&
-        fallbackToH264AfterRejectedVideoAnswer(peer, source)) {
-        return;
+        fallbackToH264AfterRejectedVideoAnswer(peer, source);
+
+    bool applied = codecFallbackQueued;
+    if (!codecFallbackQueued) {
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        bool stillCurrent = false;
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            stillCurrent = !peer->removed &&
+                peer->answerApplicationInProgress &&
+                peer->activeOfferGeneration == answerGeneration &&
+                peer->activeTransportGeneration == answerTransportGeneration &&
+                peer->activeWireSession == answerWireSession;
+        }
+        if (stillCurrent) {
+            applied = peer->client->setRemoteDescription(sdp, "answer");
+        }
     }
 
-    if (!peer->client->setRemoteDescription(sdp, "answer")) {
+    bool runQueuedTransition = false;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed ||
+            peer->activeOfferGeneration != answerGeneration ||
+            peer->activeTransportGeneration != answerTransportGeneration ||
+            peer->activeWireSession != answerWireSession) {
+            peer->answerApplicationInProgress = false;
+            return;
+        }
+        peer->answerApplicationInProgress = false;
+        if (applied) {
+            peer->answerReceived = true;
+            peer->answeredOfferGeneration = answerGeneration;
+            peer->activeAnswerIdentity = answerIdentity;
+            peer->answerCount.fetch_add(1, std::memory_order_relaxed);
+            {
+                std::lock_guard<std::mutex> diagnosticsLock(peer->diagnosticsMutex);
+                peer->lastAnswerSource = source ? source : "unknown";
+            }
+        } else {
+            // A description rejected by the transport cannot be repaired in
+            // place. Retire this offer generation while retaining its semantic
+            // identity so a fingerprint-only replay cannot enter generation B.
+            peer->transportRetired = true;
+            for (auto &attempt : peer->attemptedAnswerIdentities) {
+                if (attempt.offerGeneration == answerGeneration &&
+                    attempt.transportGeneration == answerTransportGeneration) {
+                    attempt.transportRetired = true;
+                }
+            }
+        }
+        runQueuedTransition = peer->queuedOfferTransition;
+    }
+
+    if (!applied) {
+        int64_t expected = 0;
+        peer->disconnectedSinceMs.compare_exchange_strong(
+            expected,
+            steadyNowMs(),
+            std::memory_order_relaxed,
+            std::memory_order_relaxed);
         spdlog::warn("[App] Failed to apply peer answer {}:{} source={}",
                      peer->uuid,
                      peer->session,
                      source ? source : "unknown");
         recordPeerEvent(peer, std::string("answer-apply-failed source=") + (source ? source : "unknown"));
+        if (runQueuedTransition) {
+            runQueuedPeerTransition(peer, "answer-apply-failed");
+        }
         return;
     }
 
-    std::vector<PendingCandidate> buffered;
-    std::string candidateType = "local";
-    bool queuedRenegotiation = false;
-    {
-        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
-        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
-            return;
-        }
-        it->second->answerReceived = true;
-        it->second->answerCount.fetch_add(1, std::memory_order_relaxed);
-        {
-            std::lock_guard<std::mutex> diagnosticsLock(it->second->diagnosticsMutex);
-            it->second->lastAnswerSource = source ? source : "unknown";
-        }
-        buffered = it->second->pendingCandidates;
-        it->second->pendingCandidates.clear();
-        candidateType = it->second->candidateType;
-        queuedRenegotiation = it->second->renegotiationQueued.exchange(false, std::memory_order_relaxed);
-    }
     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-    drainPendingRemoteCandidates(peer, source ? source : "answer-applied");
-
-    for (const auto &pending : buffered) {
-        signaling::SignalCandidate cand;
-        cand.uuid = peer->uuid;
-        cand.candidate = pending.candidate;
-        cand.mid = pending.mid;
-        cand.mlineIndex = pending.mlineIndex;
-        cand.session = peer->session;
-        cand.type = candidateType;
-        {
-            std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-            signaling_.sendCandidate(cand);
-        }
-        peer->localCandidatesSent.fetch_add(1, std::memory_order_relaxed);
+    if (!codecFallbackQueued) {
+        drainPendingRemoteCandidates(
+            peer,
+            answerGeneration,
+            answerTransportGeneration,
+            answerIdentity,
+            source ? source : "answer-applied");
     }
-    recordPeerEvent(peer, std::string("answer-applied source=") + (source ? source : "unknown"));
+    recordPeerEvent(peer, std::string("answer-applied generation=") +
+                              std::to_string(answerGeneration) +
+                              " source=" + (source ? source : "unknown"));
 
-    if (queuedRenegotiation) {
-        applyPeerMediaPlan(peer, "queued-media-plan");
+    if (runQueuedTransition) {
+        runQueuedPeerTransition(peer, codecFallbackQueued ? "codec-fallback-answer-consumed" : "answer-consumed");
     }
 }
 
@@ -6327,14 +9393,33 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
     if (!peer || !peer->client) {
         return;
     }
-    std::lock_guard<std::mutex> mediaPlanLock(peer->mediaPlanMutex);
-    const bool dataChannelOpen =
-        peer->dataChannelOpen.load(std::memory_order_relaxed) ||
-        peer->client->isDataChannelOpen();
-    if (!dataChannelOpen) {
-        return;
+
+    const std::string requestedReason = reason ? reason : "peer-media-plan";
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        const bool unresolvedOffer = peer->offerCreationInProgress ||
+            (peer->offerDispatched && !peer->answerReceived);
+        if (peer->removed) {
+            return;
+        }
+        if (peer->answerApplicationInProgress || peer->mediaPlanApplicationInProgress ||
+            unresolvedOffer || peer->transportRetired) {
+            peer->queuedOfferTransition = true;
+            peer->queuedMediaPlan = true;
+            peer->queuedOfferRebuild = peer->queuedOfferRebuild || peer->transportRetired;
+            if (peer->queuedOfferReason.empty()) {
+                peer->queuedOfferReason = requestedReason;
+            }
+            peer->renegotiationQueued.store(true, std::memory_order_relaxed);
+            spdlog::info("[App] Queued media-plan transition {}:{} reason={} generation={}",
+                         peer->uuid,
+                         peer->session,
+                         requestedReason,
+                         peer->activeOfferGeneration);
+            return;
+        }
+        peer->mediaPlanApplicationInProgress = true;
     }
-    peer->dataChannelOpen.store(true, std::memory_order_relaxed);
 
     const bool initReceived = peer->initReceived.load(std::memory_order_relaxed);
     const bool wantVideo = initReceived && peer->videoEnabled.load(std::memory_order_relaxed);
@@ -6344,35 +9429,38 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
         usesVp9AlphaTrack(videoState.config) &&
         peer->alphaAllowed.load(std::memory_order_relaxed);
 
+    bool dataChannelOpen = false;
+    webrtc::MediaPlanChange change;
     {
-        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
-        if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
-            return;
-        }
-        if (!it->second->answerReceived) {
-            it->second->renegotiationQueued.store(true, std::memory_order_relaxed);
-            spdlog::info("[App] Queued media-plan renegotiation {}:{} reason={}",
-                         peer->uuid,
-                         peer->session,
-                         reason ? reason : "unspecified");
-            return;
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        dataChannelOpen = peer->dataChannelOpen.load(std::memory_order_relaxed) ||
+            peer->client->isDataChannelOpen();
+        if (dataChannelOpen) {
+            peer->dataChannelOpen.store(true, std::memory_order_relaxed);
+            change = peer->client->ensureMediaTracks(wantVideo, wantAudio, wantAlpha);
         }
     }
 
-    const auto change = peer->client->ensureMediaTracks(wantVideo, wantAudio, wantAlpha);
-    if (!change.changed) {
-        return;
+    bool queuedTransition = false;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        peer->mediaPlanApplicationInProgress = false;
+        queuedTransition = peer->queuedOfferTransition;
     }
 
-    if (change.videoAdded) {
+    if (dataChannelOpen && change.videoAdded) {
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+        reservePeerAlphaAdmissionCutoff(peer);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
     }
 
-    if (!sendPeerOffer(peer, reason)) {
+    if (queuedTransition) {
+        runQueuedPeerTransition(peer, "media-plan-complete");
         return;
+    }
+    if (dataChannelOpen && change.changed) {
+        sendPeerOffer(peer, requestedReason.c_str());
     }
 }
 
@@ -6386,30 +9474,207 @@ std::shared_ptr<VersusApp::PeerSession> VersusApp::findPeerSessionForSignalLocke
         return nullptr;
     }
 
-    if (!session.empty()) {
-        const auto it = peerSessions_.find(makePeerKey(uuid, session));
-        if (it != peerSessions_.end()) {
-            return it->second;
-        }
+    const auto it = peerSessions_.find(uuid);
+    if (it == peerSessions_.end() || !it->second) {
         return nullptr;
     }
-
-    std::shared_ptr<PeerSession> matchedPeer;
-    for (const auto &entry : peerSessions_) {
-        if (!entry.second || entry.second->uuid != uuid) {
-            continue;
-        }
-        if (matchedPeer) {
-            spdlog::warn("[Signaling] Ambiguous peer lookup for uuid={} with empty session; ignoring message", uuid);
+    const auto &peer = it->second;
+    if (!session.empty()) {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed || peer->activeWireSession != session) {
             return nullptr;
         }
-        matchedPeer = entry.second;
     }
-
-    return matchedPeer;
+    return peer;
 }
 
-void VersusApp::queuePendingRemoteCandidateLocked(const signaling::SignalCandidate &cand, int64_t nowMs) {
+void VersusApp::handlePeerRemoteCandidate(const std::shared_ptr<PeerSession> &peer,
+                                          const signaling::SignalCandidate &cand,
+                                          const char *source) {
+    if (!peer || !peer->client || cand.candidate.empty()) {
+        return;
+    }
+
+    uint64_t candidateGeneration = 0;
+    uint64_t candidateTransportGeneration = 0;
+    std::string answerIdentity;
+    std::string candidateWireSession;
+    bool queueCandidate = false;
+    uint64_t staleAnswerGeneration = 0;
+    const std::string ufrag = detail::candidateIceUfrag(cand.candidate);
+    auto matchingRetiredAnswerGeneration = [&]() -> uint64_t {
+        if (ufrag.empty()) {
+            return 0;
+        }
+        const auto priorAnswer = std::find_if(
+            peer->attemptedAnswerIdentities.begin(),
+            peer->attemptedAnswerIdentities.end(),
+            [&](const AttemptedAnswerIdentity &attempt) {
+                return attempt.transportRetired &&
+                    (attempt.transportGeneration != candidateTransportGeneration ||
+                     peer->transportRetired) &&
+                    detail::answerIdentityMatchesCandidate(attempt.identity, cand.candidate);
+            });
+        return priorAnswer == peer->attemptedAnswerIdentities.end()
+            ? 0
+            : priorAnswer->offerGeneration;
+    };
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed) {
+            return;
+        }
+        if (!cand.session.empty() && cand.session != peer->activeWireSession) {
+            spdlog::warn(
+                "[Signaling] Rejecting stale-session remote ICE candidate before content routing uuid={} session={} activeSession={} source={}",
+                peer->uuid,
+                cand.session,
+                peer->activeWireSession,
+                source ? source : "unknown");
+            recordPeerEvent(peer, "remote-candidate-dropped stale-wire-session");
+            return;
+        }
+        candidateGeneration = peer->activeOfferGeneration;
+        candidateTransportGeneration = peer->activeTransportGeneration;
+        answerIdentity = peer->activeAnswerIdentity;
+        candidateWireSession = peer->activeWireSession;
+        queueCandidate = peer->sessionInitializing ||
+            peer->offerCreationInProgress ||
+            peer->answerApplicationInProgress ||
+            !peer->offerDispatched ||
+            !peer->answerReceived;
+        staleAnswerGeneration = matchingRetiredAnswerGeneration();
+    }
+
+    signaling::SignalCandidate routed = cand;
+    routed.uuid = peer->uuid;
+    routed.session = candidateWireSession;
+    if (staleAnswerGeneration != 0) {
+        spdlog::warn("[Signaling] Rejecting stale-generation remote ICE candidate {}:{} source={} candidateUfrag={} priorGeneration={} activeGeneration={}",
+                     peer->uuid,
+                     peer->session,
+                     source ? source : "unknown",
+                     ufrag,
+                     staleAnswerGeneration,
+                     candidateGeneration);
+        recordPeerEvent(peer, "remote-candidate-dropped stale-generation ufrag=" + ufrag +
+                                  " prior-generation=" + std::to_string(staleAnswerGeneration) +
+                                  " active-generation=" + std::to_string(candidateGeneration));
+        return;
+    }
+    if (queueCandidate) {
+        bool queued = false;
+        {
+            // Revalidate under map -> negotiation ordering so answer commit +
+            // drain cannot pass between the pending-state decision and queue
+            // insertion, leaving a candidate stranded until another answer.
+            std::lock_guard<std::mutex> mapLock(peerSessionsMutex_);
+            const auto it = peerSessions_.find(peer->uuid);
+            if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
+                return;
+            }
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            if (peer->removed) {
+                return;
+            }
+            if (peer->activeWireSession != candidateWireSession) {
+                spdlog::warn(
+                    "[Signaling] Rejecting stale-session remote ICE candidate after transport rotation uuid={} session={} activeSession={} source={}",
+                    peer->uuid,
+                    candidateWireSession,
+                    peer->activeWireSession,
+                    source ? source : "unknown");
+                recordPeerEvent(peer, "remote-candidate-dropped rotated-wire-session");
+                return;
+            }
+            candidateGeneration = peer->activeOfferGeneration;
+            candidateTransportGeneration = peer->activeTransportGeneration;
+            answerIdentity = peer->activeAnswerIdentity;
+            queueCandidate = peer->sessionInitializing ||
+                peer->offerCreationInProgress ||
+                peer->answerApplicationInProgress ||
+                !peer->offerDispatched ||
+                !peer->answerReceived;
+            staleAnswerGeneration = matchingRetiredAnswerGeneration();
+            if (staleAnswerGeneration == 0 && queueCandidate) {
+                queuePendingRemoteCandidateLocked(
+                    routed,
+                    steadyNowMs(),
+                    candidateGeneration,
+                    candidateTransportGeneration);
+                queued = true;
+            }
+        }
+        if (staleAnswerGeneration != 0) {
+            spdlog::warn("[Signaling] Rejecting stale-generation remote ICE candidate {}:{} source={} candidateUfrag={} priorGeneration={} activeGeneration={}",
+                         peer->uuid,
+                         peer->session,
+                         source ? source : "unknown",
+                         ufrag,
+                         staleAnswerGeneration,
+                         candidateGeneration);
+            recordPeerEvent(peer, "remote-candidate-dropped stale-generation ufrag=" + ufrag +
+                                      " prior-generation=" + std::to_string(staleAnswerGeneration) +
+                                      " active-generation=" + std::to_string(candidateGeneration));
+            return;
+        }
+        if (queued) {
+            recordPeerEvent(peer, "remote-candidate-buffered generation=" +
+                                      std::to_string(candidateGeneration));
+            return;
+        }
+    }
+
+    if (!detail::answerIdentityMatchesCandidate(answerIdentity, routed.candidate)) {
+        spdlog::warn("[Signaling] Rejecting stale-generation/ufrag remote ICE candidate {}:{} source={} generation={} candidateUfrag={}",
+                     peer->uuid,
+                     peer->session,
+                     source ? source : "unknown",
+                     candidateGeneration,
+                     ufrag);
+        recordPeerEvent(peer, "remote-candidate-dropped stale-ufrag generation=" +
+                                  std::to_string(candidateGeneration));
+        return;
+    }
+
+    bool applied = false;
+    {
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        bool stillCurrent = false;
+        uint64_t activeGeneration = 0;
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            activeGeneration = peer->activeOfferGeneration;
+            stillCurrent = !peer->removed &&
+                peer->activeTransportGeneration == candidateTransportGeneration &&
+                peer->activeWireSession == candidateWireSession &&
+                !peer->transportRetired &&
+                detail::answerIdentityMatchesCandidate(peer->activeAnswerIdentity, routed.candidate);
+        }
+        if (!stillCurrent) {
+            spdlog::warn("[Signaling] Rejecting stale-generation remote ICE candidate {}:{} source={} queuedGeneration={} activeGeneration={}",
+                         peer->uuid,
+                         peer->session,
+                         source ? source : "unknown",
+                         candidateGeneration,
+                         activeGeneration);
+            recordPeerEvent(peer, "remote-candidate-dropped stale-generation");
+            return;
+        }
+        applied = peer->client->addRemoteCandidate(routed.candidate, routed.mid, routed.mlineIndex);
+    }
+    if (applied) {
+        peer->remoteCandidatesApplied.fetch_add(1, std::memory_order_relaxed);
+        recordPeerEvent(peer, std::string("remote-candidate-applied ") +
+                                  (source ? source : "unknown") +
+                                  " generation=" + std::to_string(candidateGeneration));
+    }
+}
+
+void VersusApp::queuePendingRemoteCandidateLocked(const signaling::SignalCandidate &cand,
+                                                  int64_t nowMs,
+                                                  uint64_t offerGeneration,
+                                                  uint64_t transportGeneration) {
     if (cand.uuid.empty() || cand.candidate.empty()) {
         spdlog::debug("[Signaling] Ignoring candidate without queueable peer identity uuid={} session={}",
                       cand.uuid,
@@ -6445,17 +9710,25 @@ void VersusApp::queuePendingRemoteCandidateLocked(const signaling::SignalCandida
         cand.mid,
         cand.mlineIndex,
         nowMs,
+        offerGeneration,
+        transportGeneration,
+        detail::candidateIceUfrag(cand.candidate),
     });
-    spdlog::info("[Signaling] Queued remote ICE candidate before peer session ready uuid={} session={} queued={}",
+    spdlog::info("[Signaling] Queued remote ICE candidate uuid={} session={} generation={} transportGeneration={} queued={}",
                  cand.uuid,
                  cand.session,
+                 offerGeneration,
+                 transportGeneration,
                  queue.size());
 }
 
 std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandidatesLocked(
     const std::string &uuid,
     const std::string &session,
-    int64_t nowMs) {
+    int64_t nowMs,
+    uint64_t offerGeneration,
+    uint64_t transportGeneration,
+    const std::string &answerIdentity) {
     std::vector<PendingRemoteCandidate> drained;
     if (uuid.empty()) {
         return drained;
@@ -6478,6 +9751,21 @@ std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandi
         for (const auto &pending : it->second) {
             if (nowMs - pending.queuedAtMs > kPendingRemoteCandidateTtlMs) {
                 ++expiredCount;
+                continue;
+            }
+            const bool generationMatches = pending.transportGeneration == transportGeneration ||
+                (pending.transportGeneration == 0 && transportGeneration == 1);
+            const bool ufragMatches = detail::answerIdentityMatchesCandidate(
+                answerIdentity,
+                pending.candidate);
+            if (!generationMatches || !ufragMatches) {
+                spdlog::warn("[Signaling] Dropped stale-generation/ufrag remote ICE candidate key={} queuedGeneration={} activeGeneration={} queuedTransportGeneration={} activeTransportGeneration={} candidateUfrag={}",
+                             key,
+                             pending.offerGeneration,
+                             offerGeneration,
+                             pending.transportGeneration,
+                             transportGeneration,
+                             pending.iceUfrag.empty() ? "none" : pending.iceUfrag);
                 continue;
             }
             drained.push_back(pending);
@@ -6509,19 +9797,39 @@ std::vector<VersusApp::PendingRemoteCandidate> VersusApp::takePendingRemoteCandi
     return drained;
 }
 
-void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer, const char *reason) {
+void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> &peer,
+                                             uint64_t offerGeneration,
+                                             uint64_t transportGeneration,
+                                             const std::string &answerIdentity,
+                                             const char *reason) {
     if (!peer || !peer->client) {
         return;
     }
 
     std::vector<PendingRemoteCandidate> pendingCandidates;
+    std::string activeWireSession;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        const auto it = peerSessions_.find(peer->uuid);
         if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
             return;
         }
-        pendingCandidates = takePendingRemoteCandidatesLocked(peer->uuid, peer->session, steadyNowMs());
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            if (peer->removed ||
+                peer->activeOfferGeneration != offerGeneration ||
+                peer->activeTransportGeneration != transportGeneration) {
+                return;
+            }
+            activeWireSession = peer->activeWireSession;
+        }
+        pendingCandidates = takePendingRemoteCandidatesLocked(
+            peer->uuid,
+            activeWireSession,
+            steadyNowMs(),
+            offerGeneration,
+            transportGeneration,
+            answerIdentity);
     }
 
     if (pendingCandidates.empty()) {
@@ -6531,13 +9839,39 @@ void VersusApp::drainPendingRemoteCandidates(const std::shared_ptr<PeerSession> 
     spdlog::info("[Signaling] Draining {} queued remote ICE candidates for {}:{} reason={}",
                  pendingCandidates.size(),
                  peer->uuid,
-                 peer->session,
+                 activeWireSession,
                  reason ? reason : "unspecified");
+    int appliedCount = 0;
+    std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
     for (const auto &pending : pendingCandidates) {
-        peer->client->addRemoteCandidate(pending.candidate, pending.mid, pending.mlineIndex);
+        bool stillCurrent = false;
+        uint64_t activeGeneration = 0;
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            activeGeneration = peer->activeOfferGeneration;
+            stillCurrent = !peer->removed &&
+                peer->activeTransportGeneration == transportGeneration &&
+                peer->activeWireSession == activeWireSession &&
+                !peer->transportRetired &&
+                detail::answerIdentityMatchesCandidate(
+                    peer->activeAnswerIdentity,
+                    pending.candidate);
+        }
+        if (!stillCurrent) {
+            spdlog::warn("[Signaling] Dropped stale-generation/ufrag remote ICE candidate during drain {}:{} queuedGeneration={} activeGeneration={}",
+                         peer->uuid,
+                         peer->session,
+                         pending.offerGeneration,
+                         activeGeneration);
+            continue;
+        }
+        if (peer->client->addRemoteCandidate(pending.candidate, pending.mid, pending.mlineIndex)) {
+            ++appliedCount;
+        }
     }
-    peer->remoteCandidatesApplied.fetch_add(static_cast<int>(pendingCandidates.size()), std::memory_order_relaxed);
-    recordPeerEvent(peer, "remote-candidates-drained count=" + std::to_string(pendingCandidates.size()));
+    peer->remoteCandidatesApplied.fetch_add(appliedCount, std::memory_order_relaxed);
+    recordPeerEvent(peer, "remote-candidates-drained count=" + std::to_string(appliedCount) +
+                              " generation=" + std::to_string(offerGeneration));
 }
 
 void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer, const char *reason) {
@@ -6545,25 +9879,35 @@ void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer, cons
         return;
     }
 
+    std::string activeWireSession;
+    {
+        std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+        if (peer->removed) {
+            return;
+        }
+        peer->removed = true;
+        peer->queuedOfferTransition = false;
+        peer->queuedOfferRebuild = false;
+        peer->queuedMediaPlan = false;
+        peer->renegotiationQueued.store(false, std::memory_order_relaxed);
+        activeWireSession = peer->activeWireSession;
+    }
+    cancelDuplicateOfferRecheck(peer, reason ? reason : "peer-removed");
+
     std::shared_ptr<PeerSession> removedPeer;
     bool hasRemainingPeers = true;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
-        const auto it = peerSessions_.find(makePeerKey(peer->uuid, peer->session));
+        const auto it = peerSessions_.find(peer->uuid);
         if (it == peerSessions_.end() || !it->second || it->second.get() != peer.get()) {
             return;
         }
         removedPeer = it->second;
-        {
-            std::lock_guard<std::mutex> diagnosticsLock(removedPeer->diagnosticsMutex);
-            removedPeer->lastRemovalReason = reason ? reason : "unspecified";
-        }
-        {
-            std::lock_guard<std::mutex> healthLock(healthStateMutex_);
-            lastPeerDisconnectReason_ = reason ? reason : "unspecified";
-        }
         peerSessions_.erase(it);
         pendingRemoteCandidates_.erase(makePeerKey(peer->uuid, peer->session));
+        if (activeWireSession != peer->session) {
+            pendingRemoteCandidates_.erase(makePeerKey(peer->uuid, activeWireSession));
+        }
         const bool hasOtherSameUuid = std::any_of(
             peerSessions_.begin(),
             peerSessions_.end(),
@@ -6574,6 +9918,15 @@ void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer, cons
             pendingRemoteCandidates_.erase(makePeerKey(peer->uuid, ""));
         }
         hasRemainingPeers = !peerSessions_.empty();
+    }
+
+    {
+        std::lock_guard<std::mutex> diagnosticsLock(removedPeer->diagnosticsMutex);
+        removedPeer->lastRemovalReason = reason ? reason : "unspecified";
+    }
+    {
+        std::lock_guard<std::mutex> healthLock(healthStateMutex_);
+        lastPeerDisconnectReason_ = reason ? reason : "unspecified";
     }
 
     spdlog::info("[App] Removed peer session {}:{} reason={} remainingPeers={}",
@@ -6590,17 +9943,27 @@ void VersusApp::removePeerSession(const std::shared_ptr<PeerSession> &peer, cons
 }
 
 void VersusApp::shutdownPeerClientAsync(const std::shared_ptr<PeerSession> &peer) {
-    if (!peer || !peer->client) {
+    if (!peer) {
         return;
     }
 
     reapCompletedPeerShutdowns();
-    peer->client->prepareForShutdown();
     auto shutdownFuture = std::async(std::launch::async, [peer]() {
         try {
-            if (peer->client) {
-                peer->client->shutdown();
+            // First block new callback admission and wait for callbacks already
+            // using App state. Executor-dispatched handlers have already left
+            // that callback gate, so wait for their separate lifetime lease
+            // before taking the client operation mutex. The order must remain
+            // callback gate -> handler lifetime -> client operation.
+            auto *client = peer->client.get();
+            if (!client) {
+                return;
             }
+            client->prepareForShutdown();
+            std::lock_guard<std::recursive_mutex> callbackOperationLock(
+                peer->callbackOperationMutex);
+            std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            client->shutdown();
         } catch (const std::exception &e) {
             spdlog::warn("[WebRTC] Peer shutdown threw exception: {}", e.what());
         } catch (...) {
@@ -6662,8 +10025,16 @@ void VersusApp::clearPeerSessions() {
     }
 
     for (const auto &peer : peers) {
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            peer->removed = true;
+            peer->queuedOfferTransition = false;
+            peer->queuedOfferRebuild = false;
+            peer->queuedMediaPlan = false;
+        }
         shutdownPeerClientAsync(peer);
     }
+    cancelDuplicateOfferRechecks(false, "clear-peer-sessions");
     std::lock_guard<std::mutex> lock(videoSendMutex_);
     shutdownLqEncoderLocked();
 }

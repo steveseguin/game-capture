@@ -39,6 +39,8 @@ QByteArray reasonPhrase(int status) {
             return "Unauthorized";
         case 404:
             return "Not Found";
+        case 409:
+            return "Conflict";
         case 500:
             return "Internal Server Error";
         default:
@@ -259,6 +261,10 @@ void LocalControlServer::setQuitCallback(QuitCallback callback) {
     quitCallback_ = std::move(callback);
 }
 
+void LocalControlServer::setRefreshPeerTransportsCallback(RefreshPeerTransportsCallback callback) {
+    refreshPeerTransportsCallback_ = std::move(callback);
+}
+
 QString LocalControlServer::defaultDiscoveryPath() {
     return appDataPath("control.json");
 }
@@ -439,6 +445,22 @@ void LocalControlServer::routeRequest(QTcpSocket *socket, const HttpRequest &req
             sendJson(socket, 200, QJsonDocument(response).toJson(QJsonDocument::Compact));
             return;
         }
+        if (command == "refresh_peer_transports") {
+            if (!refreshPeerTransportsCallback_) {
+                sendError(socket, 500, "Peer transport refresh callback unavailable");
+                return;
+            }
+            const int acceptedPeerCount = refreshPeerTransportsCallback_();
+            QJsonObject response{
+                {"ok", acceptedPeerCount > 0},
+                {"command", command},
+                {"accepted_peer_count", acceptedPeerCount},
+            };
+            sendJson(socket,
+                     acceptedPeerCount > 0 ? 200 : 409,
+                     QJsonDocument(response).toJson(QJsonDocument::Compact));
+            return;
+        }
         if (command == "issue_report") {
             const QByteArray response = issueReportJson(request.body);
             const QJsonDocument responseDoc = jsonDocumentFromBytes(response);
@@ -528,6 +550,11 @@ QByteArray LocalControlServer::schemaJson() const {
             {"body", QJsonObject{{"command", "export_diagnostics"}, {"path", "<optional-path>"}}},
         },
         QJsonObject{
+            {"command", "refresh_peer_transports"},
+            {"description", "Rebuild each active peer transport while preserving its logical VDO.Ninja peer session."},
+            {"body", QJsonObject{{"command", "refresh_peer_transports"}}},
+        },
+        QJsonObject{
             {"command", "issue_report"},
             {"description", "Write diagnostics, recent logs, and optional notes to a report JSON file."},
             {"body", QJsonObject{{"command", "issue_report"}, {"notes", "<optional-notes>"}}},
@@ -615,7 +642,7 @@ bool LocalControlServer::writeDiscoveryFile() {
             "/logs/recent",
             "/commands",
         }},
-        {"commands", QJsonArray{"stop", "quit", "export_diagnostics", "issue_report"}},
+        {"commands", QJsonArray{"stop", "quit", "export_diagnostics", "refresh_peer_transports", "issue_report"}},
     };
     QFile file(config_.discoveryPath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

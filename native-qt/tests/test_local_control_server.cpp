@@ -10,6 +10,8 @@
 #include <QTcpSocket>
 #include <QThread>
 
+#include <algorithm>
+
 #include "versus/control/local_control_server.h"
 
 namespace {
@@ -76,10 +78,12 @@ class TestLocalControlServer : public QObject {
   private slots:
     void testHealthAndDiscovery();
     void testAuthAndDiagnostics();
+    void testRoomQualityDiagnosticsPassThrough();
     void testSourcesAndIssueReport();
     void testRecentLogTailReadsFromEnd();
     void testIssueReportFailureReturnsServerError();
     void testStopCommand();
+    void testRefreshPeerTransportsCommand();
     void testFailedStartDoesNotRemoveDiscovery();
 };
 
@@ -126,6 +130,32 @@ void TestLocalControlServer::testAuthAndDiagnostics() {
     const QByteArray accepted = httpRequest(server.port(), authGet("/diagnostics"));
     QCOMPARE(statusCode(accepted), 200);
     QCOMPARE(responseObject(accepted).value("answer").toInt(), 42);
+}
+
+void TestLocalControlServer::testRoomQualityDiagnosticsPassThrough() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    versus::control::LocalControlServer server;
+    server.setDiagnosticsProvider([]() {
+        return QByteArray(
+            R"({"room_quality":{"requested":true,"effective":false,"reason":"codec-not-h264"}})");
+    });
+
+    versus::control::LocalControlServerConfig config;
+    config.token = "test-token";
+    config.discoveryPath = dir.filePath("control.json");
+    QVERIFY(server.start(config));
+
+    const QByteArray accepted = httpRequest(
+        server.port(),
+        authGet("/diagnostics"));
+    QCOMPARE(statusCode(accepted), 200);
+    const QJsonObject roomQuality =
+        responseObject(accepted).value("room_quality").toObject();
+    QCOMPARE(roomQuality.value("requested").toBool(), true);
+    QCOMPARE(roomQuality.value("effective").toBool(), false);
+    QCOMPARE(roomQuality.value("reason").toString(), QString("codec-not-h264"));
 }
 
 void TestLocalControlServer::testSourcesAndIssueReport() {
@@ -284,6 +314,56 @@ void TestLocalControlServer::testStopCommand() {
     QCOMPARE(statusCode(quitResponse), 200);
     QVERIFY(responseObject(quitResponse).value("ok").toBool());
     QTRY_VERIFY_WITH_TIMEOUT(quit, 1000);
+}
+
+void TestLocalControlServer::testRefreshPeerTransportsCommand() {
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    int callbackCount = 0;
+    versus::control::LocalControlServer server;
+    server.setRefreshPeerTransportsCallback([&callbackCount]() {
+        ++callbackCount;
+        return 2;
+    });
+
+    versus::control::LocalControlServerConfig config;
+    config.token = "test-token";
+    config.discoveryPath = dir.filePath("control.json");
+    QVERIFY(server.start(config));
+
+    const QByteArray rejected = httpRequest(
+        server.port(),
+        QByteArray("POST /commands HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 37\r\n\r\n") +
+            R"({"command":"refresh_peer_transports"})");
+    QCOMPARE(statusCode(rejected), 401);
+    QCOMPARE(callbackCount, 0);
+
+    const QByteArray accepted = httpRequest(
+        server.port(),
+        authPost("/commands", R"({"command":"refresh_peer_transports"})"));
+    QCOMPARE(statusCode(accepted), 200);
+    const QJsonObject response = responseObject(accepted);
+    QVERIFY(response.value("ok").toBool());
+    QCOMPARE(response.value("command").toString(), QString("refresh_peer_transports"));
+    QCOMPARE(response.value("accepted_peer_count").toInt(), 2);
+    QCOMPARE(callbackCount, 1);
+
+    server.setRefreshPeerTransportsCallback([]() {
+        return 0;
+    });
+    const QByteArray noOp = httpRequest(
+        server.port(),
+        authPost("/commands", R"({"command":"refresh_peer_transports"})"));
+    QCOMPARE(statusCode(noOp), 409);
+    QVERIFY(!responseObject(noOp).value("ok").toBool());
+    QCOMPARE(responseObject(noOp).value("accepted_peer_count").toInt(), 0);
+
+    const QJsonObject schema = responseObject(httpRequest(server.port(), authGet("/schema")));
+    const QJsonArray commands = schema.value("commands").toArray();
+    QVERIFY(std::any_of(commands.begin(), commands.end(), [](const QJsonValue &value) {
+        return value.toObject().value("command").toString() == "refresh_peer_transports";
+    }));
 }
 
 void TestLocalControlServer::testFailedStartDoesNotRemoveDiscovery() {

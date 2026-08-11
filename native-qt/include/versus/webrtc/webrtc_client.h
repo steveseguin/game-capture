@@ -1,8 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <rtc/common.hpp>
@@ -27,6 +29,7 @@ struct EncodedAudioPacket {
 struct PeerConfig {
     std::vector<IceServerConfig> iceServers;
     IceMode iceMode = IceMode::All;
+    TurnRegistryProvenance turnRegistry;
     enum class VideoCodec {
         H264,
         H265,
@@ -59,16 +62,36 @@ struct MediaPlanChange {
     bool audioAdded = false;
 };
 
+struct LocalCandidateDiagnostics {
+    bool gatheringComplete = false;
+    uint32_t callbacksInFlight = 0;
+    uint64_t activitySequence = 0;
+    uint64_t gatheringEpoch = 0;
+    uint64_t candidatesAfterGatheringComplete = 0;
+    bool overlappingGatheringDetected = false;
+};
+
+class WebRtcClientTestAccess;
+
 class WebRtcClient {
   public:
-    using IceCandidateCallback = std::function<void(const std::string &candidate, const std::string &mid, int mlineIndex)>;
-    using StateCallback = std::function<void(ConnectionState)>;
-    using KeyframeRequestCallback = std::function<void()>;
-    using DataMessageCallback = std::function<void(const std::string &message)>;
-    using DataChannelStateCallback = std::function<void(bool open)>;
+    using IceCandidateCallback = std::function<void(const std::string &candidate,
+                                                    const std::string &mid,
+                                                    int mlineIndex,
+                                                    uint64_t transportGeneration,
+                                                    uint64_t localCandidateContext)>;
+    using StateCallback = std::function<void(ConnectionState, uint64_t transportGeneration)>;
+    using KeyframeRequestCallback = std::function<void(uint64_t transportGeneration)>;
+    using DataMessageCallback = std::function<void(const std::string &message,
+                                                   uint64_t transportGeneration)>;
+    using DataChannelStateCallback = std::function<void(bool open, uint64_t transportGeneration)>;
 
     WebRtcClient();
     ~WebRtcClient();
+    WebRtcClient(const WebRtcClient &) = delete;
+    WebRtcClient &operator=(const WebRtcClient &) = delete;
+    WebRtcClient(WebRtcClient &&) = delete;
+    WebRtcClient &operator=(WebRtcClient &&) = delete;
 
     bool initialize(const PeerConfig &config);
     void shutdown();
@@ -76,7 +99,7 @@ class WebRtcClient {
     void setVideoCodec(PeerConfig::VideoCodec codec, bool enableAlphaTrack = false);
 
     bool setRemoteDescription(const std::string &sdp, const std::string &type);
-    std::string createOffer();
+    std::string createOffer(uint64_t localCandidateContext = 0);
     std::string createAnswer(const std::string &offer);
     bool addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex);
 
@@ -93,6 +116,9 @@ class WebRtcClient {
     bool sendAudio(const EncodedAudioPacket &packet);
     bool sendDataMessage(const std::string &message);
     bool isDataChannelOpen() const;
+    ConnectionState connectionState() const;
+    uint64_t transportGeneration() const;
+    LocalCandidateDiagnostics localCandidateDiagnostics() const;
     bool hasActiveVideoTrack() const;
     bool hasActiveAlphaVideoTrack() const;
     bool hasActiveAudioTrack() const;
@@ -100,8 +126,32 @@ class WebRtcClient {
     bool hasConfiguredAudioTrack() const;
 
   private:
+    friend class WebRtcClientTestAccess;
+
+    void setConcurrencyTestHooks(std::function<void(uint64_t)> beforeVideoSend,
+                                 std::function<void(uint64_t)> beforeCallbackAdmission,
+                                 std::function<void(uint64_t)> afterTransportClose,
+                                 std::function<void(uint64_t)> beforeStateCommit);
+    void invokeDataMessageCallbackForTesting(const std::string &message,
+                                             uint64_t transportGeneration);
+    void invokeIceCandidateCallbackForTesting(
+        const std::string &candidate,
+        const std::string &mid,
+        int mlineIndex,
+        uint64_t transportGeneration,
+        uint64_t localCandidateContext);
+    void invokeStateCallbackForTesting(ConnectionState state,
+                                       uint64_t transportGeneration);
+    void invokeDataChannelStateCallbackForTesting(bool open,
+                                                  uint64_t transportGeneration);
+    std::size_t callbacksInFlightForTesting() const;
+    std::pair<uint16_t, uint16_t> vp9SequenceNumbersForTesting() const;
+
     struct Impl;
-    std::unique_ptr<Impl> impl_;
+    // libdatachannel callbacks can finish after a transport has been retired.
+    // Keeping Impl shared lets callbacks hold only a weak reference instead of
+    // dereferencing a destroyed WebRtcClient.
+    std::shared_ptr<Impl> impl_;
 };
 
 }  // namespace versus::webrtc

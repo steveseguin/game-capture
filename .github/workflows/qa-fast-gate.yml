@@ -20,6 +20,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout ninja-plugin
+        uses: actions/checkout@v4
+        with:
+          repository: steveseguin/ninja-plugin
+          ref: main
+          path: ninja-plugin
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -30,6 +37,15 @@ jobs:
       - name: Install npm dependencies
         shell: pwsh
         run: npm ci --prefix native-qt
+
+      - name: Install browser runtimes
+        shell: pwsh
+        working-directory: native-qt
+        run: npx playwright install msedge firefox
+
+      - name: Validate release-gate wiring
+        shell: pwsh
+        run: npm --prefix native-qt run gate:release-wiring
 
       - name: Configure CMake (Release)
         shell: pwsh
@@ -44,7 +60,22 @@ jobs:
 
       - name: Run Fast QA Gate
         shell: pwsh
-        run: ./native-qt/qa/run-fast-gate.ps1 -BuildDir build-ci -Configuration Release
+        run: |
+          $ninjaPluginRepo = Join-Path $env:GITHUB_WORKSPACE "ninja-plugin"
+          $firefoxPath = if ($env:GAME_CAPTURE_FIREFOX_PATH) {
+            $env:GAME_CAPTURE_FIREFOX_PATH
+          } else {
+            Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.exe"
+          }
+          if (-not (Test-Path -LiteralPath $firefoxPath -PathType Leaf)) {
+            throw "Installed Mozilla Firefox is required: $firefoxPath"
+          }
+          ./native-qt/qa/run-fast-gate.ps1 `
+            -BuildDir build-ci `
+            -Configuration Release `
+            -FirefoxPath $firefoxPath `
+            -RoomAlphaPluginRepo $ninjaPluginRepo `
+            -SkipRoomAlpha
 
       - name: Upload QA Reports
         if: always()

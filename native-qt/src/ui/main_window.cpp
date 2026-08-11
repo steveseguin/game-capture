@@ -5,10 +5,14 @@
 #include <QClipboard>
 #include <QColorDialog>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDesktopServices>
 #include <QDir>
 #include <QCursor>
+#include <QElapsedTimer>
 #include <QEvent>
+#include <QEventLoop>
+#include <QFile>
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QFontDatabase>
@@ -18,6 +22,9 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QMenuBar>
 #include <QMetaObject>
 #include <QMessageBox>
@@ -27,6 +34,8 @@
 #include <QSettings>
 #include <QToolTip>
 #include <QScrollArea>
+#include <QScrollBar>
+#include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSplitter>
 #include <QStandardPaths>
@@ -35,6 +44,7 @@
 #include <QUrlQuery>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <spdlog/spdlog.h>
@@ -42,6 +52,11 @@
 #include <algorithm>
 #include <cmath>
 #include <exception>
+
+#ifdef _WIN32
+#include <windows.h>
+#include <tlhelp32.h>
+#endif
 
 namespace versus::ui {
 
@@ -178,7 +193,10 @@ QString colorToHex(const QColor &color) {
         : QStringLiteral("#00FF00");
 }
 
-versus::webrtc::IceMode iceModeFromUiValue(const QString &value) {
+versus::webrtc::IceMode MainWindow::iceModeFromUiValue(const QString &value) {
+    if (value == "all") {
+        return versus::webrtc::IceMode::All;
+    }
     if (value == "host-only") {
         return versus::webrtc::IceMode::HostOnly;
     }
@@ -245,6 +263,26 @@ class ComboWheelGuard final : public QObject {
     }
 };
 
+class SpinWheelGuard final : public QObject {
+  public:
+    explicit SpinWheelGuard(QObject *parent) : QObject(parent) {}
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() != QEvent::Wheel) {
+            return QObject::eventFilter(watched, event);
+        }
+
+        auto *spin = qobject_cast<QSpinBox *>(watched);
+        if (!spin || spin->hasFocus()) {
+            return QObject::eventFilter(watched, event);
+        }
+
+        event->ignore();
+        return true;
+    }
+};
+
 void restoreComboByData(QComboBox *combo, const QVariant &data) {
     if (!combo || !data.isValid()) {
         return;
@@ -259,7 +297,16 @@ void installComboWheelGuard(QComboBox *combo) {
     if (!combo) {
         return;
     }
+    combo->setFocusPolicy(Qt::StrongFocus);
     combo->installEventFilter(new ComboWheelGuard(combo));
+}
+
+void installSpinWheelGuard(QSpinBox *spin) {
+    if (!spin) {
+        return;
+    }
+    spin->setFocusPolicy(Qt::StrongFocus);
+    spin->installEventFilter(new SpinWheelGuard(spin));
 }
 
 void setSensitiveFieldVisible(QLineEdit *input, QPushButton *toggle, bool visible, const QString &label) {
@@ -491,6 +538,256 @@ FirewallRuleState queryFirewallRuleForCurrentExe() {
 }
 #endif
 
+namespace {
+
+constexpr int kUiWheelE2eDeadlineMs = 15000;
+constexpr int kUiWheelSettleMs = 140;
+
+void settleUiWheelEvents(int milliseconds = kUiWheelSettleMs) {
+    QEventLoop loop;
+    QTimer::singleShot(milliseconds, &loop, &QEventLoop::quit);
+    loop.exec(QEventLoop::AllEvents);
+}
+
+QString widgetIdentity(const QWidget *widget) {
+    if (!widget) {
+        return QStringLiteral("(none)");
+    }
+    if (!widget->objectName().isEmpty()) {
+        return widget->objectName();
+    }
+    return QString::fromLatin1(widget->metaObject()->className());
+}
+
+bool widgetIsOrDescendsFrom(const QWidget *widget, const QWidget *ancestor) {
+    return widget && ancestor && (widget == ancestor || ancestor->isAncestorOf(widget));
+}
+
+QString sha256ForFile(const QString &path, qint64 *sizeOut) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return QString();
+    }
+    if (sizeOut) {
+        *sizeOut = file.size();
+    }
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    while (!file.atEnd()) {
+        const QByteArray bytes = file.read(1024 * 1024);
+        if (bytes.isEmpty() && file.error() != QFile::NoError) {
+            return QString();
+        }
+        hash.addData(bytes);
+    }
+    return QString::fromLatin1(hash.result().toHex());
+}
+
+bool isLowercaseSha256(const QString &value) {
+    if (value.size() != 64) {
+        return false;
+    }
+    return std::all_of(value.cbegin(), value.cend(), [](QChar ch) {
+        return (ch >= QLatin1Char('0') && ch <= QLatin1Char('9')) ||
+               (ch >= QLatin1Char('a') && ch <= QLatin1Char('f'));
+    });
+}
+
+class WheelDeliveryObserver final : public QObject {
+  public:
+    void watch(QWidget *target) {
+        target_ = target;
+        total_ = 0;
+        spontaneous_ = 0;
+    }
+
+    int total() const { return total_; }
+    int spontaneous() const { return spontaneous_; }
+
+  protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() == QEvent::Wheel) {
+            auto *widget = qobject_cast<QWidget *>(watched);
+            if (widgetIsOrDescendsFrom(widget, target_)) {
+                ++total_;
+                if (event->spontaneous()) {
+                    ++spontaneous_;
+                }
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+  private:
+    QWidget *target_ = nullptr;
+    int total_ = 0;
+    int spontaneous_ = 0;
+};
+
+#ifdef _WIN32
+struct NativeInputBoundaryEvidence {
+    bool evaluated = false;
+    bool cursorPositionMatches = false;
+    bool targetHit = false;
+    bool foregroundMatches = false;
+    QString hitWidget;
+};
+
+QJsonObject nativeInputBoundaryEvidenceToJson(const NativeInputBoundaryEvidence &boundary) {
+    QJsonObject result;
+    result["evaluated"] = boundary.evaluated;
+    result["cursorPositionMatches"] = boundary.cursorPositionMatches;
+    result["targetHit"] = boundary.targetHit;
+    result["foregroundMatches"] = boundary.foregroundMatches;
+    result["hitWidget"] = boundary.hitWidget;
+    return result;
+}
+
+bool prepareNativeInputBoundary(
+    const QPoint &globalPosition,
+    QWidget *expectedTarget,
+    HWND expectedForegroundWindow,
+    NativeInputBoundaryEvidence *evidence) {
+    NativeInputBoundaryEvidence boundary;
+    boundary.evaluated = true;
+
+    // QWidget global coordinates are device-independent. Let Qt translate
+    // them to the active monitor's native coordinate space, then validate the
+    // exact boundary immediately before SendInput. A setup-time hit test is
+    // not sufficient because focus, foreground, or cursor state can change.
+    QCursor::setPos(globalPosition);
+    boundary.cursorPositionMatches = QCursor::pos() == globalPosition;
+    QWidget *hitWidget = QApplication::widgetAt(globalPosition);
+    boundary.hitWidget = widgetIdentity(hitWidget);
+    boundary.targetHit = widgetIsOrDescendsFrom(hitWidget, expectedTarget);
+    boundary.foregroundMatches = GetForegroundWindow() == expectedForegroundWindow;
+    if (evidence) {
+        *evidence = boundary;
+    }
+    return boundary.cursorPositionMatches && boundary.targetHit && boundary.foregroundMatches;
+}
+
+bool sendNativeWheelInput(
+    const QPoint &globalPosition,
+    int angleDeltaY,
+    QWidget *expectedTarget,
+    HWND expectedForegroundWindow,
+    NativeInputBoundaryEvidence *boundaryEvidence,
+    UINT *acceptedOut) {
+    if (acceptedOut) {
+        *acceptedOut = 0;
+    }
+    if (!prepareNativeInputBoundary(
+            globalPosition,
+            expectedTarget,
+            expectedForegroundWindow,
+            boundaryEvidence)) {
+        return false;
+    }
+
+    INPUT input{};
+    input.type = INPUT_MOUSE;
+    input.mi.dwFlags = MOUSEEVENTF_WHEEL;
+    input.mi.mouseData = static_cast<DWORD>(angleDeltaY);
+    const UINT accepted = SendInput(1, &input, sizeof(INPUT));
+    if (acceptedOut) {
+        *acceptedOut = accepted;
+    }
+    return accepted == 1;
+}
+
+bool sendNativePrimaryClick(
+    const QPoint &globalPosition,
+    QWidget *expectedTarget,
+    HWND expectedForegroundWindow,
+    NativeInputBoundaryEvidence *boundaryEvidence,
+    UINT *acceptedOut) {
+    if (acceptedOut) {
+        *acceptedOut = 0;
+    }
+    if (!prepareNativeInputBoundary(
+            globalPosition,
+            expectedTarget,
+            expectedForegroundWindow,
+            boundaryEvidence)) {
+        return false;
+    }
+
+    INPUT inputs[2]{};
+    inputs[0].type = INPUT_MOUSE;
+    inputs[0].mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+    inputs[1].type = INPUT_MOUSE;
+    inputs[1].mi.dwFlags = MOUSEEVENTF_LEFTUP;
+    const UINT accepted = SendInput(2, inputs, sizeof(INPUT));
+    if (acceptedOut) {
+        *acceptedOut = accepted;
+    }
+    return accepted == 2;
+}
+
+bool pathIsWithin(const QString &candidatePath, const QString &rootPath) {
+    const QString candidate = QDir::cleanPath(candidatePath);
+    const QString root = QDir::cleanPath(rootPath);
+    if (candidate.compare(root, Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    return candidate.startsWith(root + QLatin1Char('/'), Qt::CaseInsensitive);
+}
+
+QJsonObject collectRuntimeModuleEvidence(QStringList &setupFailures) {
+    QJsonObject runtime;
+    QJsonArray reportedModules;
+    int observedModuleCount = 0;
+    bool enumerationSucceeded = false;
+
+    const HANDLE snapshot = CreateToolhelp32Snapshot(
+        TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
+        GetCurrentProcessId());
+    if (snapshot == INVALID_HANDLE_VALUE) {
+        setupFailures.append(QStringLiteral("could not snapshot loaded runtime modules"));
+    } else {
+        MODULEENTRY32W module{};
+        module.dwSize = sizeof(module);
+        if (!Module32FirstW(snapshot, &module)) {
+            setupFailures.append(QStringLiteral("could not enumerate loaded runtime modules"));
+        } else {
+            enumerationSucceeded = true;
+            const QString systemRoot = QDir::cleanPath(
+                qEnvironmentVariable("SystemRoot", QStringLiteral("C:/Windows")));
+            do {
+                ++observedModuleCount;
+                QFileInfo moduleInfo(QString::fromWCharArray(module.szExePath));
+                QString canonicalPath = moduleInfo.canonicalFilePath();
+                if (canonicalPath.isEmpty()) {
+                    canonicalPath = moduleInfo.absoluteFilePath();
+                }
+                canonicalPath = QDir::cleanPath(canonicalPath);
+                const QString name = moduleInfo.fileName();
+                const bool qtRuntime = name.startsWith(QStringLiteral("Qt6"), Qt::CaseInsensitive) ||
+                    name.compare(QStringLiteral("qwindows.dll"), Qt::CaseInsensitive) == 0;
+                const bool system = pathIsWithin(canonicalPath, systemRoot);
+                if (!system || qtRuntime) {
+                    QJsonObject entry;
+                    entry["name"] = name;
+                    entry["path"] = QDir::toNativeSeparators(canonicalPath);
+                    entry["qtRuntime"] = qtRuntime;
+                    entry["system"] = system;
+                    reportedModules.append(entry);
+                }
+            } while (Module32NextW(snapshot, &module));
+        }
+        CloseHandle(snapshot);
+    }
+
+    runtime["moduleEnumerationSucceeded"] = enumerationSucceeded;
+    runtime["observedModuleCount"] = observedModuleCount;
+    runtime["reportedModuleCount"] = reportedModules.size();
+    runtime["loadedNonSystemOrQtModules"] = reportedModules;
+    return runtime;
+}
+#endif
+
+}  // namespace
+
 MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString &input) {
     ParsedStreamTarget parsed;
     const QString trimmed = input.trimmed();
@@ -528,17 +825,28 @@ MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString 
 }
 
 MainWindow::MainWindow(versus::app::VersusApp *core, QWidget *parent)
+    : MainWindow(core, RuntimeOptions{}, parent) {}
+
+MainWindow::MainWindow(
+    versus::app::VersusApp *core,
+    const RuntimeOptions &runtimeOptions,
+    QWidget *parent)
     : QMainWindow(parent)
-    , core_(core) {
+    , core_(core)
+    , runtimeOptions_(runtimeOptions) {
     setWindowTitle(APP_WINDOW_TITLE);
 
     setupMenuBar();
     applyDarkTheme();
     setupUI();
-    loadPersistedSettings();
-    connectPersistedSettingSignals();
-    setupTrayIcon();
-    QTimer::singleShot(0, this, &MainWindow::showFirewallWarningIfNeeded);
+    if (runtimeOptions_.persistedSettingsEnabled) {
+        loadPersistedSettings();
+        connectPersistedSettingSignals();
+    }
+    if (runtimeOptions_.systemIntegrationsEnabled) {
+        setupTrayIcon();
+        QTimer::singleShot(0, this, &MainWindow::showFirewallWarningIfNeeded);
+    }
 
     // Stats timer (update every second when live)
     statsTimer_ = new QTimer(this);
@@ -737,6 +1045,419 @@ MainWindow::~MainWindow() {
     }
 }
 
+int MainWindow::runUiWheelEndToEnd(
+    const QString &outputPath,
+    const QString &expectedExecutableSha256,
+    const QString &runId) {
+    QElapsedTimer elapsed;
+    elapsed.start();
+
+    const QStringList expectedControls{
+        QStringLiteral("viewerLimitSpin"),
+        QStringLiteral("primaryAudioGainSpin"),
+        QStringLiteral("microphoneAudioGainSpin")
+    };
+    const QStringList expectedDirections{
+        QStringLiteral("up"),
+        QStringLiteral("down")
+    };
+    const QStringList expectedModes{
+        QStringLiteral("unfocused"),
+        QStringLiteral("focused")
+    };
+
+    QJsonObject report;
+    report["schema"] = QStringLiteral("game-capture-ui-wheel-e2e/v1");
+    report["runId"] = runId;
+    report["appVersion"] = APP_VERSION_TEXT;
+    report["expectedControls"] = QJsonArray::fromStringList(expectedControls);
+    report["expectedDirections"] = QJsonArray::fromStringList(expectedDirections);
+    report["expectedModes"] = QJsonArray::fromStringList(expectedModes);
+    report["boundedDeadlineMs"] = kUiWheelE2eDeadlineMs;
+
+    QJsonObject inputEvidence;
+#ifdef _WIN32
+    inputEvidence["method"] = QStringLiteral("Win32.SendInput");
+    inputEvidence["wheelApi"] = QStringLiteral("user32!SendInput/MOUSEEVENTF_WHEEL");
+    inputEvidence["nativePlatform"] = true;
+#else
+    inputEvidence["method"] = QStringLiteral("unsupported");
+    inputEvidence["wheelApi"] = QStringLiteral("none");
+    inputEvidence["nativePlatform"] = false;
+#endif
+    report["input"] = inputEvidence;
+
+    QStringList setupFailures;
+    const QString applicationPath = QCoreApplication::applicationFilePath();
+    QFileInfo applicationInfo(applicationPath);
+    QString canonicalApplicationPath = applicationInfo.canonicalFilePath();
+    if (canonicalApplicationPath.isEmpty()) {
+        canonicalApplicationPath = applicationInfo.absoluteFilePath();
+    }
+    qint64 executableSize = -1;
+    const QString executableSha256 = sha256ForFile(
+        canonicalApplicationPath,
+        &executableSize);
+    if (!isLowercaseSha256(expectedExecutableSha256)) {
+        setupFailures.append(QStringLiteral("expected executable SHA-256 is not lowercase 64-hex"));
+    }
+    if (executableSha256.isEmpty()) {
+        setupFailures.append(QStringLiteral("could not hash the running executable"));
+    } else if (executableSha256 != expectedExecutableSha256) {
+        setupFailures.append(QStringLiteral("running executable SHA-256 does not match expected artifact"));
+    }
+    if (runId.size() != 32 || !std::all_of(runId.cbegin(), runId.cend(), [](QChar ch) {
+            return (ch >= QLatin1Char('0') && ch <= QLatin1Char('9')) ||
+                   (ch >= QLatin1Char('a') && ch <= QLatin1Char('f'));
+        })) {
+        setupFailures.append(QStringLiteral("run ID is not lowercase 32-hex"));
+    }
+    if (outputPath.trimmed().isEmpty()) {
+        setupFailures.append(QStringLiteral("output path is empty"));
+    }
+    if (runtimeOptions_.persistedSettingsEnabled) {
+        setupFailures.append(QStringLiteral("persisted settings are enabled in E2E mode"));
+    }
+    if (runtimeOptions_.systemIntegrationsEnabled) {
+        setupFailures.append(QStringLiteral("system integrations are enabled in E2E mode"));
+    }
+
+    QJsonObject artifact;
+    artifact["path"] = QDir::toNativeSeparators(canonicalApplicationPath);
+    artifact["size"] = executableSize;
+    artifact["sha256"] = executableSha256;
+    artifact["expectedSha256"] = expectedExecutableSha256;
+    artifact["identityMatches"] = !executableSha256.isEmpty() &&
+        executableSha256 == expectedExecutableSha256;
+    report["artifact"] = artifact;
+
+#ifdef _WIN32
+    report["runtime"] = collectRuntimeModuleEvidence(setupFailures);
+#else
+    QJsonObject runtime;
+    runtime["moduleEnumerationSucceeded"] = false;
+    runtime["observedModuleCount"] = 0;
+    runtime["reportedModuleCount"] = 0;
+    runtime["loadedNonSystemOrQtModules"] = QJsonArray();
+    report["runtime"] = runtime;
+#endif
+
+    QJsonObject persistence;
+    persistence["enabled"] = runtimeOptions_.persistedSettingsEnabled;
+    persistence["settingSignalsConnected"] = runtimeOptions_.persistedSettingsEnabled;
+    persistence["systemIntegrationsEnabled"] = runtimeOptions_.systemIntegrationsEnabled;
+    report["persistence"] = persistence;
+
+    QJsonArray cases;
+    int passedCaseCount = 0;
+
+#ifdef _WIN32
+    auto *scrollArea = findChild<QScrollArea *>(QStringLiteral("mainScrollArea"));
+    auto *scrollBar = scrollArea ? scrollArea->verticalScrollBar() : nullptr;
+    auto *focusAnchor = findChild<QLineEdit *>(QStringLiteral("passwordInput"));
+    if (!advancedToggle_) {
+        setupFailures.append(QStringLiteral("advanced settings toggle is missing"));
+    }
+    if (!scrollArea || !scrollBar || !scrollArea->viewport() || !scrollArea->widget()) {
+        setupFailures.append(QStringLiteral("main scroll area is incomplete"));
+    }
+    if (!focusAnchor) {
+        setupFailures.append(QStringLiteral("focus anchor is missing"));
+    }
+
+    if (advancedToggle_) {
+        advancedToggle_->setChecked(true);
+    }
+    const HWND previousForegroundWindow = GetForegroundWindow();
+    const QPoint previousCursorPosition = QCursor::pos();
+    resize(minimumSize());
+    showNormal();
+    show();
+    raise();
+    activateWindow();
+    settleUiWheelEvents(220);
+
+    const HWND testWindowHandle = reinterpret_cast<HWND>(winId());
+    ShowWindow(testWindowHandle, SW_RESTORE);
+    BringWindowToTop(testWindowHandle);
+    SetForegroundWindow(testWindowHandle);
+    bool foregroundAcquired = false;
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        settleUiWheelEvents(50);
+        if (GetForegroundWindow() == testWindowHandle) {
+            foregroundAcquired = true;
+            break;
+        }
+        BringWindowToTop(testWindowHandle);
+        SetForegroundWindow(testWindowHandle);
+    }
+    if (!foregroundAcquired) {
+        setupFailures.append(QStringLiteral("could not make the packaged MainWindow foreground"));
+    }
+    if (scrollBar && scrollBar->maximum() <= scrollBar->minimum()) {
+        setupFailures.append(QStringLiteral("advanced form does not overflow its containing page"));
+    }
+
+    QJsonObject windowEvidence;
+    windowEvidence["title"] = windowTitle();
+    windowEvidence["nativeHandleHex"] = QString::number(
+        reinterpret_cast<quintptr>(testWindowHandle),
+        16);
+    windowEvidence["foregroundAcquired"] = foregroundAcquired;
+    windowEvidence["scrollMinimum"] = scrollBar ? scrollBar->minimum() : -1;
+    windowEvidence["scrollMaximum"] = scrollBar ? scrollBar->maximum() : -1;
+    report["window"] = windowEvidence;
+
+    WheelDeliveryObserver observer;
+    qApp->installEventFilter(&observer);
+
+    const auto positionTarget = [&](QSpinBox *spin, QStringList &failures) {
+        if (!spin || !scrollArea || !scrollBar || !scrollArea->widget()) {
+            failures.append(QStringLiteral("target positioning prerequisites are missing"));
+            return QPoint();
+        }
+
+        const QPoint targetInContent = spin->mapTo(
+            scrollArea->widget(),
+            spin->rect().center());
+        const int movementMargin = std::max(24, scrollBar->pageStep() / 8);
+        const int lower = scrollBar->minimum() + movementMargin;
+        const int upper = scrollBar->maximum() - movementMargin;
+        if (lower >= upper) {
+            failures.append(QStringLiteral("scroll range has no two-direction movement margin"));
+        }
+        const int desired = std::clamp(
+            targetInContent.y() - (scrollArea->viewport()->height() / 2),
+            std::min(lower, upper),
+            std::max(lower, upper));
+        scrollBar->setValue(desired);
+        settleUiWheelEvents(80);
+
+        const QPoint globalCenter = spin->mapToGlobal(spin->rect().center());
+        const QRect viewportGlobalRect(
+            scrollArea->viewport()->mapToGlobal(QPoint(0, 0)),
+            scrollArea->viewport()->size());
+        if (!viewportGlobalRect.adjusted(2, 2, -2, -2).contains(globalCenter)) {
+            failures.append(QStringLiteral("target center is outside the visible scroll viewport"));
+        }
+        auto *hitWidget = QApplication::widgetAt(globalCenter);
+        if (!widgetIsOrDescendsFrom(hitWidget, spin)) {
+            failures.append(QStringLiteral("native cursor coordinate does not hit the intended spin box"));
+        }
+        return globalCenter;
+    };
+
+    struct DirectionSpec {
+        const char *name;
+        int delta;
+    };
+    const DirectionSpec directions[] = {
+        {"up", WHEEL_DELTA},
+        {"down", -WHEEL_DELTA}
+    };
+
+    for (const QString &controlName : expectedControls) {
+        auto *spin = findChild<QSpinBox *>(controlName);
+        if (!spin) {
+            setupFailures.append(QStringLiteral("missing required spin box: %1").arg(controlName));
+            continue;
+        }
+        spin->setEnabled(true);
+        const int baseline = spin->minimum() + ((spin->maximum() - spin->minimum()) / 2);
+
+        for (const QString &mode : expectedModes) {
+            for (const DirectionSpec &direction : directions) {
+                QJsonObject caseResult;
+                QStringList failures;
+                const QString directionName = QString::fromLatin1(direction.name);
+                caseResult["control"] = controlName;
+                caseResult["mode"] = mode;
+                caseResult["direction"] = directionName;
+                caseResult["angleDeltaY"] = direction.delta;
+                caseResult["inputMethod"] = QStringLiteral("Win32.SendInput");
+
+                spin->setValue(baseline);
+                spin->clearFocus();
+                if (focusAnchor) {
+                    focusAnchor->setFocus(Qt::OtherFocusReason);
+                }
+                settleUiWheelEvents(60);
+
+                const QPoint globalCenter = positionTarget(spin, failures);
+                caseResult["targetGlobalX"] = globalCenter.x();
+                caseResult["targetGlobalY"] = globalCenter.y();
+                caseResult["hitWidget"] = widgetIdentity(QApplication::widgetAt(globalCenter));
+
+                UINT acceptedClickInputs = 0;
+                NativeInputBoundaryEvidence focusClickBoundary;
+                bool focusSetupOk = true;
+                if (mode == QStringLiteral("focused")) {
+                    const int valueBeforeClick = spin->value();
+                    focusSetupOk = sendNativePrimaryClick(
+                        globalCenter,
+                        spin,
+                        testWindowHandle,
+                        &focusClickBoundary,
+                        &acceptedClickInputs);
+                    settleUiWheelEvents(100);
+                    if (!focusSetupOk) {
+                        failures.append(QStringLiteral("SendInput did not accept the native focus click"));
+                    }
+                    if (!widgetIsOrDescendsFrom(QApplication::focusWidget(), spin)) {
+                        failures.append(QStringLiteral("native click did not deliberately focus the spin box"));
+                    }
+                    if (spin->value() != valueBeforeClick) {
+                        failures.append(QStringLiteral("native focus click unexpectedly changed the value"));
+                    }
+                } else if (!focusAnchor || QApplication::focusWidget() != focusAnchor || spin->hasFocus()) {
+                    focusSetupOk = false;
+                    failures.append(QStringLiteral("unfocused setup did not retain the prior focus anchor"));
+                }
+                caseResult["focusClickSendInputAcceptedCount"] = static_cast<int>(acceptedClickInputs);
+                caseResult["focusClickBoundary"] = nativeInputBoundaryEvidenceToJson(focusClickBoundary);
+                caseResult["focusSetupOk"] = focusSetupOk;
+
+                const QWidget *focusBefore = QApplication::focusWidget();
+                const int valueBefore = spin->value();
+                const int scrollBefore = scrollBar ? scrollBar->value() : -1;
+                observer.watch(spin);
+
+                UINT acceptedWheelInputs = 0;
+                NativeInputBoundaryEvidence wheelBoundary;
+                const bool wheelAccepted = sendNativeWheelInput(
+                    globalCenter,
+                    direction.delta,
+                    spin,
+                    testWindowHandle,
+                    &wheelBoundary,
+                    &acceptedWheelInputs);
+                settleUiWheelEvents();
+
+                const QWidget *focusAfter = QApplication::focusWidget();
+                const int valueAfter = spin->value();
+                const int scrollAfter = scrollBar ? scrollBar->value() : -1;
+                const int observedWheelEvents = observer.total();
+                const int spontaneousWheelEvents = observer.spontaneous();
+
+                caseResult["sendInputAccepted"] = wheelAccepted;
+                caseResult["sendInputAcceptedCount"] = static_cast<int>(acceptedWheelInputs);
+                caseResult["wheelBoundary"] = nativeInputBoundaryEvidenceToJson(wheelBoundary);
+                caseResult["observedWheelEvents"] = observedWheelEvents;
+                caseResult["spontaneousWheelEvents"] = spontaneousWheelEvents;
+                caseResult["valueBefore"] = valueBefore;
+                caseResult["valueAfter"] = valueAfter;
+                caseResult["scrollBefore"] = scrollBefore;
+                caseResult["scrollAfter"] = scrollAfter;
+                caseResult["focusBefore"] = widgetIdentity(focusBefore);
+                caseResult["focusAfter"] = widgetIdentity(focusAfter);
+
+                if (!wheelAccepted || acceptedWheelInputs != 1) {
+                    failures.append(QStringLiteral("SendInput did not accept exactly one native wheel input"));
+                }
+                if (observedWheelEvents < 1 || spontaneousWheelEvents < 1) {
+                    failures.append(QStringLiteral("Qt did not observe a spontaneous wheel event on the target"));
+                }
+
+                if (mode == QStringLiteral("unfocused")) {
+                    const bool valueStable = valueAfter == valueBefore;
+                    const bool pageMoved = direction.delta > 0
+                        ? scrollAfter < scrollBefore
+                        : scrollAfter > scrollBefore;
+                    const bool focusRetained = focusAnchor && focusBefore == focusAnchor &&
+                        focusAfter == focusAnchor && !spin->hasFocus();
+                    caseResult["valueStable"] = valueStable;
+                    caseResult["pageMovedInDirection"] = pageMoved;
+                    caseResult["focusRetained"] = focusRetained;
+                    if (!valueStable) {
+                        failures.append(QStringLiteral("unfocused wheel changed the spin-box value"));
+                    }
+                    if (!pageMoved) {
+                        failures.append(QStringLiteral("unfocused wheel did not move the containing page"));
+                    }
+                    if (!focusRetained) {
+                        failures.append(QStringLiteral("unfocused wheel changed keyboard focus"));
+                    }
+                } else {
+                    const bool valueEdited = direction.delta > 0
+                        ? valueAfter > valueBefore
+                        : valueAfter < valueBefore;
+                    const bool pageStayed = scrollAfter == scrollBefore;
+                    const bool focusRetained = widgetIsOrDescendsFrom(focusAfter, spin);
+                    caseResult["valueEditedInDirection"] = valueEdited;
+                    caseResult["pageStayed"] = pageStayed;
+                    caseResult["focusRetained"] = focusRetained;
+                    if (!valueEdited) {
+                        failures.append(QStringLiteral("focused wheel did not use native value editing"));
+                    }
+                    if (!pageStayed) {
+                        failures.append(QStringLiteral("focused wheel moved the containing page"));
+                    }
+                    if (!focusRetained) {
+                        failures.append(QStringLiteral("focused wheel lost the spin-box focus"));
+                    }
+                }
+
+                const bool casePassed = failures.isEmpty();
+                caseResult["pass"] = casePassed;
+                caseResult["failures"] = QJsonArray::fromStringList(failures);
+                cases.append(caseResult);
+                if (casePassed) {
+                    ++passedCaseCount;
+                }
+            }
+        }
+    }
+
+    qApp->removeEventFilter(&observer);
+    hide();
+    settleUiWheelEvents(40);
+    if (previousForegroundWindow && previousForegroundWindow != testWindowHandle) {
+        SetForegroundWindow(previousForegroundWindow);
+        settleUiWheelEvents(40);
+    }
+    QCursor::setPos(previousCursorPosition);
+    settleUiWheelEvents(40);
+#else
+    setupFailures.append(QStringLiteral("native wheel E2E requires Windows SendInput"));
+#endif
+
+    const int expectedCaseCount = expectedControls.size() *
+        expectedDirections.size() * expectedModes.size();
+    if (cases.size() != expectedCaseCount) {
+        setupFailures.append(
+            QStringLiteral("expected %1 interaction cases but recorded %2")
+                .arg(expectedCaseCount)
+                .arg(cases.size()));
+    }
+
+    const qint64 elapsedMs = elapsed.elapsed();
+    if (elapsedMs > kUiWheelE2eDeadlineMs) {
+        setupFailures.append(QStringLiteral("interaction workflow exceeded its bounded deadline"));
+    }
+    const bool passed = setupFailures.isEmpty() &&
+        cases.size() == expectedCaseCount &&
+        passedCaseCount == expectedCaseCount;
+
+    report["cases"] = cases;
+    report["caseCount"] = cases.size();
+    report["expectedCaseCount"] = expectedCaseCount;
+    report["passedCaseCount"] = passedCaseCount;
+    report["elapsedMs"] = elapsedMs;
+    report["setupFailures"] = QJsonArray::fromStringList(setupFailures);
+    report["pass"] = passed;
+
+    const QString absoluteOutputPath = QFileInfo(outputPath).absoluteFilePath();
+    QSaveFile output(absoluteOutputPath);
+    if (!output.open(QIODevice::WriteOnly)) {
+        return 74;
+    }
+    const QByteArray encoded = QJsonDocument(report).toJson(QJsonDocument::Indented);
+    if (output.write(encoded) != encoded.size() || !output.commit()) {
+        return 75;
+    }
+    return passed ? 0 : 41;
+}
+
 bool MainWindow::hasPendingAsyncOperation() const {
     const bool startPending = startFuture_.isValid() && !startFuture_.isFinished();
     const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
@@ -790,6 +1511,10 @@ void MainWindow::requestStop() {
 }
 
 void MainWindow::loadPersistedSettings() {
+    if (!runtimeOptions_.persistedSettingsEnabled) {
+        return;
+    }
+
     loadingPersistedSettings_ = true;
 
     QSettings settings = makeUiSettings();
@@ -821,9 +1546,8 @@ void MainWindow::loadPersistedSettings() {
     if (viewerLimitSpin_) {
         viewerLimitSpin_->setValue(settings.value("stream/maxViewers", 10).toInt());
     }
-    if (roomModeLqCheck_) {
-        roomModeLqCheck_->setChecked(settings.value("stream/roomModeLqEnabled", true).toBool());
-    }
+    roomModeLqPreference_ =
+        settings.value("stream/roomModeLqEnabled", true).toBool();
     if (remoteControlTokenInput_) {
         remoteControlTokenInput_->setText(settings.value("control/token").toString());
     }
@@ -904,7 +1628,7 @@ void MainWindow::loadPersistedSettings() {
 }
 
 void MainWindow::savePersistedSettings() {
-    if (loadingPersistedSettings_) {
+    if (!runtimeOptions_.persistedSettingsEnabled || loadingPersistedSettings_) {
         return;
     }
 
@@ -915,7 +1639,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("stream/password", passwordInput_ ? passwordInput_->text() : QString());
     settings.setValue("stream/label", labelInput_ ? labelInput_->text() : QString());
     settings.setValue("stream/maxViewers", viewerLimitSpin_ ? viewerLimitSpin_->value() : 10);
-    settings.setValue("stream/roomModeLqEnabled", roomModeLqCheck_ ? roomModeLqCheck_->isChecked() : true);
+    settings.setValue("stream/roomModeLqEnabled", roomModeLqPreference_);
     settings.setValue("ui/advancedVisible", advancedToggle_ ? advancedToggle_->isChecked() : false);
     settings.setValue("ui/minimizeToTrayOnClose", minimizeToTrayOnClose_);
     settings.setValue("video/resolution", resolutionSelect_ ? resolutionSelect_->currentData().toString() : QString("1920x1080"));
@@ -990,7 +1714,10 @@ void MainWindow::connectPersistedSettingSignals() {
         connect(viewerLimitSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
     }
     if (roomModeLqCheck_) {
-        connect(roomModeLqCheck_, &QCheckBox::toggled, this, saveNow);
+        connect(roomModeLqCheck_, &QCheckBox::toggled, this, [this, saveNow](bool checked) {
+            roomModeLqPreference_ = checked;
+            saveNow();
+        });
     }
     if (iceModeSelect_) {
         connect(iceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
@@ -1390,10 +2117,12 @@ void MainWindow::setupUI() {
     advancedForm->addRow("Bitrate Preset", bitrateSelect_);
 
     customBitrateSpin_ = new QSpinBox(this);
+    customBitrateSpin_->setObjectName("customBitrateSpin");
     customBitrateSpin_->setRange(500, 50000);
     customBitrateSpin_->setValue(12000);
     customBitrateSpin_->setSuffix(" kbps");
     customBitrateSpin_->setEnabled(false);
+    installSpinWheelGuard(customBitrateSpin_);
     advancedForm->addRow("Custom Bitrate", customBitrateSpin_);
 
     viewerLimitSpin_ = new QSpinBox(this);
@@ -1401,14 +2130,40 @@ void MainWindow::setupUI() {
     viewerLimitSpin_->setRange(1, 50);
     viewerLimitSpin_->setValue(10);
     viewerLimitSpin_->setSuffix(" viewers");
+    installSpinWheelGuard(viewerLimitSpin_);
     advancedForm->addRow("Max Viewers", viewerLimitSpin_);
 
-    roomModeLqCheck_ = new QCheckBox("Use 640x360 for room guests/directors/viewers", this);
+    auto *roomQualityField = new QWidget(this);
+    auto *roomQualityLayout = new QVBoxLayout(roomQualityField);
+    roomQualityLayout->setContentsMargins(0, 0, 0, 0);
+    roomQualityLayout->setSpacing(2);
+
+    roomModeLqCheck_ = new QCheckBox(
+        "Use 640x360 for room guests/directors/viewers",
+        roomQualityField);
     roomModeLqCheck_->setObjectName("roomModeLqCheck");
     roomModeLqCheck_->setChecked(true);
     roomModeLqCheck_->setToolTip(
         "Enabled: non-scene room peers use the low-quality 640x360 tier. Disabled: room peers stay on the full-resolution HQ path.");
-    advancedForm->addRow("Room Quality", roomModeLqCheck_);
+    roomQualityLayout->addWidget(roomModeLqCheck_);
+
+    roomModeLqAvailabilityLabel_ = new QLabel(
+        "Room Quality is unavailable with this codec. Select H.264 to use it.",
+        roomQualityField);
+    roomModeLqAvailabilityLabel_->setObjectName("roomModeLqAvailabilityLabel");
+    roomModeLqAvailabilityLabel_->setWordWrap(true);
+    roomModeLqAvailabilityLabel_->setContentsMargins(0, 0, 0, 0);
+    roomModeLqAvailabilityLabel_->setStyleSheet(
+        QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+    roomModeLqAvailabilityLabel_->setAccessibleName(
+        "Room Quality unavailable. H.264 is required.");
+    roomModeLqAvailabilityLabel_->setAccessibleDescription(
+        "Your saved Room Quality preference will be restored when H.264 is selected.");
+    roomModeLqAvailabilityLabel_->setBuddy(roomModeLqCheck_);
+    roomModeLqAvailabilityLabel_->hide();
+    roomQualityLayout->addWidget(roomModeLqAvailabilityLabel_);
+
+    advancedForm->addRow("Room Quality", roomQualityField);
 
     iceModeSelect_ = new QComboBox(this);
     iceModeSelect_->setObjectName("iceModeSelect");
@@ -1446,6 +2201,7 @@ void MainWindow::setupUI() {
     primaryAudioGainSpin_->setValue(100);
     primaryAudioGainSpin_->setSuffix("%");
     primaryAudioGainSpin_->setToolTip("Applies gain to the selected game/app audio before mixing.");
+    installSpinWheelGuard(primaryAudioGainSpin_);
     advancedForm->addRow("Game Audio Gain", primaryAudioGainSpin_);
 
     microphoneAudioGainSpin_ = new QSpinBox(this);
@@ -1454,6 +2210,7 @@ void MainWindow::setupUI() {
     microphoneAudioGainSpin_->setValue(100);
     microphoneAudioGainSpin_->setSuffix("%");
     microphoneAudioGainSpin_->setToolTip("Applies gain to the added microphone/input before mixing.");
+    installSpinWheelGuard(microphoneAudioGainSpin_);
     advancedForm->addRow("Mic Gain", microphoneAudioGainSpin_);
 
     audioLimiterCheck_ = new QCheckBox("Limit mixed output", this);
@@ -1549,11 +2306,10 @@ void MainWindow::setupUI() {
 
     ffmpegOptionsInput_ = new QLineEdit(this);
     ffmpegOptionsInput_->setObjectName("ffmpegOptionsInput");
-    ffmpegOptionsInput_->setPlaceholderText("Optional ffmpeg options (VP9: -g 30 -keyint_min 30; NVENC: -preset p4 -rc cbr)");
+    ffmpegOptionsInput_->setPlaceholderText("Optional FFmpeg options (for example: -threads 6 or -preset p4)");
     ffmpegOptionsInput_->setToolTip(
-        "Advanced FFmpeg output options are appended after Game Capture defaults. VP9 already uses "
-        "-deadline realtime -cpu-used 8. For slow CPUs, lower resolution/FPS first; advanced VP9 users can try "
-        "-g 30 -keyint_min 30 to reduce all-keyframe cost at the expense of slower recovery after packet loss or late joins.");
+        "Advanced FFmpeg output options are preserved where safe. During dual-track transparency, Game Capture "
+        "enforces the VP9 codec, zero encoder lag, and an all-keyframe GOP; conflicting options are ignored and logged.");
     ffmpegOptionsInput_->setEnabled(false);
     advancedForm->addRow("FFmpeg Options", ffmpegOptionsInput_);
 
@@ -1751,6 +2507,7 @@ void MainWindow::setupUI() {
     layout->addStretch();
 
     auto *scrollArea = new QScrollArea(this);
+    scrollArea->setObjectName("mainScrollArea");
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setWidget(content);
@@ -2135,6 +2892,103 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
     microphoneDeviceSelect_->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
 }
 
+bool MainWindow::alphaWorkflowEffectiveForSelectedCodec() const {
+    if (!alphaWorkflowCheck_ || !alphaWorkflowCheck_->isChecked()) {
+        return false;
+    }
+    const versus::video::VideoCodec selectedCodec = codecFromUiValue(
+        codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
+    return codecSupportsAlphaWorkflow(selectedCodec);
+}
+
+versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
+    int width,
+    int height,
+    int fps,
+    int bitrate) const {
+    versus::video::EncoderConfig config;
+    config.codec = codecFromUiValue(
+        codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
+    config.enableAlpha = alphaWorkflowEffectiveForSelectedCodec();
+    config.width = width;
+    config.height = height;
+    config.frameRate = fps > 0 ? fps : 60;
+    config.bitrate = bitrate > 0 ? bitrate : 12000;
+    config.minBitrate = std::max(500, config.bitrate / 2);
+    config.maxBitrate = std::max(config.bitrate + 4000, (config.bitrate * 3) / 2);
+    config.ffmpegPath = ffmpegPathInput_
+        ? ffmpegPathInput_->text().trimmed().toStdString()
+        : std::string();
+    config.ffmpegOptions = ffmpegOptionsInput_
+        ? ffmpegOptionsInput_->text().toStdString()
+        : std::string();
+    config.alphaBackgroundMode = alphaBackgroundModeFromUiValue(
+        alphaBackgroundModeSelect_
+            ? alphaBackgroundModeSelect_->currentData().toString()
+            : QString("none"));
+    config.alphaBackgroundRed = static_cast<uint8_t>(
+        std::clamp(alphaBackgroundColor_.red(), 0, 255));
+    config.alphaBackgroundGreen = static_cast<uint8_t>(
+        std::clamp(alphaBackgroundColor_.green(), 0, 255));
+    config.alphaBackgroundBlue = static_cast<uint8_t>(
+        std::clamp(alphaBackgroundColor_.blue(), 0, 255));
+
+    if (config.enableAlpha && !codecSupportsAlphaWorkflow(config.codec)) {
+        config.enableAlpha = false;
+    }
+    if (config.enableAlpha) {
+        config.alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
+    }
+
+    const QString encoderMode = encoderSelect_
+        ? encoderSelect_->currentData().toString()
+        : QString("auto");
+    if (encoderMode == "nvenc") {
+        config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+    } else if (encoderMode == "ffmpeg_nvenc") {
+        config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+        config.forceFfmpegNvenc = true;
+    } else if (encoderMode == "qsv") {
+        config.preferredHardware = versus::video::HardwareEncoder::QuickSync;
+    } else if (encoderMode == "amf") {
+        config.preferredHardware = versus::video::HardwareEncoder::AMF;
+    } else if (encoderMode == "software") {
+        config.preferredHardware = versus::video::HardwareEncoder::None;
+    } else {
+        config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+    }
+    return config;
+}
+
+versus::app::StartOptions MainWindow::buildStartOptionsFromUi() const {
+    const QString streamTargetRaw = streamIdInput_
+        ? streamIdInput_->text().trimmed()
+        : QString();
+    const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
+    QString resolvedStreamId = parsedTarget.streamId;
+    if (resolvedStreamId.isEmpty()) {
+        resolvedStreamId = streamTargetRaw;
+    }
+
+    const QString roomText = roomInput_ ? roomInput_->text().trimmed() : QString();
+    const QString passwordText = passwordInput_ ? passwordInput_->text().trimmed() : QString();
+
+    versus::app::StartOptions options;
+    options.streamId = resolvedStreamId.toStdString();
+    options.room = roomText.isEmpty() ? parsedTarget.room.toStdString() : roomText.toStdString();
+    options.password = passwordText.isEmpty() ? parsedTarget.password.toStdString() : passwordText.toStdString();
+    options.label = labelInput_ ? labelInput_->text().toStdString() : std::string();
+    options.maxViewers = viewerLimitSpin_ ? viewerLimitSpin_->value() : 10;
+    options.roomModeLqEnabled = roomModeLqPreference_;
+    options.iceMode = iceModeFromUiValue(
+        iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
+    options.remoteControlEnabled = remoteControlCheck_ ? remoteControlCheck_->isChecked() : false;
+    options.remoteControlToken = remoteControlTokenInput_
+        ? remoteControlTokenInput_->text().trimmed().toStdString()
+        : std::string();
+    return options;
+}
+
 void MainWindow::onGoLiveClicked() {
     if (!core_) {
         return;
@@ -2263,30 +3117,11 @@ void MainWindow::onGoLiveClicked() {
             : (cameraMode ? 30 : 60);
         const int bitrate = selectedBitrateKbps();
 
-        versus::video::EncoderConfig config;
-        config.codec = codecFromUiValue(codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
-        config.enableAlpha = alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false;
-        config.width = width;
-        config.height = height;
-        config.frameRate = fps > 0 ? fps : 60;
-        config.bitrate = bitrate > 0 ? bitrate : 12000;
-        config.minBitrate = std::max(500, config.bitrate / 2);
-        config.maxBitrate = std::max(config.bitrate + 4000, (config.bitrate * 3) / 2);
-        config.ffmpegPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed().toStdString() : std::string();
-        config.ffmpegOptions = ffmpegOptionsInput_ ? ffmpegOptionsInput_->text().toStdString() : std::string();
-        config.alphaBackgroundMode = alphaBackgroundModeFromUiValue(
-            alphaBackgroundModeSelect_ ? alphaBackgroundModeSelect_->currentData().toString() : QString("none"));
-        config.alphaBackgroundRed = static_cast<uint8_t>(std::clamp(alphaBackgroundColor_.red(), 0, 255));
-        config.alphaBackgroundGreen = static_cast<uint8_t>(std::clamp(alphaBackgroundColor_.green(), 0, 255));
-        config.alphaBackgroundBlue = static_cast<uint8_t>(std::clamp(alphaBackgroundColor_.blue(), 0, 255));
-
-        if (config.enableAlpha && !codecSupportsAlphaWorkflow(config.codec)) {
-            config.enableAlpha = false;
-        }
-        if (config.enableAlpha) {
-            config.alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
-        } else if (config.alphaBackgroundMode != versus::video::AlphaBackgroundMode::None &&
-                   config.codec == versus::video::VideoCodec::VP9) {
+        versus::video::EncoderConfig config =
+            buildEncoderConfigFromUi(width, height, fps, bitrate);
+        if (!config.enableAlpha &&
+            config.alphaBackgroundMode != versus::video::AlphaBackgroundMode::None &&
+            config.codec == versus::video::VideoCodec::VP9) {
             spdlog::info("[UI] VP9 selected with alpha background mode; true alpha track is disabled");
         }
 
@@ -2305,20 +3140,6 @@ void MainWindow::onGoLiveClicked() {
             static_cast<float>(microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100) / 100.0f;
         const bool audioLimiterEnabled = audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
-        if (encoderMode == "nvenc") {
-            config.preferredHardware = versus::video::HardwareEncoder::NVENC;
-        } else if (encoderMode == "ffmpeg_nvenc") {
-            config.preferredHardware = versus::video::HardwareEncoder::NVENC;
-            config.forceFfmpegNvenc = true;
-        } else if (encoderMode == "qsv") {
-            config.preferredHardware = versus::video::HardwareEncoder::QuickSync;
-        } else if (encoderMode == "amf") {
-            config.preferredHardware = versus::video::HardwareEncoder::AMF;
-        } else if (encoderMode == "software") {
-            config.preferredHardware = versus::video::HardwareEncoder::None;
-        } else {
-            config.preferredHardware = versus::video::HardwareEncoder::NVENC;
-        }
         spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={} alphaBackground={}",
                      config.width,
                      config.height,
@@ -2364,7 +3185,6 @@ void MainWindow::onGoLiveClicked() {
             return;
         }
 
-        versus::app::StartOptions options;
         const QString streamTargetRaw = streamIdInput_->text().trimmed();
         const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
         if (!streamTargetRaw.isEmpty() && !parsedTarget.valid) {
@@ -2377,21 +3197,7 @@ void MainWindow::onGoLiveClicked() {
             resolvedStreamId = streamTargetRaw;
         }
 
-        const QString roomText = roomInput_ ? roomInput_->text().trimmed() : QString();
-        const QString passwordText = passwordInput_ ? passwordInput_->text().trimmed() : QString();
-
-        options.streamId = resolvedStreamId.toStdString();
-        options.room = roomText.isEmpty() ? parsedTarget.room.toStdString() : roomText.toStdString();
-        options.password = passwordText.isEmpty() ? parsedTarget.password.toStdString() : passwordText.toStdString();
-        options.label = labelInput_ ? labelInput_->text().toStdString() : std::string();
-        options.maxViewers = viewerLimitSpin_ ? viewerLimitSpin_->value() : 10;
-        options.roomModeLqEnabled = roomModeLqCheck_ ? roomModeLqCheck_->isChecked() : true;
-        options.iceMode = iceModeFromUiValue(
-            iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
-        options.remoteControlEnabled = remoteControlCheck_ ? remoteControlCheck_->isChecked() : false;
-        options.remoteControlToken = remoteControlTokenInput_
-            ? remoteControlTokenInput_->text().trimmed().toStdString()
-            : std::string();
+        versus::app::StartOptions options = buildStartOptionsFromUi();
 
         if (parsedTarget.isUrl) {
             streamIdInput_->setText(resolvedStreamId);
@@ -2800,7 +3606,27 @@ void MainWindow::onAdvancedToggleChanged(bool checked) {
     advancedPanel_->setVisible(checked);
 }
 
+void MainWindow::syncRoomModeLqUiState() {
+    if (!roomModeLqCheck_) {
+        return;
+    }
+
+    const bool available =
+        codecSelect_ &&
+        codecSelect_->currentData().toString() == QStringLiteral("h264");
+    {
+        QSignalBlocker blocker(roomModeLqCheck_);
+        roomModeLqCheck_->setChecked(available && roomModeLqPreference_);
+    }
+    roomModeLqCheck_->setEnabled(configControlsEnabled_ && available);
+
+    if (roomModeLqAvailabilityLabel_) {
+        roomModeLqAvailabilityLabel_->setVisible(!available);
+    }
+}
+
 void MainWindow::syncCodecUiState() {
+    syncRoomModeLqUiState();
     if (!encoderSelect_ || !codecSelect_) {
         return;
     }
@@ -2808,29 +3634,25 @@ void MainWindow::syncCodecUiState() {
     const versus::video::VideoCodec selectedCodec = codecFromUiValue(codecSelect_->currentData().toString());
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
-    const bool alphaWorkflowSelected = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+    const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
     const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || usesExternalFfmpeg || alphaWorkflowSelected;
     if (ffmpegPathInput_) {
-        ffmpegPathInput_->setEnabled(enableFfmpegFields);
+        ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
     if (ffmpegOptionsInput_) {
-        ffmpegOptionsInput_->setEnabled(enableFfmpegFields);
+        ffmpegOptionsInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
 
     const bool supportsAlpha = codecSupportsAlphaWorkflow(selectedCodec);
     if (alphaWorkflowCheck_) {
-        if (!supportsAlpha && alphaWorkflowCheck_->isChecked()) {
-            alphaWorkflowCheck_->setChecked(false);
-        }
-        alphaWorkflowCheck_->setEnabled(supportsAlpha);
+        alphaWorkflowCheck_->setEnabled(configControlsEnabled_ && supportsAlpha);
         alphaWorkflowCheck_->setText(alphaWorkflowTextFor(selectedCodec));
         alphaWorkflowCheck_->setToolTip(alphaWorkflowTooltipFor(selectedCodec));
     }
-    const bool alphaWorkflowEnabled =
-        alphaWorkflowCheck_ &&
-        alphaWorkflowCheck_->isChecked();
+    const bool alphaWorkflowEnabled = alphaWorkflowSelected;
     if (alphaBackgroundModeSelect_) {
-        alphaBackgroundModeSelect_->setEnabled(!alphaWorkflowEnabled);
+        alphaBackgroundModeSelect_->setEnabled(
+            configControlsEnabled_ && !alphaWorkflowEnabled);
         alphaBackgroundModeSelect_->setToolTip(alphaWorkflowEnabled
             ? "Alpha-preserving encode is enabled, so Game Capture keeps the source alpha instead of compositing a background."
             : "Composites transparent BGRA/Spout2 pixels over a solid color before encoding. Use chroma background with H.264/NVENC when true VP9 alpha is too CPU-heavy.");
@@ -2839,7 +3661,8 @@ void MainWindow::syncCodecUiState() {
         const bool backgroundEnabled = alphaBackgroundModeSelect_ &&
             alphaBackgroundModeSelect_->currentData().toString() != "none" &&
             !alphaWorkflowEnabled;
-        alphaBackgroundColorButton_->setEnabled(backgroundEnabled);
+        alphaBackgroundColorButton_->setEnabled(
+            configControlsEnabled_ && backgroundEnabled);
     }
 
     if (codecSelect_) {
@@ -2877,7 +3700,7 @@ void MainWindow::refreshFfmpegStatus() {
     const QString configuredPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString();
     const versus::video::FfmpegProbeInfo info =
         versus::video::VideoEncoder::probeFfmpeg(configuredPath.toStdString());
-    const bool alphaWorkflowSelected = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+    const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
     const auto selectedCodec = codecSelect_
         ? codecFromUiValue(codecSelect_->currentData().toString())
         : versus::video::VideoCodec::H264;
@@ -3079,6 +3902,8 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
 }
 
 void MainWindow::setConfigControlsEnabled(bool enabled) {
+    configControlsEnabled_ = enabled;
+
     if (windowListWidget_) {
         windowListWidget_->setEnabled(enabled);
     }
@@ -3134,9 +3959,6 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (viewerLimitSpin_) {
         viewerLimitSpin_->setEnabled(enabled);
     }
-    if (roomModeLqCheck_) {
-        roomModeLqCheck_->setEnabled(enabled);
-    }
     if (iceModeSelect_) {
         iceModeSelect_->setEnabled(enabled);
     }
@@ -3176,31 +3998,10 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (codecSelect_) {
         codecSelect_->setEnabled(enabled);
     }
-    if (alphaWorkflowCheck_) {
-        alphaWorkflowCheck_->setEnabled(enabled && codecSupportsAlphaWorkflow(
-            codecFromUiValue(codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"))));
-    }
-    if (alphaBackgroundModeSelect_) {
-        const bool alphaWorkflowEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
-        alphaBackgroundModeSelect_->setEnabled(enabled && !alphaWorkflowEnabled);
-    }
-    if (alphaBackgroundColorButton_) {
-        const bool backgroundSelected = alphaBackgroundModeSelect_ &&
-            alphaBackgroundModeSelect_->currentData().toString() != "none";
-        const bool alphaWorkflowEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
-        alphaBackgroundColorButton_->setEnabled(enabled && backgroundSelected && !alphaWorkflowEnabled);
-    }
-    if (ffmpegPathInput_) {
-        ffmpegPathInput_->setEnabled(enabled);
-    }
-    if (ffmpegOptionsInput_) {
-        ffmpegOptionsInput_->setEnabled(enabled);
-    }
-
     if (enabled) {
         onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
-        syncCodecUiState();
     }
+    syncCodecUiState();
 }
 
 void MainWindow::updateTrayLiveIndicator(bool live) {
@@ -3318,7 +4119,7 @@ void MainWindow::refreshSelectedWindowPreview() {
         }
 
         const bool vp9Selected = codecSelect_ && codecSelect_->currentData().toString() == "vp9";
-        const bool alphaEnabled = alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked();
+        const bool alphaEnabled = alphaWorkflowEffectiveForSelectedCodec();
         const bool chromaBackground =
             alphaBackgroundModeSelect_ &&
             alphaBackgroundModeSelect_->currentData().toString() == "chroma" &&
@@ -3417,6 +4218,11 @@ void MainWindow::refreshPublisherCameraPreview() {
 
 void MainWindow::closeEvent(QCloseEvent *event) {
     savePersistedSettings();
+
+    if (!runtimeOptions_.systemIntegrationsEnabled) {
+        QMainWindow::closeEvent(event);
+        return;
+    }
 
     if (!quitRequested_ && minimizeToTrayOnClose_) {
         if (!trayIcon_ && QSystemTrayIcon::isSystemTrayAvailable()) {

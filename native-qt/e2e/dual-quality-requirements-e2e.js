@@ -3,6 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
@@ -10,9 +11,49 @@ const LQ_WIDTH = 640;
 const LQ_HEIGHT = 360;
 const DEFAULT_REMOTE_TOKEN = 'dual-requirements-token';
 const ROOM_INIT_TIMEOUT_MS = 7000;
+const ROOM_QUALITY_WARNING_SUFFIX =
+  'continuing HQ-only without changing the selected codec or alpha workflow.';
+const ROOM_QUALITY_REASON = Object.freeze({
+  ENABLED: 'enabled',
+  NOT_IN_ROOM: 'not-in-room',
+  NOT_REQUESTED: 'not-requested',
+  CODEC_NOT_H264: 'codec-not-h264'
+});
 
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function sha256File(filePath) {
+  return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
+}
+
+function roomQualityUnavailableWarning(codecName) {
+  return `Room Quality is unavailable with ${codecName}; ${ROOM_QUALITY_WARNING_SUFFIX}`;
+}
+
+function publisherOutputText(publisher) {
+  if (!publisher) {
+    return '';
+  }
+  return `${publisher.stdout.join('')}\n${publisher.stderr.join('')}`;
+}
+
+function countLiteralOccurrences(text, needle) {
+  if (!needle) {
+    return 0;
+  }
+  let count = 0;
+  let offset = 0;
+  while (offset <= text.length - needle.length) {
+    const index = text.indexOf(needle, offset);
+    if (index < 0) {
+      break;
+    }
+    count++;
+    offset = index + needle.length;
+  }
+  return count;
 }
 
 function sanitizeId(value, maxLen, fallback) {
@@ -190,6 +231,19 @@ function spawnPublisher(config, options) {
     `--duration-ms=${durationMs}`,
     `--max-viewers=${Math.max(1, Number(options.maxViewers) || 1)}`
   ];
+
+  if (options.roomModeLqEnabled === false) {
+    args.push('--disable-room-lq');
+  }
+  if (options.videoCodec) {
+    args.push(`--video-codec=${options.videoCodec}`);
+  }
+  if (options.alphaWorkflow) {
+    args.push('--alpha-workflow');
+  }
+  if (options.diagnosticsOut) {
+    args.push(`--diagnostics-out=${options.diagnosticsOut}`);
+  }
 
   if (options.remoteToken) {
     args.push('--remote-control');
@@ -475,6 +529,40 @@ async function waitForInfoField(page, fieldName, expectedValue, timeoutMs) {
   return { ok: false, stage: 'info-field', state: last };
 }
 
+async function getInfoRecordCount(page) {
+  return page.evaluate(() => {
+    const probe = window.__gameCaptureInfoProbe || { records: [] };
+    return Array.isArray(probe.records) ? probe.records.length : 0;
+  });
+}
+
+async function waitForInfoFieldAfter(page, fieldName, expectedValue, minRecordCount, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate(({ field, expected, minCount }) => {
+      const probe = window.__gameCaptureInfoProbe || { records: [] };
+      const records = Array.isArray(probe.records) ? probe.records : [];
+      const newRecords = records.slice(Math.max(0, minCount));
+      const infoRecords = newRecords
+        .filter((entry) => entry && entry.message && entry.message.info)
+        .map((entry) => entry.message.info);
+      const match = infoRecords.find((info) => info && info[field] === expected) || null;
+      return {
+        total: records.length,
+        minCount,
+        latest: infoRecords.length ? infoRecords[infoRecords.length - 1] : null,
+        match,
+      };
+    }, { field: fieldName, expected: expectedValue, minCount: minRecordCount });
+    if (last && last.match) {
+      return { ok: true, state: last };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'info-field-after', state: last };
+}
+
 async function waitForInfoState(page, expected, timeoutMs) {
   const start = Date.now();
   let last = null;
@@ -507,6 +595,243 @@ async function waitForInfoState(page, expected, timeoutMs) {
     await wait(250);
   }
   return { ok: false, stage: 'info-state', state: last };
+}
+
+async function waitForInfoStateAfter(page, expected, minRecordCount, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate(({ expectedValues, minCount }) => {
+      const probe = window.__gameCaptureInfoProbe || { records: [] };
+      const records = Array.isArray(probe.records) ? probe.records : [];
+      const infoRecords = records
+        .slice(Math.max(0, minCount))
+        .filter((entry) => entry && entry.message && entry.message.info)
+        .map((entry) => entry.message.info);
+      const matches = infoRecords.filter((info) => Object.entries(expectedValues).every(([key, value]) => {
+        if (key === 'audio') {
+          return Boolean(info.muted) === !value;
+        }
+        if (key === 'video') {
+          return Boolean(info.video_muted_init) === !value;
+        }
+        return info[key] === value;
+      }));
+      return {
+        total: records.length,
+        minCount,
+        infoCount: infoRecords.length,
+        latest: infoRecords.length ? infoRecords[infoRecords.length - 1] : null,
+        match: matches.length ? matches[matches.length - 1] : null
+      };
+    }, { expectedValues: expected, minCount: minRecordCount });
+    if (last && last.match) {
+      return { ok: true, state: last };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'info-state-after', state: last };
+}
+
+async function getInfoRecords(page) {
+  return page.evaluate(() => {
+    const probe = window.__gameCaptureInfoProbe || { records: [] };
+    const records = Array.isArray(probe.records) ? probe.records : [];
+    return records
+      .filter((entry) => entry && entry.message && entry.message.info)
+      .map((entry) => entry.message.info);
+  });
+}
+
+async function waitForPublisherDiagnostics(diagnosticsPath, expectedRoomQuality, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  let lastError = '';
+  while (Date.now() - start < timeoutMs) {
+    try {
+      const raw = fs.readFileSync(diagnosticsPath, 'utf8').replace(/^\uFEFF/, '');
+      last = JSON.parse(raw);
+      const actual = last && last.room_quality;
+      if (actual && Object.entries(expectedRoomQuality).every(([key, value]) => actual[key] === value)) {
+        return { ok: true, diagnostics: last };
+      }
+    } catch (err) {
+      lastError = err && err.message ? err.message : String(err);
+    }
+    await wait(250);
+  }
+  return {
+    ok: false,
+    stage: 'publisher-diagnostics',
+    path: diagnosticsPath,
+    expected: expectedRoomQuality,
+    diagnostics: last,
+    actual: last && last.room_quality,
+    lastError
+  };
+}
+
+function countRoomQualityUnavailableWarnings(output) {
+  return String(output || '')
+    .split(/\r?\n/)
+    .filter((line) =>
+      line.includes('Room Quality is unavailable with ') &&
+      line.includes(ROOM_QUALITY_WARNING_SUFFIX))
+    .length;
+}
+
+function collectRoomQualityLqLeakObservations(evidence) {
+  const infoRecords = evidence && Array.isArray(evidence.infoRecords) ? evidence.infoRecords : [];
+  const output = evidence && evidence.publisherOutput ? evidence.publisherOutput : '';
+  const diagnosticsVideo = evidence && evidence.diagnostics && evidence.diagnostics.video;
+  const diagnosticsFieldPresent = !!diagnosticsVideo &&
+    typeof diagnosticsVideo === 'object' &&
+    Object.prototype.hasOwnProperty.call(diagnosticsVideo, 'lq_encoder_initialized');
+  const diagnosticsValue = diagnosticsFieldPresent
+    ? diagnosticsVideo.lq_encoder_initialized
+    : undefined;
+  return {
+    receiverInfoLqAssignment: infoRecords.some(
+      (record) => record && record.assigned_tier === 'lq'
+    ),
+    publisherPeerLqAssignment: /Peer init .*roomMode=1 .*tier=lq/i.test(output),
+    publisherLqEncoderActive: /LQ encoder active/i.test(output),
+    diagnosticsLqEncoderInitializedPresent: diagnosticsFieldPresent,
+    diagnosticsLqEncoderInitialized:
+      typeof diagnosticsValue === 'boolean' ? diagnosticsValue : null,
+    diagnosticsLqEncoderInitializedType: typeof diagnosticsValue
+  };
+}
+
+function evaluateRoomQualityContractEvidence(evidence, expected) {
+  const failures = [];
+  const info = evidence && evidence.info ? evidence.info : {};
+  const diagnostics = evidence && evidence.diagnostics ? evidence.diagnostics.room_quality : null;
+  const output = evidence && evidence.publisherOutput ? evidence.publisherOutput : '';
+  const lqLeakObservations = collectRoomQualityLqLeakObservations(evidence);
+  const expectedInfo = {
+    assigned_tier: expected.assignedTier,
+    codec_url: expected.codecName,
+    video_codec: expected.codecName,
+    room_quality_requested: expected.requested,
+    room_quality_effective: expected.effective,
+    room_quality_reason: expected.reason
+  };
+  if (Number.isFinite(expected.requestedVideoBitrateKbps)) {
+    expectedInfo.requested_video_bitrate_kbps = expected.requestedVideoBitrateKbps;
+  }
+  if (expected.alphaActive === true) {
+    expectedInfo.alpha_active = true;
+    expectedInfo.alpha_send = 'vp9-dualtrack-v1';
+  }
+
+  for (const [field, value] of Object.entries(expectedInfo)) {
+    if (info[field] !== value) {
+      failures.push(`info.${field}: expected ${JSON.stringify(value)}, got ${JSON.stringify(info[field])}`);
+    }
+  }
+
+  if (expected.noLq && lqLeakObservations.receiverInfoLqAssignment) {
+    failures.push('receiver info emitted an LQ assignment');
+  }
+  if (expected.noLq && lqLeakObservations.publisherPeerLqAssignment) {
+    failures.push('publisher log emitted an LQ room-peer assignment');
+  }
+  if (expected.noLq && lqLeakObservations.publisherLqEncoderActive) {
+    failures.push('publisher log reported an active LQ encoder');
+  }
+  if (expected.noLq &&
+      lqLeakObservations.diagnosticsLqEncoderInitializedType !== 'boolean') {
+    failures.push('diagnostics.video.lq_encoder_initialized must be an explicit boolean false');
+  } else if (expected.noLq && lqLeakObservations.diagnosticsLqEncoderInitialized) {
+    failures.push('diagnostics.video.lq_encoder_initialized was true');
+  }
+  if (expected.alphaActive && !/VP9 alpha encoder active/i.test(output)) {
+    failures.push('publisher never reported an active VP9 alpha encoder');
+  }
+  if (expected.alphaActive && /streaming without alpha|alpha output was disabled/i.test(output)) {
+    failures.push('publisher reported that the selected alpha workflow was disabled');
+  }
+  if (expected.dimensionsTier && (!evidence.dimensions || !evidence.dimensions.ok)) {
+    failures.push(`decoded output did not retain ${expected.dimensionsTier.toUpperCase()} dimensions`);
+  }
+
+  const expectedDiagnostics = {
+    requested: expected.requested,
+    effective: expected.effective,
+    reason: expected.reason
+  };
+  if (!diagnostics) {
+    failures.push('diagnostics.room_quality is missing');
+  } else {
+    for (const [field, value] of Object.entries(expectedDiagnostics)) {
+      if (diagnostics[field] !== value) {
+        failures.push(
+          `diagnostics.room_quality.${field}: expected ${JSON.stringify(value)}, ` +
+          `got ${JSON.stringify(diagnostics[field])}`
+        );
+      }
+    }
+  }
+
+  const warningCount = countRoomQualityUnavailableWarnings(output);
+  if (warningCount !== expected.warningCount) {
+    failures.push(`Room Quality unavailable warning count: expected ${expected.warningCount}, got ${warningCount}`);
+  }
+  if (expected.warningText) {
+    const exactCount = countLiteralOccurrences(output, expected.warningText);
+    if (exactCount !== expected.warningCount) {
+      failures.push(`exact warning count: expected ${expected.warningCount}, got ${exactCount}`);
+    }
+  }
+
+  return failures;
+}
+
+function assertRoomQualityContractEvidence(evidence, expected, label) {
+  const failures = evaluateRoomQualityContractEvidence(evidence, expected);
+  assertOk(failures.length === 0, `${label}: Room Quality contract mismatch`, {
+    failures,
+    info: evidence.info,
+    roomQualityDiagnostics: evidence.diagnostics && evidence.diagnostics.room_quality
+  });
+}
+
+function extractPackagedRedReportEvidence(markdown) {
+  const text = String(markdown || '');
+  const shaMatch = /^- Publisher SHA-256:\s*([0-9a-f]{64})\s*$/im.exec(text);
+  const argsMatch = /^- Publisher args:\s*(\[[^\r\n]*\])\s*$/im.exec(text);
+  const failureLine = text.split(/\r?\n/).find((line) => line.startsWith('- Failure:')) || '';
+  const jsonStart = failureLine.indexOf('{');
+  let failureState = null;
+  if (jsonStart >= 0) {
+    try {
+      failureState = JSON.parse(failureLine.slice(jsonStart));
+    } catch {
+      failureState = null;
+    }
+  }
+  let publisherArgs = [];
+  if (argsMatch) {
+    try {
+      publisherArgs = JSON.parse(argsMatch[1]);
+    } catch {
+      publisherArgs = [];
+    }
+  }
+  const info = failureState && failureState.latest ? failureState.latest : {};
+  return {
+    publisherSha256: shaMatch ? shaMatch[1].toLowerCase() : '',
+    publisherArgs,
+    failureState,
+    contractEvidence: {
+      info,
+      infoRecords: info && Object.keys(info).length ? [info] : [],
+      diagnostics: null,
+      dimensions: null,
+      publisherOutput: text
+    }
+  };
 }
 
 async function waitForExpectedDimensions(page, expectedTier, timeoutMs, initialState = null) {
@@ -661,7 +986,15 @@ async function extractPublisherViewUrl(publisher, timeoutMs) {
   return { ok: false };
 }
 
-async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, config, tag) {
+async function openRoleInfoViewerOnce(
+  context,
+  viewerUrl,
+  room,
+  role,
+  expectedInfo,
+  config,
+  tag
+) {
   const page = await context.newPage();
   try {
     await page.goto(viewerUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -687,13 +1020,63 @@ async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, 
     );
     assertOk(initResult && initResult.ok, `${tag}: init send failed`, initResult);
 
-    const assignedTier = await waitForInfoField(
+    const infoState = await waitForInfoState(
       page,
-      'assigned_tier',
-      expectedTier,
+      expectedInfo,
       Math.max(6000, Math.floor(config.timeoutMs / 2))
     );
-    assertOk(assignedTier.ok, `${tag}: assigned tier mismatch`, assignedTier.state || assignedTier);
+    assertOk(infoState.ok, `${tag}: info contract mismatch`, infoState.state || infoState);
+
+    return {
+      page,
+      peerUuid: peerState.uuid,
+      info: infoState.state.match,
+      infoState: infoState.state
+    };
+  } catch (err) {
+    await page.close().catch(() => {});
+    throw err;
+  }
+}
+
+async function openRoleInfoViewer(context, viewerUrl, room, role, expectedInfo, config, tag, attempts = 3) {
+  const maxAttempts = Math.max(1, attempts);
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await openRoleInfoViewerOnce(
+        context,
+        viewerUrl,
+        room,
+        role,
+        expectedInfo,
+        config,
+        `${tag}-attempt-${attempt}`
+      );
+    } catch (err) {
+      lastError = err;
+      if (attempt < maxAttempts) {
+        // eslint-disable-next-line no-await-in-loop
+        await wait(1200);
+      }
+    }
+  }
+  throw lastError || new Error(`${tag}: openRoleInfoViewer failed`);
+}
+
+async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, config, tag) {
+  const viewer = await openRoleInfoViewerOnce(
+    context,
+    viewerUrl,
+    room,
+    role,
+    { assigned_tier: expectedTier },
+    config,
+    tag
+  );
+  const { page } = viewer;
+  try {
 
     const decodeResult = await waitForDecodedVideo(page, config.timeoutMs, `${tag}-decode`);
     assertOk(decodeResult.ok, `${tag}: decode failed`, decodeResult.state || decodeResult);
@@ -716,7 +1099,9 @@ async function openRoleViewerOnce(context, viewerUrl, room, role, expectedTier, 
 
     return {
       page,
-      peerUuid: peerState.uuid,
+      peerUuid: viewer.peerUuid,
+      info: viewer.info,
+      infoState: viewer.infoState,
       dimensions: dims,
       decodeState: dimsResult.state || decodeResult.state
     };
@@ -782,12 +1167,21 @@ async function executeCase(name, config, opts, scenarioFn) {
   const room = opts.roomMode ? buildScopedId(config.room, 30, caseIdSuffix, 'dual_room') : '';
   const caseLabel = `${config.label}-${name}`;
   const viewerUrl = buildViewerUrl(streamId, room, config.password);
+  fs.mkdirSync(config.reportDir, { recursive: true });
+  const diagnosticsPath = path.join(
+    config.reportDir,
+    `dual-quality-requirements-${name}-${nowStamp()}-diagnostics.json`
+  );
   const publisher = spawnPublisher(config, {
     streamId,
     room,
     label: caseLabel,
     maxViewers: opts.maxViewers || 8,
-    remoteToken: opts.remoteToken || ''
+    remoteToken: opts.remoteToken || '',
+    roomModeLqEnabled: opts.roomModeLqEnabled,
+    videoCodec: opts.videoCodec || '',
+    alphaWorkflow: !!opts.alphaWorkflow,
+    diagnosticsOut: diagnosticsPath
   });
 
   const startedAt = Date.now();
@@ -801,27 +1195,41 @@ async function executeCase(name, config, opts, scenarioFn) {
     pass: false,
     failure: null,
     screenshots: [],
-    publisherOutput: ''
+    publisherOutput: '',
+    publisherCommand: publisher.command,
+    publisherArgs: publisher.args,
+    publisherSha256: sha256File(publisher.command),
+    diagnosticsPath,
+    publisherDiagnostics: null,
+    contractEvidence: null
   };
 
-  await wait(config.startupDelayMs);
-
-  const browser = await chromium.launch({
-    headless: !config.headful,
-    args: ['--autoplay-policy=no-user-gesture-required']
-  });
-  const context = await browser.newContext({
-    viewport: { width: 1600, height: 900 },
-    ignoreHTTPSErrors: true
-  });
+  let browser = null;
+  let context = null;
   const openedPages = [];
 
   try {
+    await wait(config.startupDelayMs);
+    browser = await chromium.launch({
+      headless: !config.headful,
+      args: ['--autoplay-policy=no-user-gesture-required']
+    });
+    context = await browser.newContext({
+      viewport: { width: 1600, height: 900 },
+      ignoreHTTPSErrors: true
+    });
+    caseState.browserVersion = browser.version();
+    const metadataPage = await context.newPage();
+    caseState.userAgent = await metadataPage.evaluate(() => navigator.userAgent);
+    await metadataPage.close();
+
     await scenarioFn({
       config,
       caseState,
       context,
       publisher,
+      options: opts,
+      diagnosticsPath,
       streamId,
       room,
       viewerUrl,
@@ -840,11 +1248,24 @@ async function executeCase(name, config, opts, scenarioFn) {
         await page.close().catch(() => {});
       }
     }
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    if (context) {
+      await context.close().catch(() => {});
+    }
+    if (browser) {
+      await browser.close().catch(() => {});
+    }
     stopProcess(publisher.proc);
     caseState.finishedAt = Date.now();
-    caseState.publisherOutput = `${publisher.stdout.join('')}\n${publisher.stderr.join('')}`;
+    caseState.publisherOutput = publisherOutputText(publisher);
+    if (fs.existsSync(diagnosticsPath)) {
+      try {
+        caseState.publisherDiagnostics = JSON.parse(
+          fs.readFileSync(diagnosticsPath, 'utf8').replace(/^\uFEFF/, '')
+        );
+      } catch {
+        // The scenario failure already carries the last diagnostics parse state.
+      }
+    }
   }
 
   return caseState;
@@ -898,6 +1319,223 @@ async function caseRoomImplicitViewerFallback(input) {
   const timeoutLog = await waitForPublisherLog(publisher, /missing init payload/i, 2000);
   assertOk(!timeoutLog.ok, 'room-implicit-viewer-fallback: unexpected init-timeout disconnect', timeoutLog);
 }
+
+function roomQualityExpectedInfo(expected) {
+  return {
+    assigned_tier: expected.assignedTier,
+    codec_url: expected.codecName,
+    video_codec: expected.codecName,
+    room_quality_requested: expected.requested,
+    room_quality_effective: expected.effective,
+    room_quality_reason: expected.reason
+  };
+}
+
+async function runRoomQualityContractCase(input, expected) {
+  const {
+    context,
+    viewerUrl,
+    openedPages,
+    room,
+    config,
+    publisher,
+    diagnosticsPath,
+    caseState
+  } = input;
+  const tag = `room-quality-${expected.caseTag}`;
+  const viewer = await openRoleInfoViewer(
+    context,
+    viewerUrl,
+    room,
+    'guest',
+    room ? { room_init: true, room_init_received: true } : { room_init: false },
+    config,
+    tag,
+    4
+  );
+  openedPages.push(viewer.page);
+
+  if (expected.alphaActive) {
+    const alphaCapability = await sendWithRetry(
+      viewer.page,
+      { info: { alpha_receive: 'vp9-dualtrack-v1' } },
+      Math.max(8000, Math.floor(config.timeoutMs / 2))
+    );
+    assertOk(alphaCapability && alphaCapability.ok, `${tag}: alpha capability request failed`, alphaCapability);
+  }
+
+  let observedInfo = viewer.info;
+  if (Number.isFinite(expected.requestedVideoBitrateKbps)) {
+    const beforeCount = await getInfoRecordCount(viewer.page);
+    const bitrateRequest = await sendWithRetry(
+      viewer.page,
+      { bitrate: expected.requestedVideoBitrateKbps },
+      Math.max(8000, Math.floor(config.timeoutMs / 2))
+    );
+    assertOk(bitrateRequest && bitrateRequest.ok, `${tag}: bitrate request failed`, bitrateRequest);
+    const postRequest = await waitForInfoStateAfter(
+      viewer.page,
+      { requested_video_bitrate_kbps: expected.requestedVideoBitrateKbps },
+      beforeCount,
+      Math.max(8000, Math.floor(config.timeoutMs / 2))
+    );
+    assertOk(postRequest.ok, `${tag}: no post-bitrate info response`, postRequest.state || postRequest);
+    observedInfo = postRequest.state.match;
+  } else {
+    const fullInfo = await waitForInfoState(
+      viewer.page,
+      roomQualityExpectedInfo(expected),
+      Math.max(8000, Math.floor(config.timeoutMs / 2))
+    );
+    if (fullInfo.ok) {
+      observedInfo = fullInfo.state.match;
+    }
+  }
+
+  let dimensions = null;
+  if (expected.dimensionsTier) {
+    const decode = await waitForDecodedVideo(
+      viewer.page,
+      Math.max(12000, Math.floor(config.timeoutMs / 2)),
+      `${tag}-decode`
+    );
+    dimensions = decode.ok
+      ? await waitForExpectedDimensions(
+          viewer.page,
+          expected.dimensionsTier,
+          Math.max(6000, Math.floor(config.timeoutMs / 3)),
+          decode.state
+        )
+      : decode;
+  }
+
+  const expectedDiagnostics = {
+    requested: expected.requested,
+    effective: expected.effective,
+    reason: expected.reason
+  };
+  const diagnosticsResult = await waitForPublisherDiagnostics(
+    diagnosticsPath,
+    expectedDiagnostics,
+    Math.max(7000, Math.floor(config.timeoutMs / 4))
+  );
+  caseState.publisherDiagnostics = diagnosticsResult.diagnostics || null;
+
+  if (expected.warningCount > 0 && expected.warningText) {
+    await waitForPublisherLog(
+      publisher,
+      expected.warningText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      Math.max(5000, Math.floor(config.timeoutMs / 4))
+    );
+  }
+  await wait(750);
+
+  const infoRecords = await getInfoRecords(viewer.page);
+  const evidence = {
+    info: observedInfo || {},
+    infoRecords,
+    diagnostics: diagnosticsResult.diagnostics || null,
+    dimensions,
+    publisherOutput: publisherOutputText(publisher)
+  };
+  caseState.contractEvidence = {
+    expected,
+    observedInfo: evidence.info,
+    infoRecordCount: infoRecords.length,
+    roomQualityDiagnostics: evidence.diagnostics && evidence.diagnostics.room_quality,
+    dimensions: dimensions && {
+      ok: !!dimensions.ok,
+      decoded: dimensions.decoded || null
+    },
+    unavailableWarningCount: countRoomQualityUnavailableWarnings(evidence.publisherOutput),
+    exactWarningCount: expected.warningText
+      ? countLiteralOccurrences(evidence.publisherOutput, expected.warningText)
+      : 0,
+    lqLeakObservations: collectRoomQualityLqLeakObservations(evidence)
+  };
+  assertRoomQualityContractEvidence(evidence, expected, tag);
+}
+
+async function caseRoomQualityNotInRoom(input) {
+  return runRoomQualityContractCase(input, {
+    caseTag: 'not-in-room-h264',
+    assignedTier: 'hq',
+    codecName: 'H.264',
+    requested: true,
+    effective: false,
+    reason: ROOM_QUALITY_REASON.NOT_IN_ROOM,
+    warningCount: 0,
+    warningText: '',
+    noLq: true,
+    dimensionsTier: 'hq'
+  });
+}
+
+async function caseRoomQualityH264EnabledLq(input) {
+  return runRoomQualityContractCase(input, {
+    caseTag: 'h264-enabled',
+    assignedTier: 'lq',
+    codecName: 'H.264',
+    requested: true,
+    effective: true,
+    reason: ROOM_QUALITY_REASON.ENABLED,
+    requestedVideoBitrateKbps: 500,
+    warningCount: 0,
+    warningText: '',
+    noLq: false,
+    dimensionsTier: 'lq'
+  });
+}
+
+async function caseRoomQualityDisabledStaysHq(input) {
+  return runRoomQualityContractCase(input, {
+    caseTag: 'h264-not-requested',
+    assignedTier: 'hq',
+    codecName: 'H.264',
+    requested: false,
+    effective: false,
+    reason: ROOM_QUALITY_REASON.NOT_REQUESTED,
+    requestedVideoBitrateKbps: 500,
+    warningCount: 0,
+    warningText: '',
+    noLq: true,
+    dimensionsTier: 'hq'
+  });
+}
+
+function nonH264RoomQualityCase(codecName, caseTag, alphaActive = false) {
+  return async (input) => runRoomQualityContractCase(input, {
+    caseTag,
+    assignedTier: 'hq',
+    codecName,
+    requested: true,
+    effective: false,
+    reason: ROOM_QUALITY_REASON.CODEC_NOT_H264,
+    requestedVideoBitrateKbps: 500,
+    warningCount: 1,
+    warningText: roomQualityUnavailableWarning(codecName),
+    noLq: true,
+    alphaActive
+  });
+}
+
+const caseRoomQualityPreservesVp9Selection = nonH264RoomQualityCase(
+  'VP9',
+  'vp9-selected'
+);
+const caseRoomQualityPreservesH265Selection = nonH264RoomQualityCase(
+  'H.265',
+  'h265-selected'
+);
+const caseRoomQualityPreservesAv1Selection = nonH264RoomQualityCase(
+  'AV1',
+  'av1-selected'
+);
+const caseRoomQualityPreservesVp9Alpha = nonH264RoomQualityCase(
+  'VP9',
+  'vp9-alpha-selected',
+  true
+);
 
 async function caseSpecialCharPassword(input) {
   const { context, openedPages, publisher, viewerUrl } = input;
@@ -1137,6 +1775,18 @@ function writeReport(config, startedAt, finishedAt, cases) {
     lines.push('', `## Case: ${entry.name}`, '');
     lines.push(`- Result: ${entry.pass ? 'PASS' : 'FAIL'}`);
     lines.push(`- URL: ${entry.viewerUrl}`);
+    lines.push(`- Publisher: ${entry.publisherCommand || '(unavailable)'}`);
+    lines.push(`- Publisher SHA-256: ${entry.publisherSha256 || '(unavailable)'}`);
+    lines.push(`- Publisher args: ${JSON.stringify(entry.publisherArgs || [])}`);
+    lines.push(`- Publisher diagnostics: ${entry.diagnosticsPath || '(unavailable)'}`);
+    lines.push(
+      `- Room Quality diagnostics: ${JSON.stringify(
+        entry.publisherDiagnostics && entry.publisherDiagnostics.room_quality || null
+      )}`
+    );
+    lines.push(`- Contract evidence: ${JSON.stringify(entry.contractEvidence || null)}`);
+    lines.push(`- Browser version: ${entry.browserVersion || '(unavailable)'}`);
+    lines.push(`- Browser UA: ${entry.userAgent || '(unavailable)'}`);
     if (!entry.pass) {
       lines.push(`- Failure: ${summarizeCaseFailure(entry)}`);
       if (entry.screenshots && entry.screenshots.length) {
@@ -1168,18 +1818,33 @@ async function main() {
 
   const cases = [];
   const startedAt = Date.now();
-  let canContinue = true;
 
   async function maybeExecuteCase(name, caseConfig, execConfig, fn) {
     if (config.caseFilter && !config.caseFilter.has(name)) {
       return null;
     }
-    if (!canContinue) {
-      return null;
+    let result;
+    try {
+      result = await executeCase(name, caseConfig, execConfig, fn);
+    } catch (err) {
+      const failedAt = Date.now();
+      result = {
+        name,
+        startedAt: failedAt,
+        finishedAt: failedAt,
+        streamId: '(setup failed)',
+        room: execConfig.roomMode ? '(setup failed)' : '',
+        viewerUrl: '(unavailable)',
+        pass: false,
+        failure: {
+          message: err && err.message ? err.message : String(err),
+          stack: err && err.stack ? String(err.stack) : ''
+        },
+        screenshots: [],
+        publisherOutput: ''
+      };
     }
-    const result = await executeCase(name, caseConfig, execConfig, fn);
     cases.push(result);
-    canContinue = result.pass;
     return result;
   }
 
@@ -1197,7 +1862,6 @@ async function main() {
         entry.failure = {
           message: 'direct-hq-only: observed LQ path in publisher output'
         };
-        canContinue = false;
       }
     }
   }
@@ -1207,6 +1871,105 @@ async function main() {
     config,
     { roomMode: true, maxViewers: 4, remoteToken: '', idSuffix: 'inittime' },
     caseRoomImplicitViewerFallback
+  );
+
+  await maybeExecuteCase(
+    'room_quality_not_in_room',
+    config,
+    {
+      roomMode: false,
+      roomModeLqEnabled: true,
+      videoCodec: 'h264',
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqdirect'
+    },
+    caseRoomQualityNotInRoom
+  );
+
+  await maybeExecuteCase(
+    'room_quality_h264_requested_on_lq',
+    config,
+    {
+      roomMode: true,
+      roomModeLqEnabled: true,
+      videoCodec: 'h264',
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqh264on'
+    },
+    caseRoomQualityH264EnabledLq
+  );
+
+  await maybeExecuteCase(
+    'room_quality_disabled_stays_hq',
+    config,
+    {
+      roomMode: true,
+      roomModeLqEnabled: false,
+      videoCodec: 'h264',
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqoff'
+    },
+    caseRoomQualityDisabledStaysHq
+  );
+
+  await maybeExecuteCase(
+    'room_quality_preserves_vp9_selection',
+    config,
+    {
+      roomMode: true,
+      roomModeLqEnabled: true,
+      videoCodec: 'vp9',
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqvp9'
+    },
+    caseRoomQualityPreservesVp9Selection
+  );
+
+  await maybeExecuteCase(
+    'room_quality_preserves_h265_selection',
+    config,
+    {
+      roomMode: true,
+      roomModeLqEnabled: true,
+      videoCodec: 'h265',
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqh265'
+    },
+    caseRoomQualityPreservesH265Selection
+  );
+
+  await maybeExecuteCase(
+    'room_quality_preserves_av1_selection',
+    config,
+    {
+      roomMode: true,
+      roomModeLqEnabled: true,
+      videoCodec: 'av1',
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqav1'
+    },
+    caseRoomQualityPreservesAv1Selection
+  );
+
+  await maybeExecuteCase(
+    'room_quality_preserves_vp9_alpha',
+    config,
+    {
+      roomMode: true,
+      roomModeLqEnabled: true,
+      videoCodec: 'vp9',
+      alphaWorkflow: true,
+      maxViewers: 4,
+      remoteToken: '',
+      idSuffix: 'roomqvp9alpha'
+    },
+    caseRoomQualityPreservesVp9Alpha
   );
 
   const specPwConfig = { ...config, password: 'Test$&Room#1!' };
@@ -1253,7 +2016,20 @@ async function main() {
   process.exit(1);
 }
 
-main().catch((err) => {
-  console.error('[DUAL-REQ] Unhandled error:', err);
-  process.exit(1);
-});
+module.exports = {
+  ROOM_QUALITY_REASON,
+  ROOM_QUALITY_WARNING_SUFFIX,
+  collectRoomQualityLqLeakObservations,
+  countLiteralOccurrences,
+  countRoomQualityUnavailableWarnings,
+  evaluateRoomQualityContractEvidence,
+  extractPackagedRedReportEvidence,
+  roomQualityUnavailableWarning
+};
+
+if (require.main === module) {
+  main().catch((err) => {
+    console.error('[DUAL-REQ] Unhandled error:', err);
+    process.exit(1);
+  });
+}

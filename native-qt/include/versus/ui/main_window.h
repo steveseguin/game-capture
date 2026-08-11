@@ -22,10 +22,17 @@
 
 namespace versus::ui {
 
+class MainWindowTestAccess;
+
 class MainWindow : public QMainWindow {
     Q_OBJECT
 
   public:
+    struct RuntimeOptions {
+        bool persistedSettingsEnabled = true;
+        bool systemIntegrationsEnabled = true;
+    };
+
     struct ParsedStreamTarget {
         QString streamId;
         QString room;
@@ -35,8 +42,17 @@ class MainWindow : public QMainWindow {
     };
 
     explicit MainWindow(versus::app::VersusApp *core, QWidget *parent = nullptr);
+    MainWindow(
+        versus::app::VersusApp *core,
+        const RuntimeOptions &runtimeOptions,
+        QWidget *parent = nullptr);
     ~MainWindow() override;
     static ParsedStreamTarget parseStreamTargetInput(const QString &input);
+    static versus::webrtc::IceMode iceModeFromUiValue(const QString &value);
+    int runUiWheelEndToEnd(
+        const QString &outputPath,
+        const QString &expectedExecutableSha256,
+        const QString &runId);
 
   public slots:
     void updateStats(const StreamStats &stats);
@@ -54,6 +70,8 @@ class MainWindow : public QMainWindow {
     void onAdvancedToggleChanged(bool checked);
 
   private:
+    friend class MainWindowTestAccess;
+
     void setupUI();
     void setupMenuBar();
     void setupTrayIcon();
@@ -64,7 +82,9 @@ class MainWindow : public QMainWindow {
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
     void refreshSelectedWindowPreview();
     void refreshPublisherCameraPreview();
+    bool alphaWorkflowEffectiveForSelectedCodec() const;
     void syncCodecUiState();
+    void syncRoomModeLqUiState();
     void updateAlphaBackgroundColorButton();
     void chooseAlphaBackgroundColor();
     void refreshFfmpegStatus();
@@ -75,6 +95,12 @@ class MainWindow : public QMainWindow {
     void savePersistedSettings();
     void connectPersistedSettingSignals();
     int selectedBitrateKbps() const;
+    versus::video::EncoderConfig buildEncoderConfigFromUi(
+        int width,
+        int height,
+        int fps,
+        int bitrate) const;
+    versus::app::StartOptions buildStartOptionsFromUi() const;
     QString audioSourceSummaryText() const;
     QString microphoneSourceSummaryText() const;
     void resetOperatorHealthUi();
@@ -85,6 +111,7 @@ class MainWindow : public QMainWindow {
     void closeEvent(QCloseEvent *event) override;
 
     versus::app::VersusApp *core_ = nullptr;
+    RuntimeOptions runtimeOptions_;
 
     // UI Components
     WindowListWidget *windowListWidget_ = nullptr;
@@ -105,6 +132,7 @@ class MainWindow : public QMainWindow {
     QSpinBox *customBitrateSpin_ = nullptr;
     QSpinBox *viewerLimitSpin_ = nullptr;
     QCheckBox *roomModeLqCheck_ = nullptr;
+    QLabel *roomModeLqAvailabilityLabel_ = nullptr;
     QComboBox *iceModeSelect_ = nullptr;
     QCheckBox *remoteControlCheck_ = nullptr;
     QLineEdit *remoteControlTokenInput_ = nullptr;
@@ -174,6 +202,8 @@ class MainWindow : public QMainWindow {
     bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
     bool loadingPersistedSettings_ = false;
+    bool roomModeLqPreference_ = true;
+    bool configControlsEnabled_ = true;
     QString previousSourceMode_ = QStringLiteral("window");
     QString preferredWindowAudioSource_ = QStringLiteral("selected-window");
     quint64 startOpId_ = 0;

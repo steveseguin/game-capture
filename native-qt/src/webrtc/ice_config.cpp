@@ -1,15 +1,18 @@
 #include "versus/webrtc/ice_config.h"
 
+#include <mbedtls/md.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <array>
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <vector>
 
@@ -22,33 +25,50 @@ namespace versus::webrtc {
 namespace {
 
 using json = nlohmann::json;
+using ordered_json = nlohmann::ordered_json;
 
-constexpr int kMinutesPerDay = 60 * 24;
-constexpr int kMaxUdpTurnServers = 2;
-constexpr int kMaxTcpTurnServers = 1;
 constexpr int64_t kTurnListEpochOffsetMs = 1653305816700LL;
+constexpr std::string_view kTurnRegistryBaseUrl = "https://turnservers.vdo.ninja/";
 
-struct TurnServerCandidate {
-    IceServerConfig server;
-    std::optional<int> tz;
-    std::optional<int> distance;
-    int originalIndex = 0;
-};
-
-int currentTimezoneOffsetMinutes() {
-#ifdef _WIN32
-    TIME_ZONE_INFORMATION tzInfo;
-    const DWORD result = GetTimeZoneInformation(&tzInfo);
-    LONG totalBias = tzInfo.Bias;
-    if (result == TIME_ZONE_ID_DAYLIGHT) {
-        totalBias += tzInfo.DaylightBias;
-    } else if (result == TIME_ZONE_ID_STANDARD) {
-        totalBias += tzInfo.StandardBias;
+std::string sha256Hex(std::string_view input) {
+    std::array<unsigned char, 32> digest{};
+    mbedtls_md_context_t context;
+    mbedtls_md_init(&context);
+    const mbedtls_md_info_t *info = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    if (info == nullptr ||
+        mbedtls_md_setup(&context, info, 0) != 0 ||
+        mbedtls_md_starts(&context) != 0 ||
+        mbedtls_md_update(
+            &context,
+            reinterpret_cast<const unsigned char *>(input.data()),
+            input.size()) != 0 ||
+        mbedtls_md_finish(&context, digest.data()) != 0) {
+        mbedtls_md_free(&context);
+        throw std::runtime_error("Unable to compute TURN registry SHA-256");
     }
-    return static_cast<int>(totalBias);
-#else
-    return 0;
-#endif
+    mbedtls_md_free(&context);
+
+    static constexpr char kHex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(digest.size() * 2);
+    for (const unsigned char byte : digest) {
+        result.push_back(kHex[(byte >> 4) & 0x0f]);
+        result.push_back(kHex[byte & 0x0f]);
+    }
+    return result;
+}
+
+std::string makeTransactionId(std::int64_t timestampUnixMs) {
+    static std::atomic<std::uint64_t> sequence{0};
+    std::ostringstream value;
+    value << "turn-" << std::hex << timestampUnixMs << '-'
+          << sequence.fetch_add(1, std::memory_order_relaxed);
+    return value.str();
+}
+
+std::string turnRegistryUrl(std::int64_t timestampUnixMs) {
+    return std::string(kTurnRegistryBaseUrl) + "?ts=" +
+        std::to_string(timestampUnixMs - kTurnListEpochOffsetMs);
 }
 
 std::string toLowerCopy(std::string value) {
@@ -73,6 +93,68 @@ bool startsWithInsensitive(const std::string &value, std::string_view prefix) {
 
 bool isTurnUrl(const std::string &url) {
     return startsWithInsensitive(url, "turn:") || startsWithInsensitive(url, "turns:");
+}
+
+bool isLowercaseSha256(std::string_view value) {
+    if (value.size() != 64) {
+        return false;
+    }
+    return std::all_of(value.begin(), value.end(), [](unsigned char ch) {
+        return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f');
+    });
+}
+
+bool containsUnicodeControl(std::string_view value) {
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        const auto byte = static_cast<unsigned char>(value[index]);
+        if (byte <= 0x1f || byte == 0x7f) {
+            return true;
+        }
+        if (byte == 0xc2 && index + 1 < value.size()) {
+            const auto next = static_cast<unsigned char>(value[index + 1]);
+            if (next >= 0x80 && next <= 0x9f) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool containsUnicodeWhitespace(std::string_view value) {
+    for (std::size_t index = 0; index < value.size(); ++index) {
+        const auto byte = static_cast<unsigned char>(value[index]);
+        if (std::isspace(byte) != 0) {
+            return true;
+        }
+        if (index + 1 < value.size()) {
+            const auto next = static_cast<unsigned char>(value[index + 1]);
+            if (byte == 0xc2 && (next == 0x85 || next == 0xa0)) {
+                return true;
+            }
+        }
+        if (index + 2 < value.size()) {
+            const auto second = static_cast<unsigned char>(value[index + 1]);
+            const auto third = static_cast<unsigned char>(value[index + 2]);
+            if ((byte == 0xe1 && second == 0x9a && third == 0x80) ||
+                (byte == 0xe2 && second == 0x80 &&
+                 ((third >= 0x80 && third <= 0x8a) || third == 0xa8 ||
+                  third == 0xa9 || third == 0xaf)) ||
+                (byte == 0xe2 && second == 0x81 && third == 0x9f) ||
+                (byte == 0xe3 && second == 0x80 && third == 0x80) ||
+                (byte == 0xef && second == 0xbb && third == 0xbf)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool isValidTurnUrl(const std::string &url) {
+    if (!isTurnUrl(url) || containsUnicodeControl(url) || containsUnicodeWhitespace(url)) {
+        return false;
+    }
+    const std::size_t colon = url.find(':');
+    return colon != std::string::npos && colon + 1 < url.size();
 }
 
 bool isPrivateIpv4(std::string_view address) {
@@ -161,121 +243,108 @@ std::vector<IceServerConfig> defaultStunServers() {
     };
 }
 
-std::vector<TurnServerCandidate> fallbackTurnCandidates() {
-    return {
-        {{"turn:turn-cae2.vdo.ninja:3478", "vdoninja", "canuk", true}, std::nullopt, 490, 0},
-        {{"turn:turn-cae1.vdo.ninja:3478", "steve", "setupYourOwnPlease", true}, std::nullopt, 519, 1},
-        {{"turns:turn-cae2.vdo.ninja:443", "vdoninja", "canuk", false}, std::nullopt, 490, 2},
-        {{"turns:www.turn.obs.ninja:443", "steve", "setupYourOwnPlease", false}, 300, std::nullopt, 3},
-        {{"turn:turn-cae1.vdo.ninja:3478", "steve", "setupYourOwnPlease", true}, 300, std::nullopt, 4},
-        {{"turn:turn-usw2.vdo.ninja:3478", "vdoninja", "theyBeSharksHere", true}, 480, std::nullopt, 5},
-        {{"turn:turn-eu4.vdo.ninja:3478", "vdoninja", "PolandPirat", true}, -70, std::nullopt, 6},
-        {{"turns:turn.obs.ninja:443", "steve", "setupYourOwnPlease", false}, -60, std::nullopt, 7},
-        {{"turn:turn-eu1.vdo.ninja:3478", "steve", "setupYourOwnPlease", true}, -60, std::nullopt, 8},
-        {{"turn:turn-use1.vdo.ninja:3478", "vdoninja", "EastSideRepresentZ", true}, 300, std::nullopt, 9},
-    };
-}
+struct ValidatedTurnRegistry {
+    std::vector<IceServerConfig> servers;
+    std::size_t sourceServerCount = 0;
+    std::size_t sourceUrlCount = 0;
+    std::string canonicalConfigSha256;
+    std::string consumedConfigSha256;
+};
 
-int scoreTurnServer(const TurnServerCandidate &candidate, int localTimezoneMinutes) {
-    if (candidate.distance.has_value()) {
-        return *candidate.distance;
-    }
-    if (!candidate.tz.has_value()) {
-        return std::numeric_limits<int>::max() / 2 + candidate.originalIndex;
-    }
-    int delta = std::abs(*candidate.tz - localTimezoneMinutes);
-    const int wrappedDelta = std::abs(delta - kMinutesPerDay);
-    if (wrappedDelta < delta) {
-        delta = wrappedDelta;
-    }
-    return delta;
-}
-
-std::vector<IceServerConfig> processTurnCandidates(const std::vector<TurnServerCandidate> &rawCandidates) {
-    std::vector<TurnServerCandidate> candidates = rawCandidates;
-    const int localTimezoneMinutes = currentTimezoneOffsetMinutes();
-    std::stable_sort(candidates.begin(), candidates.end(), [localTimezoneMinutes](const TurnServerCandidate &lhs,
-                                                                                  const TurnServerCandidate &rhs) {
-        const int lhsScore = scoreTurnServer(lhs, localTimezoneMinutes);
-        const int rhsScore = scoreTurnServer(rhs, localTimezoneMinutes);
-        if (lhsScore != rhsScore) {
-            return lhsScore < rhsScore;
-        }
-        return lhs.originalIndex < rhs.originalIndex;
-    });
-
-    std::vector<IceServerConfig> selected;
-    int udpCount = 0;
-    int tcpCount = 0;
-    for (const auto &candidate : candidates) {
-        if (candidate.server.udp) {
-            if (udpCount >= kMaxUdpTurnServers) {
-                continue;
-            }
-            ++udpCount;
-        } else {
-            if (tcpCount >= kMaxTcpTurnServers) {
-                continue;
-            }
-            ++tcpCount;
-        }
-        selected.push_back(candidate.server);
-    }
-    return selected;
-}
-
-std::vector<TurnServerCandidate> parseTurnCandidates(const json &root) {
-    std::vector<TurnServerCandidate> out;
-    if (!root.is_object() || !root.contains("servers") || !root["servers"].is_array()) {
-        return out;
-    }
-
-    int originalIndex = 0;
-    for (const auto &server : root["servers"]) {
-        if (!server.is_object()) {
+std::string consumedTurnConfigFingerprint(
+    const std::vector<IceServerConfig> &servers) {
+    ordered_json canonical = ordered_json::array();
+    for (const auto &server : servers) {
+        if (!isTurnUrl(server.url)) {
             continue;
         }
-        const std::string username = server.value("username", "");
-        const std::string credential = server.value("credential", "");
-        const bool udp = server.value("udp", true);
-        const std::optional<int> tz =
-            server.contains("tz") && server["tz"].is_number_integer()
-                ? std::optional<int>(server["tz"].get<int>())
-                : std::nullopt;
-        const std::optional<int> distance =
-            server.contains("distance") && server["distance"].is_number_integer()
-                ? std::optional<int>(server["distance"].get<int>())
-                : std::nullopt;
+        ordered_json entry = ordered_json::object();
+        entry["url"] = server.url;
+        entry["username"] = server.username;
+        entry["credential"] = server.credential;
+        entry["udp"] = server.udp;
+        canonical.push_back(std::move(entry));
+    }
+    return sha256Hex(
+        "game-capture-consumed-turn-config-v1\n" + canonical.dump());
+}
 
-        auto appendUrl = [&](const std::string &url) {
-            if (!isTurnUrl(url)) {
-                return;
-            }
-            TurnServerCandidate candidate;
-            candidate.server.url = url;
-            candidate.server.username = username;
-            candidate.server.credential = credential;
-            candidate.server.udp = udp;
-            candidate.tz = tz;
-            candidate.distance = distance;
-            candidate.originalIndex = originalIndex++;
-            out.push_back(candidate);
-        };
-
-        if (server.contains("urls") && server["urls"].is_array()) {
-            for (const auto &urlValue : server["urls"]) {
-                if (urlValue.is_string()) {
-                    appendUrl(urlValue.get<std::string>());
-                }
-            }
-        } else if (server.contains("urls") && server["urls"].is_string()) {
-            appendUrl(server["urls"].get<std::string>());
-        } else if (server.contains("url") && server["url"].is_string()) {
-            appendUrl(server["url"].get<std::string>());
-        }
+std::optional<ValidatedTurnRegistry> validateTurnRegistry(const json &root) {
+    if (!root.is_object() ||
+        !root.contains("version") ||
+        !root["version"].is_number_integer() ||
+        root["version"].get<int>() != 1 ||
+        !root.contains("servers") ||
+        !root["servers"].is_array() ||
+        root["servers"].empty()) {
+        return std::nullopt;
     }
 
-    return out;
+    ValidatedTurnRegistry validated;
+    ordered_json canonical = ordered_json::array();
+    for (const auto &server : root["servers"]) {
+        if (!server.is_object() ||
+            !server.contains("username") || !server["username"].is_string() ||
+            !server.contains("credential") || !server["credential"].is_string() ||
+            !server.contains("udp") || !server["udp"].is_boolean() ||
+            !server.contains("urls")) {
+            return std::nullopt;
+        }
+
+        const std::string username = server["username"].get<std::string>();
+        const std::string credential = server["credential"].get<std::string>();
+        const bool udp = server["udp"].get<bool>();
+        if (username.empty() || credential.empty() ||
+            containsUnicodeControl(username) || containsUnicodeControl(credential)) {
+            return std::nullopt;
+        }
+
+        const bool scalarUrls = server["urls"].is_string();
+        std::vector<std::string> urls;
+        if (scalarUrls) {
+            urls.push_back(server["urls"].get<std::string>());
+        } else if (server["urls"].is_array() && !server["urls"].empty()) {
+            for (const auto &urlValue : server["urls"]) {
+                if (!urlValue.is_string()) {
+                    return std::nullopt;
+                }
+                urls.push_back(urlValue.get<std::string>());
+            }
+        } else {
+            return std::nullopt;
+        }
+
+        ordered_json canonicalEntry = ordered_json::object();
+        if (scalarUrls) {
+            canonicalEntry["urls"] = urls.front();
+        } else {
+            ordered_json canonicalUrls = ordered_json::array();
+            for (const auto &url : urls) {
+                canonicalUrls.push_back(url);
+            }
+            canonicalEntry["urls"] = std::move(canonicalUrls);
+        }
+        canonicalEntry["username"] = username;
+        canonicalEntry["credential"] = credential;
+        canonicalEntry["udp"] = udp;
+
+        for (const auto &url : urls) {
+            if (!isValidTurnUrl(url)) {
+                return std::nullopt;
+            }
+            validated.servers.push_back({url, username, credential, udp});
+        }
+        validated.sourceUrlCount += urls.size();
+        ++validated.sourceServerCount;
+        canonical.push_back(std::move(canonicalEntry));
+    }
+
+    const std::string canonicalText =
+        "game-capture-turn-registry-config-v1\n" + canonical.dump();
+    validated.canonicalConfigSha256 = sha256Hex(canonicalText);
+    validated.consumedConfigSha256 =
+        consumedTurnConfigFingerprint(validated.servers);
+    return validated;
 }
 
 #ifdef _WIN32
@@ -295,12 +364,8 @@ std::wstring widen(const std::string &value) {
     return wide;
 }
 
-std::optional<std::string> fetchTurnListJson(int timeoutMs) {
-    const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                           std::chrono::system_clock::now().time_since_epoch())
-                           .count();
-    const std::string path = "/?ts=" + std::to_string(nowMs - kTurnListEpochOffsetMs);
-
+TurnRegistryHttpResponse fetchTurnRegistryHttp(const TurnRegistryRequest &request) {
+    TurnRegistryHttpResponse response;
     HINTERNET sessionHandle = WinHttpOpen(L"GameCapture/1.0",
                                           WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
                                           WINHTTP_NO_PROXY_NAME,
@@ -308,12 +373,16 @@ std::optional<std::string> fetchTurnListJson(int timeoutMs) {
                                           0);
     if (!sessionHandle) {
         spdlog::warn("[ICE] WinHttpOpen failed: {}", GetLastError());
-        return std::nullopt;
+        return response;
     }
 
-    std::optional<std::string> result;
     do {
-        WinHttpSetTimeouts(sessionHandle, timeoutMs, timeoutMs, timeoutMs, timeoutMs);
+        WinHttpSetTimeouts(
+            sessionHandle,
+            request.timeoutMs,
+            request.timeoutMs,
+            request.timeoutMs,
+            request.timeoutMs);
 
         HINTERNET connectHandle = WinHttpConnect(sessionHandle, L"turnservers.vdo.ninja",
                                                  INTERNET_DEFAULT_HTTPS_PORT, 0);
@@ -322,6 +391,8 @@ std::optional<std::string> fetchTurnListJson(int timeoutMs) {
             break;
         }
 
+        const std::string path =
+            "/?ts=" + std::to_string(request.timestampUnixMs - kTurnListEpochOffsetMs);
         const std::wstring widePath = widen(path);
         HINTERNET requestHandle =
             WinHttpOpenRequest(connectHandle, L"GET", widePath.c_str(), nullptr,
@@ -367,19 +438,15 @@ std::optional<std::string> fetchTurnListJson(int timeoutMs) {
             break;
         }
 
-        if (statusCode != 200) {
-            spdlog::warn("[ICE] TURN list endpoint returned HTTP {}", statusCode);
-            WinHttpCloseHandle(requestHandle);
-            WinHttpCloseHandle(connectHandle);
-            break;
-        }
+        response.httpStatus = static_cast<int>(statusCode);
 
         std::string body;
+        bool readSucceeded = true;
         for (;;) {
             DWORD available = 0;
             if (!WinHttpQueryDataAvailable(requestHandle, &available)) {
                 spdlog::warn("[ICE] WinHttpQueryDataAvailable failed: {}", GetLastError());
-                body.clear();
+                readSucceeded = false;
                 break;
             }
             if (available == 0) {
@@ -390,15 +457,19 @@ std::optional<std::string> fetchTurnListJson(int timeoutMs) {
             DWORD bytesRead = 0;
             if (!WinHttpReadData(requestHandle, chunk.data(), available, &bytesRead)) {
                 spdlog::warn("[ICE] WinHttpReadData failed: {}", GetLastError());
-                body.clear();
+                readSucceeded = false;
+                break;
+            }
+            if (bytesRead == 0) {
                 break;
             }
             chunk.resize(static_cast<size_t>(bytesRead));
             body.append(chunk);
         }
 
-        if (!body.empty()) {
-            result = body;
+        if (readSucceeded) {
+            response.transportSucceeded = true;
+            response.body = std::move(body);
         }
 
         WinHttpCloseHandle(requestHandle);
@@ -406,13 +477,78 @@ std::optional<std::string> fetchTurnListJson(int timeoutMs) {
     } while (false);
 
     WinHttpCloseHandle(sessionHandle);
-    return result;
+    return response;
 }
 #else
-std::optional<std::string> fetchTurnListJson(int /*timeoutMs*/) {
-    return std::nullopt;
+TurnRegistryHttpResponse fetchTurnRegistryHttp(const TurnRegistryRequest & /*request*/) {
+    return {};
 }
 #endif
+
+std::string outcomeName(TurnRegistryOutcome outcome) {
+    switch (outcome) {
+        case TurnRegistryOutcome::NotRequired:
+            return "not-required";
+        case TurnRegistryOutcome::Success:
+            return "success";
+        case TurnRegistryOutcome::TransportFailure:
+            return "transport-failure";
+        case TurnRegistryOutcome::HttpStatusFailure:
+            return "http-status-failure";
+        case TurnRegistryOutcome::EmptyBody:
+            return "empty-body";
+        case TurnRegistryOutcome::InvalidJson:
+            return "invalid-json";
+        case TurnRegistryOutcome::InvalidSchema:
+            return "invalid-schema";
+    }
+    return "invalid-schema";
+}
+
+std::string turnRegistryDiagnostic(
+    IceMode mode,
+    const ResolvedIceConfig &resolved) {
+    const auto &turn = resolved.turn;
+    std::ostringstream summary;
+    summary << "[ICE] TurnRegistryFetch"
+            << " mode=" << iceModeName(mode)
+            << " turnRegistrySourceUrl="
+            << (turn.sourceUrl.empty() ? "none" : turn.sourceUrl)
+            << " turnRegistryTransactionId="
+            << (turn.transactionId.empty() ? "none" : turn.transactionId)
+            << " turnRegistryRequestTimestampUnixMs=" << turn.requestTimestampUnixMs
+            << " turnRegistryTimeoutMs=" << turn.timeoutMs
+            << " turnRegistryFetchAttempted=" << (turn.fetchAttempted ? "true" : "false")
+            << " turnRegistryFetchSucceeded=" << (turn.fetchSucceeded ? "true" : "false")
+            << " turnRegistryConfigAccepted=" << (turn.configAccepted ? "true" : "false")
+            << " turnRegistryOutcome=" << outcomeName(turn.outcome)
+            << " turnRegistryHttpStatus=" << turn.httpStatus
+            << " turnRegistryResponseVersion=" << turn.responseVersion
+            << " turnConfigV1Count=" << turn.responseServerCount
+            << " turnUrlCount=" << turn.responseUrlCount
+            << " turnRegistryResponseSha256="
+            << (turn.rawResponseSha256.empty() ? "none" : turn.rawResponseSha256)
+            << " turnConfigV1Sha256="
+            << (turn.canonicalConfigSha256.empty() ? "none" : turn.canonicalConfigSha256)
+            << " consumedConfigSha256="
+            << (turn.consumedConfigSha256.empty() ? "none" : turn.consumedConfigSha256)
+            << " turnUrls=";
+    bool first = true;
+    for (const auto &server : resolved.servers) {
+        if (!isTurnUrl(server.url)) {
+            continue;
+        }
+        if (!first) {
+            summary << ',';
+        }
+        first = false;
+        summary << server.url;
+    }
+    if (first) {
+        summary << "none";
+    }
+    return summary.str();
+}
 
 }  // namespace
 
@@ -420,6 +556,145 @@ bool ResolvedIceConfig::hasTurnServers() const {
     return std::any_of(servers.begin(), servers.end(), [](const IceServerConfig &server) {
         return isTurnUrl(server.url);
     });
+}
+
+std::string consumedTurnConfigSha256(
+    const std::vector<IceServerConfig> &servers) {
+    return consumedTurnConfigFingerprint(servers);
+}
+
+IceConfigBindingValidation validateIceConfigBinding(
+    IceMode mode,
+    const std::vector<IceServerConfig> &servers,
+    const TurnRegistryProvenance &turnRegistry) {
+    IceConfigBindingValidation validation;
+    validation.iceServerCount = servers.size();
+    for (const auto &server : servers) {
+        if (isTurnUrl(server.url)) {
+            ++validation.turnServerCount;
+        }
+    }
+
+    const auto reject = [&validation](std::string reason) {
+        validation.accepted = false;
+        validation.failureReason = std::move(reason);
+        return validation;
+    };
+
+    const bool turnMode = mode == IceMode::All || mode == IceMode::Relay;
+    if (!turnMode) {
+        if (mode == IceMode::HostOnly && !servers.empty()) {
+            return reject("host-only-has-ice-servers");
+        }
+        if (validation.turnServerCount != 0) {
+            return reject("turn-servers-not-permitted-for-mode");
+        }
+        const bool provenanceIsEmpty =
+            !turnRegistry.fetchAttempted &&
+            !turnRegistry.fetchSucceeded &&
+            !turnRegistry.configAccepted &&
+            turnRegistry.outcome == TurnRegistryOutcome::NotRequired &&
+            turnRegistry.sourceUrl.empty() &&
+            turnRegistry.transactionId.empty() &&
+            turnRegistry.requestTimestampUnixMs == 0 &&
+            turnRegistry.timeoutMs == 0 &&
+            turnRegistry.httpStatus == 0 &&
+            turnRegistry.responseVersion == 0 &&
+            turnRegistry.responseServerCount == 0 &&
+            turnRegistry.responseUrlCount == 0 &&
+            turnRegistry.rawResponseSha256.empty() &&
+            turnRegistry.canonicalConfigSha256.empty() &&
+            turnRegistry.consumedConfigSha256.empty();
+        if (!provenanceIsEmpty) {
+            return reject("turn-registry-not-required");
+        }
+        validation.accepted = true;
+        return validation;
+    }
+
+    if (validation.turnServerCount == 0) {
+        return reject("turn-registry-no-turn-servers");
+    }
+    if (!turnRegistry.fetchAttempted ||
+        !turnRegistry.fetchSucceeded ||
+        !turnRegistry.configAccepted ||
+        turnRegistry.outcome != TurnRegistryOutcome::Success) {
+        return reject("turn-registry-not-accepted");
+    }
+    if (turnRegistry.requestTimestampUnixMs <= 0 ||
+        turnRegistry.sourceUrl != turnRegistryUrl(turnRegistry.requestTimestampUnixMs)) {
+        return reject("turn-registry-source-mismatch");
+    }
+    if (turnRegistry.transactionId.empty() ||
+        !turnRegistry.transactionId.starts_with("turn-") ||
+        turnRegistry.timeoutMs <= 0 ||
+        turnRegistry.httpStatus != 200 ||
+        turnRegistry.responseVersion != 1) {
+        return reject("turn-registry-request-metadata");
+    }
+    if (turnRegistry.responseServerCount == 0 ||
+        turnRegistry.responseServerCount > turnRegistry.responseUrlCount) {
+        return reject("turn-registry-count-metadata");
+    }
+    if (turnRegistry.responseUrlCount != validation.turnServerCount) {
+        return reject("turn-registry-url-count-mismatch");
+    }
+    if (!isLowercaseSha256(turnRegistry.rawResponseSha256) ||
+        !isLowercaseSha256(turnRegistry.canonicalConfigSha256) ||
+        !isLowercaseSha256(turnRegistry.consumedConfigSha256)) {
+        return reject("turn-registry-hash-format");
+    }
+    for (const auto &server : servers) {
+        if (!isTurnUrl(server.url)) {
+            continue;
+        }
+        if (!isValidTurnUrl(server.url)) {
+            return reject("turn-registry-invalid-turn-url");
+        }
+        if (server.username.empty() || server.credential.empty()) {
+            return reject("turn-registry-missing-credentials");
+        }
+    }
+    try {
+        validation.consumedConfigSha256 = consumedTurnConfigFingerprint(servers);
+    } catch (...) {
+        return reject("turn-registry-consumed-hash-error");
+    }
+    if (validation.consumedConfigSha256 != turnRegistry.consumedConfigSha256) {
+        return reject("turn-registry-consumed-hash-mismatch");
+    }
+
+    validation.accepted = true;
+    return validation;
+}
+
+std::string consumedIceConfigDiagnostic(
+    IceMode mode,
+    const IceConfigBindingValidation &binding,
+    const TurnRegistryProvenance &turnRegistry) {
+    std::ostringstream summary;
+    summary << "[WebRTC] ConsumedIceConfig"
+            << " mode=" << iceModeName(mode)
+            << " iceServerCount=" << binding.iceServerCount
+            << " turnUrlCount=" << binding.turnServerCount
+            << " turnConfigV1Count=" << turnRegistry.responseServerCount
+            << " turnRegistrySourceUrl="
+            << (turnRegistry.sourceUrl.empty() ? "none" : turnRegistry.sourceUrl)
+            << " turnRegistryTransactionId="
+            << (turnRegistry.transactionId.empty() ? "none" : turnRegistry.transactionId)
+            << " turnRegistryResponseSha256="
+            << (turnRegistry.rawResponseSha256.empty()
+                    ? "none"
+                    : turnRegistry.rawResponseSha256)
+            << " turnConfigV1Sha256="
+            << (turnRegistry.canonicalConfigSha256.empty()
+                    ? "none"
+                    : turnRegistry.canonicalConfigSha256)
+            << " consumedConfigSha256="
+            << (binding.consumedConfigSha256.empty()
+                    ? "none"
+                    : binding.consumedConfigSha256);
+    return summary.str();
 }
 
 std::string iceModeName(IceMode mode) {
@@ -436,58 +711,100 @@ std::string iceModeName(IceMode mode) {
     return "all";
 }
 
-ResolvedIceConfig resolveIceConfig(IceMode mode, int fetchTimeoutMs) {
+ResolvedIceConfig resolveIceConfigWithDependencies(
+    IceMode mode,
+    int fetchTimeoutMs,
+    const IceConfigDependencies &dependencies) {
+    if (!dependencies.fetchTurnRegistry || !dependencies.emitDiagnostic) {
+        throw std::invalid_argument("TURN registry dependencies must be provided");
+    }
+
     ResolvedIceConfig resolved;
     if (mode != IceMode::HostOnly) {
         resolved.servers = defaultStunServers();
     }
 
     if (mode == IceMode::HostOnly || mode == IceMode::StunOnly) {
-        std::ostringstream summary;
-        summary << "[ICE] Mode=" << iceModeName(mode)
-                << " fetchedTurnList=0 fallbackTurns=0 servers=";
-        for (size_t i = 0; i < resolved.servers.size(); ++i) {
-            if (i != 0) {
-                summary << ", ";
-            }
-            summary << resolved.servers[i].url;
-        }
-        spdlog::info("{}", summary.str());
+        resolved.turn.outcome = TurnRegistryOutcome::NotRequired;
+        dependencies.emitDiagnostic(turnRegistryDiagnostic(mode, resolved));
         return resolved;
     }
 
-    auto payload = fetchTurnListJson(fetchTimeoutMs);
-    std::vector<TurnServerCandidate> turnCandidates;
-    if (payload.has_value()) {
-        const auto parsed = json::parse(*payload, nullptr, false);
-        if (!parsed.is_discarded()) {
-            turnCandidates = parseTurnCandidates(parsed);
-            resolved.fetchedTurnList = !turnCandidates.empty();
+    auto &turn = resolved.turn;
+    turn.fetchAttempted = true;
+    turn.timeoutMs = fetchTimeoutMs;
+    turn.requestTimestampUnixMs =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch())
+            .count();
+    turn.sourceUrl = turnRegistryUrl(turn.requestTimestampUnixMs);
+    turn.transactionId = makeTransactionId(turn.requestTimestampUnixMs);
+
+    TurnRegistryHttpResponse response;
+    try {
+        response = dependencies.fetchTurnRegistry({
+            turn.sourceUrl,
+            turn.transactionId,
+            turn.requestTimestampUnixMs,
+            turn.timeoutMs,
+        });
+    } catch (...) {
+        response = {};
+    }
+    turn.httpStatus = response.httpStatus;
+
+    if (!response.transportSucceeded) {
+        turn.outcome = TurnRegistryOutcome::TransportFailure;
+    } else if (response.httpStatus != 200) {
+        turn.outcome = TurnRegistryOutcome::HttpStatusFailure;
+    } else {
+        turn.fetchSucceeded = true;
+        const auto firstContent = response.body.find_first_not_of(" \t\r\n");
+        if (firstContent == std::string::npos) {
+            turn.outcome = TurnRegistryOutcome::EmptyBody;
+        } else {
+            turn.rawResponseSha256 = sha256Hex(response.body);
+            const json root = json::parse(response.body, nullptr, false);
+            if (root.is_discarded()) {
+                turn.outcome = TurnRegistryOutcome::InvalidJson;
+            } else {
+                if (root.is_object() && root.contains("version") &&
+                    root["version"].is_number_integer()) {
+                    turn.responseVersion = root["version"].get<int>();
+                }
+                const auto validated = validateTurnRegistry(root);
+                if (!validated.has_value()) {
+                    turn.outcome = TurnRegistryOutcome::InvalidSchema;
+                } else {
+                    turn.outcome = TurnRegistryOutcome::Success;
+                    turn.configAccepted = true;
+                    turn.responseServerCount = validated->sourceServerCount;
+                    turn.responseUrlCount = validated->sourceUrlCount;
+                    turn.canonicalConfigSha256 = validated->canonicalConfigSha256;
+                    turn.consumedConfigSha256 = validated->consumedConfigSha256;
+                    resolved.servers.insert(
+                        resolved.servers.end(),
+                        validated->servers.begin(),
+                        validated->servers.end());
+                    resolved.fetchedTurnList = true;
+                }
+            }
         }
     }
 
-    if (turnCandidates.empty()) {
-        turnCandidates = fallbackTurnCandidates();
-        resolved.usedFallbackTurnList = true;
-    }
-
-    const auto selectedTurns = processTurnCandidates(turnCandidates);
-    resolved.servers.insert(resolved.servers.end(), selectedTurns.begin(), selectedTurns.end());
-
-    std::ostringstream summary;
-    summary << "[ICE] Mode=" << iceModeName(mode)
-            << " fetchedTurnList=" << resolved.fetchedTurnList
-            << " fallbackTurns=" << resolved.usedFallbackTurnList
-            << " servers=";
-    for (size_t i = 0; i < resolved.servers.size(); ++i) {
-        if (i != 0) {
-            summary << ", ";
-        }
-        summary << resolved.servers[i].url;
-    }
-    spdlog::info("{}", summary.str());
-
+    dependencies.emitDiagnostic(turnRegistryDiagnostic(mode, resolved));
     return resolved;
+}
+
+ResolvedIceConfig resolveIceConfig(IceMode mode, int fetchTimeoutMs) {
+    IceConfigDependencies dependencies;
+    dependencies.fetchTurnRegistry = [](const TurnRegistryRequest &request) {
+        return fetchTurnRegistryHttp(request);
+    };
+    dependencies.emitDiagnostic = [](std::string_view diagnostic) {
+        spdlog::info("{}", diagnostic);
+    };
+    return resolveIceConfigWithDependencies(mode, fetchTimeoutMs, dependencies);
 }
 
 bool candidateLooksRelay(const std::string &candidate) {

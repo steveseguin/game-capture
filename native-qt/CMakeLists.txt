@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.48 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.49 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,7 +32,7 @@ include(FetchContent)
 FetchContent_Declare(
     mbedtls
     GIT_REPOSITORY https://github.com/Mbed-TLS/mbedtls.git
-    GIT_TAG v3.5.0
+    GIT_TAG v3.6.7
 )
 set(ENABLE_TESTING OFF CACHE BOOL "" FORCE)
 set(ENABLE_PROGRAMS OFF CACHE BOOL "" FORCE)
@@ -62,7 +62,8 @@ endif()
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
-    GIT_TAG v0.24.0
+    # v0.24.3 plus the upstream Mbed TLS fragmented-ClientHello datagram-length fix.
+    GIT_TAG 8a495c3523c4ecd52cd4ae4796ab9718b83bb0cb
 )
 set(NO_MEDIA OFF CACHE BOOL "" FORCE)
 set(USE_MBEDTLS ON CACHE BOOL "" FORCE)
@@ -142,6 +143,8 @@ endif()
 
 set(VERSUS_SOURCES
     src/main.cpp
+    src/app/alpha_frame_pairer.cpp
+    src/app/peer_operation_executor.cpp
     src/app/versus_app.cpp
     src/app/dual_stream_policy.cpp
     src/control/local_control_server.cpp
@@ -162,6 +165,9 @@ set(VERSUS_SOURCES
 )
 
 set(VERSUS_HEADERS
+    include/versus/app/alpha_frame_pairer.h
+    include/versus/app/peer_operation_executor.h
+    include/versus/app/keyframe_request_policy.h
     include/versus/app/versus_app.h
     include/versus/app/dual_stream_policy.h
     include/versus/control/local_control_server.h
@@ -349,6 +355,8 @@ if(VERSUS_BUILD_TESTS)
 
     # Library target for testable code (without main.cpp)
     set(VERSUS_LIB_SOURCES
+        src/app/alpha_frame_pairer.cpp
+        src/app/peer_operation_executor.cpp
         src/app/versus_app.cpp
         src/app/dual_stream_policy.cpp
         src/control/local_control_server.cpp
@@ -447,6 +455,29 @@ if(VERSUS_BUILD_TESTS)
     add_test(NAME DualStreamPolicyTest COMMAND test_dual_stream_policy)
     versus_set_qt_test_environment(DualStreamPolicyTest)
 
+    # Gate: external-encoder keyframe dispatch and pending-request policy
+    add_executable(test_keyframe_request_policy tests/test_keyframe_request_policy.cpp)
+    set_target_properties(test_keyframe_request_policy PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_keyframe_request_policy PRIVATE versus-lib Qt6::Test)
+    add_test(NAME KeyframeRequestPolicyTest COMMAND test_keyframe_request_policy)
+    versus_set_qt_test_environment(KeyframeRequestPolicyTest)
+
+    # Gate: Room Quality request/effect policy and runtime state integrity
+    add_executable(test_room_quality_runtime tests/test_room_quality_runtime.cpp)
+    set_target_properties(test_room_quality_runtime PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_room_quality_runtime PRIVATE versus-lib Qt6::Test)
+    add_test(NAME RoomQualityRuntimeTest COMMAND test_room_quality_runtime)
+    versus_set_qt_test_environment(RoomQualityRuntimeTest)
+    set_tests_properties(RoomQualityRuntimeTest PROPERTIES TIMEOUT 15)
+
+    # Gate: exact temporal pairing for independently encoded primary/alpha media
+    add_executable(test_alpha_frame_pairer tests/test_alpha_frame_pairer.cpp)
+    set_target_properties(test_alpha_frame_pairer PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_alpha_frame_pairer PRIVATE versus-lib Qt6::Test)
+    add_test(NAME AlphaFramePairerTest COMMAND test_alpha_frame_pairer)
+    versus_set_qt_test_environment(AlphaFramePairerTest)
+    set_tests_properties(AlphaFramePairerTest PROPERTIES TIMEOUT 15)
+
     # Test: VDO signaling helpers
     add_executable(test_vdo_signaling tests/test_vdo_signaling.cpp)
     set_target_properties(test_vdo_signaling PROPERTIES AUTOMOC ON)
@@ -454,18 +485,59 @@ if(VERSUS_BUILD_TESTS)
     add_test(NAME VdoSignalingTest COMMAND test_vdo_signaling)
     versus_set_qt_test_environment(VdoSignalingTest)
 
+    # Gate: an App-level candidate encryption/send rejection must never be
+    # counted or diagnosed as a successful trickle candidate dispatch.
+    add_executable(test_signaling_send_outcomes tests/test_signaling_send_outcomes.cpp)
+    set_target_properties(test_signaling_send_outcomes PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_signaling_send_outcomes PRIVATE versus-lib Qt6::Test)
+    add_test(NAME SignalingSendOutcomeGate COMMAND test_signaling_send_outcomes)
+    versus_set_qt_test_environment(SignalingSendOutcomeGate)
+    set_tests_properties(SignalingSendOutcomeGate PROPERTIES TIMEOUT 15)
+
+    # Gate: callback-safe WebSocket retirement and reconnect lifecycle. This
+    # compiles the production signaling source against a contract-faithful
+    # test transport instead of linking the normal datachannel target.
+    add_executable(test_vdo_signaling_lifecycle
+        tests/test_vdo_signaling_lifecycle.cpp
+        tests/signaling_lifecycle/fake_websocket.cpp
+        src/signaling/vdo_signaling.cpp
+        include/versus/signaling/vdo_signaling.h)
+    target_include_directories(test_vdo_signaling_lifecycle BEFORE PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/signaling_lifecycle)
+    target_include_directories(test_vdo_signaling_lifecycle PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${libdatachannel_SOURCE_DIR}/deps/json/include)
+    target_link_libraries(test_vdo_signaling_lifecycle PRIVATE
+        Qt6::Core
+        Threads::Threads
+        spdlog::spdlog
+        mbedtls
+        mbedx509
+        mbedcrypto)
+    add_test(NAME VdoSignalingLifecycleGate COMMAND test_vdo_signaling_lifecycle)
+    versus_set_qt_test_environment(VdoSignalingLifecycleGate)
+    # The child finish bounds total 25.4s when every deliberately broken
+    # scenario hangs. Startup and post-kill waits can add another 28s, so keep
+    # CTest outside the full supervisor bound and preserve its final summary.
+    set_tests_properties(VdoSignalingLifecycleGate PROPERTIES TIMEOUT 65)
+
     # Test: WebRTC client ordering helpers
     add_executable(test_webrtc_client tests/test_webrtc_client.cpp)
     set_target_properties(test_webrtc_client PROPERTIES AUTOMOC ON)
     target_link_libraries(test_webrtc_client PRIVATE versus-lib Qt6::Test)
     add_test(NAME WebRtcClientTest COMMAND test_webrtc_client)
     versus_set_qt_test_environment(WebRtcClientTest)
+    # Concurrency regressions must fail the gate instead of hanging ctest/CI
+    # indefinitely if a future is blocked by a real transport deadlock.
+    set_tests_properties(WebRtcClientTest PROPERTIES TIMEOUT 30)
 
     # Test: ICE config helpers
     add_executable(test_ice_config tests/test_ice_config.cpp)
     set_target_properties(test_ice_config PROPERTIES AUTOMOC ON)
     target_link_libraries(test_ice_config PRIVATE versus-lib Qt6::Test)
-    add_test(NAME IceConfigTest COMMAND test_ice_config)
+    # Force textual QtTest output even when CTest is launched from a hidden
+    # Windows process so the release instrument can verify exact case totals.
+    add_test(NAME IceConfigTest COMMAND test_ice_config -txt)
     versus_set_qt_test_environment(IceConfigTest)
 
     # Test: StatsPanel
@@ -518,7 +590,11 @@ if(VERSUS_BUILD_TESTS)
         target_include_directories(spout_test_sender PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
 
         add_executable(ffmpeg_probe_hang_helper tests/ffmpeg_probe_hang_helper.cpp)
-        add_dependencies(test_spout_capture spout_test_sender ffmpeg_probe_hang_helper)
+        add_executable(ffmpeg_encoder_stall_helper tests/ffmpeg_encoder_stall_helper.cpp)
+        add_dependencies(test_spout_capture
+            spout_test_sender
+            ffmpeg_probe_hang_helper
+            ffmpeg_encoder_stall_helper)
     endif()
 
 endif()

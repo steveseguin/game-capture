@@ -1,6 +1,6 @@
 # Dual-Stream Room Quality Plan
 
-Last updated: 2026-02-23
+Last updated: 2026-08-07
 Status: LOCKED
 Owner: Publisher pipeline (`native-qt/src/app` core module)
 
@@ -26,10 +26,9 @@ This is intended to reduce upstream load in room workflows while keeping gamepla
 - Framerate: 30 FPS.
 - Bitrate target: 2000 kbps.
 
-`DEC-003` HQ profile
-- Uses current publisher settings (`videoConfig_`) at full configured quality.
-- For dual-stream room mode v1, HQ codec is locked to H.264 for compatibility with LQ and to avoid renegotiation complexity.
-- If user selected non-H.264 codec while in room mode, app forces H.264 and emits runtime warning.
+`DEC-003` HQ profile (superseded by `DEC-010` on 2026-08-07)
+- The original v1 decision forced H.264 whenever Room Quality was enabled.
+- This is retained only as decision history and must not be implemented as current behavior.
 
 `DEC-004` Room-aware behavior
 - Direct view/push links (no room): HQ only. LQ encoder must not start.
@@ -61,17 +60,29 @@ This is intended to reduce upstream load in room workflows while keeping gamepla
 - Continue sending label/stats/system info via data channel.
 - Extend info with role/tier assignment and media-enable state for that peer.
 
+`DEC-010` Explicit codec and transparency settings take priority
+- HQ uses the codec and alpha workflow explicitly selected by the publisher; entering a room must never silently replace the codec or disable alpha.
+- The optional LQ tier is H.264-only. If the selected primary codec is not H.264, Room Quality becomes unavailable and all video-enabled room peers use HQ.
+- An alpha-capable receiver must receive the HQ primary and alpha tracks together. It must never be downgraded to a tier that cannot preserve the requested transparency workflow.
+- The UI must make an unavailable Room Quality option visibly disabled/unchecked, and runtime/CLI paths must emit an explicit informational warning before continuing HQ-only.
+- If the selected codec or alpha workflow cannot initialize, startup fails visibly (or follows the existing explicitly reported encoder fallback contract); room mode alone is not permission to change it silently.
+
+`DEC-011` VP9 dual-track SDP layout is stable across transport generations
+- When the VP9 alpha workflow is selected, reserve the primary video, audio, `video-alpha`, and data-channel sections in that exact order in the first offer.
+- Preserve that section set and order across ICE restarts, transport rebuilds, and codec fallback. Receiver capability gates alpha packets only; it never adds, removes, or reorders the alpha section.
+- Activating an alpha-capable receiver must not require a second offer or replace the logical peer session.
+
 ## Role Routing Matrix
 
 | Context | Init role | Assigned tier | Notes |
 |---|---|---|---|
 | Direct (no room) | any/none | HQ | Current behavior, no LQ |
 | Room | `scene` | HQ | Full-quality scene path |
-| Room | `director` | LQ | 640x360@30, 2 Mbps |
-| Room | `guest` | LQ | 640x360@30, 2 Mbps |
-| Room | `viewer` | LQ | 640x360@30, 2 Mbps |
+| Room | `director` | LQ when compatible; otherwise HQ | LQ is 640x360@30, 2 Mbps; `DEC-010` forces HQ when the selected codec/alpha path is incompatible. |
+| Room | `guest` | LQ when compatible; otherwise HQ | LQ is 640x360@30, 2 Mbps; `DEC-010` forces HQ when the selected codec/alpha path is incompatible. |
+| Room | `viewer` | LQ when compatible; otherwise HQ | LQ is 640x360@30, 2 Mbps; `DEC-010` forces HQ when the selected codec/alpha path is incompatible. |
 | Room | unknown/missing before data channel | no media then disconnect on timeout | Fail closed |
-| Room | missing init after data channel opens | LQ | Implicit compatibility fallback |
+| Room | missing init after data channel opens | LQ when compatible; otherwise HQ | Implicit compatibility fallback, subject to `DEC-010`. |
 
 ## Data Channel Contract (v1)
 
@@ -163,7 +174,7 @@ Publisher info response additions:
 - Mitigation: accepted by design (`DEC-006`), constrained by max viewers.
 
 `RISK-003` Codec mismatch complexity
-- Mitigation: lock room dual-stream v1 to H.264 (`DEC-003`).
+- Mitigation: keep LQ H.264-only, preserve the selected HQ codec/alpha workflow, and disable the LQ tier when that primary negotiation cannot carry it (`DEC-010`).
 
 `RISK-004` Reconnect/state drift
 - Mitigation: reset peer tier to unknown until fresh init, enforce timeout.
@@ -176,5 +187,8 @@ Feature is complete only when all conditions are true:
 - No more than two video encoders are ever active.
 - No media is sent to room peers before init is received.
 - Direct links still behave HQ-only.
+- Selected HQ codec and alpha behavior are identical in direct and room modes.
+- Non-H.264 room publishing stays HQ-only and never silently falls back because Room Quality was requested.
+- Alpha-capable room receivers decode synchronized moving primary/alpha tracks through the ninja-plugin compatibility path.
 - Max-viewer protection remains effective.
 - All tests listed in `native-qt/qa/DUAL_STREAM_TEST_REQUIREMENTS.md` pass.

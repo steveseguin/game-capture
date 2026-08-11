@@ -58,6 +58,421 @@ extern "C" {
 
 namespace versus::video {
 
+namespace detail {
+
+namespace {
+
+struct NormalizedFfmpegOption {
+    bool valid = false;
+    bool fileValue = false;
+    bool inlineValue = false;
+    bool inlineValueHasContent = false;
+    std::string name;
+    std::string canonicalToken;
+    std::string inlineValueText;
+};
+
+NormalizedFfmpegOption normalizeFfmpegOption(const std::string &token) {
+    NormalizedFfmpegOption result;
+    size_t nameBegin = 0;
+    while (nameBegin < token.size() && token[nameBegin] == '-') {
+        ++nameBegin;
+    }
+    if (nameBegin == 0 || nameBegin >= token.size()) {
+        return result;
+    }
+    if (token[nameBegin] == '/') {
+        result.fileValue = true;
+        ++nameBegin;
+    }
+    if (nameBegin >= token.size()) {
+        return result;
+    }
+
+    const size_t equals = token.find('=', nameBegin);
+    const size_t specifier = token.find(':', nameBegin);
+    size_t nameEnd = token.size();
+    if (equals != std::string::npos) {
+        nameEnd = std::min(nameEnd, equals);
+        result.inlineValue = true;
+        result.inlineValueHasContent = equals + 1 < token.size();
+        if (result.inlineValueHasContent) {
+            result.inlineValueText = token.substr(equals + 1);
+        }
+    }
+    if (specifier != std::string::npos) {
+        nameEnd = std::min(nameEnd, specifier);
+    }
+    if (nameEnd == nameBegin) {
+        return result;
+    }
+
+    result.name = token.substr(nameBegin, nameEnd - nameBegin);
+    std::transform(
+        result.name.begin(),
+        result.name.end(),
+        result.name.begin(),
+        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+
+    // Canonicalize accepted options to FFmpeg's supported single-dash form.
+    // The bundled CLI does not consistently accept `-option=value`; split its
+    // value into a distinct argv element below while retaining a stream
+    // specifier such as `:v:0` on the option itself.
+    result.canonicalToken = "-" + result.name;
+    if (specifier != std::string::npos &&
+        (equals == std::string::npos || specifier < equals)) {
+        const size_t specifierEnd =
+            equals == std::string::npos ? token.size() : equals;
+        result.canonicalToken +=
+            token.substr(specifier, specifierEnd - specifier);
+    }
+    result.valid = true;
+    return result;
+}
+
+bool isSafeProtectedVp9TuningOption(const std::string &name) {
+    // Protected alpha mode intentionally uses an allow-list. Unknown FFmpeg
+    // options are not safe by default: new releases regularly add aliases that
+    // can filter, retime, remap, duplicate, drop, or recode frames.
+    static constexpr std::array<const char *, 7> safeOptions = {{
+        "threads",
+        "deadline",
+        "cpu-used",
+        "row-mt",
+        "tile-columns",
+        "tile-rows",
+        "frame-parallel",
+    }};
+    return std::find_if(
+               safeOptions.begin(),
+               safeOptions.end(),
+               [&name](const char *candidate) { return name == candidate; }) !=
+        safeOptions.end();
+}
+
+bool tokenCanBeAnOption(const std::string &token) {
+    if (token.size() >= 2 && token[0] == '-' &&
+        (std::isdigit(static_cast<unsigned char>(token[1])) != 0 ||
+         token[1] == '.')) {
+        return false;
+    }
+    return normalizeFfmpegOption(token).valid;
+}
+
+bool annexBContainsH264RandomAccessNal(const std::vector<uint8_t> &accessUnit) {
+    for (size_t index = 0; index + 3 < accessUnit.size(); ++index) {
+        size_t prefixLength = 0;
+        if (accessUnit[index] == 0 && accessUnit[index + 1] == 0 &&
+            accessUnit[index + 2] == 1) {
+            prefixLength = 3;
+        } else if (index + 4 < accessUnit.size() &&
+                   accessUnit[index] == 0 && accessUnit[index + 1] == 0 &&
+                   accessUnit[index + 2] == 0 && accessUnit[index + 3] == 1) {
+            prefixLength = 4;
+        }
+        if (prefixLength == 0 || index + prefixLength >= accessUnit.size()) {
+            continue;
+        }
+        const uint8_t nalType = accessUnit[index + prefixLength] & 0x1F;
+        if (nalType == 5) {
+            return true;
+        }
+        index += prefixLength;
+    }
+    return false;
+}
+
+struct H264AccessUnitScan {
+    bool valid = false;
+    bool keyframe = false;
+};
+
+H264AccessUnitScan scanAvccH264AccessUnit(
+    const std::vector<uint8_t> &accessUnit) {
+    size_t offset = 0;
+    bool foundNal = false;
+    bool keyframe = false;
+    while (offset + 4 <= accessUnit.size()) {
+        const uint32_t nalSize =
+            (static_cast<uint32_t>(accessUnit[offset]) << 24) |
+            (static_cast<uint32_t>(accessUnit[offset + 1]) << 16) |
+            (static_cast<uint32_t>(accessUnit[offset + 2]) << 8) |
+            static_cast<uint32_t>(accessUnit[offset + 3]);
+        offset += 4;
+        if (nalSize == 0 || nalSize > accessUnit.size() - offset) {
+            return {};
+        }
+        foundNal = true;
+        const uint8_t nalType = accessUnit[offset] & 0x1F;
+        if (nalType == 5) {
+            keyframe = true;
+        }
+        offset += nalSize;
+    }
+    if (!foundNal || offset != accessUnit.size()) {
+        return {};
+    }
+    return {true, keyframe};
+}
+
+bool av1FrameContainsSequenceHeader(const std::vector<uint8_t> &packet) {
+    size_t pos = 0;
+    while (pos < packet.size()) {
+        const uint8_t header = packet[pos];
+        if ((header & 0x80) != 0) {
+            return false;
+        }
+        const uint8_t obuType = (header >> 3) & 0x0F;
+        const bool hasExtension = (header & 0x04) != 0;
+        const bool hasSizeField = (header & 0x02) != 0;
+        if (obuType == 1) {
+            return true;
+        }
+        pos += 1 + (hasExtension ? 1 : 0);
+        if (!hasSizeField) {
+            return false;
+        }
+        uint64_t obuSize = 0;
+        int shift = 0;
+        bool sizeParsed = false;
+        while (pos < packet.size() && shift < 56) {
+            const uint8_t byte = packet[pos++];
+            obuSize |= static_cast<uint64_t>(byte & 0x7F) << shift;
+            if ((byte & 0x80) == 0) {
+                sizeParsed = true;
+                break;
+            }
+            shift += 7;
+        }
+        if (!sizeParsed || obuSize > packet.size() - pos) {
+            return false;
+        }
+        pos += static_cast<size_t>(obuSize);
+    }
+    return false;
+}
+
+class Vp9BitReader {
+  public:
+    explicit Vp9BitReader(const std::vector<uint8_t> &packet) : packet_(packet) {}
+
+    bool readBits(int count, uint32_t &value) {
+        value = 0;
+        for (int bit = 0; bit < count; ++bit) {
+            if (bitOffset_ >= packet_.size() * 8) {
+                return false;
+            }
+            const uint8_t byte = packet_[bitOffset_ / 8];
+            value = (value << 1) |
+                static_cast<uint32_t>((byte >> (7 - (bitOffset_ % 8))) & 1U);
+            ++bitOffset_;
+        }
+        return true;
+    }
+
+  private:
+    const std::vector<uint8_t> &packet_;
+    size_t bitOffset_ = 0;
+};
+
+}  // namespace
+
+bool h264AccessUnitIsKeyframe(const std::vector<uint8_t> &accessUnit,
+                              H264BitstreamFormat format) {
+    if (accessUnit.empty()) {
+        return false;
+    }
+    if (format == H264BitstreamFormat::AnnexB) {
+        return annexBContainsH264RandomAccessNal(accessUnit);
+    }
+    if (format == H264BitstreamFormat::Avcc) {
+        const auto scan = scanAvccH264AccessUnit(accessUnit);
+        return scan.valid && scan.keyframe;
+    }
+    const auto avcc = scanAvccH264AccessUnit(accessUnit);
+    return avcc.valid
+        ? avcc.keyframe
+        : annexBContainsH264RandomAccessNal(accessUnit);
+}
+
+bool prepareFreshMediaFoundationEncoderAfterWarmup(
+    const MediaFoundationWarmupLifecycle &lifecycle) {
+    if (!lifecycle.releaseWarmedTransform ||
+        !lifecycle.shutdownActivation ||
+        !lifecycle.activateFreshTransform ||
+        !lifecycle.configureFreshTransform ||
+        !lifecycle.clearLiveIdentityState) {
+        return false;
+    }
+    lifecycle.releaseWarmedTransform();
+    if (!lifecycle.shutdownActivation()) {
+        return false;
+    }
+    if (!lifecycle.activateFreshTransform()) {
+        return false;
+    }
+    if (!lifecycle.configureFreshTransform()) {
+        return false;
+    }
+    lifecycle.clearLiveIdentityState();
+    return true;
+}
+
+FfmpegOptionPolicyResult appendProtectedVp9Options(
+    std::vector<std::string> baseArgs,
+    const std::vector<std::string> &customArgs) {
+    FfmpegOptionPolicyResult result;
+    result.args = std::move(baseArgs);
+    for (size_t index = 0; index < customArgs.size(); ++index) {
+        const std::string &token = customArgs[index];
+        const NormalizedFfmpegOption option = normalizeFfmpegOption(token);
+        const bool safeOption = option.valid && !option.fileValue &&
+            isSafeProtectedVp9TuningOption(option.name);
+        if (safeOption) {
+            if (option.inlineValue) {
+                if (option.inlineValueHasContent) {
+                    result.args.push_back(option.canonicalToken);
+                    result.args.push_back(option.inlineValueText);
+                } else {
+                    result.rejectedOptions.push_back(
+                        token + " (missing required value)");
+                }
+                continue;
+            }
+            if (index + 1 < customArgs.size() &&
+                !tokenCanBeAnOption(customArgs[index + 1])) {
+                result.args.push_back(option.canonicalToken);
+                result.args.push_back(customArgs[++index]);
+                continue;
+            }
+
+            result.rejectedOptions.push_back(
+                token + " (missing required value)");
+            continue;
+        }
+
+        std::string rejected = token;
+        if (option.valid && !option.inlineValue &&
+            index + 1 < customArgs.size() &&
+            !tokenCanBeAnOption(customArgs[index + 1])) {
+            rejected += ' ';
+            rejected += customArgs[++index];
+        }
+        result.rejectedOptions.push_back(std::move(rejected));
+    }
+
+    // These are intentionally last: FFmpeg resolves repeated scalar options by
+    // taking the last value for the output stream.
+    const std::array<const char *, 12> mandatory = {
+        "-c:v", "libvpx-vp9",
+        "-fps_mode", "passthrough",
+        "-lag-in-frames", "0",
+        "-auto-alt-ref", "0",
+        "-g", "1",
+        "-keyint_min", "1",
+    };
+    result.args.insert(result.args.end(), mandatory.begin(), mandatory.end());
+    return result;
+}
+
+BoundedSourceTimestampQueue::BoundedSourceTimestampQueue(std::size_t capacity)
+    : capacity_(std::max<std::size_t>(1, capacity)) {}
+
+bool BoundedSourceTimestampQueue::tryPush(int64_t sourceTimestamp) {
+    if (timestamps_.size() >= capacity_) {
+        return false;
+    }
+    timestamps_.push_back(sourceTimestamp);
+    return true;
+}
+
+bool BoundedSourceTimestampQueue::tryPop(int64_t &sourceTimestamp) {
+    if (timestamps_.empty()) {
+        return false;
+    }
+    sourceTimestamp = timestamps_.front();
+    timestamps_.pop_front();
+    return true;
+}
+
+void BoundedSourceTimestampQueue::clear() {
+    timestamps_.clear();
+}
+
+std::size_t BoundedSourceTimestampQueue::size() const {
+    return timestamps_.size();
+}
+
+std::size_t BoundedSourceTimestampQueue::capacity() const {
+    return capacity_;
+}
+
+bool vp9FrameIsKeyframe(const std::vector<uint8_t> &packet) {
+    Vp9BitReader bits(packet);
+    uint32_t value = 0;
+    if (!bits.readBits(2, value) || value != 2) {
+        return false;
+    }
+    uint32_t profileLow = 0;
+    uint32_t profileHigh = 0;
+    if (!bits.readBits(1, profileLow) || !bits.readBits(1, profileHigh)) {
+        return false;
+    }
+    const uint32_t profile = profileLow | (profileHigh << 1);
+    if (profile == 3 && !bits.readBits(1, value)) {
+        return false;
+    }
+    uint32_t showExistingFrame = 0;
+    if (!bits.readBits(1, showExistingFrame) || showExistingFrame != 0) {
+        return false;
+    }
+    uint32_t frameType = 1;
+    if (!bits.readBits(1, frameType) || frameType != 0) {
+        return false;
+    }
+    // show_frame and error_resilient_mode precede the keyframe sync code.
+    if (!bits.readBits(1, value) || !bits.readBits(1, value)) {
+        return false;
+    }
+    uint32_t sync0 = 0;
+    uint32_t sync1 = 0;
+    uint32_t sync2 = 0;
+    return bits.readBits(8, sync0) &&
+        bits.readBits(8, sync1) &&
+        bits.readBits(8, sync2) &&
+        sync0 == 0x49 && sync1 == 0x83 && sync2 == 0x42;
+}
+
+bool ivfFrameIsKeyframe(VideoCodec codec, const std::vector<uint8_t> &packet) {
+    if (codec == VideoCodec::VP9) {
+        return vp9FrameIsKeyframe(packet);
+    }
+    if (codec == VideoCodec::AV1) {
+        return av1FrameContainsSequenceHeader(packet);
+    }
+    return false;
+}
+
+bool protectedVp9RuntimeContractHealthy(
+    bool initialized,
+    bool requireEveryFrameKeyframe,
+    VideoCodec activeCodec,
+    const std::string &activeEncoderName,
+    bool mostRecentProtectedPacketHealthy) {
+    std::string normalizedEncoder = activeEncoderName;
+    std::transform(
+        normalizedEncoder.begin(),
+        normalizedEncoder.end(),
+        normalizedEncoder.begin(),
+        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return initialized && requireEveryFrameKeyframe &&
+        activeCodec == VideoCodec::VP9 &&
+        normalizedEncoder.find("libvpx-vp9") != std::string::npos &&
+        mostRecentProtectedPacketHealthy;
+}
+
+}  // namespace detail
+
 namespace {
 
 const char *videoCodecName(VideoCodec codec) {
@@ -685,6 +1100,7 @@ class VideoEncoder::Impl {
   public:
     bool initialize(const EncoderConfig &config) {
         config_ = config;
+        pendingSourceTimestamps_.clear();
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         return tryInitEncoder(config_.preferredHardware);
     }
@@ -714,12 +1130,15 @@ class VideoEncoder::Impl {
             av_packet_free(&packet_);
         }
         initialized_ = false;
+        pendingSourceTimestamps_.clear();
         setActiveEncoderName("");
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
     }
 
-    bool encode(const CapturedFrame &input, EncodedPacket &output) {
+    bool encode(const CapturedFrame &input,
+                EncodedPacket &output,
+                int64_t sourceTimestamp) {
         std::lock_guard<std::mutex> lock(mutex_);
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         if (!initialized_) {
@@ -730,10 +1149,17 @@ class VideoEncoder::Impl {
             lastEncodeFailureKind_.store(EncodeFailureKind::InvalidInput, std::memory_order_relaxed);
             return false;
         }
+        const int64_t submittedEncoderPts = frame_->pts;
         int ret = avcodec_send_frame(codecCtx_, useHardware_ ? hwFrame_ : frame_);
         if (ret < 0 && ret != AVERROR(EAGAIN)) {
             lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
             return false;
+        }
+        if (ret >= 0) {
+            pendingSourceTimestamps_.emplace_back(submittedEncoderPts, sourceTimestamp);
+            while (pendingSourceTimestamps_.size() > 128) {
+                pendingSourceTimestamps_.pop_front();
+            }
         }
         ret = avcodec_receive_packet(codecCtx_, packet_);
         if (ret < 0) {
@@ -743,9 +1169,20 @@ class VideoEncoder::Impl {
             return false;
         }
         output.data.assign(packet_->data, packet_->data + packet_->size);
+        output.sourceTimestamp = std::numeric_limits<int64_t>::min();
+        const auto sourceTimestamp = std::find_if(
+            pendingSourceTimestamps_.begin(),
+            pendingSourceTimestamps_.end(),
+            [this](const auto &entry) { return entry.first == packet_->pts; });
+        if (sourceTimestamp != pendingSourceTimestamps_.end()) {
+            output.sourceTimestamp = sourceTimestamp->second;
+            pendingSourceTimestamps_.erase(sourceTimestamp);
+        }
         output.pts = packet_->pts;
         output.dts = packet_->dts;
-        output.isKeyframe = (packet_->flags & AV_PKT_FLAG_KEY) != 0;
+        output.isKeyframe = config_.codec == VideoCodec::H264
+            ? detail::h264AccessUnitIsKeyframe(output.data)
+            : (packet_->flags & AV_PKT_FLAG_KEY) != 0;
         output.codec = config_.codec;
         av_packet_unref(packet_);
         return true;
@@ -932,6 +1369,7 @@ class VideoEncoder::Impl {
     int lastWidth_ = 0;
     int lastHeight_ = 0;
     std::vector<uint8_t> aspectFitInputBuffer_;
+    std::deque<std::pair<int64_t, int64_t>> pendingSourceTimestamps_;
     mutable std::mutex activeEncoderNameMutex_;
     std::string activeEncoderName_;
     std::atomic<VideoCodec> activeCodec_{VideoCodec::H264};
@@ -971,6 +1409,7 @@ class VideoEncoder::Impl {
         spdlog::info("[VideoEncoder] Initializing MF encoder {}x{} @{}kbps", config.width, config.height, config.bitrate);
         frameCount_ = 0;
         lastInputTimestamp_ = 0;
+        mfPendingSourceTimestamps_.clear();
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
 
@@ -1071,6 +1510,73 @@ class VideoEncoder::Impl {
                     continue;
                 }
 
+                // A hardware MFT may need several input samples before its
+                // warm-up packet appears. A flush is not a sufficient reset
+                // boundary for every vendor implementation: delayed probe
+                // output can still arrive after the first live input. Dispose
+                // the warmed transform and activate/configure a fresh instance
+                // so the live source-identity queue starts with an empty codec.
+                spdlog::info(
+                    "[VideoEncoder] Replacing warmed Media Foundation encoder '{}' before live input",
+                    candidate.name);
+                const bool freshPipelineReady =
+                    detail::prepareFreshMediaFoundationEncoderAfterWarmup({
+                        [this]() {
+                            initialized_ = false;
+                            resetCurrentTransform();
+                        },
+                        [&]() {
+                            const HRESULT shutdownObjectHr =
+                                candidate.activate->ShutdownObject();
+                            if (FAILED(shutdownObjectHr)) {
+                                lastHr = shutdownObjectHr;
+                                spdlog::warn(
+                                    "[VideoEncoder] Refusing warmed encoder '{}' because Activate shutdown failed hr=0x{:08x}",
+                                    candidate.name,
+                                    static_cast<unsigned>(shutdownObjectHr));
+                                return false;
+                            }
+                            return true;
+                        },
+                        [&]() {
+                            hr = candidate.activate->ActivateObject(
+                                IID_PPV_ARGS(transform_.ReleaseAndGetAddressOf()));
+                            if (FAILED(hr)) {
+                                lastHr = hr;
+                                spdlog::warn(
+                                    "[VideoEncoder] Failed to reactivate clean encoder '{}' hr=0x{:08x}",
+                                    candidate.name,
+                                    static_cast<unsigned>(hr));
+                                return false;
+                            }
+                            return true;
+                        },
+                        [&]() {
+                            setActiveEncoderName(candidate.name);
+                            usingHardware_ = candidate.hardware;
+                            if (!configureTransform()) {
+                                spdlog::warn(
+                                    "[VideoEncoder] Clean encoder '{}' did not accept the configured media types",
+                                    candidate.name);
+                                lastHr = E_FAIL;
+                                return false;
+                            }
+                            return true;
+                        },
+                        [this]() {
+                            mfPendingSourceTimestamps_.clear();
+                            pendingHaveOutputEvents_ = 0;
+                            frameCount_ = 0;
+                            lastInputTimestamp_ = 0;
+                        },
+                    });
+                if (!freshPipelineReady) {
+                    initialized_ = false;
+                    resetCurrentTransform();
+                    continue;
+                }
+                initialized_ = true;
+
                 if (!config_.forceFfmpegNvenc &&
                     config_.preferredHardware == HardwareEncoder::NVENC &&
                     !matchesPreferredHardware(activeEncoderName(), HardwareEncoder::NVENC)) {
@@ -1113,13 +1619,16 @@ class VideoEncoder::Impl {
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
         frameCount_ = 0;
         lastInputTimestamp_ = 0;
+        mfPendingSourceTimestamps_.clear();
         inputSubtype_ = MFVideoFormat_NV12;
     }
 
-    bool encode(const CapturedFrame &input, EncodedPacket &output) {
+    bool encode(const CapturedFrame &input,
+                EncodedPacket &output,
+                int64_t sourceTimestamp) {
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         if (usingExternalFfmpeg_) {
-            return encodeExternalFfmpegNvenc(input, output);
+            return encodeExternalFfmpegNvenc(input, output, sourceTimestamp);
         }
 
         if (!initialized_ || !transform_) {
@@ -1171,6 +1680,31 @@ class VideoEncoder::Impl {
         inputSample->SetSampleTime(timestamp);
         inputSample->SetSampleDuration(sampleDuration);
         lastInputTimestamp_ = timestamp;
+
+        // Preserve the capture identity exactly, including zero. The sample
+        // time above may be sanitized for Media Foundation's transport clock,
+        // but it must never replace the source identity used for alpha pairing.
+        const int64_t submittedSourceTimestamp = sourceTimestamp;
+        auto recordSubmittedSource = [&]() {
+            mfPendingSourceTimestamps_.emplace_back(timestamp, submittedSourceTimestamp);
+            while (mfPendingSourceTimestamps_.size() > 128) {
+                mfPendingSourceTimestamps_.pop_front();
+            }
+        };
+        auto takeSubmittedSource = [&](LONGLONG outputTimestamp) {
+            const auto match = std::find_if(
+                mfPendingSourceTimestamps_.begin(),
+                mfPendingSourceTimestamps_.end(),
+                [outputTimestamp](const auto &entry) {
+                    return entry.first == outputTimestamp;
+                });
+            if (match == mfPendingSourceTimestamps_.end()) {
+                return std::numeric_limits<int64_t>::min();
+            }
+            const int64_t sourceTimestamp = match->second;
+            mfPendingSourceTimestamps_.erase(match);
+            return sourceTimestamp;
+        };
 
         auto pullOutput = [&](EncodedPacket &packet, bool &produced) -> HRESULT {
             produced = false;
@@ -1263,11 +1797,14 @@ class VideoEncoder::Impl {
             packet.data.assign(encodedData, encodedData + encodedSize);
             LONGLONG outTimestamp = timestamp;
             if (FAILED(resultSample->GetSampleTime(&outTimestamp))) {
-                outTimestamp = timestamp;
+                outTimestamp = mfPendingSourceTimestamps_.empty()
+                    ? timestamp
+                    : mfPendingSourceTimestamps_.front().first;
             }
             packet.pts = outTimestamp;
             packet.dts = outTimestamp;
-            packet.isKeyframe = false;
+            packet.sourceTimestamp = takeSubmittedSource(outTimestamp);
+            packet.isKeyframe = detail::h264AccessUnitIsKeyframe(packet.data);
 
             static int nalLogCount = 0;
             for (DWORD i = 0; i + 4 < encodedSize; i++) {
@@ -1278,10 +1815,6 @@ class VideoEncoder::Impl {
                     if (nalLogCount < 40 && (nalType == 5 || nalType == 7 || nalType == 1)) {
                         spdlog::debug("[MFEncoder] NAL type {} at offset {} (frame {})", nalType, i, frameCount_);
                         nalLogCount++;
-                    }
-                    if (nalType == 5 || nalType == 7) {
-                        packet.isKeyframe = true;
-                        break;
                     }
                 }
             }
@@ -1379,6 +1912,7 @@ class VideoEncoder::Impl {
                 return false;
             }
             pendingNeedInputEvents_ = std::max(0, pendingNeedInputEvents_ - 1);
+            recordSubmittedSource();
             frameCount_++;
 
             if (havePrefetchedOutput) {
@@ -1420,6 +1954,8 @@ class VideoEncoder::Impl {
             }
             return false;
         }
+
+        recordSubmittedSource();
 
         bool produced = false;
         hr = pullOutput(output, produced);
@@ -1773,10 +2309,15 @@ class VideoEncoder::Impl {
             args.push_back("1");
             args.push_back("-frame-parallel");
             args.push_back("1");
-            args.push_back("-g");
-            args.push_back("1");
-            args.push_back("-keyint_min");
-            args.push_back("1");
+            if (!config_.requireEveryFrameKeyframe) {
+                // Ordinary VP9 keeps the historical all-keyframe default, but
+                // advanced users may override it below. Protected alpha mode
+                // appends its non-overrideable contract after custom options.
+                args.push_back("-g");
+                args.push_back("1");
+                args.push_back("-keyint_min");
+                args.push_back("1");
+            }
             args.push_back("-minrate");
             args.push_back(std::to_string(bitrate) + "k");
         }
@@ -1817,7 +2358,19 @@ class VideoEncoder::Impl {
         }
 
         const auto extraArgs = splitCommandArgs(config_.ffmpegOptions);
-        args.insert(args.end(), extraArgs.begin(), extraArgs.end());
+        if (config_.codec == VideoCodec::VP9 && config_.requireEveryFrameKeyframe) {
+            auto protectedOptions = detail::appendProtectedVp9Options(
+                std::move(args),
+                extraArgs);
+            args = std::move(protectedOptions.args);
+            for (const auto &rejected : protectedOptions.rejectedOptions) {
+                spdlog::warn(
+                    "[FFmpegEncoder] Ignoring VP9 option '{}' because dual-track alpha requires libvpx-vp9, zero lag, and every frame to be a keyframe",
+                    rejected);
+            }
+        } else {
+            args.insert(args.end(), extraArgs.begin(), extraArgs.end());
+        }
         if (config_.codec == VideoCodec::H264) {
             args.push_back("-bsf:v");
             args.push_back("h264_metadata=aud=insert,dump_extra=freq=keyframe");
@@ -2322,6 +2875,7 @@ class VideoEncoder::Impl {
         Queued,
         InvalidInput,
         Backpressure,
+        OutputStalled,
         IoFailure
     };
 
@@ -2349,9 +2903,11 @@ class VideoEncoder::Impl {
             return ExternalEnqueueResult::Backpressure;
         }
 
+        if (!externalPendingOutputPts_.tryPush(timestamp)) {
+            return ExternalEnqueueResult::OutputStalled;
+        }
         externalPendingInputBytes_ += frame.size();
         externalInputQueue_.push_back(std::move(frame));
-        externalPendingOutputPts_.push_back(timestamp);
         externalIoCv_.notify_all();
         return ExternalEnqueueResult::Queued;
     }
@@ -2486,6 +3042,11 @@ class VideoEncoder::Impl {
     }
 
     static bool packetContainsKeyframe(const std::vector<uint8_t> &packet, VideoCodec codec) {
+        if (codec == VideoCodec::H264) {
+            return detail::h264AccessUnitIsKeyframe(
+                packet,
+                detail::H264BitstreamFormat::AnnexB);
+        }
         size_t pos = 0;
         size_t prefixLength = 0;
         while ((pos = findAnnexBStartCode(packet, pos, prefixLength)) != std::string::npos) {
@@ -2495,10 +3056,6 @@ class VideoEncoder::Impl {
             const uint8_t nalType = annexBNalType(packet, pos, prefixLength, codec);
             if (codec == VideoCodec::H265) {
                 if (nalType >= 16 && nalType <= 23) {
-                    return true;
-                }
-            } else {
-                if (nalType == 5) {
                     return true;
                 }
             }
@@ -2585,14 +3142,15 @@ class VideoEncoder::Impl {
 
             output.data = std::move(candidate);
             int64_t pts = 0;
-            if (!externalPendingOutputPts_.empty()) {
-                pts = externalPendingOutputPts_.front();
-                externalPendingOutputPts_.pop_front();
+            int64_t sourceTimestamp = std::numeric_limits<int64_t>::min();
+            if (externalPendingOutputPts_.tryPop(pts)) {
+                sourceTimestamp = pts;
             } else {
                 pts = (externalPacketCount_ * 10000000LL) / std::max(1, config_.frameRate);
             }
             output.pts = pts;
             output.dts = pts;
+            output.sourceTimestamp = sourceTimestamp;
             output.codec = config_.codec;
             output.isKeyframe = packetContainsKeyframe(output.data, config_.codec);
             externalPacketCount_++;
@@ -2611,46 +3169,6 @@ class VideoEncoder::Impl {
                (static_cast<uint32_t>(data[1]) << 8) |
                (static_cast<uint32_t>(data[2]) << 16) |
                (static_cast<uint32_t>(data[3]) << 24);
-    }
-
-    // AV1 temporal units only carry a sequence-header OBU (type 1) on keyframes,
-    // so its presence is a reliable random-access indicator for live encodes.
-    static bool av1PacketContainsSequenceHeader(const std::vector<uint8_t> &packet) {
-        size_t pos = 0;
-        while (pos < packet.size()) {
-            const uint8_t header = packet[pos];
-            if ((header & 0x80) != 0) {  // forbidden bit
-                return false;
-            }
-            const uint8_t obuType = (header >> 3) & 0x0F;
-            const bool hasExtension = (header & 0x04) != 0;
-            const bool hasSizeField = (header & 0x02) != 0;
-            if (obuType == 1) {
-                return true;
-            }
-            pos += 1 + (hasExtension ? 1 : 0);
-            if (!hasSizeField) {
-                // Last OBU in the temporal unit extends to the end of the packet.
-                return false;
-            }
-            uint64_t obuSize = 0;
-            int shift = 0;
-            bool sizeParsed = false;
-            while (pos < packet.size() && shift < 56) {
-                const uint8_t byte = packet[pos++];
-                obuSize |= static_cast<uint64_t>(byte & 0x7F) << shift;
-                if ((byte & 0x80) == 0) {
-                    sizeParsed = true;
-                    break;
-                }
-                shift += 7;
-            }
-            if (!sizeParsed || obuSize > packet.size() - pos) {
-                return false;
-            }
-            pos += static_cast<size_t>(obuSize);
-        }
-        return false;
     }
 
     bool popExternalIvfPacket(EncodedPacket &output) {
@@ -2685,19 +3203,19 @@ class VideoEncoder::Impl {
                            externalOutputBuffer_.begin() + 12 + frameSize);
         externalOutputBuffer_.erase(externalOutputBuffer_.begin(),
                                     externalOutputBuffer_.begin() + 12 + frameSize);
-        if (!externalPendingOutputPts_.empty()) {
-            output.pts = externalPendingOutputPts_.front();
-            externalPendingOutputPts_.pop_front();
+        int64_t queuedSourceTimestamp = 0;
+        if (externalPendingOutputPts_.tryPop(queuedSourceTimestamp)) {
+            output.pts = queuedSourceTimestamp;
+            output.sourceTimestamp = output.pts;
         } else {
             output.pts = (externalPacketCount_ * 10000000LL) / std::max(1, config_.frameRate);
+            output.sourceTimestamp = std::numeric_limits<int64_t>::min();
         }
         output.dts = output.pts;
         output.codec = config_.codec;
-        // VP9 runs with -g 1 (all keyframes). AV1 uses GOP-based keyframes, so
-        // flag only frames carrying a sequence header; otherwise new viewers are
-        // fed delta frames they cannot decode.
-        output.isKeyframe = (config_.codec != VideoCodec::AV1) ||
-                            av1PacketContainsSequenceHeader(output.data);
+        // Derive the flag from the encoded IVF payload. Configuration intent is
+        // not proof that a packet is independently decodable.
+        output.isKeyframe = detail::ivfFrameIsKeyframe(config_.codec, output.data);
         externalPacketCount_++;
 
         if (!externalFirstPacketLogged_) {
@@ -2714,7 +3232,9 @@ class VideoEncoder::Impl {
         return popExternalAnnexBPacket(output);
     }
 
-    bool encodeExternalFfmpegNvenc(const CapturedFrame &input, EncodedPacket &output) {
+    bool encodeExternalFfmpegNvenc(const CapturedFrame &input,
+                                   EncodedPacket &output,
+                                   int64_t sourceTimestamp) {
         if (!usingExternalFfmpeg_ || !externalStdInWrite_ || !externalStdOutRead_ || !externalProcess_) {
             lastEncodeFailureKind_.store(EncodeFailureKind::ProcessExited, std::memory_order_relaxed);
             return false;
@@ -2747,12 +3267,31 @@ class VideoEncoder::Impl {
         }
 
         const ExternalEnqueueResult enqueueResult =
-            enqueueExternalInputFrame(std::move(externalInputBuffer_), input.timestamp);
+            enqueueExternalInputFrame(std::move(externalInputBuffer_), sourceTimestamp);
         if (enqueueResult != ExternalEnqueueResult::Queued) {
             if (enqueueResult == ExternalEnqueueResult::IoFailure) {
                 spdlog::warn("[FFmpegEncoder] FFmpeg IO worker rejected input; restarting pipeline");
                 lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
-                recoverExternalFfmpegNvenc();
+                if (recoverExternalFfmpegNvenc()) {
+                    lastEncodeFailureKind_.store(
+                        EncodeFailureKind::IoFailure,
+                        std::memory_order_relaxed);
+                }
+            } else if (enqueueResult == ExternalEnqueueResult::OutputStalled) {
+                spdlog::warn(
+                    "[FFmpegEncoder] FFmpeg accepted input without producing output; restarting the bounded identity pipeline");
+                lastEncodeFailureKind_.store(
+                    EncodeFailureKind::Backpressure,
+                    std::memory_order_relaxed);
+                if (recoverExternalFfmpegNvenc()) {
+                    // restartExternalFfmpegNvenc() clears its own transient
+                    // status on success. Preserve the rejection observed by
+                    // this encode call so callers can distinguish the bounded
+                    // stall from an ordinary no-output-yet timeout.
+                    lastEncodeFailureKind_.store(
+                        EncodeFailureKind::Backpressure,
+                        std::memory_order_relaxed);
+                }
             } else if (enqueueResult == ExternalEnqueueResult::Backpressure) {
                 spdlog::warn("[FFmpegEncoder] FFmpeg input queue is full; skipping frame while encoder catches up");
                 lastEncodeFailureKind_.store(EncodeFailureKind::Backpressure, std::memory_order_relaxed);
@@ -2805,7 +3344,11 @@ class VideoEncoder::Impl {
         if (ioWorkerFailed) {
             spdlog::warn("[FFmpegEncoder] FFmpeg IO worker failure detected; restarting pipeline");
             lastEncodeFailureKind_.store(EncodeFailureKind::IoFailure, std::memory_order_relaxed);
-            recoverExternalFfmpegNvenc();
+            if (recoverExternalFfmpegNvenc()) {
+                lastEncodeFailureKind_.store(
+                    EncodeFailureKind::IoFailure,
+                    std::memory_order_relaxed);
+            }
             return false;
         }
 
@@ -3275,7 +3818,8 @@ class VideoEncoder::Impl {
         EncodedPacket probePacket;
         constexpr int kMaxProbeFrames = 18;
         for (int i = 0; i < kMaxProbeFrames; ++i) {
-            if (encode(probeFrame, probePacket) && !probePacket.data.empty()) {
+            if (encode(probeFrame, probePacket, probeFrame.timestamp) &&
+                !probePacket.data.empty()) {
                 spdlog::info("[VideoEncoder] Warm-up probe produced encoded data on frame {}", i + 1);
                 return true;
             }
@@ -3538,6 +4082,7 @@ class VideoEncoder::Impl {
     }
 
     void resetCurrentTransform() {
+        mfPendingSourceTimestamps_.clear();
         if (codecApi_) {
             codecApi_->Release();
             codecApi_ = nullptr;
@@ -3948,7 +4493,8 @@ class VideoEncoder::Impl {
     std::condition_variable externalIoCv_;
     std::deque<std::vector<uint8_t>> externalInputQueue_;
     std::deque<std::vector<uint8_t>> externalReusableInputBuffers_;
-    std::deque<int64_t> externalPendingOutputPts_;
+    detail::BoundedSourceTimestampQueue externalPendingOutputPts_{16};
+    std::deque<std::pair<LONGLONG, int64_t>> mfPendingSourceTimestamps_;
     std::thread externalWriterThread_;
     std::thread externalReaderThread_;
     std::thread externalStderrThread_;
@@ -3975,7 +4521,7 @@ class VideoEncoder::Impl {
   public:
     bool initialize(const EncoderConfig &) { return false; }
     void shutdown() {}
-    bool encode(const CapturedFrame &, EncodedPacket &) { return false; }
+    bool encode(const CapturedFrame &, EncodedPacket &, int64_t) { return false; }
     void setBitrate(int) {}
     void requestKeyframe() {}
     VideoCodec activeCodec() const { return VideoCodec::H264; }
@@ -3994,20 +4540,55 @@ VideoEncoder::~VideoEncoder() { shutdown(); }
 
 bool VideoEncoder::initialize(const EncoderConfig &config) {
     config_ = config;
-    initialized_ = impl_->initialize(config);
+    if (config_.codec == VideoCodec::VP9 && config_.requireEveryFrameKeyframe) {
+        config_.gopSize = 1;
+        config_.bFrames = 0;
+        config_.lowLatency = true;
+    }
+    initialized_ = impl_->initialize(config_);
+    protectedPacketContractHealthy_.store(
+        initialized_ && config_.requireEveryFrameKeyframe &&
+            impl_->activeCodec() == VideoCodec::VP9 &&
+            toLowerCopy(impl_->activeEncoderName()).find("libvpx-vp9") !=
+                std::string::npos,
+        std::memory_order_relaxed);
+    if (initialized_ && config_.requireEveryFrameKeyframe &&
+        !guaranteesEveryFrameKeyframe()) {
+        spdlog::error(
+            "[VideoEncoder] Protected VP9 initialization resolved to an incompatible live encoder codec={} encoder='{}'",
+            impl_->activeCodecName(),
+            impl_->activeEncoderName());
+        impl_->shutdown();
+        initialized_ = false;
+    }
     return initialized_;
 }
 
 void VideoEncoder::shutdown() {
     impl_->shutdown();
     initialized_ = false;
+    protectedPacketContractHealthy_.store(false, std::memory_order_relaxed);
 }
 
 bool VideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet) {
+    return encodeWithSourceTimestamp(frame, packet, frame.timestamp);
+}
+
+bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
+                                             EncodedPacket &packet,
+                                             int64_t sourceTimestamp) {
     if (!initialized_) {
         return false;
     }
-    bool ok = impl_->encode(frame, packet);
+    if (sourceTimestamp == std::numeric_limits<int64_t>::min()) {
+        return false;
+    }
+    bool ok = impl_->encode(frame, packet, sourceTimestamp);
+    if (ok && config_.requireEveryFrameKeyframe) {
+        protectedPacketContractHealthy_.store(
+            packet.codec == VideoCodec::VP9 && packet.isKeyframe,
+            std::memory_order_relaxed);
+    }
     if (ok && packetCallback_) {
         packetCallback_(packet);
     }
@@ -4021,6 +4602,15 @@ void VideoEncoder::setBitrate(int kbps) {
 
 void VideoEncoder::requestKeyframe() {
     impl_->requestKeyframe();
+}
+
+bool VideoEncoder::guaranteesEveryFrameKeyframe() const {
+    return detail::protectedVp9RuntimeContractHealthy(
+        initialized_,
+        config_.requireEveryFrameKeyframe,
+        impl_->activeCodec(),
+        impl_->activeEncoderName(),
+        protectedPacketContractHealthy_.load(std::memory_order_relaxed));
 }
 
 VideoCodec VideoEncoder::activeCodec() const {

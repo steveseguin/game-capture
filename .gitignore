@@ -5,6 +5,7 @@ native-qt/build-static/
 native-qt/build-test/
 native-qt/build-review/
 native-qt/build-review2/
+native-qt/build-*/
 
 # Distribution packages (built locally)
 archive/native-imgui/dist/
@@ -65,6 +66,7 @@ native-qt/build-*.txt
 
 # QA artifacts
 native-qt/qa/reports/
+native-qt/e2e/reports/
 
 /.vt-apikey
 /native-qt/.vt-apikey

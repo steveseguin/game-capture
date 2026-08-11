@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -61,6 +62,86 @@ void drawFrame(std::vector<uint8_t> &pixels, int width, int height, int frameInd
     }
 }
 
+void setFixtureColor(uint8_t *pixel, bool postEpoch) {
+    pixel[0] = 255;                    // B
+    pixel[1] = postEpoch ? 255 : 96;   // G
+    pixel[2] = 32;                     // R
+}
+
+bool readPostEpoch(const std::string &epochFile) {
+    if (epochFile.empty()) {
+        return false;
+    }
+    std::ifstream input(epochFile);
+    std::string value;
+    if (!input || !std::getline(input, value)) {
+        return false;
+    }
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return value.rfind("post", 0) == 0;
+}
+
+void drawAlphaChecker(std::vector<uint8_t> &pixels, int width, int height, bool postEpoch) {
+    std::fill(pixels.begin(), pixels.end(), 0);
+
+    const int cellSize = std::max(16, std::min(width, height) / 8);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const size_t idx =
+                (static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)) * 4;
+            const bool opaque = ((x / cellSize) + (y / cellSize)) % 2 == 0;
+            if (!opaque) {
+                continue;
+            }
+            setFixtureColor(&pixels[idx], postEpoch);
+            pixels[idx + 3] = 255;  // A
+        }
+    }
+}
+
+void drawAlphaMovingEdge(std::vector<uint8_t> &pixels, int width, int height, int frameIndex, bool postEpoch) {
+    std::fill(pixels.begin(), pixels.end(), 0);
+
+    const int boxWidth = std::max(48, width / 4);
+    const int boxHeight = std::max(48, height / 3);
+    const int travel = std::max(1, width - boxWidth);
+    const int boxX = (frameIndex * 9) % travel;
+    const int boxY = std::max(0, (height - boxHeight) / 2);
+
+    for (int y = boxY; y < std::min(height, boxY + boxHeight); ++y) {
+        for (int x = boxX; x < std::min(width, boxX + boxWidth); ++x) {
+            const size_t idx =
+                (static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)) * 4;
+            setFixtureColor(&pixels[idx], postEpoch);
+            pixels[idx + 3] = 255;  // A
+        }
+    }
+}
+
+void drawAlphaOpaque(std::vector<uint8_t> &pixels, int width, int height, bool postEpoch) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const size_t idx =
+                (static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)) * 4;
+            setFixtureColor(&pixels[idx], postEpoch);
+            pixels[idx + 3] = 255;  // A
+        }
+    }
+}
+
+void drawAlphaHalf(std::vector<uint8_t> &pixels, int width, int height, bool postEpoch) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const size_t idx =
+                (static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x)) * 4;
+            setFixtureColor(&pixels[idx], postEpoch);
+            pixels[idx + 3] = 128;  // A
+        }
+    }
+}
+
 std::string lowerCopy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
@@ -80,6 +161,7 @@ int main(int argc, char **argv) {
     int resizeWidth = 0;
     int resizeHeight = 0;
     std::string pattern = "animated";
+    std::string epochFile;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -101,6 +183,8 @@ int main(int argc, char **argv) {
             resizeHeight = parseIntArg(arg.substr(16), resizeHeight);
         } else if (arg.rfind("--pattern=", 0) == 0) {
             pattern = lowerCopy(arg.substr(10));
+        } else if (arg.rfind("--epoch-file=", 0) == 0) {
+            epochFile = arg.substr(13);
         }
     }
 
@@ -111,9 +195,11 @@ int main(int argc, char **argv) {
     resizeAfterMs = std::clamp(resizeAfterMs, 0, durationMs);
     resizeWidth = resizeWidth > 0 ? std::clamp(resizeWidth, 64, 3840) : width;
     resizeHeight = resizeHeight > 0 ? std::clamp(resizeHeight, 64, 2160) : height;
-    if (pattern != "animated" && pattern != "static") {
-        std::cerr << "Unknown --pattern value '" << pattern << "'; using animated\n";
-        pattern = "animated";
+    if (pattern != "animated" && pattern != "static" && pattern != "alpha-checker" &&
+        pattern != "alpha-moving-edge" && pattern != "alpha-opaque" && pattern != "alpha-half") {
+        std::cerr << "Unknown --pattern value '" << pattern
+                  << "'; expected animated, static, alpha-checker, alpha-moving-edge, alpha-opaque, or alpha-half\n";
+        return 4;
     }
 
     SPOUTLIBRARY *sender = GetSpout();
@@ -137,6 +223,7 @@ int main(int argc, char **argv) {
               << " height=" << height
               << " fps=" << fps
               << " pattern=" << pattern
+              << " epoch_file=" << (epochFile.empty() ? "none" : epochFile)
               << std::endl;
 
     const auto start = std::chrono::steady_clock::now();
@@ -144,6 +231,7 @@ int main(int argc, char **argv) {
     auto nextFrameTime = std::chrono::steady_clock::now();
     int frame = 0;
     bool resized = false;
+    bool postEpoch = readPostEpoch(epochFile);
     while (std::chrono::duration_cast<std::chrono::milliseconds>(
                std::chrono::steady_clock::now() - start)
                .count() < durationMs) {
@@ -161,9 +249,38 @@ int main(int argc, char **argv) {
                       << " height=" << height
                       << std::endl;
         }
+        const bool nextPostEpoch = readPostEpoch(epochFile);
+        if (nextPostEpoch != postEpoch) {
+            postEpoch = nextPostEpoch;
+            redrawStaticPattern = true;
+            std::cout << "SPOUT_TEST_SENDER_EPOCH name=" << name
+                      << " epoch=" << (postEpoch ? "post" : "pre")
+                      << " frame=" << frame
+                      << std::endl;
+        }
         if (pattern == "static") {
             if (redrawStaticPattern) {
                 drawFrame(pixels, width, height, 0);
+                redrawStaticPattern = false;
+            }
+            ++frame;
+        } else if (pattern == "alpha-checker") {
+            if (redrawStaticPattern) {
+                drawAlphaChecker(pixels, width, height, postEpoch);
+                redrawStaticPattern = false;
+            }
+            ++frame;
+        } else if (pattern == "alpha-moving-edge") {
+            drawAlphaMovingEdge(pixels, width, height, frame++, postEpoch);
+        } else if (pattern == "alpha-opaque") {
+            if (redrawStaticPattern) {
+                drawAlphaOpaque(pixels, width, height, postEpoch);
+                redrawStaticPattern = false;
+            }
+            ++frame;
+        } else if (pattern == "alpha-half") {
+            if (redrawStaticPattern) {
+                drawAlphaHalf(pixels, width, height, postEpoch);
                 redrawStaticPattern = false;
             }
             ++frame;

@@ -1,7 +1,18 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$PublisherPath = "",
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$PublisherPath,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ArtifactManifestPath,
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[0-9a-f]{64}$')]
+    [string]$ArtifactManifestSha256,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$FirefoxPath,
     [switch]$IncludeSoak = $false,
     [switch]$SkipSoak = $false,
     [int]$SoakDurationMin = 30,
@@ -20,7 +31,11 @@
     [string]$CaptureWindowFilter = "",
     [switch]$DisableE2eCaptureSource = $false,
     [int]$BitrateRetries = 1,
-    [int]$HardwareRetries = 1
+    [int]$HardwareRetries = 1,
+    [string]$RoomAlphaPluginRepo = "",
+    [string]$RoomAlphaPublisherPath = "",
+    [string]$RoomAlphaSpoutSenderPath = "",
+    [switch]$SkipRoomAlpha = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,18 +45,31 @@ function Write-Section($title) {
     Write-Host "=== $title ==="
 }
 
-function Run-Step($name, [scriptblock]$action) {
-    Write-Section $name
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name runStepImplementation -Scope Script -Option Constant -Value {
+    param([string]$name, [scriptblock]$action)
+
+    [System.Console]::WriteLine("")
+    [System.Console]::WriteLine("=== {0} ===", $name)
     try {
         $global:LASTEXITCODE = 0
-        & $action | Out-Host
+        & $action | & (
+            $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+                'Out-Host',
+                [System.Management.Automation.CommandTypes]::Cmdlet
+            )
+        )
         if ($global:LASTEXITCODE -ne 0) {
             throw "Command exited with code $($global:LASTEXITCODE)"
         }
         return $true
     } catch {
-        Write-Host "FAILED: $name"
-        Write-Host $_
+        [System.Console]::Error.WriteLine("FAILED: {0}", $name)
+        [System.Console]::Error.WriteLine([string]$_)
         return $false
     }
 }
@@ -53,7 +81,7 @@ function Run-StepWithRetry($name, [int]$attempts, [scriptblock]$action) {
         if ($totalAttempts -gt 1) {
             $attemptName = "$name (attempt $attempt/$totalAttempts)"
         }
-        $ok = Run-Step $attemptName $action
+        $ok = & $script:runStepImplementation $attemptName $action
         if ($ok) {
             return $true
         }
@@ -65,24 +93,42 @@ function Run-StepWithRetry($name, [int]$attempts, [scriptblock]$action) {
     return $false
 }
 
-function Resolve-PublisherExecutable([string]$RepoRoot, [string]$BuildDir, [string]$Configuration, [string]$ExplicitPath) {
-    if ($ExplicitPath) {
-        if (Test-Path $ExplicitPath) {
-            return (Resolve-Path $ExplicitPath).Path
-        }
-        throw "Publisher executable not found at explicit path: $ExplicitPath"
+function Resolve-PackagedPublisherExecutable([string]$ExplicitPath) {
+    if ([string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        throw "Explicit packaged publisher is required; pass -RoomAlphaPublisherPath."
     }
+    if (-not (Test-Path -LiteralPath $ExplicitPath -PathType Leaf)) {
+        throw "Packaged room-alpha publisher was not found: $ExplicitPath"
+    }
+    $candidate = (Resolve-Path -LiteralPath $ExplicitPath).Path
+    $packageRoot = Split-Path -Parent $candidate
+    $platformPlugin = Join-Path $packageRoot "platforms\qwindows.dll"
+    if (-not (Test-Path -LiteralPath $platformPlugin -PathType Leaf)) {
+        throw "Room-alpha publisher is not a complete packaged artifact (missing $platformPlugin)"
+    }
+    return $candidate
+}
 
-    $candidates = @(
-        (Join-Path $RepoRoot "$BuildDir/bin/$Configuration/game-capture.exe"),
-        (Join-Path $RepoRoot "$BuildDir/bin/game-capture.exe")
-    )
-    foreach ($candidate in $candidates) {
-        if (Test-Path $candidate) {
-            return (Resolve-Path $candidate).Path
-        }
+function Resolve-RoomAlphaSpoutSender([string]$ExplicitPath) {
+    if ([string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        throw "Explicit room-alpha Spout fixture is required; pass -RoomAlphaSpoutSenderPath."
     }
-    return ""
+    if (-not (Test-Path -LiteralPath $ExplicitPath -PathType Leaf)) {
+        throw "Room-alpha Spout fixture was not found: $ExplicitPath"
+    }
+    return (Resolve-Path -LiteralPath $ExplicitPath).Path
+}
+
+function Resolve-RoomAlphaPluginRepo([string]$RepoRoot, [string]$ExplicitPath) {
+    if ($ExplicitPath) {
+        return [System.IO.Path]::GetFullPath($ExplicitPath)
+    }
+    $environmentPath = [Environment]::GetEnvironmentVariable("NINJA_PLUGIN_REPO", "Process")
+    if ($environmentPath) {
+        return [System.IO.Path]::GetFullPath($environmentPath)
+    }
+    $codeRoot = Split-Path -Parent (Split-Path -Parent $RepoRoot)
+    return (Join-Path $codeRoot "ninja-plugin")
 }
 
 function Quote-ProcessArgument([string]$Value) {
@@ -119,18 +165,234 @@ function Stop-E2eCaptureSource($Process) {
     }
 }
 
+function Test-SameArtifactPath([string]$Left, [string]$Right) {
+    if ([string]::IsNullOrWhiteSpace($Left) -or [string]::IsNullOrWhiteSpace($Right)) {
+        return $false
+    }
+    $leftFull = [System.IO.Path]::GetFullPath($Left)
+    $rightFull = [System.IO.Path]::GetFullPath($Right)
+    return [string]::Equals(
+        $leftFull,
+        $rightFull,
+        [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+function New-BrowserWorkflowReportDirectory([string]$Name) {
+    $directory = Join-Path $script:reportDirBinding (
+        "release-$Name-$timestamp-" + [guid]::NewGuid().ToString('N'))
+    if (Test-Path -LiteralPath $directory) {
+        throw "Fresh browser workflow report directory already exists: $directory"
+    }
+    return $directory
+}
+
+function Assert-FreshBrowserWorkflowReport {
+    param(
+        [string]$ReportDir,
+        [ValidateSet('signaling', 'director')]
+        [string]$Kind,
+        [string]$Browser,
+        [datetime]$StartedAtUtc
+    )
+
+    if (-not (Test-Path -LiteralPath $ReportDir -PathType Container)) {
+        throw "Browser workflow did not create its report directory: $ReportDir"
+    }
+    $pattern = if ($Kind -eq 'signaling') {
+        'signaling-regressions-*.json'
+    } else {
+        'director-room-e2e-*.json'
+    }
+    $reports = @(Get-ChildItem -LiteralPath $ReportDir -File -Filter $pattern)
+    if ($reports.Count -ne 1) {
+        throw "Expected exactly one fresh $Kind report in $ReportDir; found $($reports.Count)."
+    }
+    $reportFile = $reports[0]
+    if ($reportFile.LastWriteTimeUtc -lt $StartedAtUtc.AddSeconds(-1)) {
+        throw "Browser workflow report predates this invocation: $($reportFile.FullName)"
+    }
+    $report = Get-Content -LiteralPath $reportFile.FullName -Raw | ConvertFrom-Json
+    if (-not [bool]$report.ok -or [string]$report.browser -cne $Browser) {
+        throw "Browser workflow report is not a passing $Browser result: $($reportFile.FullName)"
+    }
+    if (-not (Test-SameArtifactPath ([string]$report.packagedArtifactManifest.path) `
+            $script:artifactManifestPathBinding) -or
+        [string]$report.packagedArtifactManifest.sha256 -cne
+            $script:artifactManifestSha256Binding) {
+        throw "Browser workflow report does not bind the exact release manifest: $($reportFile.FullName)"
+    }
+
+    if ($Kind -eq 'signaling') {
+        if (-not (Test-SameArtifactPath ([string]$report.packagedPublisher) `
+                $script:publisherExe) -or
+            [string]$report.packagedPublisherSha256 -cne $script:publisherSha256Binding -or
+            -not (Test-SameArtifactPath ([string]$report.spoutSenderArtifact.path) `
+                $script:spoutSenderPathBinding) -or
+            [string]$report.spoutSenderArtifact.sha256 -cne
+                $script:spoutSenderSha256Binding -or
+            @($report.harnessErrors).Count -ne 0 -or
+            @($report.checks).Count -eq 0 -or
+            @($report.checks | Where-Object { -not [bool]$_.ok }).Count -ne 0) {
+            throw "Signaling report failed exact artifact or behavior validation: $($reportFile.FullName)"
+        }
+    } else {
+        if (-not [bool]$report.strictNegotiation -or
+            -not [bool]$report.packagedArtifactIdentityRequired -or
+            -not (Test-SameArtifactPath ([string]$report.publisherArtifact.path) `
+                $script:publisherExe) -or
+            [string]$report.publisherArtifact.sha256 -cne $script:publisherSha256Binding -or
+            -not (Test-SameArtifactPath ([string]$report.sourceFixtureArtifact.path) `
+                $script:spoutSenderPathBinding) -or
+            [string]$report.sourceFixtureArtifact.sha256 -cne
+                $script:spoutSenderSha256Binding -or
+            [string]$report.sourceFixtureArtifact.expectedSha256 -cne
+                $script:spoutSenderSha256Binding -or
+            @($report.checks).Count -eq 0 -or
+            @($report.checks | Where-Object { -not [bool]$_.ok }).Count -ne 0) {
+            throw "Control Center report failed exact artifact or behavior validation: $($reportFile.FullName)"
+        }
+    }
+
+    if ($Browser -eq 'firefox-installed') {
+        if (-not (Test-SameArtifactPath ([string]$report.browserArtifact.path) `
+                $script:firefoxPathBinding) -or
+            [string]$report.browserArtifact.sha256 -cne $script:firefoxSha256Binding) {
+            throw "Installed Firefox report does not bind the launched browser identity: $($reportFile.FullName)"
+        }
+    }
+    return $reportFile.FullName
+}
+
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $reportDir = Join-Path $PSScriptRoot "reports"
 New-Item -ItemType Directory -Force -Path $reportDir | Out-Null
 $reportPath = Join-Path $reportDir "release-readiness-$timestamp.md"
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name reportDirBinding -Scope Script -Option Constant -Value $reportDir
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-Set-Location $repoRoot
-
-$publisherExe = Resolve-PublisherExecutable -RepoRoot $repoRoot -BuildDir $BuildDir -Configuration $Configuration -ExplicitPath $PublisherPath
-if (-not $publisherExe) {
-    throw "Could not locate game-capture.exe for BuildDir '$BuildDir' and Configuration '$Configuration'. Build first or pass -PublisherPath."
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name repoRoot -Scope Script -Option Constant -Value (
+    [System.IO.Path]::GetFullPath([System.IO.Path]::Combine($PSScriptRoot, '..'))
+)
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name npmExecutable -Scope Script -Option Constant -Value (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'npm.cmd',
+        [System.Management.Automation.CommandTypes]::Application
+    ).Source
+)
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name publisherExe -Scope Script -Option Constant -Value $PublisherPath
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name artifactManifestPathBinding -Scope Script -Option Constant -Value $ArtifactManifestPath
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name artifactManifestSha256Binding -Scope Script -Option Constant -Value $ArtifactManifestSha256
+if (-not [System.IO.Directory]::Exists($script:repoRoot)) {
+    throw "Resolved repository root does not exist: $script:repoRoot"
 }
+if (-not [System.IO.File]::Exists($script:npmExecutable)) {
+    throw "Resolved npm.cmd application does not exist: $script:npmExecutable"
+}
+if (-not [System.IO.File]::Exists($script:publisherExe)) {
+    throw "Packaged publisher executable does not exist: $script:publisherExe"
+}
+if (-not [System.IO.File]::Exists($script:artifactManifestPathBinding)) {
+    throw "Release artifact manifest does not exist: $script:artifactManifestPathBinding"
+}
+if ((Microsoft.PowerShell.Utility\Get-FileHash -LiteralPath $script:artifactManifestPathBinding -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() -cne
+    $script:artifactManifestSha256Binding) {
+    throw "Release artifact manifest SHA-256 does not match the required identity."
+}
+$buildRoot = if ([System.IO.Path]::IsPathRooted($BuildDir)) {
+    [System.IO.Path]::GetFullPath($BuildDir)
+} else {
+    [System.IO.Path]::GetFullPath((Join-Path $script:repoRoot $BuildDir))
+}
+$spoutSenderCandidate = Join-Path $buildRoot "bin\$Configuration\spout_test_sender.exe"
+if (-not (Test-Path -LiteralPath $spoutSenderCandidate -PathType Leaf)) {
+    throw "Exact BuildDir/Configuration Spout fixture does not exist: $spoutSenderCandidate"
+}
+$resolvedSpoutSenderPath = (Resolve-Path -LiteralPath $spoutSenderCandidate).Path
+$resolvedSpoutSenderSha256 = (
+    Microsoft.PowerShell.Utility\Get-FileHash `
+        -LiteralPath $resolvedSpoutSenderPath `
+        -Algorithm SHA256 `
+        -ErrorAction Stop
+).Hash.ToLowerInvariant()
+if (-not (Test-Path -LiteralPath $FirefoxPath -PathType Leaf)) {
+    throw "Explicit installed Firefox executable does not exist: $FirefoxPath"
+}
+$resolvedFirefoxPath = (Resolve-Path -LiteralPath $FirefoxPath).Path
+$resolvedFirefoxSha256 = (
+    Microsoft.PowerShell.Utility\Get-FileHash `
+        -LiteralPath $resolvedFirefoxPath `
+        -Algorithm SHA256 `
+        -ErrorAction Stop
+).Hash.ToLowerInvariant()
+$resolvedPublisherSha256 = (
+    Microsoft.PowerShell.Utility\Get-FileHash `
+        -LiteralPath $script:publisherExe `
+        -Algorithm SHA256 `
+        -ErrorAction Stop
+).Hash.ToLowerInvariant()
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name spoutSenderPathBinding -Scope Script -Option Constant -Value $resolvedSpoutSenderPath
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name spoutSenderSha256Binding -Scope Script -Option Constant -Value $resolvedSpoutSenderSha256
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name firefoxPathBinding -Scope Script -Option Constant -Value $resolvedFirefoxPath
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name firefoxSha256Binding -Scope Script -Option Constant -Value $resolvedFirefoxSha256
+& (
+    $ExecutionContext.SessionState.InvokeCommand.GetCommand(
+        'New-Variable',
+        [System.Management.Automation.CommandTypes]::Cmdlet
+    )
+) -Name publisherSha256Binding -Scope Script -Option Constant -Value $resolvedPublisherSha256
+Set-Location $script:repoRoot
+$RoomAlphaPluginRepo = Resolve-RoomAlphaPluginRepo `
+    -RepoRoot $script:repoRoot `
+    -ExplicitPath $RoomAlphaPluginRepo
 
 if ($IncludeSoak -and $SkipSoak) {
     throw "Use either -IncludeSoak or -SkipSoak, not both."
@@ -172,6 +434,8 @@ $lines += "- Refresh encoder: $(if ($RefreshVideoEncoder) { $RefreshVideoEncoder
 $lines += "- Control password: $(if ($ControlPassword -ne '') { $ControlPassword } else { '(default)' })"
 $lines += "- Control token length: $($ControlToken.Length)"
 $lines += "- Dual-stream gate enabled: $(if ($SkipDualStream) { 'no (explicitly skipped)' } else { 'yes' })"
+$lines += "- Packaged room-alpha gate enabled: $(if ($SkipRoomAlpha) { 'no (explicitly skipped)' } else { 'yes' })"
+$lines += "- Room-alpha plugin repo: $RoomAlphaPluginRepo"
 $lines += "- Soak gate enabled: $(if ($runSoak) { 'yes' } else { 'no (explicitly skipped)' })"
 $lines += "- Dual soak hold-ms: $DualSoakHoldMs"
 $lines += "- Capture window filter: $(if ($captureWindowFilterEffective) { $captureWindowFilterEffective } else { '(default headless selection)' })"
@@ -184,6 +448,28 @@ if ($FfmpegPath) {
 }
 
 $allPass = $true
+
+$uiWheelInstrumentPass = & $script:runStepImplementation "Packaged UI wheel E2E instrument gate" {
+    node.exe (Join-Path $script:repoRoot "e2e/ui-wheel-e2e-regression.js")
+}
+if (-not $uiWheelInstrumentPass) {
+    throw "Packaged UI wheel E2E instrument gate failed; native interaction results are not admissible."
+}
+$uiWheelReportDir = Join-Path $reportDir "release-ui-wheel-$timestamp"
+$uiWheelPass = & $script:runStepImplementation "Packaged MainWindow native wheel interactions" {
+    node.exe (Join-Path $script:repoRoot "e2e/ui-wheel-packaged-e2e.js") `
+        "--publisher-path=$script:publisherExe" `
+        "--artifact-manifest-path=$script:artifactManifestPathBinding" `
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding" `
+        "--report-dir=$uiWheelReportDir"
+}
+$allPass = $allPass -and $uiWheelPass
+$lines += "## Packaged MainWindow native wheel interactions"
+$lines += ""
+$lines += "- Instrument: PASS"
+$lines += "- Result: " + ($(if ($uiWheelPass) { "PASS" } else { "FAIL" }))
+$lines += "- Evidence: $uiWheelReportDir"
+$lines += ""
 
 $gpuInfo = Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, AdapterCompatibility, VideoProcessor
 $lines += "## GPU Inventory"
@@ -206,7 +492,7 @@ $lines += $nvidiaSmi
 $lines += '```'
 $lines += ""
 
-$ctestPass = Run-Step "CTest" {
+$ctestPass = & $script:runStepImplementation "CTest" {
     ctest --test-dir $BuildDir -C $Configuration --output-on-failure
 }
 $allPass = $allPass -and $ctestPass
@@ -215,7 +501,7 @@ $lines += ""
 $lines += "- Result: " + ($(if ($ctestPass) { "PASS" } else { "FAIL" }))
 $lines += ""
 
-$e2ePass = Run-Step "E2E Matrix" {
+$e2ePass = & $script:runStepImplementation "E2E Matrix" {
     cmd /c "npm --prefix `"$repoRoot`" run e2e:matrix -- --publisher-path=`"$publisherExe`""
 }
 $allPass = $allPass -and $e2ePass
@@ -224,7 +510,7 @@ $lines += ""
 $lines += "- Result: " + ($(if ($e2ePass) { "PASS" } else { "FAIL" }))
 $lines += ""
 
-$refreshPass = Run-Step "E2E Refresh (dual-viewer reconnect)" {
+$refreshPass = & $script:runStepImplementation "E2E Refresh (dual-viewer reconnect)" {
     $refreshCmd = "npm --prefix `"$repoRoot`" run e2e:refresh -- --publisher-path=`"$publisherExe`" --reloads=3 --join-delay-ms=8000 --timeout-ms=60000 --password=$RefreshPassword"
     if ($RefreshVideoEncoder) {
         $refreshCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -242,7 +528,7 @@ $lines += "- Password: $(if ($RefreshPassword -ne '') { $RefreshPassword } else 
 $lines += "- Video encoder: $(if ($RefreshVideoEncoder) { $RefreshVideoEncoder } else { "(default)" })"
 $lines += ""
 
-$collisionPass = Run-Step "E2E Stream-ID Collision" {
+$collisionPass = & $script:runStepImplementation "E2E Stream-ID Collision" {
     $collisionCmd = "npm --prefix `"$repoRoot`" run e2e:collision -- --publisher-path=`"$publisherExe`" --timeout-ms=30000 --password=$RefreshPassword"
     if ($RefreshVideoEncoder) {
         $collisionCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -260,7 +546,7 @@ $lines += "- Password: $(if ($RefreshPassword -ne '') { $RefreshPassword } else 
 $lines += "- Video encoder: $(if ($RefreshVideoEncoder) { $RefreshVideoEncoder } else { "(default)" })"
 $lines += ""
 
-$controlPass = Run-Step "E2E Data Channel Control" {
+$controlPass = & $script:runStepImplementation "E2E Data Channel Control" {
     $controlCmd = "npm --prefix `"$repoRoot`" run e2e:control -- --publisher-path=`"$publisherExe`" --timeout-ms=60000 --password=$ControlPassword --remote-token=$ControlToken --bitrate-kbps=4500"
     if ($RefreshVideoEncoder) {
         $controlCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -278,12 +564,242 @@ $lines += "- Password: $(if ($ControlPassword -ne '') { $ControlPassword } else 
 $lines += "- Token length: $($ControlToken.Length)"
 $lines += ""
 
+Write-Section "Local candidate send-outcome contract"
+$candidateOutcomeGateArgs = @(
+    "--prefix", $script:repoRoot, "run", "gate:local-candidate-send-outcomes"
+)
+& $script:npmExecutable @candidateOutcomeGateArgs
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+Write-Section "Signaling Spout artifact identity contract"
+$signalingSpoutGateArgs = @(
+    "--prefix", $script:repoRoot, "run", "gate:signaling-spout-artifact-bindings"
+)
+& $script:npmExecutable @signalingSpoutGateArgs
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+Write-Section "Control Center packaged artifact identity contract"
+$directorIdentityGateArgs = @(
+    "--prefix", $script:repoRoot, "run", "gate:director-packaged-identity"
+)
+& $script:npmExecutable @directorIdentityGateArgs
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+Write-Section "Signaling deterministic-media fixture contract"
+$signalFixtureGateArgs = @(
+    "--prefix", $script:repoRoot, "run", "gate:signaling-media-fixture"
+)
+& $script:npmExecutable @signalFixtureGateArgs
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+Write-Section "Installed Firefox BiDi identity and interaction contract"
+$installedFirefoxGateArgs = @(
+    "--prefix", $script:repoRoot, "run", "gate:installed-firefox-bidi"
+)
+& $script:npmExecutable @installedFirefoxGateArgs -- `
+    "--firefox-path=$script:firefoxPathBinding" `
+    "--expected-firefox-sha256=$script:firefoxSha256Binding"
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+$signalEdgeReportDir = New-BrowserWorkflowReportDirectory 'signaling-edge'
+$signalEdgePass = & $script:runStepImplementation "Signaling regressions (Edge)" {
+    $startedAtUtc = [datetime]::UtcNow
+    $signalEdgeArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:signaling-regressions:edge", "--",
+        "--publisher-path=$script:publisherExe",
+        "--artifact-manifest-path=$script:artifactManifestPathBinding",
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding",
+        "--spout-sender-path=$script:spoutSenderPathBinding",
+        "--expected-spout-sender-sha256=$script:spoutSenderSha256Binding",
+        "--report-dir=$signalEdgeReportDir"
+    )
+    & $script:npmExecutable @signalEdgeArgs
+    if ($LASTEXITCODE -ne 0) { throw "Edge signaling workflow exited with code $LASTEXITCODE" }
+    Assert-FreshBrowserWorkflowReport `
+        -ReportDir $signalEdgeReportDir `
+        -Kind signaling `
+        -Browser edge `
+        -StartedAtUtc $startedAtUtc
+}
+$allPass = $allPass -and $signalEdgePass
+
+$signalFirefoxReportDir = New-BrowserWorkflowReportDirectory 'signaling-firefox'
+$signalFirefoxPass = & $script:runStepImplementation "Signaling regressions (Firefox)" {
+    $startedAtUtc = [datetime]::UtcNow
+    $signalFirefoxArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:signaling-regressions:firefox", "--",
+        "--publisher-path=$script:publisherExe",
+        "--artifact-manifest-path=$script:artifactManifestPathBinding",
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding",
+        "--spout-sender-path=$script:spoutSenderPathBinding",
+        "--expected-spout-sender-sha256=$script:spoutSenderSha256Binding",
+        "--report-dir=$signalFirefoxReportDir"
+    )
+    & $script:npmExecutable @signalFirefoxArgs
+    if ($LASTEXITCODE -ne 0) { throw "Firefox signaling workflow exited with code $LASTEXITCODE" }
+    Assert-FreshBrowserWorkflowReport `
+        -ReportDir $signalFirefoxReportDir `
+        -Kind signaling `
+        -Browser firefox `
+        -StartedAtUtc $startedAtUtc
+}
+$allPass = $allPass -and $signalFirefoxPass
+
+$signalInstalledFirefoxReportDir = New-BrowserWorkflowReportDirectory 'signaling-firefox-installed'
+$signalInstalledFirefoxPass = & $script:runStepImplementation "Signaling regressions (installed Firefox)" {
+    $startedAtUtc = [datetime]::UtcNow
+    $signalInstalledFirefoxArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:signaling-regressions:firefox-installed", "--",
+        "--publisher-path=$script:publisherExe",
+        "--artifact-manifest-path=$script:artifactManifestPathBinding",
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding",
+        "--spout-sender-path=$script:spoutSenderPathBinding",
+        "--expected-spout-sender-sha256=$script:spoutSenderSha256Binding",
+        "--firefox-path=$script:firefoxPathBinding",
+        "--expected-firefox-sha256=$script:firefoxSha256Binding",
+        "--report-dir=$signalInstalledFirefoxReportDir"
+    )
+    & $script:npmExecutable @signalInstalledFirefoxArgs
+    if ($LASTEXITCODE -ne 0) { throw "Installed Firefox signaling workflow exited with code $LASTEXITCODE" }
+    Assert-FreshBrowserWorkflowReport `
+        -ReportDir $signalInstalledFirefoxReportDir `
+        -Kind signaling `
+        -Browser firefox-installed `
+        -StartedAtUtc $startedAtUtc
+}
+$allPass = $allPass -and $signalInstalledFirefoxPass
+
+$controlCenterEdgeReportDir = New-BrowserWorkflowReportDirectory 'control-center-edge'
+$controlCenterEdgePass = & $script:runStepImplementation "Control Center strict negotiation (Edge)" {
+    $startedAtUtc = [datetime]::UtcNow
+    $controlCenterEdgeArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:control-center:edge", "--",
+        "--publisher-path=$script:publisherExe",
+        "--artifact-manifest-path=$script:artifactManifestPathBinding",
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding",
+        "--spout-sender-path=$script:spoutSenderPathBinding",
+        "--expected-spout-sender-sha256=$script:spoutSenderSha256Binding",
+        "--report-dir=$controlCenterEdgeReportDir"
+    )
+    & $script:npmExecutable @controlCenterEdgeArgs
+    if ($LASTEXITCODE -ne 0) { throw "Edge Control Center workflow exited with code $LASTEXITCODE" }
+    Assert-FreshBrowserWorkflowReport `
+        -ReportDir $controlCenterEdgeReportDir `
+        -Kind director `
+        -Browser edge `
+        -StartedAtUtc $startedAtUtc
+}
+$allPass = $allPass -and $controlCenterEdgePass
+
+$controlCenterFirefoxReportDir = New-BrowserWorkflowReportDirectory 'control-center-firefox'
+$controlCenterFirefoxPass = & $script:runStepImplementation "Control Center strict negotiation (Firefox)" {
+    $startedAtUtc = [datetime]::UtcNow
+    $controlCenterFirefoxArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:control-center:firefox", "--",
+        "--publisher-path=$script:publisherExe",
+        "--artifact-manifest-path=$script:artifactManifestPathBinding",
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding",
+        "--spout-sender-path=$script:spoutSenderPathBinding",
+        "--expected-spout-sender-sha256=$script:spoutSenderSha256Binding",
+        "--report-dir=$controlCenterFirefoxReportDir"
+    )
+    & $script:npmExecutable @controlCenterFirefoxArgs
+    if ($LASTEXITCODE -ne 0) { throw "Firefox Control Center workflow exited with code $LASTEXITCODE" }
+    Assert-FreshBrowserWorkflowReport `
+        -ReportDir $controlCenterFirefoxReportDir `
+        -Kind director `
+        -Browser firefox `
+        -StartedAtUtc $startedAtUtc
+}
+$allPass = $allPass -and $controlCenterFirefoxPass
+
+$controlCenterInstalledFirefoxReportDir = New-BrowserWorkflowReportDirectory 'control-center-firefox-installed'
+$controlCenterInstalledFirefoxPass = & $script:runStepImplementation "Control Center strict negotiation (installed Firefox)" {
+    $startedAtUtc = [datetime]::UtcNow
+    $controlCenterInstalledFirefoxArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:control-center:firefox-installed", "--",
+        "--publisher-path=$script:publisherExe",
+        "--artifact-manifest-path=$script:artifactManifestPathBinding",
+        "--artifact-manifest-sha256=$script:artifactManifestSha256Binding",
+        "--spout-sender-path=$script:spoutSenderPathBinding",
+        "--expected-spout-sender-sha256=$script:spoutSenderSha256Binding",
+        "--firefox-path=$script:firefoxPathBinding",
+        "--expected-firefox-sha256=$script:firefoxSha256Binding",
+        "--report-dir=$controlCenterInstalledFirefoxReportDir"
+    )
+    & $script:npmExecutable @controlCenterInstalledFirefoxArgs
+    if ($LASTEXITCODE -ne 0) { throw "Installed Firefox Control Center workflow exited with code $LASTEXITCODE" }
+    Assert-FreshBrowserWorkflowReport `
+        -ReportDir $controlCenterInstalledFirefoxReportDir `
+        -Kind director `
+        -Browser firefox-installed `
+        -StartedAtUtc $startedAtUtc
+}
+$allPass = $allPass -and $controlCenterInstalledFirefoxPass
+
+$alphaManifestPass = & $script:runStepImplementation "Alpha workflow manifest contract" {
+    $alphaManifestArgs = @(
+        "--prefix", $script:repoRoot, "run", "gate:alpha-workflow-manifests", "--",
+        "-PluginRepo", $RoomAlphaPluginRepo
+    )
+    & $script:npmExecutable @alphaManifestArgs
+}
+$allPass = $allPass -and $alphaManifestPass
+
+$alphaArtifactPass = & $script:runStepImplementation "Alpha artifact identity contract" {
+    $alphaArtifactArgs = @(
+        "--prefix", $script:repoRoot, "run", "gate:alpha-artifact-bindings", "--",
+        "-PluginRepo", $RoomAlphaPluginRepo
+    )
+    & $script:npmExecutable @alphaArtifactArgs
+}
+$allPass = $allPass -and $alphaArtifactPass
+
+$alphaAnalyzerPass = & $script:runStepImplementation "Alpha analyzer contract" {
+    $alphaAnalyzerArgs = @(
+        "--prefix", $script:repoRoot, "run", "gate:alpha-composite-analyzer", "--",
+        "--plugin-repo", $RoomAlphaPluginRepo
+    )
+    & $script:npmExecutable @alphaAnalyzerArgs
+}
+$allPass = $allPass -and $alphaAnalyzerPass
+
+$lines += "## Signaling and Control Center regressions"
+$lines += ""
+$lines += "- Edge signaling: " + ($(if ($signalEdgePass) { "PASS" } else { "FAIL" }))
+$lines += "- Firefox signaling: " + ($(if ($signalFirefoxPass) { "PASS" } else { "FAIL" }))
+$lines += "- Installed Firefox signaling: " + ($(if ($signalInstalledFirefoxPass) { "PASS" } else { "FAIL" }))
+$lines += "- Edge strict Control Center: " + ($(if ($controlCenterEdgePass) { "PASS" } else { "FAIL" }))
+$lines += "- Firefox strict Control Center: " + ($(if ($controlCenterFirefoxPass) { "PASS" } else { "FAIL" }))
+$lines += "- Installed Firefox strict Control Center: " + ($(if ($controlCenterInstalledFirefoxPass) { "PASS" } else { "FAIL" }))
+$lines += "- Exact Spout sender: $script:spoutSenderPathBinding"
+$lines += "- Exact Spout sender SHA-256: $script:spoutSenderSha256Binding"
+$lines += "- Exact installed Firefox: $script:firefoxPathBinding"
+$lines += "- Exact installed Firefox SHA-256: $script:firefoxSha256Binding"
+$lines += ""
+$lines += "## Alpha static contracts"
+$lines += ""
+$lines += "- Workflow manifests: " + ($(if ($alphaManifestPass) { "PASS" } else { "FAIL" }))
+$lines += "- Artifact identities: " + ($(if ($alphaArtifactPass) { "PASS" } else { "FAIL" }))
+$lines += "- Composite analyzer: " + ($(if ($alphaAnalyzerPass) { "PASS" } else { "FAIL" }))
+$lines += ""
+
 $dualQualityPass = $true
 $dualQualityChurnPass = $true
 $dualInitFuzzPass = $true
 $dualRequirementsPass = $true
 if (-not $SkipDualStream) {
-    $dualQualityPass = Run-Step "E2E Dual Quality Roles" {
+    $dualQualityPass = & $script:runStepImplementation "E2E Dual Quality Roles" {
         $dualCmd = "npm --prefix `"$repoRoot`" run e2e:dual-quality -- --publisher-path=`"$publisherExe`" --password=$RefreshPassword --timeout-ms=60000"
         if ($RefreshVideoEncoder) {
             $dualCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -295,7 +811,7 @@ if (-not $SkipDualStream) {
     }
     $allPass = $allPass -and $dualQualityPass
 
-    $dualQualityChurnPass = Run-Step "E2E Dual Quality Churn" {
+    $dualQualityChurnPass = & $script:runStepImplementation "E2E Dual Quality Churn" {
         $dualChurnCmd = "npm --prefix `"$repoRoot`" run e2e:dual-quality-churn -- --publisher-path=`"$publisherExe`" --password=$RefreshPassword --cycles=4 --timeout-ms=60000 --hold-ms=2500 --join-gap-ms=250 --leave-gap-ms=250"
         if ($RefreshVideoEncoder) {
             $dualChurnCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -307,7 +823,7 @@ if (-not $SkipDualStream) {
     }
     $allPass = $allPass -and $dualQualityChurnPass
 
-    $dualInitFuzzPass = Run-Step "E2E Dual Quality Init Fuzz" {
+    $dualInitFuzzPass = & $script:runStepImplementation "E2E Dual Quality Init Fuzz" {
         $dualFuzzCmd = "npm --prefix `"$repoRoot`" run e2e:dual-quality-init-fuzz -- --publisher-path=`"$publisherExe`" --password=$RefreshPassword --timeout-ms=60000"
         if ($RefreshVideoEncoder) {
             $dualFuzzCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -319,7 +835,7 @@ if (-not $SkipDualStream) {
     }
     $allPass = $allPass -and $dualInitFuzzPass
 
-    $dualRequirementsPass = Run-Step "E2E Dual Quality Requirements" {
+    $dualRequirementsPass = & $script:runStepImplementation "E2E Dual Quality Requirements" {
         $dualReqCmd = "npm --prefix `"$repoRoot`" run e2e:dual-quality-requirements -- --publisher-path=`"$publisherExe`" --password=$RefreshPassword --timeout-ms=60000 --hold-ms=2500 --remote-token=$ControlToken"
         if ($RefreshVideoEncoder) {
             $dualReqCmd += " --video-encoder=$RefreshVideoEncoder"
@@ -340,6 +856,149 @@ if ($SkipDualStream) {
     $lines += "- Churn result: " + ($(if ($dualQualityChurnPass) { "PASS" } else { "FAIL" }))
     $lines += "- Init fuzz result: " + ($(if ($dualInitFuzzPass) { "PASS" } else { "FAIL" }))
     $lines += "- Requirements gate result: " + ($(if ($dualRequirementsPass) { "PASS" } else { "FAIL" }))
+}
+$lines += ""
+
+$roomAlphaPass = $true
+$fullAlphaPass = $true
+$roomAlphaEvidence = [ordered]@{
+    publisher = $null
+    publisherSha256 = $null
+    spoutSender = $null
+    spoutSenderSha256 = $null
+    plugin = $null
+    pluginSha256 = $null
+    manifest = $null
+}
+$fullAlphaEvidence = [ordered]@{
+    publisher = $null
+    publisherSha256 = $null
+    spoutSender = $null
+    spoutSenderSha256 = $null
+    plugin = $null
+    pluginSha256 = $null
+    manifest = $null
+}
+$packagedPublisher = $null
+$roomAlphaSender = $null
+$pluginPayload = $null
+$publisherHash = $null
+$senderHash = $null
+$pluginHash = $null
+$alphaIdentityError = $null
+if (-not $SkipRoomAlpha) {
+    try {
+        if (-not (Test-Path -LiteralPath $RoomAlphaPluginRepo -PathType Container)) {
+            throw "Room-alpha plugin repository was not found: $RoomAlphaPluginRepo"
+        }
+        $pluginPayload = Join-Path $RoomAlphaPluginRepo "install\obs-plugins\64bit\obs-vdoninja.dll"
+        if (-not (Test-Path -LiteralPath $pluginPayload -PathType Leaf)) {
+            throw "Staged ninja-plugin payload was not found: $pluginPayload"
+        }
+        $packagedPublisher = Resolve-PackagedPublisherExecutable `
+            -ExplicitPath $RoomAlphaPublisherPath
+        $roomAlphaSender = Resolve-RoomAlphaSpoutSender `
+            -ExplicitPath $RoomAlphaSpoutSenderPath
+        $publisherHash = (Get-FileHash -LiteralPath $packagedPublisher -Algorithm SHA256).Hash.ToLowerInvariant()
+        $senderHash = (Get-FileHash -LiteralPath $roomAlphaSender -Algorithm SHA256).Hash.ToLowerInvariant()
+        $pluginHash = (Get-FileHash -LiteralPath $pluginPayload -Algorithm SHA256).Hash.ToLowerInvariant()
+    } catch {
+        $alphaIdentityError = $_
+    }
+
+    $roomAlphaRunDir = Join-Path $reportDir "release-room-alpha-$timestamp"
+    $fullAlphaRunDir = Join-Path $reportDir "release-full-alpha-$timestamp"
+    $roomAlphaPass = & $script:runStepImplementation "Packaged Room Alpha (VP9 authority + Room Quality)" {
+        if ($alphaIdentityError) {
+            throw $alphaIdentityError
+        }
+        $roomAlphaArgs = @(
+            "--prefix", $script:repoRoot, "run", "e2e:room-alpha-ninja-plugin", "--",
+            "-PluginRepo", $RoomAlphaPluginRepo,
+            "-PublisherPath", $packagedPublisher,
+            "-SpoutSenderPath", $roomAlphaSender,
+            "-ExpectedPublisherSha256", $publisherHash,
+            "-ExpectedPluginSha256", $pluginHash,
+            "-ExpectedSpoutSenderSha256", $senderHash,
+            "-ReportDir", $roomAlphaRunDir
+        )
+        & $script:npmExecutable @roomAlphaArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaged room-alpha workflow exited with code $LASTEXITCODE"
+        }
+        $manifestPath = Join-Path $roomAlphaRunDir "manifest.json"
+        if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "Packaged room-alpha workflow did not produce its manifest: $manifestPath"
+        }
+        $roomAlphaManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if (-not [bool]$roomAlphaManifest.ok -or
+            -not [bool]$roomAlphaManifest.artifactHashesStable -or
+            @($roomAlphaManifest.cases | Where-Object { -not $_.ok }).Count -ne 0) {
+            throw "Packaged room-alpha manifest is not release-acceptable: $manifestPath"
+        }
+        $roomAlphaEvidence.publisher = $packagedPublisher
+        $roomAlphaEvidence.publisherSha256 = $publisherHash
+        $roomAlphaEvidence.spoutSender = $roomAlphaSender
+        $roomAlphaEvidence.spoutSenderSha256 = $senderHash
+        $roomAlphaEvidence.plugin = $pluginPayload
+        $roomAlphaEvidence.pluginSha256 = $pluginHash
+        $roomAlphaEvidence.manifest = $manifestPath
+    }
+    $allPass = $allPass -and $roomAlphaPass
+
+    $fullAlphaPass = & $script:runStepImplementation "Packaged Alpha (seven-case transparency matrix)" {
+        if ($alphaIdentityError) {
+            throw $alphaIdentityError
+        }
+        $fullAlphaArgs = @(
+            "--prefix", $script:repoRoot, "run", "e2e:ninja-plugin-alpha", "--",
+            "-PluginRepo", $RoomAlphaPluginRepo,
+            "-PublisherPath", $packagedPublisher,
+            "-SpoutSenderPath", $roomAlphaSender,
+            "-ExpectedPublisherSha256", $publisherHash,
+            "-ExpectedPluginSha256", $pluginHash,
+            "-ExpectedSpoutSenderSha256", $senderHash,
+            "-ReportDir", $fullAlphaRunDir
+        )
+        & $script:npmExecutable @fullAlphaArgs
+        if ($LASTEXITCODE -ne 0) {
+            throw "Packaged seven-case alpha workflow exited with code $LASTEXITCODE"
+        }
+        $manifestPath = Join-Path $fullAlphaRunDir "manifest.json"
+        if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            throw "Packaged seven-case alpha workflow did not produce its manifest: $manifestPath"
+        }
+        $fullAlphaManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if (-not [bool]$fullAlphaManifest.ok -or
+            -not [bool]$fullAlphaManifest.artifactHashesStable -or
+            @($fullAlphaManifest.cases | Where-Object { -not $_.ok }).Count -ne 0) {
+            throw "Packaged seven-case alpha manifest is not release-acceptable: $manifestPath"
+        }
+        $fullAlphaEvidence.publisher = $packagedPublisher
+        $fullAlphaEvidence.publisherSha256 = $publisherHash
+        $fullAlphaEvidence.spoutSender = $roomAlphaSender
+        $fullAlphaEvidence.spoutSenderSha256 = $senderHash
+        $fullAlphaEvidence.plugin = $pluginPayload
+        $fullAlphaEvidence.pluginSha256 = $pluginHash
+        $fullAlphaEvidence.manifest = $manifestPath
+    }
+    $allPass = $allPass -and $fullAlphaPass
+}
+$lines += "## Packaged Alpha"
+$lines += ""
+if ($SkipRoomAlpha) {
+    $lines += "- Result: SKIPPED (disabled via -SkipRoomAlpha)"
+} else {
+    $lines += "- Room Quality result: " + ($(if ($roomAlphaPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Seven-case transparency result: " + ($(if ($fullAlphaPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Publisher: $(if ($roomAlphaEvidence.publisher) { $roomAlphaEvidence.publisher } else { '(unresolved)' })"
+    $lines += "- Publisher SHA-256: $(if ($roomAlphaEvidence.publisherSha256) { $roomAlphaEvidence.publisherSha256 } else { '(unresolved)' })"
+    $lines += "- Spout fixture: $(if ($roomAlphaEvidence.spoutSender) { $roomAlphaEvidence.spoutSender } else { '(unresolved)' })"
+    $lines += "- Spout fixture SHA-256: $(if ($roomAlphaEvidence.spoutSenderSha256) { $roomAlphaEvidence.spoutSenderSha256 } else { '(unresolved)' })"
+    $lines += "- Plugin payload: $(if ($roomAlphaEvidence.plugin) { $roomAlphaEvidence.plugin } else { '(unresolved)' })"
+    $lines += "- Plugin SHA-256: $(if ($roomAlphaEvidence.pluginSha256) { $roomAlphaEvidence.pluginSha256 } else { '(unresolved)' })"
+    $lines += "- Room Quality manifest: $(if ($roomAlphaEvidence.manifest) { $roomAlphaEvidence.manifest } else { '(unresolved)' })"
+    $lines += "- Seven-case manifest: $(if ($fullAlphaEvidence.manifest) { $fullAlphaEvidence.manifest } else { '(unresolved)' })"
 }
 $lines += ""
 
@@ -396,7 +1055,7 @@ if ($runSoak) {
         if ($FfmpegPath) {
             $dualSoakCmd += " --ffmpeg-path=`"$FfmpegPath`""
         }
-        $dualSoakPass = Run-Step "E2E Dual Quality Soak" {
+        $dualSoakPass = & $script:runStepImplementation "E2E Dual Quality Soak" {
             cmd /c $dualSoakCmd
         }
         $allPass = $allPass -and $dualSoakPass
@@ -409,7 +1068,7 @@ if ($runSoak) {
     if ($FfmpegPath) {
         $soakCmd += " --ffmpeg-path=`"$FfmpegPath`""
     }
-    $soakPass = Run-Step "E2E Soak" {
+    $soakPass = & $script:runStepImplementation "E2E Soak" {
         cmd /c $soakCmd
     }
     $allPass = $allPass -and $soakPass
@@ -445,34 +1104,21 @@ if (-not $makensis) {
 }
 if ($makensis) {
     $installerRan = $true
-    $installerPass = Run-Step "Installer Smoke" {
-        $installerBinDir = ""
-        $distDir = Join-Path $repoRoot "dist"
-        $stageCandidates = @()
-        if (Test-Path $distDir) {
-            foreach ($pattern in @("game-capture-*-win64")) {
-                $stageCandidates += Get-ChildItem -Path $distDir -Directory -Filter $pattern -ErrorAction SilentlyContinue
-            }
-        }
-        $stageCandidate = $stageCandidates |
-            Where-Object {
-                (Test-Path (Join-Path $_.FullName "game-capture.exe")) -and
-                (Test-Path (Join-Path $_.FullName "platforms\qwindows.dll"))
-            } |
-            Sort-Object LastWriteTime -Descending |
-            Select-Object -First 1
-        if (-not $stageCandidate) {
-            $stageCandidate = $stageCandidates |
-                Sort-Object LastWriteTime -Descending |
-                Select-Object -First 1
-        }
-        if ($stageCandidate) {
-            $installerBinDir = $stageCandidate.FullName
+    $installerPass = & $script:runStepImplementation "Installer Smoke" {
+        if (-not $SkipRoomAlpha) {
+            $installerPublisher = $packagedPublisher
         } else {
-            $installerBinDir = Join-Path $repoRoot "$BuildDir/bin/$Configuration"
-            if (-not (Test-Path $installerBinDir)) {
-                $installerBinDir = Join-Path $repoRoot "$BuildDir/bin"
-            }
+            $installerPublisher = $publisherExe
+        }
+        if ([string]::IsNullOrWhiteSpace($installerPublisher) -or
+            -not (Test-Path -LiteralPath $installerPublisher -PathType Leaf)) {
+            throw "Installer smoke publisher identity is unavailable: $installerPublisher"
+        }
+        $installerPublisher = (Resolve-Path -LiteralPath $installerPublisher).Path
+        $installerBinDir = Split-Path -Parent $installerPublisher
+        $stagedPublisher = Join-Path $installerBinDir "game-capture.exe"
+        if ((Resolve-Path -LiteralPath $stagedPublisher).Path -cne $installerPublisher) {
+            throw "Installer smoke is not bound to the selected publisher identity: $installerPublisher"
         }
         foreach ($requiredRelPath in @("game-capture.exe", "platforms\qwindows.dll")) {
             $requiredPath = Join-Path $installerBinDir $requiredRelPath
@@ -480,9 +1126,13 @@ if ($makensis) {
                 throw "Installer smoke missing required staged artifact: $requiredPath"
             }
         }
-        & $makensis.Path /V2 "/DBUILD_BIN_DIR=$installerBinDir" installer.nsi
+        $installerOutput = Join-Path $reportDir "installer-smoke-$timestamp.exe"
+        & $makensis.Path /V2 "/DBUILD_BIN_DIR=$installerBinDir" "/DOUTFILE=$installerOutput" installer.nsi
         if ($LASTEXITCODE -ne 0) {
             throw "makensis failed with exit code $LASTEXITCODE"
+        }
+        if (-not (Test-Path -LiteralPath $installerOutput -PathType Leaf)) {
+            throw "Installer smoke did not produce its exact output: $installerOutput"
         }
     }
     $allPass = $allPass -and $installerPass
