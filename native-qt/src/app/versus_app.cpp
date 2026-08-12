@@ -2124,6 +2124,8 @@ std::string VersusApp::buildDiagnosticsJson() const {
         nlohmann::json item;
         item["uuid"] = peerSnapshot.uuid;
         item["session"] = peerSnapshot.session;
+        item["owner_session"] = peer->session;
+        item["active_wire_session"] = peerSnapshot.session;
         item["stream_id"] = peerSnapshot.streamId;
         item["candidate_type"] = peerSnapshot.candidateType;
         item["created_steady_ms"] = peerSnapshot.createdAtMs;
@@ -2156,6 +2158,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"active_offer_generation", activeOfferGeneration},
             {"active_transport_generation", activeTransportGeneration},
             {"client_transport_generation", clientTransportGeneration},
+            {"active_wire_session", peerSnapshot.session},
             {"offer_count", peer->offerCount.load(std::memory_order_relaxed)},
             {"recovery_offer_count", peer->recoveryOfferCount.load(std::memory_order_relaxed)},
             {"answer_count", peer->answerCount.load(std::memory_order_relaxed)},
@@ -2278,33 +2281,64 @@ bool VersusApp::writeDiagnosticsJson(const std::string &path) const {
 }
 
 int VersusApp::refreshPeerTransportsForLocalControl() {
-    std::vector<std::shared_ptr<PeerSession>> peersToRefresh;
+    struct RefreshTarget {
+        std::shared_ptr<PeerSession> peer;
+        uint64_t clientTransportGeneration = 0;
+    };
+    std::vector<RefreshTarget> peersToRefresh;
     {
         std::lock_guard<std::mutex> lock(peerSessionsMutex_);
         peersToRefresh.reserve(peerSessions_.size());
         for (const auto &entry : peerSessions_) {
             if (entry.second && entry.second->client &&
                 entry.second->dataChannelOpen.load(std::memory_order_relaxed)) {
-                peersToRefresh.push_back(entry.second);
+                std::lock_guard<std::mutex> negotiationLock(
+                    entry.second->negotiationMutex);
+                if (!entry.second->removed &&
+                    entry.second->clientTransportGeneration != 0) {
+                    peersToRefresh.push_back({
+                        entry.second,
+                        entry.second->clientTransportGeneration});
+                }
             }
         }
     }
 
     int acceptedPeerCount = 0;
-    spdlog::info("[App] Authenticated local control requested peer transport rebuild for {} peer(s)",
+    spdlog::info("[App] Authenticated local control requested asynchronous peer transport rebuild for {} peer(s)",
                  peersToRefresh.size());
-    for (const auto &peer : peersToRefresh) {
+    for (const auto &target : peersToRefresh) {
+        const auto &peer = target.peer;
         if (!peer || !peer->client) {
             continue;
         }
-        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
-        reservePeerAlphaAdmissionCutoff(peer);
-        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
-        if (sendPeerOffer(peer, "local-control-refresh", true)) {
+        if (enqueuePeerCallbackOperation(
+                peer,
+                target.clientTransportGeneration,
+                "local-control-refresh",
+                GenerationTaggedPeerOperationExecutor::Priority::Critical,
+                GenerationTaggedPeerOperationExecutor::Criticality::Convergent,
+                "local-control-refresh",
+                [this](const std::shared_ptr<PeerSession> &queuedPeer, uint64_t) {
+                    queuedPeer->waitingForKeyframe.store(
+                        true,
+                        std::memory_order_relaxed);
+                    reservePeerAlphaAdmissionCutoff(queuedPeer);
+                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                    if (!sendPeerOffer(
+                            queuedPeer,
+                            "local-control-refresh",
+                            true)) {
+                        spdlog::warn(
+                            "[App] Authenticated local control could not refresh peer {}:{}",
+                            queuedPeer->uuid,
+                            queuedPeer->session);
+                    }
+                })) {
             ++acceptedPeerCount;
         } else {
-            spdlog::warn("[App] Authenticated local control could not refresh peer {}:{}",
+            spdlog::warn("[App] Authenticated local control could not schedule peer refresh {}:{}",
                          peer->uuid,
                          peer->session);
         }
@@ -3390,6 +3424,7 @@ void VersusApp::setupSignalingCallbacks() {
         spdlog::info("[Signaling] onAnswer uuid={} session={}", answer.uuid, answer.session);
 
         std::shared_ptr<PeerSession> peer;
+        std::string routedWireSession = answer.session;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
             peer = findPeerSessionForSignalLocked(answer.uuid, answer.session);
@@ -3408,9 +3443,32 @@ void VersusApp::setupSignalingCallbacks() {
                 }
                 return;
             }
+            if (answer.session.empty()) {
+                std::lock_guard<std::mutex> negotiationLock(
+                    peer->negotiationMutex);
+                routedWireSession = peer->activeWireSession;
+                if (peer->removed || routedWireSession.empty() ||
+                    routedWireSession != peer->session) {
+                    const std::string answerSdpSha256 =
+                        detail::sha256Hex(answer.sdp);
+                    spdlog::warn(
+                        "[Signaling] Rejecting publisher WebSocket answer reason=missing-session uuid={} source=signaling-wss receivedSession=missing activeSession={} answerSdpSha256={}",
+                        answer.uuid,
+                        routedWireSession,
+                        answerSdpSha256);
+                    recordPeerEvent(
+                        peer,
+                        "answer-ignored missing-wire-session sha256=" +
+                            answerSdpSha256);
+                    return;
+                }
+            }
         }
 
-        applyPeerAnswer(peer, answer.sdp, "signaling-wss", answer.session);
+        // A sessionless initial response is retained for VDO.Ninja
+        // compatibility, but bind it to the exact wire session observed above
+        // so a concurrent transport rotation cannot retarget it.
+        applyPeerAnswer(peer, answer.sdp, "signaling-wss", routedWireSession);
     });
 
     signaling_.onCandidate([this](const signaling::SignalCandidate &cand) {
@@ -3426,9 +3484,30 @@ void VersusApp::setupSignalingCallbacks() {
         }
 
         std::shared_ptr<PeerSession> peer;
+        signaling::SignalCandidate routedCandidate = cand;
         {
             std::lock_guard<std::mutex> lock(peerSessionsMutex_);
             peer = findPeerSessionForSignalLocked(cand.uuid, cand.session);
+            if (peer && cand.session.empty()) {
+                std::lock_guard<std::mutex> negotiationLock(
+                    peer->negotiationMutex);
+                routedCandidate.session = peer->activeWireSession;
+                if (peer->removed || routedCandidate.session.empty() ||
+                    routedCandidate.session != peer->session) {
+                    const std::string candidateSha256 =
+                        detail::sha256Hex(cand.candidate);
+                    spdlog::warn(
+                        "[Signaling] Rejecting publisher WebSocket remote ICE candidate reason=missing-session uuid={} source=signaling-wss receivedSession=missing activeSession={} candidateSha256={}",
+                        cand.uuid,
+                        routedCandidate.session,
+                        candidateSha256);
+                    recordPeerEvent(
+                        peer,
+                        "remote-candidate-dropped missing-wire-session sha256=" +
+                            candidateSha256);
+                    return;
+                }
+            }
             if (!peer || !peer->client) {
                 const auto activePeer = findPeerSessionForSignalLocked(cand.uuid, {});
                 if (activePeer && !cand.session.empty()) {
@@ -3452,12 +3531,14 @@ void VersusApp::setupSignalingCallbacks() {
                             candidateSha256);
                     return;
                 }
-                queuePendingRemoteCandidateLocked(cand, steadyNowMs());
+                queuePendingRemoteCandidateLocked(routedCandidate, steadyNowMs());
                 return;
             }
         }
 
-        handlePeerRemoteCandidate(peer, cand, "signaling");
+        // As with answers, attaching the observed initial wire session closes
+        // the validation-to-routing race if the transport rotates now.
+        handlePeerRemoteCandidate(peer, routedCandidate, "signaling");
     });
 }
 

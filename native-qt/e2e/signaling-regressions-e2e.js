@@ -1611,9 +1611,20 @@ function startPublisher(executable, signalUrl, options) {
   if (options.diagnosticsOut) {
     args.push(`--diagnostics-out=${options.diagnosticsOut}`);
   }
+  if (options.localControlDiscovery && options.localControlToken) {
+    args.push(
+      '--local-control',
+      '--local-control-port=0',
+      `--local-control-discovery=${options.localControlDiscovery}`
+    );
+  }
+  const childEnv = { ...process.env };
+  if (options.localControlToken) {
+    childEnv.GAME_CAPTURE_LOCAL_CONTROL_TOKEN = options.localControlToken;
+  }
   const child = spawn(executable, args, {
     cwd: path.dirname(executable),
-    env: { ...process.env },
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true
   });
@@ -2337,11 +2348,12 @@ function readDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
     return deepFreezeDiagnosticsSnapshot({
       ...common,
       found: true,
-      logicalSession: String(peer.session || ''),
+      logicalSession: String(peer.owner_session || peer.session || ''),
       uuidOwnerHighWatermark: Number(peer.uuid_owner_high_watermark || 0),
       activeWireSession,
       activeWireSessionSource,
-      alphaAllowed: peer.alpha_allowed === true,
+      alphaAllowed: (peer.media && peer.media.alpha_allowed === true) ||
+        peer.alpha_allowed === true,
       alphaReceiveMode: String(peer.alpha_receive_mode || ''),
       signaling,
       transport: peer.transport || {},
@@ -2355,6 +2367,59 @@ function readDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
     // is retried by waitForDiagnosticsPeerSnapshot instead of being mistaken
     // for product behavior.
     return null;
+  }
+}
+
+async function waitForJsonFile(filePath, predicate, timeoutMs) {
+  const startedAt = Date.now();
+  let lastValue = null;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      lastValue = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      if (!predicate || predicate(lastValue)) {
+        return { ok: true, elapsedMs: Date.now() - startedAt, value: lastValue };
+      }
+    } catch {
+      // The producer may not have created or finished replacing the file yet.
+    }
+    await wait(25);
+  }
+  return { ok: false, elapsedMs: Date.now() - startedAt, value: lastValue };
+}
+
+async function postLocalControlCommand(discovery, token, command) {
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(`${discovery.base_url}/commands`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ command }),
+      signal: AbortSignal.timeout(5000)
+    });
+    const text = await response.text();
+    let body = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { raw: text };
+    }
+    return {
+      ok: response.ok,
+      status: response.status,
+      body,
+      elapsedMs: Date.now() - startedAt
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      body: null,
+      elapsedMs: Date.now() - startedAt,
+      error: String(error && error.message ? error.message : error)
+    };
   }
 }
 
@@ -2464,6 +2529,7 @@ function explicitStaleCandidateRejectionLines(output, uuid, wireSession, candida
 function explicitStaleAnswerRejectionLines(output, uuid, wireSession) {
   return String(output || '').split(/\r?\n/).filter((line) =>
     /answer/i.test(line) &&
+    !/(?:ICE\s+)?candidate/i.test(line) &&
     /(?:ignor(?:e|ed|ing)|drop(?:ped|ping)?|reject(?:ed|ing)?|no matching)/i.test(line) &&
     /(?:stale|older|superseded|replay|generation|identity|mismatch|no matching)/i.test(line) &&
     signalLineIdentifiesPeer(line, uuid, wireSession)
@@ -2702,10 +2768,13 @@ async function connectNewPeer({
       state: null
     };
   }
-  const requestHintEchoed = !!requestSessionHint && activeSession === requestSessionHint;
-  const sessionContractOk = !!activeSession && !requestHintEchoed;
-  const sessionContractReason = requestHintEchoed
-    ? 'initial-offer-echoed-request-session-hint'
+  const sessionContractOk = !!activeSession && (
+    requestSessionHint ? activeSession === requestSessionHint : true
+  );
+  const sessionContractReason = !sessionContractOk
+    ? (requestSessionHint
+      ? 'initial-offer-did-not-echo-request-session'
+      : 'initial-offer-session-missing')
     : '';
   const answer = await answerOffer(page, peerName, offer.message, false, rtcConfig);
   sendBrowserCandidates(signal, uuid, offer.message.session, answer.candidates);
@@ -3342,15 +3411,23 @@ async function runNegotiationScenario(config, executable, browser, report, media
     config.reportDir,
     `signaling-negotiation-diagnostics-${process.pid}-${Date.now()}.json`
   );
+  const localControlDiscoveryPath = path.join(
+    config.reportDir,
+    `signaling-negotiation-local-control-${process.pid}-${Date.now()}.json`
+  );
+  const localControlToken = crypto.randomBytes(24).toString('hex');
   const publisher = startPublisher(executable, signal.url, {
     streamId,
     iceMode: 'host-only',
     alpha: true,
     source: 'spout',
     spoutSender: mediaFixture.senderName,
-    diagnosticsOut: diagnosticsPath
+    diagnosticsOut: diagnosticsPath,
+    localControlDiscovery: localControlDiscoveryPath,
+    localControlToken
   });
   report.negotiationDiagnosticsPath = diagnosticsPath;
+  report.negotiationLocalControlDiscoveryPath = localControlDiscoveryPath;
   const { context, page } = await createBrowserPeerPage(browser);
   try {
     const seed = await waitForPublisherReady(
@@ -3381,10 +3458,8 @@ async function runNegotiationScenario(config, executable, browser, report, media
         elapsedMs: first.at - requestAt,
         session: first.message.session
       });
-      addCheck(report, 'initial-offer-uses-publisher-generated-wire-session',
-        !!first.message.session &&
-          first.message.session !== duplicateRequestSessionA &&
-          first.message.session !== 'default',
+      addCheck(report, 'initial-offer-echoes-viewer-request-session',
+        first.message.session === duplicateRequestSessionA,
         {
           requestSession: duplicateRequestSessionA,
           offerSession: first.message.session,
@@ -3663,6 +3738,113 @@ async function runNegotiationScenario(config, executable, browser, report, media
           media: { initial: replayMedia.initial, final: replayMedia.final },
           outputTail: replayOutput.slice(-5000)
         });
+
+      const localControlDiscovery = await waitForJsonFile(
+        localControlDiscoveryPath,
+        (value) => value && value.schema === 'game-capture-local-control-v1' &&
+          typeof value.base_url === 'string' && value.base_url.startsWith('http://127.0.0.1:'),
+        5000
+      );
+      requireHarnessFixture(
+        report,
+        'packaged-local-control-discovery-is-ready',
+        localControlDiscovery.ok,
+        {
+          path: localControlDiscoveryPath,
+          elapsedMs: localControlDiscovery.elapsedMs,
+          discovery: localControlDiscovery.value
+        }
+      );
+      const localRefreshOfferSearchStart = signal.events.length;
+      const localRefreshOutputOffset = publisher.output().length;
+      const localRefreshResponse = await postLocalControlCommand(
+        localControlDiscovery.value,
+        localControlToken,
+        'refresh_peer_transports'
+      );
+      addCheck(
+        report,
+        'local-control-refresh-is-accepted-without-blocking-http-response',
+        localRefreshResponse.ok && localRefreshResponse.status === 200 &&
+          localRefreshResponse.body &&
+          localRefreshResponse.body.command === 'refresh_peer_transports' &&
+          localRefreshResponse.body.accepted_peer_count === 1 &&
+          localRefreshResponse.elapsedMs < 500,
+        {
+          response: localRefreshResponse,
+          maximumResponseMs: 500,
+          outputTail: publisher.output().slice(localRefreshOutputOffset).slice(-4000)
+        }
+      );
+      const localRefreshOffer = await signal.waitFor(
+        isOfferFor(duplicateUuid),
+        localRefreshOfferSearchStart,
+        config.offerTimeoutMs
+      );
+      addCheck(
+        report,
+        'local-control-refresh-rotates-the-live-peer-transport',
+        !!localRefreshOffer &&
+          localRefreshOffer.message.session !== activeDuplicateOffer.message.session &&
+          localRefreshOffer.message.description.sdp !==
+            activeDuplicateOffer.message.description.sdp,
+        {
+          previousSession: activeDuplicateOffer.message.session,
+          activeSession: localRefreshOffer ? localRefreshOffer.message.session : '',
+          response: localRefreshResponse,
+          outputTail: publisher.output().slice(localRefreshOutputOffset).slice(-5000)
+        }
+      );
+      if (localRefreshOffer) {
+        const localRefreshAnswer = await answerOffer(
+          page,
+          'duplicate-peer',
+          localRefreshOffer.message,
+          false,
+          DIRECT_BROWSER_RTC_CONFIG
+        );
+        sendBrowserCandidates(
+          signal,
+          duplicateUuid,
+          localRefreshOffer.message.session,
+          localRefreshAnswer.candidates
+        );
+        sendAnswer(
+          signal,
+          duplicateUuid,
+          streamId,
+          localRefreshOffer.message.session,
+          localRefreshAnswer.sdp
+        );
+        const localRefreshConnected = await waitForPeerState(
+          signal,
+          page,
+          duplicateUuid,
+          'duplicate-peer',
+          (state) => state.connectionState === 'connected' && state.dataChannelOpen,
+          15000,
+          localRefreshOffer.index + 1
+        );
+        const localRefreshMedia = localRefreshConnected.ok
+          ? await waitForFreshVideo(
+            signal,
+            page,
+            duplicateUuid,
+            'duplicate-peer',
+            12000,
+            localRefreshOffer.index + 1
+          )
+          : { ok: false, state: localRefreshConnected.state };
+        addCheck(
+          report,
+          'local-control-refreshed-peer-reconnects-with-live-media',
+          localRefreshConnected.ok && localRefreshMedia.ok,
+          {
+            state: localRefreshMedia.state || localRefreshConnected.state,
+            media: localRefreshMedia
+          }
+        );
+      }
     }
 
     const connectedDuringRecheckUuid = 'duplicate-connects-before-recheck-viewer';
@@ -3881,9 +4063,8 @@ async function runNegotiationScenario(config, executable, browser, report, media
       );
       addCheck(
         report,
-        'pre-answer-restart-offer-a-uses-publisher-generated-wire-session',
-        !!preAnswerOfferA.message.session &&
-          preAnswerOfferA.message.session !== preAnswerRestartSession,
+        'pre-answer-restart-offer-a-echoes-viewer-request-session',
+        preAnswerOfferA.message.session === preAnswerRestartSession,
         {
           requestSession: preAnswerRestartSession,
           activeSession: preAnswerOfferA.message.session
@@ -5144,49 +5325,6 @@ async function runNegotiationScenario(config, executable, browser, report, media
             }
           );
 
-          const correctlyLabeledActiveCandidateOffset = publisher.output().length;
-          sendExactBrowserCandidate(
-            signal,
-            staleUuid,
-            offerB.message.session,
-            activeCandidateB
-          );
-          await wait(250);
-          const counterAfterCorrectlyLabeledActiveCandidate =
-            await waitForDiagnosticsPeerSnapshot(
-              diagnosticsPath,
-              staleUuid,
-              () => true,
-              counterAfterMislabeledActiveCandidate.generatedSteadyMs,
-              8000
-            );
-          requireHarnessFixture(
-            report,
-            'diagnostics-refreshes-after-correctly-labeled-offer-b-candidate',
-            !!counterAfterCorrectlyLabeledActiveCandidate,
-            { diagnosticsPath, snapshot: counterAfterCorrectlyLabeledActiveCandidate }
-          );
-          const correctlyLabeledActiveCandidateOutput = publisher.output()
-            .slice(correctlyLabeledActiveCandidateOffset);
-          const activeCandidateQueuedUnderActiveLabel = countOccurrences(
-            correctlyLabeledActiveCandidateOutput,
-            `[Signaling] Queued remote ICE candidate uuid=${staleUuid} ` +
-              `session=${offerB.message.session}`
-          ) === 1;
-          const activeCandidateRejectedUnderActiveLabel =
-            explicitStaleCandidateRejectionLines(
-              correctlyLabeledActiveCandidateOutput,
-              staleUuid,
-              offerB.message.session,
-              activeCandidateBCandidateSha256
-            ).length > 0;
-          const activeCandidateAcceptedBeforeAnswer =
-            activeCandidateQueuedUnderActiveLabel &&
-            !activeCandidateRejectedUnderActiveLabel &&
-            Number(
-              counterAfterCorrectlyLabeledActiveCandidate.signaling.remote_candidates_applied
-            ) === appliedAfterMislabeledActiveCandidate;
-
           const staleAnswerObservationTimeoutMs = 4000;
           const mislabeledActiveAnswerOffset = publisher.output().length;
           const mislabeledActiveAnswerSentEvent = sendAnswer(
@@ -5269,14 +5407,14 @@ async function runNegotiationScenario(config, executable, browser, report, media
                 '[App] Applying peer answer'
               ) === 0 &&
               Number(mislabeledActiveAnswerCounterAfter.signaling.answer_count || 0) ===
-                Number(counterAfterCorrectlyLabeledActiveCandidate.signaling.answer_count || 0) &&
+                Number(counterAfterMislabeledActiveCandidate.signaling.answer_count || 0) &&
               mislabeledActiveAnswerCounterAfter.signaling.answer_received === false,
             {
               retiredSession: offerA.message.session,
               activeSession: offerB.message.session,
               answerSdpSha256: answerBSdpSha256,
               observation: mislabeledActiveAnswerObservation,
-              counterBefore: counterAfterCorrectlyLabeledActiveCandidate,
+              counterBefore: counterAfterMislabeledActiveCandidate,
               counterAfter: mislabeledActiveAnswerCounterAfter,
               explicitRejectionLines: mislabeledActiveAnswerRejections,
               outputTail: mislabeledActiveAnswerOutput.slice(-5000)
@@ -5366,6 +5504,53 @@ async function runNegotiationScenario(config, executable, browser, report, media
               ),
               outputTail: staleApplyOutput.slice(-5000)
             });
+
+          // Keep the accepted generation-B candidate within the publisher's
+          // bounded pending-candidate lifetime. The stale-answer probes above
+          // intentionally wait for fresh diagnostics and must complete before
+          // this candidate is queued.
+          const correctlyLabeledActiveCandidateOffset = publisher.output().length;
+          sendExactBrowserCandidate(
+            signal,
+            staleUuid,
+            offerB.message.session,
+            activeCandidateB
+          );
+          await wait(250);
+          const counterAfterCorrectlyLabeledActiveCandidate =
+            await waitForDiagnosticsPeerSnapshot(
+              diagnosticsPath,
+              staleUuid,
+              () => true,
+              staleAnswerCounterAfter.generatedSteadyMs,
+              8000
+            );
+          requireHarnessFixture(
+            report,
+            'diagnostics-refreshes-after-correctly-labeled-offer-b-candidate',
+            !!counterAfterCorrectlyLabeledActiveCandidate,
+            { diagnosticsPath, snapshot: counterAfterCorrectlyLabeledActiveCandidate }
+          );
+          const correctlyLabeledActiveCandidateOutput = publisher.output()
+            .slice(correctlyLabeledActiveCandidateOffset);
+          const activeCandidateQueuedUnderActiveLabel = countOccurrences(
+            correctlyLabeledActiveCandidateOutput,
+            `[Signaling] Queued remote ICE candidate uuid=${staleUuid} ` +
+              `session=${offerB.message.session}`
+          ) === 1;
+          const activeCandidateRejectedUnderActiveLabel =
+            explicitStaleCandidateRejectionLines(
+              correctlyLabeledActiveCandidateOutput,
+              staleUuid,
+              offerB.message.session,
+              activeCandidateBCandidateSha256
+            ).length > 0;
+          const activeCandidateAcceptedBeforeAnswer =
+            activeCandidateQueuedUnderActiveLabel &&
+            !activeCandidateRejectedUnderActiveLabel &&
+            Number(
+              counterAfterCorrectlyLabeledActiveCandidate.signaling.remote_candidates_applied
+            ) === appliedAfterMislabeledActiveCandidate;
 
           const recoveryOutputOffset = publisher.output().length;
           const remainingActiveCandidatesB = validAnswerB.candidates.filter((candidate) =>
@@ -6329,7 +6514,7 @@ async function runAutoIceScenario(config, executable, browser, report, mediaFixt
       if (!peer.connection.ok) {
         return;
       }
-      addCheck(report, `${peer.peerName}-uses-publisher-generated-wire-session`,
+      addCheck(report, `${peer.peerName}-initial-wire-session-honors-viewer-request`,
         peer.connection.sessionContractOk,
         {
           requestSessionHint: peer.connection.requestSessionHint,

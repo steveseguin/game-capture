@@ -192,6 +192,13 @@ class VersusAppTestAccess {
         peer->offerDispatched = dispatched;
     }
 
+    static void setDataChannelOpen(const OpaquePeer &opaque, bool open) {
+        const auto peer = cast(opaque);
+        if (peer) {
+            peer->dataChannelOpen.store(open, std::memory_order_relaxed);
+        }
+    }
+
     static webrtc::WebRtcClient *client(const OpaquePeer &opaque) {
         const auto peer = cast(opaque);
         return peer ? peer->client.get() : nullptr;
@@ -907,6 +914,7 @@ class TestWebRtcClient : public QObject {
     void testAlphaCapabilityRequiresExactPluginField();
     void testTransportGenerationTokensAdvanceAcrossReset();
     void testPublisherWireSessionOwnershipAndReplacementIsolation();
+    void testLocalControlRefreshSchedulesWithoutBlockingCaller();
     void testAdmittedOldFailedStateCannotRetireReplacementTransport();
     void testAdmittedOldSessionlessRestartCannotReplaceReplacementTransport();
     void testDuplicateOfferRequestRebuildsOnlyAnsweredTerminalTransport();
@@ -1416,6 +1424,22 @@ void TestWebRtcClient::testPublisherWireSessionOwnershipAndReplacementIsolation(
         peer,
         wireSessionB));
 
+    const auto diagnostics = nlohmann::json::parse(app.buildDiagnosticsJson());
+    const auto peers = diagnostics.at("peers");
+    const auto diagnosticPeer = std::find_if(
+        peers.begin(),
+        peers.end(),
+        [&ownerSession](const nlohmann::json &entry) {
+            return entry.value("owner_session", std::string{}) == ownerSession;
+        });
+    QVERIFY(diagnosticPeer != peers.end());
+    QCOMPARE(diagnosticPeer->at("session").get<std::string>(), wireSessionB);
+    QCOMPARE(diagnosticPeer->at("owner_session").get<std::string>(), ownerSession);
+    QCOMPARE(diagnosticPeer->at("active_wire_session").get<std::string>(), wireSessionB);
+    QCOMPARE(
+        diagnosticPeer->at("signaling").at("active_wire_session").get<std::string>(),
+        wireSessionB);
+
     const int appliedBefore =
         versus::app::VersusAppTestAccess::remoteCandidatesApplied(peer);
     versus::app::VersusAppTestAccess::routeCandidate(
@@ -1431,6 +1455,55 @@ void TestWebRtcClient::testPublisherWireSessionOwnershipAndReplacementIsolation(
     QCOMPARE(
         versus::app::VersusAppTestAccess::remoteCandidatesApplied(peer),
         appliedBefore);
+}
+
+void TestWebRtcClient::testLocalControlRefreshSchedulesWithoutBlockingCaller() {
+    struct State {
+        std::atomic<bool> entered{false};
+        std::atomic<bool> release{false};
+    };
+    auto state = std::make_shared<State>();
+    versus::app::VersusApp app;
+    const auto peer = versus::app::VersusAppTestAccess::createPeer(
+        app,
+        "-local-control-refresh");
+    QVERIFY2(peer, "Failed to create the local-control refresh peer fixture");
+    versus::app::VersusAppTestAccess::setDataChannelOpen(peer, true);
+    versus::app::VersusAppTestAccess::setOperationHook(
+        app,
+        [state](const std::string &,
+                const std::string &kind,
+                uint64_t) {
+            if (kind != "local-control-refresh") {
+                return false;
+            }
+            state->entered.store(true, std::memory_order_release);
+            const auto deadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(3);
+            while (!state->release.load(std::memory_order_acquire) &&
+                   std::chrono::steady_clock::now() < deadline) {
+                std::this_thread::yield();
+            }
+            return true;
+        });
+
+    const auto startedAt = std::chrono::steady_clock::now();
+    const int accepted = app.refreshPeerTransportsForLocalControl();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startedAt);
+
+    QCOMPARE(accepted, 1);
+    QVERIFY2(
+        elapsed < std::chrono::milliseconds(500),
+        "Local-control refresh waited for queued WebRTC work");
+    QTRY_VERIFY_WITH_TIMEOUT(
+        state->entered.load(std::memory_order_acquire),
+        2000);
+    state->release.store(true, std::memory_order_release);
+    QVERIFY(versus::app::VersusAppTestAccess::waitUntilIdle(
+        app,
+        std::chrono::seconds(2)));
+    versus::app::VersusAppTestAccess::setOperationHook(app, {});
 }
 
 void TestWebRtcClient::testAdmittedOldFailedStateCannotRetireReplacementTransport() {
