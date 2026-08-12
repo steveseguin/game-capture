@@ -1291,6 +1291,10 @@ bool VersusApp::goLive(const StartOptions &options) {
         stopLive();
         return false;
     }
+    spdlog::info("{}", webrtc::consumedIceConfigDiagnostic(
+                           options.iceMode,
+                           iceBinding,
+                           resolvedIce.turn));
     {
         std::lock_guard<std::mutex> lock(iceConfigMutex_);
         iceMode_ = options.iceMode;

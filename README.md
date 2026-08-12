@@ -125,6 +125,8 @@ Packaged signaling and interoperability workflows:
 ```powershell
 cd native-qt
 npm run e2e:signaling-regressions
+npm run e2e:signaling-regressions:negotiation:edge
+npm run e2e:signaling-regressions:lifecycle:edge
 npm run e2e:control-center:edge
 npm run e2e:control-center:firefox
 npm run e2e:ninja-plugin-alpha
@@ -139,6 +141,8 @@ Spout RGBA sender, portable OBS, and pixel-level transparency validation.
 The signaling command resolves the package matching the version in `CMakeLists.txt`, verifies its
 release manifest, and binds `spout_test_sender.exe` from the build directory recorded in that
 manifest. Pass `-- --build-dir=<directory>` only to override that binding explicitly.
+The named Edge negotiation and lifecycle commands are host-contained subsets that pin the scenario
+in the npm script; use them when external TURN-registry coverage is not intended.
 The Firefox Control Center workflow selects VP9 and disables the H.264-only room LQ tier because
 Playwright's Firefox runtime does not expose platform H.264; the Edge workflow covers default H.264.
 

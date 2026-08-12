@@ -7517,12 +7517,14 @@ async function runActiveMediaLifecycleScenario(
       (name) => window.__gameCapturePeerState(name), activePrimary.peerName
     );
     const beforeReaddPrimary = requiredMediaCounters(beforeReaddState);
+    const readdRequestSession = `${removedActiveSession}-readd-request`;
     const readdedConnection = await connectNewPeer({
       config,
       signal,
       page,
       streamId,
-      ...secondary
+      ...secondary,
+      session: readdRequestSession
     });
     if (readdedConnection.ok) {
       secondary.session = readdedConnection.activeSession;
@@ -7584,6 +7586,7 @@ async function runActiveMediaLifecycleScenario(
         readdedAlpha.ok && primaryDuringReadd.ok, {
         sameUuid: secondary.uuid,
         retiredSession: removedActiveSession,
+        readdRequestSession,
         readdedSession: secondary.session,
         removedPeerInstanceId,
         readdedPeerInstanceId: readdedConnection.answer
