@@ -95,7 +95,20 @@ function resolveCurrentPackage() {
       );
     }
   }
-  return { publisherPath, artifactManifestPath };
+  let manifest = null;
+  try {
+    manifest = JSON.parse(fs.readFileSync(artifactManifestPath, 'utf8'));
+  } catch (error) {
+    throw new Error(`Could not parse release artifact manifest: ${error.message}`);
+  }
+  const manifestBuildDir = manifest && manifest.build &&
+    typeof manifest.build.directory === 'string'
+    ? manifest.build.directory.trim()
+    : '';
+  if (!manifestBuildDir) {
+    throw new Error('Release artifact manifest does not identify its build directory');
+  }
+  return { publisherPath, artifactManifestPath, manifestBuildDir };
 }
 
 function resolveInstalledFirefox() {
@@ -143,8 +156,13 @@ function main() {
     (arg) => artifactOptions.has(optionName(arg))
   ).length;
   if (explicitArtifactOptionCount === 0) {
-    const { publisherPath, artifactManifestPath } = resolveCurrentPackage();
-    const spoutSenderPath = resolveSpoutSender(buildDir);
+    const {
+      publisherPath,
+      artifactManifestPath,
+      manifestBuildDir
+    } = resolveCurrentPackage();
+    const resolvedBuildDir = buildDir || manifestBuildDir;
+    const spoutSenderPath = resolveSpoutSender(resolvedBuildDir);
     forwardedArgs.push(
       `--publisher-path=${publisherPath}`,
       `--artifact-manifest-path=${artifactManifestPath}`,
@@ -153,6 +171,7 @@ function main() {
       `--expected-spout-sender-sha256=${sha256File(spoutSenderPath)}`
     );
     console.log(`[SIGNAL-E2E] Resolved packaged publisher: ${publisherPath}`);
+    console.log(`[SIGNAL-E2E] Resolved manifest build directory: ${resolvedBuildDir}`);
     console.log(`[SIGNAL-E2E] Resolved Spout fixture: ${spoutSenderPath}`);
   } else if (buildDir) {
     throw new Error('--build-dir cannot be combined with explicit artifact identity arguments');

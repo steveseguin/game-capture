@@ -137,8 +137,8 @@ VP9 alpha reservation and capability activation, and failed-peer ICE restart rec
 VDO.Ninja director page. The ninja-plugin alpha workflow uses packaged Game Capture, a synthetic
 Spout RGBA sender, portable OBS, and pixel-level transparency validation.
 The signaling command resolves the package matching the version in `CMakeLists.txt`, verifies its
-release manifest, and binds the single built `spout_test_sender.exe`. If more than one build contains
-that fixture, pass `-- --build-dir=<directory>` to select it explicitly.
+release manifest, and binds `spout_test_sender.exe` from the build directory recorded in that
+manifest. Pass `-- --build-dir=<directory>` only to override that binding explicitly.
 The Firefox Control Center workflow selects VP9 and disables the H.264-only room LQ tier because
 Playwright's Firefox runtime does not expose platform H.264; the Edge workflow covers default H.264.
 
