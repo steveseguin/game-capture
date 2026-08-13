@@ -1486,6 +1486,7 @@ class VideoEncoder::Impl {
         HRESULT lastHr = E_FAIL;
         for (const auto &candidate : candidates) {
             resetCurrentTransform();
+            shutdownCurrentActivation();
             spdlog::info("[VideoEncoder] Trying {} encoder: {}",
                          candidate.hardware ? "hardware" : "software", candidate.name);
 
@@ -1498,6 +1499,7 @@ class VideoEncoder::Impl {
                              static_cast<unsigned>(hr));
                 continue;
             }
+            activeActivation_ = candidate.activate;
 
             setActiveEncoderName(candidate.name);
             usingHardware_ = candidate.hardware;
@@ -1526,14 +1528,11 @@ class VideoEncoder::Impl {
                             resetCurrentTransform();
                         },
                         [&]() {
-                            const HRESULT shutdownObjectHr =
-                                candidate.activate->ShutdownObject();
-                            if (FAILED(shutdownObjectHr)) {
-                                lastHr = shutdownObjectHr;
+                            if (!shutdownCurrentActivation()) {
+                                lastHr = E_FAIL;
                                 spdlog::warn(
-                                    "[VideoEncoder] Refusing warmed encoder '{}' because Activate shutdown failed hr=0x{:08x}",
-                                    candidate.name,
-                                    static_cast<unsigned>(shutdownObjectHr));
+                                    "[VideoEncoder] Refusing warmed encoder '{}' because Activate shutdown failed",
+                                    candidate.name);
                                 return false;
                             }
                             return true;
@@ -1549,6 +1548,7 @@ class VideoEncoder::Impl {
                                     static_cast<unsigned>(hr));
                                 return false;
                             }
+                            activeActivation_ = candidate.activate;
                             return true;
                         },
                         [&]() {
@@ -1573,6 +1573,7 @@ class VideoEncoder::Impl {
                 if (!freshPipelineReady) {
                     initialized_ = false;
                     resetCurrentTransform();
+                    shutdownCurrentActivation();
                     continue;
                 }
                 initialized_ = true;
@@ -1600,6 +1601,7 @@ class VideoEncoder::Impl {
         spdlog::error("[VideoEncoder] Failed to initialize any encoder candidate (last hr=0x{:08x})",
                       static_cast<unsigned>(lastHr));
         resetCurrentTransform();
+        shutdownCurrentActivation();
         setActiveEncoderName("");
         usingHardware_ = false;
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
@@ -1611,6 +1613,7 @@ class VideoEncoder::Impl {
     void shutdown() {
         shutdownExternalFfmpegNvenc();
         resetCurrentTransform();
+        shutdownCurrentActivation();
         shutdownMf();
         releaseCom();
         initialized_ = false;
@@ -4102,6 +4105,20 @@ class VideoEncoder::Impl {
         streamStarted_ = false;
     }
 
+    bool shutdownCurrentActivation() {
+        if (!activeActivation_) {
+            return true;
+        }
+        const HRESULT hr = activeActivation_->ShutdownObject();
+        activeActivation_.Reset();
+        if (FAILED(hr)) {
+            spdlog::warn("[VideoEncoder] IMFActivate::ShutdownObject failed hr=0x{:08x}",
+                         static_cast<unsigned>(hr));
+            return false;
+        }
+        return true;
+    }
+
     bool prepareInputBuffer(const CapturedFrame &input, std::vector<uint8_t> &out) {
         const int dstW = std::max(1, config_.width);
         const int dstH = std::max(1, config_.height);
@@ -4455,6 +4472,7 @@ class VideoEncoder::Impl {
 
     EncoderConfig config_{};
     ComPtr<IMFTransform> transform_;
+    ComPtr<IMFActivate> activeActivation_;
     ComPtr<ID3D11Device> d3dDevice_;
     ComPtr<ID3D11DeviceContext> d3dContext_;
     ComPtr<IMFDXGIDeviceManager> dxgiDeviceManager_;

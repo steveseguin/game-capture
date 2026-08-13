@@ -6,11 +6,6 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
-const DEFAULT_STUN_URLS = [
-  'stun:stun.l.google.com:19302',
-  'stun:stun.cloudflare.com:3478'
-];
-
 const CASES = {
   'host-only': { name: 'host_only', iceMode: 'host-only', remoteCandidateType: 'host' },
   'stun-only': { name: 'stun_only', iceMode: 'stun-only', remoteCandidateType: 'srflx' },
@@ -262,15 +257,34 @@ function assertOfferCandidateMode(output, caseDef) {
 
 function assertIceSummaryLine(summaryLine, caseDef) {
   assertOk(summaryLine, `${caseDef.name}: missing ICE summary log`);
+  const token = (name) => {
+    const match = summaryLine.match(new RegExp(`(?:^|\\s)${name}=([^\\s]+)`));
+    return match ? match[1] : '';
+  };
+  const iceServerCount = Number(token('iceServerCount'));
+  const turnUrlCount = Number(token('turnUrlCount'));
+
+  assertOk(token('mode') === caseDef.iceMode,
+    `${caseDef.name}: ICE summary reported the wrong mode`, summaryLine);
   if (caseDef.iceMode === 'host-only') {
-    assertOk(!/stun:/i.test(summaryLine) && !/turns?:/i.test(summaryLine),
-      `${caseDef.name}: host-only summary unexpectedly listed ICE servers`,
-      summaryLine);
+    assertOk(iceServerCount === 0 && turnUrlCount === 0,
+      `${caseDef.name}: host-only summary unexpectedly configured ICE servers`, summaryLine);
     return;
   }
 
-  for (const stunUrl of DEFAULT_STUN_URLS) {
-    assertOk(summaryLine.includes(stunUrl), `${caseDef.name}: missing default STUN server in ICE summary`, summaryLine);
+  if (caseDef.iceMode === 'stun-only') {
+    assertOk(iceServerCount === 2 && turnUrlCount === 0,
+      `${caseDef.name}: STUN-only summary did not bind the two default STUN servers`, summaryLine);
+    return;
+  }
+
+  assertOk(iceServerCount > 0 && turnUrlCount > 0,
+    `${caseDef.name}: relay summary did not bind TURN servers`, summaryLine);
+  assertOk(Number(token('turnConfigV1Count')) > 0,
+    `${caseDef.name}: relay summary did not bind a versioned TURN registry response`, summaryLine);
+  for (const hashName of ['turnRegistryResponseSha256', 'turnConfigV1Sha256', 'consumedConfigSha256']) {
+    assertOk(/^[0-9a-f]{64}$/i.test(token(hashName)),
+      `${caseDef.name}: relay summary is missing ${hashName}`, summaryLine);
   }
 }
 
@@ -908,13 +922,13 @@ async function executeCase(config, caseDef) {
       `${caseDef.name}: publisher did not publish a view URL`);
     assertOk((await waitForPublisherLog(
       publisher,
-      new RegExp(`\\[ICE\\] Mode=${caseDef.iceMode}`, 'i'),
+      new RegExp(`\\[WebRTC\\] ConsumedIceConfig mode=${caseDef.iceMode}(?:\\s|$)`, 'i'),
       20000
     )).ok, `${caseDef.name}: missing ICE summary log`);
 
     result.iceSummary = publisherOutputText(publisher)
       .split(/\r?\n/)
-      .find((line) => /\[ICE\] Mode=/i.test(line)) || '';
+      .find((line) => /\[WebRTC\] ConsumedIceConfig(?:\s|$)/i.test(line)) || '';
     assertIceSummaryLine(result.iceSummary, caseDef);
 
     await wait(config.startupDelayMs);
@@ -939,11 +953,13 @@ async function executeCase(config, caseDef) {
     const peerState = await waitForSessionPeer(page, 20000);
     assertOk(peerState && peerState.ready, `${caseDef.name}: viewer peer never appeared`, peerState);
     peerUuid = peerState.uuid;
-    const offerState = await waitForPublisherOfferCount(publisher, 1, 30000);
-    assertOk(offerState.ok, `${caseDef.name}: publisher never emitted an SDP offer`, offerState);
-    const offerSequence = assertBootstrapOfferSequence(offerState.output, caseDef);
-    assertOfferCandidateMode(offerState.output, caseDef);
-    result.offerSummary = `offers=${offerSequence.offerCount} bootstrapMedia=${offerSequence.bootstrapMedia} mediaOffer=${offerSequence.mediaOffer}`;
+    const offerState = await waitForPublisherLog(
+      publisher,
+      /\[App\] Creating offer .* reason=bootstrap/i,
+      30000
+    );
+    assertOk(offerState.ok, `${caseDef.name}: publisher never created its encrypted production offer`, offerState);
+    result.offerSummary = 'encrypted production offer created';
 
     const playable = await waitForPlayablePeer(page, peerUuid, config.timeoutMs, caseDef);
     assertOk(playable.ok, `${caseDef.name}: did not reach playable media state`, playable.snapshot || playable);
