@@ -449,6 +449,14 @@ if ($FfmpegPath) {
 
 $allPass = $true
 
+$qaEntrypointPass = & $script:runStepImplementation "QA entrypoint contracts" {
+    $qaEntrypointArgs = @(
+        "--prefix", $script:repoRoot, "run", "gate:qa-entrypoint-contracts"
+    )
+    & $script:npmExecutable @qaEntrypointArgs
+}
+$allPass = $allPass -and $qaEntrypointPass
+
 $gpuInfo = Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, AdapterCompatibility, VideoProcessor
 $lines += "## GPU Inventory"
 $lines += ""
@@ -709,9 +717,9 @@ $lines += "- Exact Spout sender SHA-256: $script:spoutSenderSha256Binding"
 $lines += "- Exact installed Firefox: $script:firefoxPathBinding"
 $lines += "- Exact installed Firefox SHA-256: $script:firefoxSha256Binding"
 $lines += ""
-$lines += "## Alpha static contracts"
+$lines += "## QA and alpha static contracts"
 $lines += ""
-$lines += "- Workflow manifests: " + ($(if ($alphaManifestPass) { "PASS" } else { "FAIL" }))
+$lines += "- QA entrypoints: " + ($(if ($qaEntrypointPass) { "PASS" } else { "FAIL" }))
 $lines += "- Artifact identities: " + ($(if ($alphaArtifactPass) { "PASS" } else { "FAIL" }))
 $lines += "- Composite analyzer: " + ($(if ($alphaAnalyzerPass) { "PASS" } else { "FAIL" }))
 $lines += ""
@@ -1085,4 +1093,3 @@ Stop-E2eCaptureSource $captureSourceProcess
 if (-not $allPass) {
     exit 1
 }
-

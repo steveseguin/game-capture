@@ -139,6 +139,7 @@ class TestIceConfig : public QObject {
     void testScalarAndArrayUrlsWithAdditiveMetadata();
     void testFlattenPreservesEveryUrlOrderAndValue();
     void testFailureOutcomesPublishNoTurnAndNoFallback();
+    void testAutoModeDegradesToStunWhenTurnRegistryUnavailable();
     void testDynamicResponseCounts();
     void testFullOrderedConfigFingerprintSensitivity();
     void testPeerBindingRequiresExactRegistryConsumption();
@@ -306,6 +307,61 @@ void TestIceConfig::testFailureOutcomesPublishNoTurnAndNoFallback() {
         QVERIFY(result.turn.fetchAttempted);
         QCOMPARE(registry.requests.size(), std::size_t{1});
     }
+}
+
+void TestIceConfig::testAutoModeDegradesToStunWhenTurnRegistryUnavailable() {
+    struct Case {
+        TurnRegistryHttpResponse response;
+        TurnRegistryOutcome outcome;
+        bool fetchSucceeded;
+    };
+    const std::vector<Case> cases = {
+        {httpResponse({}, 0, false), TurnRegistryOutcome::TransportFailure, false},
+        {httpResponse(kValidSingleServer, 503), TurnRegistryOutcome::HttpStatusFailure, false},
+        {httpResponse(""), TurnRegistryOutcome::EmptyBody, true},
+        {httpResponse("{not-json"), TurnRegistryOutcome::InvalidJson, true},
+        {httpResponse(R"({"version":1,"servers":[]})"), TurnRegistryOutcome::InvalidSchema, true},
+    };
+
+    for (const Case &item : cases) {
+        ScriptedRegistry registry;
+        registry.responses.push_back(item.response);
+        const ResolvedIceConfig result = resolve(IceMode::All, registry);
+        expectNoTurn(result, item.outcome, item.fetchSucceeded);
+        QVERIFY(std::any_of(
+            result.servers.begin(),
+            result.servers.end(),
+            [](const IceServerConfig &server) { return server.url.starts_with("stun:"); }));
+
+        const auto automatic = versus::webrtc::validateIceConfigBinding(
+            IceMode::All,
+            result.servers,
+            result.turn);
+        QVERIFY2(
+            automatic.accepted,
+            qPrintable(
+                QString("Auto mode should retain direct STUN connectivity after TURN failure: %1")
+                    .arg(qString(automatic.failureReason))));
+        QCOMPARE(automatic.turnServerCount, std::size_t{0});
+
+        const auto relayOnly = versus::webrtc::validateIceConfigBinding(
+            IceMode::Relay,
+            result.servers,
+            result.turn);
+        QVERIFY2(!relayOnly.accepted, "Relay-only mode must fail closed without TURN");
+        QCOMPARE(qString(relayOnly.failureReason), QString("turn-registry-no-turn-servers"));
+    }
+
+    ScriptedRegistry registry;
+    registry.responses.push_back(httpResponse({}, 0, false));
+    const ResolvedIceConfig failed = resolve(IceMode::All, registry);
+    const auto missingFailureProvenance = versus::webrtc::validateIceConfigBinding(
+        IceMode::All,
+        failed.servers,
+        {});
+    QVERIFY2(
+        !missingFailureProvenance.accepted,
+        "Auto mode must not degrade without recorded registry-failure provenance");
 }
 
 void TestIceConfig::testDynamicResponseCounts() {

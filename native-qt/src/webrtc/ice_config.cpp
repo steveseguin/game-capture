@@ -612,6 +612,39 @@ IceConfigBindingValidation validateIceConfigBinding(
         return validation;
     }
 
+    const bool registryFailureStateIsConsistent =
+        (turnRegistry.outcome == TurnRegistryOutcome::TransportFailure &&
+         !turnRegistry.fetchSucceeded) ||
+        (turnRegistry.outcome == TurnRegistryOutcome::HttpStatusFailure &&
+         !turnRegistry.fetchSucceeded && turnRegistry.httpStatus != 200) ||
+        (turnRegistry.outcome == TurnRegistryOutcome::EmptyBody &&
+         turnRegistry.fetchSucceeded && turnRegistry.httpStatus == 200 &&
+         turnRegistry.rawResponseSha256.empty()) ||
+        ((turnRegistry.outcome == TurnRegistryOutcome::InvalidJson ||
+          turnRegistry.outcome == TurnRegistryOutcome::InvalidSchema) &&
+         turnRegistry.fetchSucceeded && turnRegistry.httpStatus == 200 &&
+         isLowercaseSha256(turnRegistry.rawResponseSha256));
+    const bool registryRecordedFailure =
+        turnRegistry.fetchAttempted &&
+        !turnRegistry.configAccepted &&
+        registryFailureStateIsConsistent &&
+        turnRegistry.requestTimestampUnixMs > 0 &&
+        turnRegistry.sourceUrl == turnRegistryUrl(turnRegistry.requestTimestampUnixMs) &&
+        !turnRegistry.transactionId.empty() &&
+        turnRegistry.transactionId.starts_with("turn-") &&
+        turnRegistry.timeoutMs > 0 &&
+        turnRegistry.responseServerCount == 0 &&
+        turnRegistry.responseUrlCount == 0 &&
+        turnRegistry.canonicalConfigSha256.empty() &&
+        turnRegistry.consumedConfigSha256.empty();
+    if (validation.turnServerCount == 0 &&
+        mode == IceMode::All &&
+        registryRecordedFailure) {
+        // "All" is the automatic mode: retain its STUN/host path when the optional
+        // registry lookup fails. Relay-only remains fail-closed below.
+        validation.accepted = true;
+        return validation;
+    }
     if (validation.turnServerCount == 0) {
         return reject("turn-registry-no-turn-servers");
     }

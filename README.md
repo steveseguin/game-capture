@@ -111,13 +111,21 @@ Primary QA plans and gates live in `native-qt/qa/`.
 Fast gate:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release
+$firefox = (Resolve-Path (Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.exe")).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release -FirefoxPath $firefox
 ```
 
 Release readiness:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-release-readiness.ps1 -BuildDir build-review2 -Configuration Release
+$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.49-win64).Path
+$publisher = Join-Path $package "game-capture.exe"
+$manifest = Join-Path $package "release-artifact-manifest.json"
+$manifestSha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
+$firefox = (Resolve-Path (Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.exe")).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-release-readiness.ps1 `
+  -BuildDir build-review2 -Configuration Release -PublisherPath $publisher `
+  -ArtifactManifestPath $manifest -ArtifactManifestSha256 $manifestSha256 -FirefoxPath $firefox
 ```
 
 Packaged signaling and interoperability workflows:
@@ -138,7 +146,7 @@ initial-offer timing, duplicate offer requests, stale answers, data-channel setu
 VP9 alpha reservation and capability activation, and failed-peer ICE restart recovery. The Control Center workflows use the real
 VDO.Ninja director page. The ninja-plugin alpha workflow uses packaged Game Capture, a synthetic
 Spout RGBA sender, portable OBS, and pixel-level transparency validation.
-The signaling command resolves the package matching the version in `CMakeLists.txt`, verifies its
+The signaling and Control Center commands resolve the package matching the version in `CMakeLists.txt`, verify its
 release manifest, and binds `spout_test_sender.exe` from the build directory recorded in that
 manifest. Pass `-- --build-dir=<directory>` only to override that binding explicitly.
 The named Edge negotiation and lifecycle commands are host-contained subsets that pin the scenario
