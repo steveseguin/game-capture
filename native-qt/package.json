@@ -27,6 +27,7 @@
     "gate:alpha-composite-analyzer": "node e2e/alpha-composite-analyzer-regression.js",
     "gate:alpha-artifact-bindings": "powershell -NoProfile -ExecutionPolicy Bypass -File e2e/alpha-artifact-binding-regression.ps1",
     "gate:capture-source-lifetime": "powershell -NoProfile -ExecutionPolicy Bypass -File e2e/capture-source-lifetime-regression.ps1",
+    "gate:room-quality-h265-fallback": "node e2e/room-quality-h265-fallback-regression.js",
     "gate:qa-entrypoint-contracts": "node e2e/qa-entrypoint-contract-regression.js",
     "e2e:director-room:stop": "node e2e/director-room-e2e.js --stop-lifecycle-only --publisher-duration-ms=25000",
     "e2e:ice-connectivity": "node e2e/ice-connectivity-e2e.js",

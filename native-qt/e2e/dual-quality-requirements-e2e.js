@@ -19,6 +19,8 @@ const ROOM_QUALITY_REASON = Object.freeze({
   NOT_REQUESTED: 'not-requested',
   CODEC_NOT_H264: 'codec-not-h264'
 });
+const H265_STARTUP_FALLBACK_WARNING =
+  'Selected H.265 encoder failed to initialize; trying H.264 fallback';
 
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -30,6 +32,48 @@ function sha256File(filePath) {
 
 function roomQualityUnavailableWarning(codecName) {
   return `Room Quality is unavailable with ${codecName}; ${ROOM_QUALITY_WARNING_SUFFIX}`;
+}
+
+function resolveH265RoomQualityExpectation(roomQuality, publisherOutput) {
+  const committedCodec = roomQuality && roomQuality.committed_codec;
+  if (committedCodec === 'H.265') {
+    return {
+      caseTag: 'h265-selected',
+      assignedTier: 'hq',
+      codecName: 'H.265',
+      requested: true,
+      effective: false,
+      reason: ROOM_QUALITY_REASON.CODEC_NOT_H264,
+      requestedVideoBitrateKbps: 500,
+      warningCount: 1,
+      warningText: roomQualityUnavailableWarning('H.265'),
+      noLq: true,
+      alphaActive: false,
+      selectionOutcome: 'preserved'
+    };
+  }
+  if (committedCodec === 'H.264' &&
+      String(publisherOutput || '').includes(H265_STARTUP_FALLBACK_WARNING)) {
+    return {
+      caseTag: 'h265-startup-fallback-h264',
+      assignedTier: 'lq',
+      codecName: 'H.264',
+      requested: true,
+      effective: true,
+      reason: ROOM_QUALITY_REASON.ENABLED,
+      requestedVideoBitrateKbps: 500,
+      warningCount: 0,
+      warningText: '',
+      noLq: false,
+      alphaActive: false,
+      dimensionsTier: 'lq',
+      selectionOutcome: 'explicit-encoder-unavailable-fallback'
+    };
+  }
+  throw new Error(
+    `H.265 startup resolved to unexpected codec ${JSON.stringify(committedCodec)} ` +
+    `without the required explicit encoder-unavailable fallback evidence`
+  );
 }
 
 function publisherOutputText(publisher) {
@@ -1523,10 +1567,26 @@ const caseRoomQualityPreservesVp9Selection = nonH264RoomQualityCase(
   'VP9',
   'vp9-selected'
 );
-const caseRoomQualityPreservesH265Selection = nonH264RoomQualityCase(
-  'H.265',
-  'h265-selected'
-);
+async function caseRoomQualityPreservesH265Selection(input) {
+  const startupDiagnostics = await waitForPublisherDiagnostics(
+    input.diagnosticsPath,
+    {},
+    Math.max(7000, Math.floor(input.config.timeoutMs / 4))
+  );
+  assertOk(
+    startupDiagnostics.ok && startupDiagnostics.diagnostics,
+    'room-quality-h265-selected: startup diagnostics unavailable',
+    startupDiagnostics
+  );
+  const expected = resolveH265RoomQualityExpectation(
+    startupDiagnostics.diagnostics.room_quality,
+    publisherOutputText(input.publisher)
+  );
+  await runRoomQualityContractCase(input, expected);
+  if (input.caseState.contractEvidence) {
+    input.caseState.contractEvidence.selectionOutcome = expected.selectionOutcome;
+  }
+}
 const caseRoomQualityPreservesAv1Selection = nonH264RoomQualityCase(
   'AV1',
   'av1-selected'
@@ -2019,11 +2079,13 @@ async function main() {
 module.exports = {
   ROOM_QUALITY_REASON,
   ROOM_QUALITY_WARNING_SUFFIX,
+  H265_STARTUP_FALLBACK_WARNING,
   collectRoomQualityLqLeakObservations,
   countLiteralOccurrences,
   countRoomQualityUnavailableWarnings,
   evaluateRoomQualityContractEvidence,
   extractPackagedRedReportEvidence,
+  resolveH265RoomQualityExpectation,
   roomQualityUnavailableWarning
 };
 

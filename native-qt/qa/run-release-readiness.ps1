@@ -461,6 +461,14 @@ $lines += ""
 $lines += "- Result: " + ($(if ($captureSourceLifetimePass) { "PASS" } else { "FAIL" }))
 $lines += ""
 
+$h265FallbackContractPass = & $script:runStepImplementation "H.265 availability fallback contract" {
+    $h265FallbackContractArgs = @(
+        "--prefix", $script:repoRoot, "run", "gate:room-quality-h265-fallback"
+    )
+    & $script:npmExecutable @h265FallbackContractArgs
+}
+$allPass = $allPass -and $h265FallbackContractPass
+
 $qaEntrypointPass = & $script:runStepImplementation "QA entrypoint contracts" {
     $qaEntrypointArgs = @(
         "--prefix", $script:repoRoot, "run", "gate:qa-entrypoint-contracts"
@@ -731,6 +739,7 @@ $lines += "- Exact installed Firefox SHA-256: $script:firefoxSha256Binding"
 $lines += ""
 $lines += "## QA and alpha static contracts"
 $lines += ""
+$lines += "- H.265 availability fallback: " + ($(if ($h265FallbackContractPass) { "PASS" } else { "FAIL" }))
 $lines += "- QA entrypoints: " + ($(if ($qaEntrypointPass) { "PASS" } else { "FAIL" }))
 $lines += "- Artifact identities: " + ($(if ($alphaArtifactPass) { "PASS" } else { "FAIL" }))
 $lines += "- Composite analyzer: " + ($(if ($alphaAnalyzerPass) { "PASS" } else { "FAIL" }))
