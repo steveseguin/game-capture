@@ -369,9 +369,10 @@ function main() {
     controls
   );
   const cadenceGap = cadenceSamples.map((entry) => ({ ...entry, screenshot: { ...entry.screenshot } }));
-  cadenceGap[5].screenshot.captureStartedAtMs += 30;
+  cadenceGap[3].screenshot.captureStartedAtMs += 30;
+  cadenceGap[7].screenshot.captureStartedAtMs += 30;
   assertRejected(
-    'capture-start-gap-over-100ms',
+    'repeated-capture-start-gaps-over-100ms',
     analyzeAlphaCaptureCadence(cadenceGap, {
       inputCreatedAtMs: cadenceOrigin,
       requiredMaximumMs: 100,
