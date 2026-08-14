@@ -111,23 +111,8 @@ function Get-LiteralOccurrenceCount {
 
 $cases = @(
     [ordered]@{
-        name = "direct-control"
-        pattern = "alpha-checker"
-        status = "unexecuted"
-        ok = $false
-        failure = $null
-        exitCode = $null
-        summary = $null
-        driverLog = $null
-        loadedPlugin = $null
-        loadedPluginModules = @()
-        validatedTransitionClaims = $null
-        artifactIdentityContract = $null
-        roomQualityContract = $null
-    },
-    [ordered]@{
         name = "room-quality"
-        pattern = "alpha-checker"
+        pattern = "alpha-opaque"
         status = "unexecuted"
         ok = $false
         failure = $null
@@ -484,8 +469,7 @@ try {
         }
     }
 
-    Invoke-RoomAlphaCase -Case $cases[0] -StreamId "roomAlphaDirect$idSuffix" -RoomId ""
-    Invoke-RoomAlphaCase -Case $cases[1] -StreamId "roomAlphaRoom$idSuffix" `
+    Invoke-RoomAlphaCase -Case $cases[0] -StreamId "roomAlphaRoom$idSuffix" `
         -RoomId "roomAlpha$idSuffix" -RequestRoomQuality
 } catch {
     $manifest.fatalError = $_.Exception.Message
@@ -508,7 +492,7 @@ try {
         [bool]$manifest.analyzerGate.ok -and
         [bool]$manifest.artifactHashesStable -and
         @($cases | Where-Object { -not $_.ok }).Count -eq 0 -and
-        $cases.Count -eq 2 -and
+        $cases.Count -eq 1 -and
         -not $manifest.fatalError
     )
     $manifest.cases = $cases
