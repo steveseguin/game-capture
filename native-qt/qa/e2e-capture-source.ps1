@@ -8,10 +8,21 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+Add-Type -ReferencedAssemblies ([System.Windows.Forms.Form].Assembly.Location) -TypeDefinition @"
+using System.Windows.Forms;
+
+public sealed class PersistentCaptureForm : Form
+{
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        e.Cancel = true;
+    }
+}
+"@
 
 [System.Windows.Forms.Application]::EnableVisualStyles()
 
-$form = New-Object System.Windows.Forms.Form
+$form = New-Object PersistentCaptureForm
 $form.Text = $Title
 $form.StartPosition = "Manual"
 $form.Left = 80

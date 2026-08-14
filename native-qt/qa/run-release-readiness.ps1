@@ -449,6 +449,18 @@ if ($FfmpegPath) {
 
 $allPass = $true
 
+$captureSourceLifetimePass = & $script:runStepImplementation "E2E capture source lifetime" {
+    $captureSourceLifetimeArgs = @(
+        "--prefix", $script:repoRoot, "run", "gate:capture-source-lifetime"
+    )
+    & $script:npmExecutable @captureSourceLifetimeArgs
+}
+$allPass = $allPass -and $captureSourceLifetimePass
+$lines += "## E2E Capture Source Lifetime"
+$lines += ""
+$lines += "- Result: " + ($(if ($captureSourceLifetimePass) { "PASS" } else { "FAIL" }))
+$lines += ""
+
 $qaEntrypointPass = & $script:runStepImplementation "QA entrypoint contracts" {
     $qaEntrypointArgs = @(
         "--prefix", $script:repoRoot, "run", "gate:qa-entrypoint-contracts"
