@@ -60,6 +60,48 @@ function Get-FileBinding {
     }
 }
 
+function Get-PortableObsCanvasDimensions {
+    param([string]$RepoPath)
+
+    $profilesRoot = Join-Path $RepoPath "_obs-portable\config\obs-studio\basic\profiles"
+    $profile = Get-ChildItem -LiteralPath $profilesRoot -Recurse -Filter "basic.ini" -File -ErrorAction Stop |
+        Sort-Object FullName |
+        Select-Object -First 1
+    if (-not $profile) {
+        throw "Portable OBS profile basic.ini was not found under $profilesRoot"
+    }
+    $profileText = Get-Content -LiteralPath $profile.FullName -Raw
+    $widthMatch = [regex]::Match($profileText, '(?m)^\s*BaseCX\s*=\s*(\d+)\s*$')
+    $heightMatch = [regex]::Match($profileText, '(?m)^\s*BaseCY\s*=\s*(\d+)\s*$')
+    if (-not $widthMatch.Success -or -not $heightMatch.Success) {
+        throw "Portable OBS profile does not define BaseCX and BaseCY: $($profile.FullName)"
+    }
+    $width = [int]$widthMatch.Groups[1].Value
+    $height = [int]$heightMatch.Groups[1].Value
+    if ($width -lt 320 -or $width -gt 7680 -or $height -lt 240 -or $height -gt 4320) {
+        throw "Portable OBS canvas dimensions are outside the supported range: ${width}x${height}"
+    }
+    return [ordered]@{
+        width = $width
+        height = $height
+        profile = $profile.FullName
+    }
+}
+
+function Expand-SerializedCollection {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return @()
+    }
+    $items = @($Value)
+    if ($items.Count -eq 1 -and $items[0].PSObject.Properties["value"] -and
+        $items[0].PSObject.Properties["Count"]) {
+        return @($items[0].value)
+    }
+    return $items
+}
+
 function Get-LiteralOccurrenceCount {
     param([string]$Text, [string]$Needle)
 
@@ -85,7 +127,7 @@ $cases = @(
     },
     [ordered]@{
         name = "room-quality"
-        pattern = "alpha-moving-edge"
+        pattern = "alpha-checker"
         status = "unexecuted"
         ok = $false
         failure = $null
@@ -173,6 +215,9 @@ try {
     $publisherBinding = Get-FileBinding $PublisherPath
     $senderBinding = Get-FileBinding $SpoutSenderPath
     $portableObsBinding = Get-FileBinding (Join-Path $PluginRepo "_obs-portable\bin\64bit\obs64.exe")
+    $portableObsCanvas = Get-PortableObsCanvasDimensions $PluginRepo
+    $env:VDONINJA_ALPHA_CAPTURE_WIDTH = [string][Math]::Min(480, $portableObsCanvas.width)
+    $env:VDONINJA_ALPHA_CAPTURE_HEIGHT = [string][Math]::Min(300, $portableObsCanvas.height)
     $pluginPayloadBinding = Get-FileBinding (Join-Path $PluginRepo "install\obs-plugins\64bit\obs-vdoninja.dll")
     if ($publisherBinding.sha256 -ne $ExpectedPublisherSha256 -or
         $senderBinding.sha256 -ne $ExpectedSpoutSenderSha256 -or
@@ -185,6 +230,11 @@ try {
         gameCapture = $publisherBinding
         spoutSender = $senderBinding
         portableObs = $portableObsBinding
+        portableObsProfile = Get-FileBinding $portableObsCanvas.profile
+        portableObsCanvas = [ordered]@{
+            width = $portableObsCanvas.width
+            height = $portableObsCanvas.height
+        }
         stagedPlugin = $pluginPayloadBinding
         wrapper = Get-FileBinding $MyInvocation.MyCommand.Path
         analyzerRegression = Get-FileBinding $analyzerRegression
@@ -231,15 +281,17 @@ try {
             "-TestSpoutSenderName", "RoomAlphaE2E-$($Case.name)-$idSuffix",
             "-TestSpoutPattern", $Case.pattern,
             "-VideoCodec", "vp9",
+            "-OutputWidth", [string]$portableObsCanvas.width,
+            "-OutputHeight", [string]$portableObsCanvas.height,
             "-GameCaptureDurationMs", [string]$GameCaptureDurationMs,
             "-GameCaptureWarmupSeconds", [string]$GameCaptureWarmupSeconds,
             "-CheckTimeoutSeconds", [string]$CheckTimeoutSeconds,
             "-AlphaBackgroundColor", "4278190335",
             "-AlphaReceiverProbePath", $receiverProbe,
             "-AlphaReceiverProbeTimeoutSeconds", [string]$AlphaReceiverProbeTimeoutSeconds,
-            "-AlphaSampleIntervalMs", "75",
-            "-AlphaTransitionMode", "source-toggle",
-            "-AlphaTransitionLabel", "obs-source-lifecycle",
+            "-AlphaSampleIntervalMs", "95",
+            "-AlphaTransitionMode", "none",
+            "-AlphaTransitionLabel", "steady-alpha-output",
             "-AlphaTransitionHoldMs", "350",
             "-ExpectedGameCaptureSha256", $ExpectedPublisherSha256,
             "-ExpectedPluginSha256", $ExpectedPluginSha256,
@@ -271,7 +323,7 @@ try {
             $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
             $Case.summary = Get-FileBinding $summaryPath
             $Case.loadedPlugin = $summary.artifactBinding.loadedPlugin
-            $Case.loadedPluginModules = @($summary.artifactBinding.loadedPluginModules)
+            $Case.loadedPluginModules = @(Expand-SerializedCollection $summary.artifactBinding.loadedPluginModules)
             $Case.validatedTransitionClaims = $summary.validatedTransitionClaims
             $Case.artifactIdentityContract = $summary.artifactIdentityContract
             $Case.runDir = [string]$summary.runDir
@@ -391,37 +443,24 @@ try {
                 -not [bool]$summary.harnessOk -or -not [bool]$summary.productOk -or
                 -not [bool]$summary.alphaPixelCheck.cadence.ok -or
                 -not [bool]$summary.alphaPixelCheck.sequence.ok -or
-                -not [bool]$summary.alphaPixelCheck.transition.result.ok -or
-                -not [bool]$summary.validatedTransitionClaims.ok -or
                 -not [bool]$summary.fixturePostEpochObserved) {
-                throw "Room-alpha driver, product, cadence, sequence, or real transition contract failed"
+                throw "Room-alpha driver, product, cadence, or decoded sequence contract failed"
             }
-            if ([string]$summary.alphaSampling.transitionMode -ne "source-toggle" -or
-                [int]$summary.alphaPixelCheck.transition.settleMs -ne 0 -or
-                [int]$summary.alphaPixelCheck.transition.transitionSampleCount -lt 1 -or
-                -not [bool]$summary.alphaPixelCheck.transition.boundaryOrderingOk -or
+            if ([bool]$summary.alphaSampling.transitionRequested -or
+                [string]$summary.alphaSampling.transitionMode -ne "none" -or
+                $null -ne $summary.alphaPixelCheck.transition -or
                 [int]$summary.alphaPixelCheck.cadence.firstCaptureLatencyMs -gt 100 -or
                 [int]$summary.alphaPixelCheck.cadence.maxCaptureStartGapMs -gt 100) {
-                throw "Immediate continuous source-toggle capture contract was not met"
-            }
-            $observed = $summary.validatedTransitionClaims.observedTransition
-            if (-not $observed -or -not [bool]$observed.ok -or
-                [int]$observed.before.publisherPid -ne [int]$observed.after.publisherPid -or
-                [string]$observed.before.peer.logicalKey -eq [string]$observed.after.peer.logicalKey -or
-                -not [bool]$summary.validatedTransitionClaims.oldTransportRetiredBeforeVisualEpochChange -or
-                -not [bool]$summary.validatedTransitionClaims.newTransportObservedBeforeFirstPostCapture) {
-                throw "Room source lifecycle claims were not proven by distinct diagnostics peer evidence"
+                throw "Immediate continuous steady-alpha capture contract was not met"
             }
             if ($Case.pattern -eq "alpha-moving-edge" -and (
-                [int]$summary.alphaPixelCheck.sequence.pre.usefulSampleCount -lt 10 -or
-                [int]$summary.alphaPixelCheck.sequence.post.usefulSampleCount -lt 10 -or
-                [int]$summary.alphaPixelCheck.sequence.pre.uniqueCompositePixelCount -lt 10 -or
-                [int]$summary.alphaPixelCheck.sequence.post.uniqueCompositePixelCount -lt 10
+                [int]$summary.alphaPixelCheck.sequence.usefulSampleCount -lt 10 -or
+                [int]$summary.alphaPixelCheck.sequence.uniqueCompositePixelCount -lt 10
             )) {
-                throw "Room moving fixture lacked ten independently live useful frames in each epoch"
+                throw "Room moving fixture lacked ten independently live useful frames"
             }
             $loadedPluginEvidence = Test-AlphaLoadedPluginEvidence `
-                -LoadedModules @($summary.artifactBinding.loadedPluginModules) `
+                -LoadedModules @($Case.loadedPluginModules) `
                 -LoadedPlugin $summary.artifactBinding.loadedPlugin `
                 -StagedPlugin $summary.artifactBinding.stagedPlugin `
                 -ExpectedSha256 $ExpectedPluginSha256

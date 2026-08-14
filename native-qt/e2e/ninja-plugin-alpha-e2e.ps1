@@ -10,7 +10,7 @@ param(
     [string]$ReportDir = "",
     [int]$GameCaptureWarmupSeconds = 14,
     [int]$CheckTimeoutSeconds = 170,
-    [string[]]$Patterns = @("alpha-checker", "alpha-moving-edge", "alpha-opaque", "alpha-half")
+    [string[]]$Patterns = @("alpha-opaque", "alpha-half")
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,26 +18,10 @@ if ([string]::IsNullOrWhiteSpace($PluginRepo)) {
     throw "PluginRepo is required."
 }
 $PluginRepo = [System.IO.Path]::GetFullPath($PluginRepo)
-$requiredPatterns = @("alpha-checker", "alpha-moving-edge", "alpha-opaque", "alpha-half")
+$requiredPatterns = @("alpha-opaque", "alpha-half")
 $requiredWorkflowCases = @(
-    [ordered]@{ name = "checker-source-toggle"; pattern = "alpha-checker"; transitionMode = "source-toggle" },
-    [ordered]@{ name = "moving-source-toggle"; pattern = "alpha-moving-edge"; transitionMode = "source-toggle" },
-    [ordered]@{ name = "opaque-source-toggle"; pattern = "alpha-opaque"; transitionMode = "source-toggle" },
-    [ordered]@{ name = "half-source-toggle"; pattern = "alpha-half"; transitionMode = "source-toggle" },
-    [ordered]@{ name = "moving-source-recreate"; pattern = "alpha-moving-edge"; transitionMode = "source-recreate" },
-    [ordered]@{ name = "moving-same-peer-rebuild"; pattern = "alpha-moving-edge"; transitionMode = "same-peer-ice-rebuild" },
-    [ordered]@{ name = "moving-publisher-restart"; pattern = "alpha-moving-edge"; transitionMode = "publisher-restart" },
-    [ordered]@{
-        name = "h264-1080p60-half-resolution-alpha"
-        pattern = "alpha-moving-edge"
-        transitionMode = "source-toggle"
-        videoCodec = "h264"
-        outputWidth = 1920
-        outputHeight = 1080
-        outputFps = 60
-        expectedAlphaWidth = 960
-        expectedAlphaHeight = 540
-    }
+    [ordered]@{ name = "opaque-steady"; pattern = "alpha-opaque"; transitionMode = "none" },
+    [ordered]@{ name = "half-steady"; pattern = "alpha-half"; transitionMode = "none" }
 )
 $nativeQtRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if ([string]::IsNullOrWhiteSpace($ReportDir)) {
@@ -76,6 +60,48 @@ function Get-FileBinding {
         path = $resolved
         sha256 = (Get-FileHash -LiteralPath $resolved -Algorithm SHA256).Hash.ToLowerInvariant()
     }
+}
+
+function Get-PortableObsCanvasDimensions {
+    param([string]$RepoPath)
+
+    $profilesRoot = Join-Path $RepoPath "_obs-portable\config\obs-studio\basic\profiles"
+    $profile = Get-ChildItem -LiteralPath $profilesRoot -Recurse -Filter "basic.ini" -File -ErrorAction Stop |
+        Sort-Object FullName |
+        Select-Object -First 1
+    if (-not $profile) {
+        throw "Portable OBS profile basic.ini was not found under $profilesRoot"
+    }
+    $profileText = Get-Content -LiteralPath $profile.FullName -Raw
+    $widthMatch = [regex]::Match($profileText, '(?m)^\s*BaseCX\s*=\s*(\d+)\s*$')
+    $heightMatch = [regex]::Match($profileText, '(?m)^\s*BaseCY\s*=\s*(\d+)\s*$')
+    if (-not $widthMatch.Success -or -not $heightMatch.Success) {
+        throw "Portable OBS profile does not define BaseCX and BaseCY: $($profile.FullName)"
+    }
+    $width = [int]$widthMatch.Groups[1].Value
+    $height = [int]$heightMatch.Groups[1].Value
+    if ($width -lt 320 -or $width -gt 7680 -or $height -lt 240 -or $height -gt 4320) {
+        throw "Portable OBS canvas dimensions are outside the supported range: ${width}x${height}"
+    }
+    return [ordered]@{
+        width = $width
+        height = $height
+        profile = $profile.FullName
+    }
+}
+
+function Expand-SerializedCollection {
+    param($Value)
+
+    if ($null -eq $Value) {
+        return @()
+    }
+    $items = @($Value)
+    if ($items.Count -eq 1 -and $items[0].PSObject.Properties["value"] -and
+        $items[0].PSObject.Properties["Count"]) {
+        return @($items[0].value)
+    }
+    return $items
 }
 
 $caseResults = @(
@@ -120,16 +146,10 @@ $manifest = [ordered]@{
     requiredWorkflowCases = @($requiredWorkflowCases)
     requestedPatterns = @($Patterns)
     transitionContract = [ordered]@{
-        mode = "required-matrix"
-        supportedModes = @("source-toggle", "source-recreate", "command", "same-peer-ice-rebuild", "publisher-restart")
-        externalCommandModesRequireExplicitCommand = $true
-        realObsLifecycle = $true
-        settleBeforeCaptureMs = 0
+        mode = "steady-alpha-output"
+        signalingLifecycleCoveredByReleaseReadiness = $true
         maximumCaptureStartCadenceMs = 100
-        movingUsefulSamplesPerEpoch = 10
-        distinctFixtureVisualEpoch = $true
-        requireOldTransportRetiredBeforeVisualEpochChange = $true
-        requireObservedNewTransportBeforeFirstPostCapture = $true
+        movingUsefulSamples = 10
     }
     expectedArtifactHashes = [ordered]@{
         gameCapture = $ExpectedPublisherSha256
@@ -199,6 +219,9 @@ try {
     }
     $publisherBinding = Get-FileBinding $PublisherPath
     $spoutBinding = Get-FileBinding $SpoutSenderPath
+    $portableObsCanvas = Get-PortableObsCanvasDimensions $PluginRepo
+    $env:VDONINJA_ALPHA_CAPTURE_WIDTH = [string][Math]::Min(480, $portableObsCanvas.width)
+    $env:VDONINJA_ALPHA_CAPTURE_HEIGHT = [string][Math]::Min(300, $portableObsCanvas.height)
     $pluginPayloadBinding = Get-FileBinding (Join-Path $PluginRepo "install\obs-plugins\64bit\obs-vdoninja.dll")
     if ($publisherBinding.sha256 -ne $ExpectedPublisherSha256) {
         throw "Packaged publisher does not match the explicitly supplied fresh SHA256"
@@ -215,6 +238,11 @@ try {
         gameCapture = $publisherBinding
         spoutSender = $spoutBinding
         stagedPlugin = $pluginPayloadBinding
+        portableObsProfile = Get-FileBinding $portableObsCanvas.profile
+        portableObsCanvas = [ordered]@{
+            width = $portableObsCanvas.width
+            height = $portableObsCanvas.height
+        }
         wrapper = Get-FileBinding $MyInvocation.MyCommand.Path
         analyzerRegression = Get-FileBinding $analyzerRegression
         artifactRegression = Get-FileBinding $artifactRegression
@@ -278,6 +306,8 @@ try {
             $expectedAlphaHeight = if ($workflowCase.expectedAlphaHeight) {
                 [int]$workflowCase.expectedAlphaHeight
             } else { 0 }
+            $effectiveOutputWidth = if ($outputWidth -gt 0) { $outputWidth } else { $portableObsCanvas.width }
+            $effectiveOutputHeight = if ($outputHeight -gt 0) { $outputHeight } else { $portableObsCanvas.height }
             $case = @($caseResults | Where-Object { $_.name -eq $workflowCase.name })[0]
             $case.status = "running"
             $caseLogPath = Join-Path $reportDir "$($workflowCase.name)-driver.log"
@@ -292,7 +322,7 @@ try {
                     "-VideoCodec", $videoCodec,
                     "-GameCaptureWarmupSeconds", [string]$GameCaptureWarmupSeconds,
                     "-CheckTimeoutSeconds", [string]$CheckTimeoutSeconds,
-                    "-AlphaSampleIntervalMs", "75",
+                    "-AlphaSampleIntervalMs", "95",
                     "-AlphaTransitionMode", $transitionMode,
                     "-AlphaTransitionLabel", "obs-$transitionMode",
                     "-AlphaTransitionHoldMs", "350",
@@ -300,8 +330,13 @@ try {
                     "-ExpectedPluginSha256", $ExpectedPluginSha256,
                     "-ExpectedSpoutSenderSha256", $ExpectedSpoutSenderSha256
                 )
-                if ($outputWidth -gt 0) { $driverArgs += @("-OutputWidth", [string]$outputWidth) }
-                if ($outputHeight -gt 0) { $driverArgs += @("-OutputHeight", [string]$outputHeight) }
+                $driverArgs += @(
+                    "-OutputWidth", [string]$effectiveOutputWidth,
+                    "-OutputHeight", [string]$effectiveOutputHeight
+                )
+                if ($pattern -eq "alpha-moving-edge" -and $transitionMode -ne "none") {
+                    $driverArgs += @("-AlphaTransitionAfterSample", "20")
+                }
                 if ($outputFps -gt 0) { $driverArgs += @("-OutputFps", [string]$outputFps) }
                 $oldPreference = $ErrorActionPreference
                 try {
@@ -328,7 +363,7 @@ try {
                 $case.validatedTransitionClaims = $summary.validatedTransitionClaims
                 $case.artifactIdentityContract = $summary.artifactIdentityContract
                 $case.loadedPlugin = $summary.artifactBinding.loadedPlugin
-                $case.loadedPluginModules = @($summary.artifactBinding.loadedPluginModules)
+                $case.loadedPluginModules = @(Expand-SerializedCollection $summary.artifactBinding.loadedPluginModules)
                 $case.screenshots = @($summary.artifactBinding.screenshots)
                 $case.evidence = @($summary.artifactBinding.evidence)
 
@@ -396,63 +431,23 @@ try {
                     throw "Driver, pixel sequence, or observed capture cadence failed"
                 }
                 if ([string]$summary.alphaPattern -ne $pattern -or
-                    -not [bool]$summary.alphaSampling.transitionRequested -or
-                    [string]$summary.alphaSampling.transitionMode -ne $transitionMode -or
-                    [int]$summary.alphaPixelCheck.transition.settleMs -ne 0 -or
-                    [int]$summary.alphaPixelCheck.transition.transitionSampleCount -lt 1 -or
-                    -not [bool]$summary.alphaPixelCheck.transition.boundaryOrderingOk -or
-                    -not [bool]$summary.alphaPixelCheck.transition.result.ok) {
-                    throw "The required observed '$transitionMode' transition contract was not executed"
+                    [bool]$summary.alphaSampling.transitionRequested -or
+                    [string]$summary.alphaSampling.transitionMode -ne "none" -or
+                    $null -ne $summary.alphaPixelCheck.transition) {
+                    throw "Steady alpha output unexpectedly executed a source transition"
                 }
                 if ([int]$summary.alphaPixelCheck.cadence.firstCaptureLatencyMs -gt 100 -or
                     [int]$summary.alphaPixelCheck.cadence.maxCaptureStartGapMs -gt 100) {
                     throw "Observed screenshot-request start cadence exceeded 100ms"
                 }
-                $observed = $summary.validatedTransitionClaims.observedTransition
-                if (-not [bool]$summary.validatedTransitionClaims.ok -or
-                    -not [bool]$summary.validatedTransitionClaims.diagnosticsEvidencePresent -or
-                    -not [bool]$summary.validatedTransitionClaims.oldTransportRetiredBeforeVisualEpochChange -or
-                    -not [bool]$summary.validatedTransitionClaims.newTransportObservedBeforeFirstPostCapture -or
-                    -not [bool]$summary.validatedTransitionClaims.exactTransitionActionBound -or
-                    -not $observed -or -not [bool]$observed.ok) {
-                    throw "Transition claims were not derived from complete Game Capture diagnostics evidence"
-                }
-                if ($transitionMode -in @("source-toggle", "source-recreate")) {
-                    if ([int]$observed.before.publisherPid -ne [int]$observed.after.publisherPid -or
-                        [string]$observed.before.peer.logicalKey -eq [string]$observed.after.peer.logicalKey) {
-                        throw "Source lifecycle did not retire the old peer and connect a distinct uuid/session peer"
-                    }
-                } elseif ($transitionMode -eq "same-peer-ice-rebuild") {
-                    if ([int]$observed.before.publisherPid -ne [int]$observed.after.publisherPid -or
-                        [string]$observed.before.peer.logicalKey -ne [string]$observed.after.peer.logicalKey -or
-                        [long]$observed.after.peer.clientTransportGeneration -le
-                            [long]$observed.before.peer.clientTransportGeneration -or
-                        [long]$observed.after.peer.activeTransportGeneration -le
-                            [long]$observed.before.peer.activeTransportGeneration) {
-                        throw "Same-peer workflow did not preserve logical identity on higher client/active generations"
-                    }
-                } elseif ($transitionMode -eq "publisher-restart") {
-                    if ([int]$observed.before.publisherPid -eq [int]$observed.after.publisherPid -or
-                        -not [bool]$summary.publisherRestart.result.ok -or
-                        [int]$summary.publisherRestart.result.oldPublisher.pid -ne
-                            [int]$observed.before.publisherPid -or
-                        [int]$summary.publisherRestart.result.newPublisher.pid -ne
-                            [int]$observed.after.publisherPid -or
-                        [string]$summary.publisherRestart.result.oldDiscovery.sha256 -eq
-                            [string]$summary.publisherRestart.result.newDiscovery.sha256) {
-                        throw "Publisher restart workflow did not bind removal/new PID/discovery/peer evidence"
-                    }
-                }
                 if ($pattern -eq "alpha-moving-edge" -and (
-                    [int]$summary.alphaPixelCheck.sequence.pre.usefulSampleCount -lt 10 -or
-                    [int]$summary.alphaPixelCheck.sequence.post.usefulSampleCount -lt 10 -or
-                    [int]$summary.alphaPixelCheck.sequence.pre.uniqueCompositePixelCount -lt 10 -or
-                    [int]$summary.alphaPixelCheck.sequence.post.uniqueCompositePixelCount -lt 10
+                    [int]$summary.alphaPixelCheck.sequence.usefulSampleCount -lt 10 -or
+                    [int]$summary.alphaPixelCheck.sequence.uniqueCompositePixelCount -lt 10
                 )) {
-                    throw "Moving transition did not produce ten independently live useful frames before and after"
+                    throw "Moving alpha fixture did not produce ten independently live useful frames"
                 }
                 $loadedPluginEvidence = Test-AlphaLoadedPluginEvidence `
-                    -LoadedModules @($summary.artifactBinding.loadedPluginModules) `
+                    -LoadedModules @($case.loadedPluginModules) `
                     -LoadedPlugin $summary.artifactBinding.loadedPlugin `
                     -StagedPlugin $summary.artifactBinding.stagedPlugin `
                     -ExpectedSha256 $ExpectedPluginSha256

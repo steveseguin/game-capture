@@ -153,6 +153,7 @@ class TestSpoutCapture : public QObject {
     void testProtectedVp9RuntimeContractUsesLivePackets();
     void testExternalFfmpegStallRestartsOnceAndDropsPreRestartIdentity();
     void testReceivesBgraAlphaFrames();
+    void testMovingAlphaGeometryPreserved();
     void testContinuesAfterSenderResize();
     void testContinuesAfterSenderRestartWithSameName();
 };
@@ -466,6 +467,71 @@ void TestSpoutCapture::testReceivesBgraAlphaFrames() {
 
     QVERIFY(hasTransparent);
     QVERIFY(hasOpaque);
+
+    capture.stopCapture();
+    sender.stop();
+}
+
+void TestSpoutCapture::testMovingAlphaGeometryPreserved() {
+    const std::string senderName =
+        "GameCaptureSpoutGeometryGate-" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    SenderProcess sender(senderName, {
+        "--width=640",
+        "--height=360",
+        "--pattern=alpha-moving-edge",
+    });
+    if (!sender.start()) {
+        const QByteArray message =
+            QByteArray("Spout sender process could not start: ") + sender.output();
+        QSKIP(message.constData());
+    }
+
+    versus::video::SpoutCapture capture;
+    QTRY_VERIFY_WITH_TIMEOUT(hasSender(capture, senderName), 3000);
+
+    std::atomic<int> frameCount{0};
+    std::mutex frameMutex;
+    versus::video::CapturedFrame latestFrame;
+    capture.setFrameCallback([&](const versus::video::CapturedFrame &frame) {
+        {
+            std::lock_guard<std::mutex> lock(frameMutex);
+            latestFrame = frame;
+        }
+        frameCount.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    QVERIFY(capture.startCapture(senderName, kWidth, kHeight, kFps));
+    QTRY_VERIFY_WITH_TIMEOUT(frameCount.load(std::memory_order_relaxed) >= 3, 5000);
+
+    versus::video::CapturedFrame frame;
+    {
+        std::lock_guard<std::mutex> lock(frameMutex);
+        frame = latestFrame;
+    }
+
+    int minX = frame.width;
+    int minY = frame.height;
+    int maxX = -1;
+    int maxY = -1;
+    for (int y = 0; y < frame.height; ++y) {
+        for (int x = 0; x < frame.width; ++x) {
+            const size_t alphaIndex =
+                static_cast<size_t>(y) * static_cast<size_t>(frame.stride) +
+                static_cast<size_t>(x) * 4 + 3;
+            if (frame.data[alphaIndex] < 248) {
+                continue;
+            }
+            minX = std::min(minX, x);
+            minY = std::min(minY, y);
+            maxX = std::max(maxX, x);
+            maxY = std::max(maxY, y);
+        }
+    }
+
+    QVERIFY2(maxX >= minX && maxY >= minY, "No opaque moving-edge fixture region was captured");
+    QCOMPARE(maxX - minX + 1, frame.width / 4);
+    QCOMPARE(maxY - minY + 1, frame.height / 3);
 
     capture.stopCapture();
     sender.stop();
