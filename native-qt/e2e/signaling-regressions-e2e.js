@@ -2301,11 +2301,9 @@ function deepFreezeDiagnosticsSnapshot(value) {
   return Object.freeze(value);
 }
 
-function readDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
-  try {
-    const document = deepFreezeDiagnosticsSnapshot(
-      JSON.parse(fs.readFileSync(diagnosticsPath, 'utf8'))
-    );
+let liveDiagnosticsContext = null;
+
+function diagnosticsPeerSnapshot(document, uuid, observedAtMs) {
     const matches = deepFreezeDiagnosticsSnapshot(
       (Array.isArray(document.peers) ? document.peers : []).filter((entry) =>
         entry && entry.uuid === uuid
@@ -2313,7 +2311,7 @@ function readDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
     );
     const common = {
       generatedSteadyMs: Number(document.generated_steady_ms || 0),
-      fileMtimeMs: fs.statSync(diagnosticsPath).mtimeMs,
+      fileMtimeMs: observedAtMs,
       peerCount: matches.length,
       ambiguous: matches.length > 1
     };
@@ -2362,12 +2360,37 @@ function readDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
       lastAnswerSource: peer.last_answer_source || '',
       timeline: Array.isArray(peer.timeline) ? peer.timeline.slice(-20) : []
     });
+}
+
+function readDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
+  try {
+    const document = deepFreezeDiagnosticsSnapshot(
+      JSON.parse(fs.readFileSync(diagnosticsPath, 'utf8'))
+    );
+    return diagnosticsPeerSnapshot(document, uuid, fs.statSync(diagnosticsPath).mtimeMs);
   } catch {
     // The packaged app rewrites this file in place. A transient partial read
     // is retried by waitForDiagnosticsPeerSnapshot instead of being mistaken
     // for product behavior.
     return null;
   }
+}
+
+async function readCurrentDiagnosticsPeerSnapshot(diagnosticsPath, uuid) {
+  if (liveDiagnosticsContext) {
+    try {
+      const document = deepFreezeDiagnosticsSnapshot(
+        await getLocalControlDiagnostics(
+          liveDiagnosticsContext.discovery,
+          liveDiagnosticsContext.token
+        )
+      );
+      return diagnosticsPeerSnapshot(document, uuid, Date.now());
+    } catch {
+      // Fall through to the periodic artifact below.
+    }
+  }
+  return readDiagnosticsPeerSnapshot(diagnosticsPath, uuid);
 }
 
 async function waitForJsonFile(filePath, predicate, timeoutMs) {
@@ -2423,6 +2446,17 @@ async function postLocalControlCommand(discovery, token, command) {
   }
 }
 
+async function getLocalControlDiagnostics(discovery, token) {
+  const response = await fetch(`${discovery.base_url}/diagnostics`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(2000)
+  });
+  if (!response.ok) {
+    throw new Error(`Local diagnostics request failed with HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 function sessionlessWssDownstreamState(snapshot) {
   if (!snapshot) {
     return null;
@@ -2472,7 +2506,7 @@ async function waitForDiagnosticsPeerSnapshot(
 ) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
-    const snapshot = readDiagnosticsPeerSnapshot(diagnosticsPath, uuid);
+    const snapshot = await readCurrentDiagnosticsPeerSnapshot(diagnosticsPath, uuid);
     if (snapshot && snapshot.generatedSteadyMs > afterGeneratedSteadyMs && predicate(snapshot)) {
       return snapshot;
     }
@@ -3755,6 +3789,30 @@ async function runNegotiationScenario(config, executable, browser, report, media
           discovery: localControlDiscovery.value
         }
       );
+      if (localControlDiscovery.ok) {
+        liveDiagnosticsContext = {
+          discovery: localControlDiscovery.value,
+          token: localControlToken
+        };
+      }
+      let liveDiagnostics = null;
+      try {
+        liveDiagnostics = liveDiagnosticsContext
+          ? await getLocalControlDiagnostics(
+            liveDiagnosticsContext.discovery,
+            liveDiagnosticsContext.token
+          )
+          : null;
+      } catch {
+        liveDiagnostics = null;
+      }
+      requireHarnessFixture(
+        report,
+        'packaged-local-control-live-diagnostics-is-ready',
+        !!liveDiagnostics && liveDiagnostics.schema === 'game-capture-diagnostics-v1' &&
+          Number(liveDiagnostics.generated_steady_ms || 0) > 0,
+        { schema: liveDiagnostics ? liveDiagnostics.schema : '' }
+      );
       const localRefreshOfferSearchStart = signal.events.length;
       const localRefreshOutputOffset = publisher.output().length;
       const localRefreshResponse = await postLocalControlCommand(
@@ -4462,7 +4520,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
           oldForwarded,
           offerA.index + 1
         );
-        failureSnapshot = readDiagnosticsPeerSnapshot(
+        failureSnapshot = await readCurrentDiagnosticsPeerSnapshot(
           diagnosticsPath,
           staleUuid
         );
@@ -5364,7 +5422,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
             ).length > 0,
             staleAnswerObservationTimeoutMs
           );
-          const mislabeledActiveAnswerCounterFloor = readDiagnosticsPeerSnapshot(
+          const mislabeledActiveAnswerCounterFloor = await readCurrentDiagnosticsPeerSnapshot(
             diagnosticsPath,
             staleUuid
           );
@@ -5456,7 +5514,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
             ).length > 0,
             staleAnswerObservationTimeoutMs
           );
-          const staleAnswerCounterFloor = readDiagnosticsPeerSnapshot(
+          const staleAnswerCounterFloor = await readCurrentDiagnosticsPeerSnapshot(
             diagnosticsPath,
             staleUuid
           );
@@ -6173,6 +6231,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
       }
     );
   } finally {
+    liveDiagnosticsContext = null;
     report.negotiationPublisherOutputTail = publisher.output().split(/\r?\n/).slice(-120);
     await context.close().catch(() => {});
     const publisherTermination = await publisher.stop();
@@ -6288,7 +6347,7 @@ async function runDirectStunScenario(config, executable, browser, report, mediaF
         failedForwarded,
         initialOffer.index + 1
       );
-      failureSnapshot = readDiagnosticsPeerSnapshot(
+      failureSnapshot = await readCurrentDiagnosticsPeerSnapshot(
         diagnosticsPath,
         uuid
       );

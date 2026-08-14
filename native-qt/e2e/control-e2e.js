@@ -236,18 +236,23 @@ async function waitForPublisherStdout(publisher, predicate, timeoutMs, stageLabe
   };
 }
 
-function offerIceUfragAfter(stdoutText, markerIndex) {
+function rebuiltTransportAfter(stdoutText, markerIndex, reason) {
   if (markerIndex < 0) {
-    return '';
+    return null;
   }
-  const offerStart = stdoutText.indexOf('[WebRTC] === SDP OFFER START ===', markerIndex);
-  if (offerStart < 0) {
-    return '';
+  const escapedReason = reason.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `Rebuilt peer transport uuid=\\S+ retiredSession=(\\S+) activeSession=(\\S+) generation=(\\d+) reason=${escapedReason}`
+  );
+  const match = stdoutText.slice(markerIndex).match(pattern);
+  if (!match) {
+    return null;
   }
-  const offerEnd = stdoutText.indexOf('[WebRTC] === SDP OFFER END ===', offerStart);
-  const offerText = stdoutText.slice(offerStart, offerEnd >= 0 ? offerEnd : undefined);
-  const match = offerText.match(/^a=ice-ufrag:([^\r\n]+)/m);
-  return match ? match[1] : '';
+  return {
+    retiredSession: match[1],
+    activeSession: match[2],
+    generation: Number(match[3])
+  };
 }
 
 async function collectState(page) {
@@ -2013,17 +2018,27 @@ async function main() {
       return;
     }
     console.log('[CONTROL] Publisher refreshConnection fan-out log observed');
-    const bootstrapOfferIndex = stdoutText.indexOf('reason=bootstrap');
-    const bootstrapIceUfrag = offerIceUfragAfter(stdoutText, bootstrapOfferIndex);
-    const refreshIceUfrag = offerIceUfragAfter(refreshFanoutText, refreshOfferIndex);
-    if (!bootstrapIceUfrag || !refreshIceUfrag || bootstrapIceUfrag === refreshIceUfrag) {
+    const refreshedTransport = rebuiltTransportAfter(
+      refreshFanoutText,
+      beforeRefreshConnectionText.length,
+      'refresh-connection'
+    );
+    if (!refreshedTransport ||
+        !refreshedTransport.retiredSession ||
+        !refreshedTransport.activeSession ||
+        refreshedTransport.retiredSession === refreshedTransport.activeSession ||
+        refreshedTransport.generation < 2) {
       failure = {
-        stage: 'publisher-refresh-connection-ice-ufrag-change',
-        state: { bootstrapIceUfrag, refreshIceUfrag }
+        stage: 'publisher-refresh-connection-transport-generation',
+        state: { refreshedTransport }
       };
       return;
     }
-    console.log('[CONTROL] Publisher refreshConnection ICE credentials changed');
+    console.log(
+      `[CONTROL] Publisher refreshConnection transport generation PASS ` +
+      `(${refreshedTransport.retiredSession} -> ${refreshedTransport.activeSession}, ` +
+      `generation ${refreshedTransport.generation})`
+    );
 
     const beforeDataChannelIceText = publisher.stdout.join('');
     const dataChannelIceRestartSend = await sendControlMessageWithRetry(

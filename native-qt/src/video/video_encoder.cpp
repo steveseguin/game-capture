@@ -4090,29 +4090,70 @@ class VideoEncoder::Impl {
             codecApi_->Release();
             codecApi_ = nullptr;
         }
+        const bool wasAsyncMft = asyncMft_;
         asyncMft_ = false;
         pendingNeedInputEvents_ = 0;
         pendingHaveOutputEvents_ = 0;
-        eventGenerator_.Reset();
         if (transform_) {
             if (streamStarted_) {
                 transform_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0);
                 transform_->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
                 transform_->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0);
             }
+            if (wasAsyncMft) {
+                // Async MFTs own an event queue and must be explicitly shut
+                // down before their final interface is released. Releasing
+                // the transform and immediately reactivating the same
+                // IMFActivate can otherwise leave a vendor work-queue
+                // callback racing a destroyed encoder instance.
+                ComPtr<IMFShutdown> shutdown;
+                const HRESULT queryHr = transform_.As(&shutdown);
+                if (SUCCEEDED(queryHr) && shutdown) {
+                    const HRESULT shutdownHr = shutdown->Shutdown();
+                    if (SUCCEEDED(shutdownHr)) {
+                        activeObjectExplicitlyShutdown_ = true;
+                        MFSHUTDOWN_STATUS status = MFSHUTDOWN_INITIATED;
+                        const auto deadline = std::chrono::steady_clock::now() +
+                            std::chrono::milliseconds(250);
+                        while (shutdown->GetShutdownStatus(&status) == S_OK &&
+                               status != MFSHUTDOWN_COMPLETED &&
+                               std::chrono::steady_clock::now() < deadline) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                        }
+                        if (status != MFSHUTDOWN_COMPLETED) {
+                            spdlog::warn("[VideoEncoder] Async MFT shutdown did not report completion before release");
+                        }
+                    } else {
+                        spdlog::warn("[VideoEncoder] IMFShutdown::Shutdown failed hr=0x{:08x}",
+                                     static_cast<unsigned>(shutdownHr));
+                    }
+                } else {
+                    spdlog::warn("[VideoEncoder] Async MFT did not expose required IMFShutdown hr=0x{:08x}",
+                                 static_cast<unsigned>(queryHr));
+                }
+            }
+            eventGenerator_.Reset();
             transform_.Reset();
+        } else {
+            eventGenerator_.Reset();
         }
         streamStarted_ = false;
     }
 
     bool shutdownCurrentActivation() {
         if (!activeActivation_) {
+            activeObjectExplicitlyShutdown_ = false;
             return true;
         }
-        const HRESULT hr = activeActivation_->ShutdownObject();
+        const bool detachExplicitlyShutdownObject = activeObjectExplicitlyShutdown_;
+        const HRESULT hr = detachExplicitlyShutdownObject
+            ? activeActivation_->DetachObject()
+            : activeActivation_->ShutdownObject();
+        activeObjectExplicitlyShutdown_ = false;
         activeActivation_.Reset();
         if (FAILED(hr)) {
-            spdlog::warn("[VideoEncoder] IMFActivate::ShutdownObject failed hr=0x{:08x}",
+            spdlog::warn("[VideoEncoder] IMFActivate::{} failed hr=0x{:08x}",
+                         detachExplicitlyShutdownObject ? "DetachObject" : "ShutdownObject",
                          static_cast<unsigned>(hr));
             return false;
         }
@@ -4482,6 +4523,7 @@ class VideoEncoder::Impl {
     UINT dxgiResetToken_ = 0;
     bool comInitialized_ = false;
     bool asyncMft_ = false;
+    bool activeObjectExplicitlyShutdown_ = false;
     bool mfStarted_ = false;
     bool initialized_ = false;
     std::atomic<bool> usingHardware_{false};
