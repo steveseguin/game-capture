@@ -35,9 +35,9 @@ if ($originalKeyExists) {
     }
 }
 
-function Set-IceSetting([AllowNull()][string]$Value) {
+function Set-IceSetting([AllowNull()][string]$Value, [switch]$Missing) {
     New-Item -Path $settingsPath -Force | Out-Null
-    if ($null -eq $Value) {
+    if ($Missing) {
         Remove-ItemProperty -LiteralPath $settingsPath -Name $valueName -ErrorAction SilentlyContinue
     } else {
         $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey(
@@ -50,8 +50,14 @@ function Set-IceSetting([AllowNull()][string]$Value) {
     }
 }
 
-function Invoke-Case([string]$Name, [AllowNull()][string]$StoredValue, [string]$ExpectedSource, [string]$ExpectedActive) {
-    Set-IceSetting $StoredValue
+function Invoke-Case(
+    [string]$Name,
+    [AllowNull()][string]$StoredValue,
+    [string]$ExpectedSource,
+    [string]$ExpectedActive,
+    [switch]$Missing
+) {
+    Set-IceSetting -Value $StoredValue -Missing:$Missing
     $beforeLength = if (Test-Path -LiteralPath $logPath -PathType Leaf) {
         (Get-Item -LiteralPath $logPath).Length
     } else { 0L }
@@ -64,14 +70,15 @@ function Invoke-Case([string]$Name, [AllowNull()][string]$StoredValue, [string]$
             if (Test-Path -LiteralPath $logPath -PathType Leaf) {
                 $stream = [System.IO.File]::Open($logPath, 'Open', 'Read', 'ReadWrite')
                 try {
-                    if ($stream.Length -ge $beforeLength) {
-                        $stream.Position = $beforeLength
-                        $reader = New-Object System.IO.StreamReader($stream)
-                        $newText = $reader.ReadToEnd()
-                        $matchedLine = @($newText -split "`r?`n" | Where-Object {
-                            $_ -match '\[UI\] ICE setting loaded source=(\S+) active=(\S+)'
-                        } | Select-Object -Last 1)
-                    }
+                    # The packaged logger truncates its current file at startup.
+                    # Read from zero when that happened; otherwise read only the
+                    # bytes appended after this case began.
+                    $stream.Position = if ($stream.Length -lt $beforeLength) { 0L } else { $beforeLength }
+                    $reader = New-Object System.IO.StreamReader($stream)
+                    $newText = $reader.ReadToEnd()
+                    $matchedLine = @($newText -split "`r?`n" | Where-Object {
+                        $_ -match '\[UI\] ICE setting loaded source=(\S+) active=(\S+)'
+                    } | Select-Object -Last 1)
                 } finally {
                     $stream.Dispose()
                 }
@@ -108,7 +115,7 @@ function Invoke-Case([string]$Name, [AllowNull()][string]$StoredValue, [string]$
 
 $results = @()
 try {
-    $results += Invoke-Case 'missing-defaults-auto' $null 'missing' 'all'
+    $results += Invoke-Case 'missing-defaults-auto' '' 'missing' 'all' -Missing
     $results += Invoke-Case 'invalid-defaults-auto' 'invalid-release-probe' 'invalid' 'all'
     $results += Invoke-Case 'valid-relay-is-preserved' 'relay' 'relay' 'relay'
 } finally {

@@ -298,7 +298,8 @@ const LOCATOR_HELPERS = String.raw`
     }
     if (spec.visible) roots = roots.filter(visible);
     if (Number.isInteger(spec.index)) {
-      return roots[spec.index] ? [roots[spec.index]] : [];
+      const index = spec.index < 0 ? roots.length + spec.index : spec.index;
+      return roots[index] ? [roots[index]] : [];
     }
     return roots;
   };
@@ -347,6 +348,10 @@ class BidiLocator {
 
   first() {
     return new BidiLocator(this.page, { ...this.spec, index: 0 });
+  }
+
+  last() {
+    return new BidiLocator(this.page, { ...this.spec, index: -1 });
   }
 
   async count() {
@@ -432,6 +437,10 @@ class BidiLocator {
 
   async inputValue() {
     return this.evaluate((element) => String(element.value));
+  }
+
+  async innerText() {
+    return this.evaluate((element) => String(element.innerText || ''));
   }
 
   async selectOption(value) {
