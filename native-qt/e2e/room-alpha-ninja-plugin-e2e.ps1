@@ -274,7 +274,7 @@ try {
             "-AlphaBackgroundColor", "4278190335",
             "-AlphaReceiverProbePath", $receiverProbe,
             "-AlphaReceiverProbeTimeoutSeconds", [string]$AlphaReceiverProbeTimeoutSeconds,
-            "-AlphaSampleIntervalMs", "95",
+            "-AlphaSampleIntervalMs", "80",
             "-AlphaTransitionMode", "none",
             "-AlphaTransitionLabel", "steady-alpha-output",
             "-AlphaTransitionHoldMs", "350",

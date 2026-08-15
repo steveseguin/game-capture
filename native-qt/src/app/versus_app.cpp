@@ -809,6 +809,12 @@ std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioInputDevices() {
 }
 
 std::string VersusApp::lastCaptureError() const {
+    {
+        std::lock_guard<std::mutex> lock(captureErrorMutex_);
+        if (!lastCaptureError_.empty()) {
+            return lastCaptureError_;
+        }
+    }
     if (lifecycleStateSnapshot().videoSourceMode == VideoSourceMode::Camera) {
         return cameraCapture_.lastError();
     }
@@ -824,6 +830,10 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     // already opened but before capturing_ becomes true. Always begin from a
     // fully stopped state, then arm a rollback for every early return below.
     stopCapture();
+    {
+        std::lock_guard<std::mutex> lock(captureErrorMutex_);
+        lastCaptureError_.clear();
+    }
     struct StartupRollback {
         VersusApp *app = nullptr;
         bool armed = true;
@@ -973,11 +983,19 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     const bool alphaRequested = usesVp9AlphaTrack(requestedConfig);
     video::EncoderConfig primaryConfig = primaryVideoEncoderConfig(config);
     std::string activeEncoderName;
-    bool activeHardwareEncoder = false;
     bool alphaEncoderOk = false;
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
         if (!videoEncoder_.initialize(primaryConfig)) {
+            const std::string requestedEncoder = videoEncoder_.requestedEncoderMode();
+            const std::string encoderError =
+                "Requested " + requestedEncoder + " encoder could not start with " +
+                videoCodecName(config.codec) + ". No different encoder category was selected.";
+            {
+                std::lock_guard<std::mutex> errorLock(captureErrorMutex_);
+                lastCaptureError_ = encoderError;
+            }
+            spdlog::error("[App] {}", encoderError);
             if (alphaRequested) {
                 spdlog::error("[App] Primary encoder failed to initialize for explicit VP9 alpha workflow");
                 emitRuntimeEvent(
@@ -988,7 +1006,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                 cameraCapture_.stopCapture();
                 return false;
             }
-            if (config.codec == video::VideoCodec::H264) {
+            if (config.codec == video::VideoCodec::H264 || config.explicitEncoderSelection) {
                 windowCapture_.stopCapture();
                 spoutCapture_.stopCapture();
                 cameraCapture_.stopCapture();
@@ -1027,7 +1045,6 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         activeHqHeight_ = std::max(2, primaryConfig.height & ~1);
         hqAspectLocked_ = false;
         activeEncoderName = videoEncoder_.activeEncoderName();
-        activeHardwareEncoder = videoEncoder_.isHardwareEncoderActive();
 
         // VP9 alpha: initialize a separate encoder instance for the alpha (gray) track.
         {
@@ -1052,8 +1069,15 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         cameraCapture_.stopCapture();
         return false;
     }
-    spdlog::info("[App] Video encoder active: {} (hardware={})",
-                 activeEncoderName, activeHardwareEncoder);
+    const VideoStateSnapshot activeVideoState = videoStateSnapshot();
+    spdlog::info(
+        "[App] Video encoder selected requested={} active='{}' category={} fallbackReason='{}'",
+        activeVideoState.requestedEncoderMode,
+        activeEncoderName,
+        activeVideoState.encoderCategory,
+        activeVideoState.encoderFallbackReason.empty()
+            ? "none"
+            : activeVideoState.encoderFallbackReason);
 
     if (alphaRequested) {
         if (!alphaEncoderOk) {
@@ -1218,7 +1242,6 @@ bool VersusApp::goLive(const StartOptions &options) {
     pendingGlobalKeyframe_.store(true);
     lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
-    lastRelayWarningMs_.store(0, std::memory_order_relaxed);
     lastPacketLossWarningMs_.store(0, std::memory_order_relaxed);
     lastAlphaWarningMs_.store(0, std::memory_order_relaxed);
     pliWindowStartMs_.store(0, std::memory_order_relaxed);
@@ -1253,8 +1276,6 @@ bool VersusApp::goLive(const StartOptions &options) {
     const int64_t metricsStartMs = steadyNowMs();
     metricsStartMs_.store(metricsStartMs, std::memory_order_relaxed);
     resetMetricsWindow(metricsStartMs);
-    relayCandidateSeen_.store(false, std::memory_order_relaxed);
-    directCandidateSeen_.store(false, std::memory_order_relaxed);
     {
         std::lock_guard<std::mutex> lock(healthStateMutex_);
         lastPeerDisconnectReason_.clear();
@@ -1459,6 +1480,18 @@ void VersusApp::recordPeerEvent(const std::shared_ptr<PeerSession> &peer, const 
 
 std::string VersusApp::getVideoEncoderName() const {
     return videoStateSnapshot().encoderName;
+}
+
+std::string VersusApp::getRequestedVideoEncoderMode() const {
+    return videoStateSnapshot().requestedEncoderMode;
+}
+
+std::string VersusApp::getVideoEncoderCategory() const {
+    return videoStateSnapshot().encoderCategory;
+}
+
+std::string VersusApp::getVideoEncoderFallbackReason() const {
+    return videoStateSnapshot().encoderFallbackReason;
 }
 
 std::string VersusApp::getVideoCodecName() const {
@@ -1782,6 +1815,47 @@ void VersusApp::populateSystemResourceUsage(ConnectionHealth &health) const {
 #endif
 }
 
+webrtc::SelectedIcePath VersusApp::selectedIcePathSnapshot() const {
+    std::vector<std::shared_ptr<PeerSession>> peers;
+    {
+        std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+        peers.reserve(peerSessions_.size());
+        for (const auto &[key, peer] : peerSessions_) {
+            (void)key;
+            if (peer) {
+                peers.push_back(peer);
+            }
+        }
+    }
+
+    auto rank = [](webrtc::SelectedIcePath path) {
+        switch (path) {
+            case webrtc::SelectedIcePath::TurnRelay:
+                return 3;
+            case webrtc::SelectedIcePath::Stun:
+                return 2;
+            case webrtc::SelectedIcePath::Host:
+                return 1;
+            case webrtc::SelectedIcePath::Unknown:
+            default:
+                return 0;
+        }
+    };
+
+    webrtc::SelectedIcePath selected = webrtc::SelectedIcePath::Unknown;
+    for (const auto &peer : peers) {
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        if (!peer->client) {
+            continue;
+        }
+        const webrtc::SelectedIcePath candidate = peer->client->selectedIcePath();
+        if (rank(candidate) > rank(selected)) {
+            selected = candidate;
+        }
+    }
+    return selected;
+}
+
 ConnectionHealth VersusApp::getConnectionHealth() const {
     ConnectionHealth health;
     const StreamMetrics metrics = buildStreamMetricsSnapshot(false);
@@ -1793,6 +1867,10 @@ ConnectionHealth VersusApp::getConnectionHealth() const {
     health.height = metrics.height;
     health.codec = metrics.codec;
     health.encoder = metrics.encoder;
+    const VideoStateSnapshot videoState = videoStateSnapshot();
+    health.requestedEncoder = videoState.requestedEncoderMode;
+    health.encoderCategory = videoState.encoderCategory;
+    health.encoderFallbackReason = videoState.encoderFallbackReason;
     health.peerCount = metrics.peerCount;
     health.hqPeerCount = metrics.hqPeerCount;
     health.lqPeerCount = metrics.lqPeerCount;
@@ -1823,16 +1901,10 @@ ConnectionHealth VersusApp::getConnectionHealth() const {
         health.lastPeerDisconnectReason = lastPeerDisconnectReason_;
     }
 
-    const bool relaySeen = relayCandidateSeen_.load(std::memory_order_relaxed);
-    const bool directSeen = directCandidateSeen_.load(std::memory_order_relaxed);
     if (health.peerCount <= 0) {
         health.candidatePath = "No peers";
-    } else if (relaySeen) {
-        health.candidatePath = "Relay candidate observed";
-    } else if (directSeen) {
-        health.candidatePath = "Direct candidate observed";
     } else {
-        health.candidatePath = "Waiting for ICE";
+        health.candidatePath = webrtc::selectedIcePathName(selectedIcePathSnapshot());
     }
     return health;
 }
@@ -1948,8 +2020,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"remote_control_token_length", diagnosticsRemoteControlTokenLength},
         {"ice_mode", diagnosticsIceMode},
         {"resolved_ice_servers", diagnosticsIceServerCount},
-        {"relay_candidate_seen", relayCandidateSeen_.load(std::memory_order_relaxed)},
-        {"direct_candidate_seen", directCandidateSeen_.load(std::memory_order_relaxed)},
+        {"selected_ice_path", webrtc::selectedIcePathName(selectedIcePathSnapshot())},
         {"max_viewers", maxViewers_.load(std::memory_order_relaxed)}
     };
     root["peer_operation_executor"] = {
@@ -1975,6 +2046,10 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"configured_bitrate_kbps", videoState.config.bitrate},
         {"configured_codec", videoCodecName(roomQualitySnapshot.codec)},
         {"active_codec", videoState.codecName},
+        {"requested_encoder", videoState.requestedEncoderMode},
+        {"active_encoder", videoState.encoderName},
+        {"active_encoder_category", videoState.encoderCategory},
+        {"encoder_fallback_reason", videoState.encoderFallbackReason},
         {"encoder", videoState.encoderName},
         {"encoder_input_format", videoState.encoderInputFormat},
         {"hardware_encoder", videoState.hardwareEncoder},
@@ -2144,6 +2219,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         uint64_t activeOfferGeneration = 0;
         uint64_t activeTransportGeneration = 0;
         uint64_t clientTransportGeneration = 0;
+        std::string selectedIcePath;
         {
             std::lock_guard<std::mutex> lock(peer->negotiationMutex);
             bufferedLocalCandidateCount = static_cast<int>(peer->pendingCandidates.size());
@@ -2154,6 +2230,18 @@ std::string VersusApp::buildDiagnosticsJson() const {
             activeOfferGeneration = peer->activeOfferGeneration;
             activeTransportGeneration = peer->activeTransportGeneration;
             clientTransportGeneration = peer->clientTransportGeneration;
+        }
+        {
+            webrtc::SelectedIcePath livePath = webrtc::SelectedIcePath::Unknown;
+            std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            if (peer->client) {
+                livePath = peer->client->selectedIcePath();
+            }
+            std::lock_guard<std::mutex> lock(peer->diagnosticsMutex);
+            if (livePath != webrtc::SelectedIcePath::Unknown) {
+                peer->selectedIcePath = webrtc::selectedIcePathName(livePath);
+            }
+            selectedIcePath = peer->selectedIcePath;
         }
         item["signaling"] = {
             {"offer_dispatched", offerDispatched},
@@ -2219,7 +2307,8 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"data_channel_open", peer->dataChannelOpen.load(std::memory_order_relaxed)},
             {"disconnected_since_steady_ms", peer->disconnectedSinceMs.load(std::memory_order_relaxed)},
             {"transport_retired", transportRetired},
-            {"stats_continuous", peer->statsContinuous.load(std::memory_order_relaxed)}
+            {"stats_continuous", peer->statsContinuous.load(std::memory_order_relaxed)},
+            {"selected_ice_path", selectedIcePath}
         };
         item["controls"] = {
             {"rejected_control_count", peer->rejectedControlCount.load(std::memory_order_relaxed)}
@@ -2933,6 +3022,13 @@ void VersusApp::handlePeerConnectionState(
     }
     recordPeerEvent(peer, std::string("connection-state ") + stateName);
     if (state == webrtc::ConnectionState::Connected) {
+        webrtc::SelectedIcePath selectedPath = webrtc::SelectedIcePath::Unknown;
+        {
+            std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            if (peer->client) {
+                selectedPath = peer->client->selectedIcePath();
+            }
+        }
         {
             std::lock_guard<std::mutex> lock(peer->negotiationMutex);
             peer->transportRetired = false;
@@ -2943,7 +3039,14 @@ void VersusApp::handlePeerConnectionState(
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
         reservePeerAlphaAdmissionCutoff(peer);
-        spdlog::info("[WebRTC] Peer connected {}:{}", peer->uuid, peer->session);
+        {
+            std::lock_guard<std::mutex> lock(peer->diagnosticsMutex);
+            peer->selectedIcePath = webrtc::selectedIcePathName(selectedPath);
+        }
+        spdlog::info("[WebRTC] Peer connected {}:{} selectedIcePath={}",
+                     peer->uuid,
+                     peer->session,
+                     webrtc::selectedIcePathName(selectedPath));
         return;
     }
     if (state == webrtc::ConnectionState::Disconnected) {
@@ -3315,25 +3418,8 @@ void VersusApp::setupSignalingCallbacks() {
             const std::string lowerCandidate = toLowerCopy(candidate);
             const bool relayCandidate =
                 lowerCandidate.find(" typ relay") != std::string::npos;
-            if (relayCandidate) {
-                relayCandidateSeen_.store(true, std::memory_order_relaxed);
-            } else {
-                directCandidateSeen_.store(true, std::memory_order_relaxed);
-            }
-
             if (!shouldSend) {
                 return;
-            }
-
-            if (relayCandidate) {
-                const int64_t nowMs = steadyNowMs();
-                const int64_t lastWarnMs = lastRelayWarningMs_.load(std::memory_order_relaxed);
-                if ((lastWarnMs == 0) || ((nowMs - lastWarnMs) > 15000)) {
-                    lastRelayWarningMs_.store(nowMs, std::memory_order_relaxed);
-                    emitRuntimeEvent(
-                        "Connection is using TURN relay (higher latency/bandwidth cost). If possible, allow direct UDP or use a closer TURN server.",
-                        false);
-                }
             }
 
             signaling::SignalCandidate cand;
@@ -3478,13 +3564,6 @@ void VersusApp::setupSignalingCallbacks() {
     signaling_.onCandidate([this](const signaling::SignalCandidate &cand) {
         if (cand.candidate.empty()) {
             return;
-        }
-
-        const std::string lowerCandidate = toLowerCopy(cand.candidate);
-        if (lowerCandidate.find(" typ relay") != std::string::npos) {
-            relayCandidateSeen_.store(true, std::memory_order_relaxed);
-        } else {
-            directCandidateSeen_.store(true, std::memory_order_relaxed);
         }
 
         std::shared_ptr<PeerSession> peer;
@@ -5210,15 +5289,47 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     }
 
     bool peerMediaRateChanged = false;
+    bool peerVideoRouteRejected = false;
     int requestedBitrate = 0;
-    if (msg.contains("bitrate")) {
-        const int requestedPeerBitrate = parseRateLimitValue(msg["bitrate"], -1);
-        peer->requestedVideoBitrateKbps.store(requestedPeerBitrate, std::memory_order_relaxed);
+    auto applyPeerVideoRouteControl = [&](const char *controlName, int value) {
+        const int previous = peer->requestedVideoBitrateKbps.load(std::memory_order_relaxed);
+        int next = previous;
+        if (value == 0) {
+            next = 0;
+        } else if (value < 0) {
+            next = -1;
+        } else {
+            // A non-zero per-peer quality value cannot change this shared
+            // encoded stream. If video was Off, restore the peer's assigned
+            // HQ/LQ route, but do not pretend the requested quality applied.
+            if (previous == 0) {
+                next = -1;
+            }
+            if (!peerVideoRouteRejected) {
+                sendRejectedControl(
+                    controlName,
+                    "Per-peer Low/High quality selection is not supported; video uses its assigned stream tier.");
+                peerVideoRouteRejected = true;
+            }
+        }
+        if (next == previous) {
+            if (value <= 0) {
+                // Off and On/unlock are supported route controls; echo the
+                // actual unchanged state when they are requested again.
+                peerMediaRateChanged = true;
+            }
+            return;
+        }
+        peer->requestedVideoBitrateKbps.store(next, std::memory_order_relaxed);
         peerMediaRateChanged = true;
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
         reservePeerAlphaAdmissionCutoff(peer);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+    };
+    if (msg.contains("bitrate")) {
+        const int requestedPeerBitrate = parseRateLimitValue(msg["bitrate"], -1);
+        applyPeerVideoRouteControl("bitrate", requestedPeerBitrate);
     }
     if (msg.contains("audioBitrate")) {
         const int requestedAudioBitrate = parseRateLimitValue(msg["audioBitrate"], -1);
@@ -5226,21 +5337,27 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         peerMediaRateChanged = true;
     }
     if (msg.contains("targetBitrate")) {
-        const bool unlockTargetBitrate =
-            msg["targetBitrate"].is_boolean() && !msg["targetBitrate"].get<bool>();
-        const int requestedTargetBitrate = unlockTargetBitrate ? -1 : jsonIntLike(msg["targetBitrate"], -1);
-        if (unlockTargetBitrate || requestedTargetBitrate > 0) {
-            peer->requestedVideoBitrateKbps.store(requestedTargetBitrate, std::memory_order_relaxed);
-            peerMediaRateChanged = true;
-            if (requestedTargetBitrate > 0) {
-                requestedBitrate = requestedTargetBitrate;
-            } else {
-                requestedBitrate = configuredVideoBitrateKbps_.load(std::memory_order_relaxed);
+        const bool sharedBitrateAuthorized = directorAuthorized
+            ? remoteControlEnabled_.load(std::memory_order_relaxed)
+            : controlAuthorized;
+        if (!sharedBitrateAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized targetBitrate from {}", peer->uuid);
+            sendRejectedControl("targetBitrate", "Shared-stream bitrate control is not authorized.");
+        } else {
+            const bool unlockTargetBitrate =
+                msg["targetBitrate"].is_boolean() && !msg["targetBitrate"].get<bool>();
+            const int requestedTargetBitrate = unlockTargetBitrate ? -1 : jsonIntLike(msg["targetBitrate"], -1);
+            if (unlockTargetBitrate || requestedTargetBitrate > 0) {
+                if (requestedTargetBitrate > 0) {
+                    requestedBitrate = requestedTargetBitrate;
+                } else {
+                    requestedBitrate = configuredVideoBitrateKbps_.load(std::memory_order_relaxed);
+                }
+                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                reservePeerAlphaAdmissionCutoff(peer);
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
             }
-            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
-            reservePeerAlphaAdmissionCutoff(peer);
-            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         }
     }
     if (msg.contains("optimizedBitrate")) {
@@ -5249,12 +5366,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         const int requestedOptimizedBitrate =
             unlockOptimizedBitrate ? -1 : jsonIntLike(msg["optimizedBitrate"], -1);
         if (unlockOptimizedBitrate || requestedOptimizedBitrate >= 0) {
-            peer->requestedVideoBitrateKbps.store(requestedOptimizedBitrate, std::memory_order_relaxed);
-            peerMediaRateChanged = true;
-            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
-            reservePeerAlphaAdmissionCutoff(peer);
-            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+            applyPeerVideoRouteControl("optimizedBitrate", requestedOptimizedBitrate);
         }
     }
     if (msg.contains("targetAudioBitrate")) {
@@ -5777,7 +5889,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                                 candidateName);
                             return false;
                         }
-                        if (candidateConfig.preferredHardware != video::HardwareEncoder::None &&
+                        if (candidateConfig.explicitEncoderSelection &&
+                            candidateConfig.preferredHardware != video::HardwareEncoder::None &&
                             !encoderNameMatchesHardwarePreference(candidateName, candidateConfig.preferredHardware)) {
                             spdlog::warn(
                                 "[App] {} for mode {} selected mismatched encoder '{}'; rejecting",
@@ -5827,7 +5940,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         }
                     }
 
-                    if (!switchedToHardware) {
+                    if (!switchedToHardware && !videoConfig_.explicitEncoderSelection) {
                         const std::array<video::HardwareEncoder, 3> hardwareFallbackOrder = {
                             video::HardwareEncoder::QuickSync,
                             video::HardwareEncoder::AMF,
@@ -5866,7 +5979,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         }
                     }
 
-                    if (!switchedToHardware) {
+                    if (!switchedToHardware && !videoConfig_.explicitEncoderSelection) {
                         video::EncoderConfig fallbackConfig = videoConfig_;
                         fallbackConfig.preferredHardware = video::HardwareEncoder::None;
                         fallbackConfig.codec = video::VideoCodec::H264;
@@ -5887,6 +6000,16 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                         } else {
                             spdlog::error("[App] Software fallback encoder initialization failed");
                         }
+                    }
+                    if (!switchedToHardware && videoConfig_.explicitEncoderSelection) {
+                        const std::string requestedMode = videoEncoder_.requestedEncoderMode();
+                        emitRuntimeEvent(
+                            "The explicitly selected " + requestedMode +
+                                " encoder became unstable. Automatic category fallback is disabled.",
+                            true);
+                        spdlog::error(
+                            "[App] Explicit encoder mode {} could not recover; category fallback is disabled",
+                            requestedMode);
                     }
                 }
                 hardwareEncodeSampleCount_ = 0;
@@ -7203,6 +7326,9 @@ VersusApp::VideoStateSnapshot VersusApp::buildVideoStateSnapshotLocked() const {
     snapshot.hqWidth = activeHqWidth_ > 0 ? activeHqWidth_ : std::max(2, videoConfig_.width & ~1);
     snapshot.hqHeight = activeHqHeight_ > 0 ? activeHqHeight_ : std::max(2, videoConfig_.height & ~1);
     snapshot.encoderName = videoEncoder_.activeEncoderName();
+    snapshot.requestedEncoderMode = videoEncoder_.requestedEncoderMode();
+    snapshot.encoderCategory = videoEncoder_.activeEncoderCategory();
+    snapshot.encoderFallbackReason = videoEncoder_.encoderFallbackReason();
     snapshot.codecName = videoEncoder_.activeCodecName();
     snapshot.encoderInputFormat = videoEncoder_.activeInputFormatName();
     snapshot.hardwareEncoder = videoEncoder_.isHardwareEncoderActive();

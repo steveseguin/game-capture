@@ -55,6 +55,15 @@ enum class ConnectionState {
     Closed
 };
 
+enum class SelectedIcePath {
+    Unknown,
+    Host,
+    Stun,
+    TurnRelay
+};
+
+const char *selectedIcePathName(SelectedIcePath path);
+
 struct MediaPlanChange {
     bool changed = false;
     bool videoAdded = false;
@@ -113,6 +122,7 @@ class WebRtcClient {
     bool hasActiveAudioTrack() const;
     bool hasConfiguredVideoTrack() const;
     bool hasConfiguredAudioTrack() const;
+    SelectedIcePath selectedIcePath() const;
 
   private:
     friend class WebRtcClientTestAccess;

@@ -206,7 +206,7 @@ versus::webrtc::IceMode MainWindow::iceModeFromUiValue(const QString &value) {
     if (value == "stun-only") {
         return versus::webrtc::IceMode::StunOnly;
     }
-    return versus::webrtc::IceMode::StunOnly;
+    return versus::webrtc::IceMode::All;
 }
 
 versus::app::AudioSourceMode audioSourceModeFromUiValue(const QString &value) {
@@ -914,7 +914,18 @@ void MainWindow::loadPersistedSettings() {
         settings.value("camera/resolution", "1920x1080"));
     restoreComboByData(cameraFpsSelect_, settings.value("camera/fps", 30));
     restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 12000));
-    restoreComboByData(iceModeSelect_, settings.value("network/iceMode", "stun-only"));
+    const bool hasStoredIceMode = settings.contains("network/iceMode");
+    const QString storedIceMode = settings.value("network/iceMode", "all").toString();
+    restoreComboByData(iceModeSelect_, storedIceMode);
+    const QString storedIceModeStatus = !hasStoredIceMode
+        ? QString("missing")
+        : ((iceModeSelect_ && iceModeSelect_->findData(storedIceMode) >= 0)
+            ? storedIceMode
+            : QString("invalid"));
+    spdlog::info(
+        "[UI] ICE setting loaded source={} active={}",
+        storedIceModeStatus.toStdString(),
+        iceModeSelect_ ? iceModeSelect_->currentData().toString().toStdString() : "all");
     restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
     restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
     restoreComboByData(sourceModeSelect_, settings.value("video/sourceMode", "window"));
@@ -993,7 +1004,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/alphaBackgroundColor", colorToHex(alphaBackgroundColor_));
     settings.setValue("video/ffmpegPath", ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString());
     settings.setValue("video/ffmpegOptions", ffmpegOptionsInput_ ? ffmpegOptionsInput_->text() : QString());
-    settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
+    settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
     settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
     settings.setValue("audio/windowSource", preferredWindowAudioSource_);
     settings.setValue("audio/includeMicrophone", includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false);
@@ -1504,12 +1515,12 @@ void MainWindow::setupUI() {
 
     iceModeSelect_ = new QComboBox(this);
     iceModeSelect_->setObjectName("iceModeSelect");
-    iceModeSelect_->addItem("Direct STUN (Recommended)", QVariant("stun-only"));
-    iceModeSelect_->addItem("Auto with TURN fallback", QVariant("all"));
+    iceModeSelect_->addItem("Auto with TURN fallback (Recommended)", QVariant("all"));
+    iceModeSelect_->addItem("Direct STUN", QVariant("stun-only"));
     iceModeSelect_->addItem("Relay Only", QVariant("relay"));
     iceModeSelect_->addItem("Host Only (LAN)", QVariant("host-only"));
     iceModeSelect_->setToolTip(
-        "Direct STUN avoids slower TURN relays. Use Auto or Relay Only only when restrictive networks block direct UDP.");
+        "Auto allows host, STUN/direct, and TURN relay candidates. ICE selects the working path automatically.");
     installComboWheelGuard(iceModeSelect_);
     advancedForm->addRow("ICE Mode", iceModeSelect_);
 
@@ -1586,7 +1597,7 @@ void MainWindow::setupUI() {
 
     encoderSelect_ = new QComboBox(this);
     encoderSelect_->setObjectName("encoderSelect");
-    encoderSelect_->addItem("Auto (Prefer NVIDIA)", QVariant("auto"));
+    encoderSelect_->addItem("Auto (Hardware, then Software)", QVariant("auto"));
     encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
     encoderSelect_->addItem("FFmpeg NVENC (Advanced)", QVariant("ffmpeg_nvenc"));
     encoderSelect_->addItem("Intel Quick Sync", QVariant("qsv"));
@@ -1702,7 +1713,7 @@ void MainWindow::setupUI() {
     healthTitle->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT));
     healthLayout->addWidget(healthTitle, 0, 0, 1, 2);
 
-    connectionHealthLabel_ = new QLabel("ICE: - | Candidates: - | Peers: 0", this);
+    connectionHealthLabel_ = new QLabel("ICE: - | Selected path: - | Peers: 0", this);
     connectionHealthLabel_->setObjectName("connectionHealthLabel");
     connectionHealthLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     connectionHealthLabel_->setWordWrap(true);
@@ -2282,17 +2293,23 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
         : QString("auto");
     if (encoderMode == "nvenc") {
         config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+        config.explicitEncoderSelection = true;
     } else if (encoderMode == "ffmpeg_nvenc") {
         config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+        config.explicitEncoderSelection = true;
         config.forceFfmpegNvenc = true;
     } else if (encoderMode == "qsv") {
         config.preferredHardware = versus::video::HardwareEncoder::QuickSync;
+        config.explicitEncoderSelection = true;
     } else if (encoderMode == "amf") {
         config.preferredHardware = versus::video::HardwareEncoder::AMF;
+        config.explicitEncoderSelection = true;
     } else if (encoderMode == "software") {
         config.preferredHardware = versus::video::HardwareEncoder::None;
+        config.explicitEncoderSelection = true;
     } else {
         config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+        config.explicitEncoderSelection = false;
     }
     return config;
 }
@@ -2318,7 +2335,7 @@ versus::app::StartOptions MainWindow::buildStartOptionsFromUi() const {
     options.maxViewers = viewerLimitSpin_ ? viewerLimitSpin_->value() : 10;
     options.roomModeLqEnabled = roomModeLqPreference_;
     options.iceMode = iceModeFromUiValue(
-        iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("stun-only"));
+        iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
     options.remoteControlEnabled = remoteControlCheck_ ? remoteControlCheck_->isChecked() : false;
     options.remoteControlToken = remoteControlTokenInput_
         ? remoteControlTokenInput_->text().trimmed().toStdString()
@@ -2625,7 +2642,7 @@ void MainWindow::onGoLiveClicked() {
             if (!self) {
                 return;
             }
-            QMetaObject::invokeMethod(self, [self, startOpId, started, failureStatus, encoderMode]() {
+            QMetaObject::invokeMethod(self, [self, startOpId, started, failureStatus]() {
                 if (!self) {
                     return;
                 }
@@ -2708,27 +2725,23 @@ void MainWindow::onGoLiveClicked() {
                 }
 
                 const QString activeEncoder = QString::fromStdString(self->core_->getVideoEncoderName());
-                const bool hardwareEncoder = self->core_->isHardwareVideoEncoder();
                 const QString activeText = activeEncoder.isEmpty() ? "Unknown" : activeEncoder;
+                const QString requestedEncoder = QString::fromStdString(
+                    self->core_->getRequestedVideoEncoderMode());
+                const QString encoderCategory = QString::fromStdString(
+                    self->core_->getVideoEncoderCategory());
+                const QString fallbackReason = QString::fromStdString(
+                    self->core_->getVideoEncoderFallbackReason());
                 if (self->encoderStatusLabel_) {
-                    self->encoderStatusLabel_->setText(QString("Active Encoder: %1 (%2)")
-                        .arg(activeText, hardwareEncoder ? "hardware" : "software"));
+                    QString statusText = QString("Requested Encoder: %1 | Active Encoder: %2 (%3)")
+                        .arg(requestedEncoder, activeText, encoderCategory);
+                    if (!fallbackReason.isEmpty()) {
+                        statusText += QString(" | Fallback: %1").arg(fallbackReason);
+                    }
+                    self->encoderStatusLabel_->setText(statusText);
                 }
 
-                bool fallbackActive = false;
-                if (encoderMode == "nvenc" || encoderMode == "ffmpeg_nvenc") {
-                    fallbackActive = !activeText.contains("nvidia", Qt::CaseInsensitive);
-                } else if (encoderMode == "qsv") {
-                    fallbackActive = !activeText.contains("intel", Qt::CaseInsensitive) &&
-                                     !activeText.contains("quick sync", Qt::CaseInsensitive) &&
-                                     !activeText.contains("qsv", Qt::CaseInsensitive);
-                } else if (encoderMode == "amf") {
-                    fallbackActive = !activeText.contains("amd", Qt::CaseInsensitive) &&
-                                     !activeText.contains("radeon", Qt::CaseInsensitive) &&
-                                     !activeText.contains("amf", Qt::CaseInsensitive);
-                } else if (encoderMode == "software") {
-                    fallbackActive = hardwareEncoder;
-                }
+                const bool fallbackActive = !fallbackReason.isEmpty();
 
                 if (self->encoderStatusLabel_) {
                     if (fallbackActive) {
@@ -3150,7 +3163,7 @@ void MainWindow::updateAudioMeter(QProgressBar *meter, QLabel *label, float rms,
 
 void MainWindow::resetOperatorHealthUi() {
     if (connectionHealthLabel_) {
-        connectionHealthLabel_->setText("ICE: - | Candidates: - | Peers: 0");
+        connectionHealthLabel_->setText("ICE: - | Selected path: - | Peers: 0");
         connectionHealthLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     }
     if (connectionMediaLabel_) {
@@ -3184,7 +3197,7 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
         health.candidatePath.empty() ? std::string("-") : health.candidatePath);
 
     if (connectionHealthLabel_) {
-        connectionHealthLabel_->setText(QString("ICE: %1 | Candidates: %2 | Peers: %3 (%4 HQ / %5 LQ, V%6/A%7)")
+        connectionHealthLabel_->setText(QString("ICE: %1 | Selected path: %2 | Peers: %3 (%4 HQ / %5 LQ, V%6/A%7)")
             .arg(iceMode)
             .arg(candidatePath)
             .arg(health.peerCount)

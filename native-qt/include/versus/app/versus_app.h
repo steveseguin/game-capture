@@ -85,6 +85,9 @@ struct ConnectionHealth {
     int activeAudioPeers = 0;
     std::string codec;
     std::string encoder;
+    std::string requestedEncoder;
+    std::string encoderCategory;
+    std::string encoderFallbackReason;
     double videoBitrateKbps = 0.0;
     double audioBitrateKbps = 0.0;
     double frameRate = 0.0;
@@ -142,7 +145,7 @@ struct StartOptions {
     bool roomModeLqEnabled = true;
     bool remoteControlEnabled = false;
     std::string remoteControlToken;
-    webrtc::IceMode iceMode = webrtc::IceMode::StunOnly;
+    webrtc::IceMode iceMode = webrtc::IceMode::All;
 };
 
 class VersusApp {
@@ -175,6 +178,9 @@ class VersusApp {
     void setMicrophoneDeviceId(const std::string &deviceId);
     void setAudioMixConfig(float primaryGain, float additionalGain, bool limiterEnabled);
     std::string getVideoEncoderName() const;
+    std::string getRequestedVideoEncoderMode() const;
+    std::string getVideoEncoderCategory() const;
+    std::string getVideoEncoderFallbackReason() const;
     std::string getVideoCodecName() const;
     bool isHardwareVideoEncoder() const;
     float getAudioLevelRms() const;
@@ -242,6 +248,9 @@ class VersusApp {
         int hqWidth = 0;
         int hqHeight = 0;
         std::string encoderName;
+        std::string requestedEncoderMode;
+        std::string encoderCategory;
+        std::string encoderFallbackReason;
         std::string codecName;
         std::string encoderInputFormat;
         bool hardwareEncoder = false;
@@ -451,6 +460,7 @@ class VersusApp {
     VideoStateSnapshot buildVideoStateSnapshotLocked() const;
     void publishVideoStateSnapshotLocked() const;
     VideoStateSnapshot videoStateSnapshot() const;
+    webrtc::SelectedIcePath selectedIcePathSnapshot() const;
     LifecycleStateSnapshot lifecycleStateSnapshot() const;
 
     std::atomic<bool> live_{false};
@@ -517,18 +527,15 @@ class VersusApp {
     std::atomic<int> lastSentHeight_{0};
     std::atomic<int> maxViewers_{10};
     std::atomic<bool> remoteControlEnabled_{false};
-    std::atomic<int64_t> lastRelayWarningMs_{0};
     std::atomic<int64_t> lastPacketLossWarningMs_{0};
     std::atomic<int64_t> lastAlphaWarningMs_{0};
     std::atomic<int64_t> pliWindowStartMs_{0};
     std::atomic<int> pliWindowCount_{0};
     std::atomic<int64_t> lastCpuWarningMs_{0};
     std::atomic<int> softwareOverloadSamples_{0};
-    std::atomic<bool> relayCandidateSeen_{false};
-    std::atomic<bool> directCandidateSeen_{false};
     std::vector<versus::webrtc::IceServerConfig> resolvedIceServers_;
     versus::webrtc::TurnRegistryProvenance resolvedTurnRegistry_;
-    versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::StunOnly;
+    versus::webrtc::IceMode iceMode_ = versus::webrtc::IceMode::All;
     std::thread signalingRecoveryThread_;
     std::thread videoMaintenanceThread_;
     std::atomic<bool> videoMaintenanceRunning_{false};
@@ -719,6 +726,7 @@ class VersusApp {
         std::string lastOfferReason;
         std::string lastAnswerSource;
         std::string lastRemovalReason;
+        std::string selectedIcePath = "UNKNOWN";
         std::deque<std::string> timeline;
         uint64_t offerDispatchSequence = 0;
         std::deque<OfferDispatchObservation> offerDispatches;
@@ -782,6 +790,8 @@ class VersusApp {
     uint64_t duplicateOfferRecheckSerial_ = 0;
     std::vector<std::future<void>> peerShutdownFutures_;
     versus::video::EncoderConfig videoConfig_{};
+    mutable std::mutex captureErrorMutex_;
+    std::string lastCaptureError_;
     std::atomic<int> configuredVideoBitrateKbps_{12000};
     mutable std::mutex videoSendMutex_;
     mutable std::mutex videoStateSnapshotMutex_;

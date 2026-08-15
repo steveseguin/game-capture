@@ -322,7 +322,7 @@ try {
                     "-VideoCodec", $videoCodec,
                     "-GameCaptureWarmupSeconds", [string]$GameCaptureWarmupSeconds,
                     "-CheckTimeoutSeconds", [string]$CheckTimeoutSeconds,
-                    "-AlphaSampleIntervalMs", "95",
+                    "-AlphaSampleIntervalMs", "80",
                     "-AlphaTransitionMode", $transitionMode,
                     "-AlphaTransitionLabel", "obs-$transitionMode",
                     "-AlphaTransitionHoldMs", "350",

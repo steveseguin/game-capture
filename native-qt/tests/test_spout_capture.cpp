@@ -164,6 +164,11 @@ void TestSpoutCapture::testUnconfirmedNvencRequestsRetryWithFfmpeg() {
     config.codec = versus::video::VideoCodec::H264;
     config.preferredHardware = versus::video::HardwareEncoder::NVENC;
 
+    QVERIFY(!versus::video::detail::shouldRetryH264NvencWithFfmpeg(
+        config, "H264 Encoder MFT", true));
+
+    config.explicitEncoderSelection = true;
+
     QVERIFY(versus::video::detail::shouldRetryH264NvencWithFfmpeg(
         config, "H264 Encoder MFT", true));
     QVERIFY(versus::video::detail::shouldRetryH264NvencWithFfmpeg(

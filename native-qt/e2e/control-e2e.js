@@ -1490,7 +1490,7 @@ async function main() {
       vdoStatsResolutionRequest.w,
       vdoStatsResolutionRequest.h,
       currentVideoWidth,
-      currentVideoHeight,
+      noCtrlHeight,
       probeMessageCount
     );
     if (!vdoStatsResolutionInfo.ok) {
@@ -1617,6 +1617,7 @@ async function main() {
 
     const rateLimitVideoKbps = 500;
     const rateLimitAudioKbps = 16;
+    probeMessageCount = await getProbeMessageCount(page);
     const rateLimitSend = await sendControlMessage(page, { bitrate: rateLimitVideoKbps, audioBitrate: rateLimitAudioKbps });
     if (!rateLimitSend.ok) {
       failure = { stage: 'send-rate-limit', state: rateLimitSend };
@@ -1625,14 +1626,26 @@ async function main() {
     const rateLimitInfo = await waitForRateLimitInfo(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      rateLimitVideoKbps,
-      rateLimitAudioKbps
+      -1,
+      rateLimitAudioKbps,
+      probeMessageCount
     );
     if (!rateLimitInfo.ok) {
       failure = rateLimitInfo;
       return;
     }
-    console.log(`[CONTROL] VDO rate-limit info PASS (${JSON.stringify(rateLimitInfo.state.success.message.info)})`);
+    const rateLimitUnsupported = await waitForProbeMessageField(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      'rejected',
+      'bitrate',
+      probeMessageCount
+    );
+    if (!rateLimitUnsupported.ok) {
+      failure = rateLimitUnsupported;
+      return;
+    }
+    console.log(`[CONTROL] VDO video rate limit rejected while audio rate applied PASS (${JSON.stringify(rateLimitInfo.state.success.message.info)})`);
 
     probeMessageCount = await getProbeMessageCount(page);
     const routeDisableSend = await sendControlMessage(page, { bitrate: 0, audioBitrate: 0 });
@@ -1672,7 +1685,7 @@ async function main() {
     const routeRestoreInfo = await waitForRateLimitInfo(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      rateLimitVideoKbps,
+      -1,
       rateLimitAudioKbps,
       probeMessageCount
     );
@@ -1680,7 +1693,18 @@ async function main() {
       failure = routeRestoreInfo;
       return;
     }
-    console.log(`[CONTROL] VDO bitrate/audioBitrate route restore info PASS (${JSON.stringify(routeRestoreInfo.state.success.message.info)})`);
+    const routeRestoreUnsupported = await waitForProbeMessageField(
+      page,
+      Math.max(5000, Math.floor(config.timeoutMs / 3)),
+      'rejected',
+      'bitrate',
+      probeMessageCount
+    );
+    if (!routeRestoreUnsupported.ok) {
+      failure = routeRestoreUnsupported;
+      return;
+    }
+    console.log(`[CONTROL] VDO bitrate route restored assigned tier and rejected false quality change PASS (${JSON.stringify(routeRestoreInfo.state.success.message.info)})`);
 
     const optimizedBitrateKbps = 750;
     probeMessageCount = await getProbeMessageCount(page);
@@ -1689,18 +1713,28 @@ async function main() {
       failure = { stage: 'send-optimized-bitrate', state: optimizedBitrateSend };
       return;
     }
-    const optimizedBitrateInfo = await waitForRequestedVideoInfo(
+    const optimizedBitrateInfo = await waitForProbeMessageField(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      optimizedBitrateKbps,
-      false,
+      'rejected',
+      'optimizedBitrate',
       probeMessageCount
     );
     if (!optimizedBitrateInfo.ok) {
       failure = optimizedBitrateInfo;
       return;
     }
-    console.log(`[CONTROL] VDO optimizedBitrate info PASS (${JSON.stringify(optimizedBitrateInfo.state.success.message.info)})`);
+    const noFalseOptimizedInfo = await waitForNoControlInfoBitrate(
+      page,
+      1500,
+      optimizedBitrateKbps,
+      probeMessageCount
+    );
+    if (!noFalseOptimizedInfo.ok) {
+      failure = noFalseOptimizedInfo;
+      return;
+    }
+    console.log('[CONTROL] VDO optimizedBitrate unsupported response without false quality acknowledgement PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
     const optimizedBitrateUnlockSend = await sendControlMessage(page, { optimizedBitrate: false });
@@ -1764,7 +1798,7 @@ async function main() {
     const targetRestoreInfo = await waitForRequestedVideoInfo(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      config.bitrateKbps,
+      -1,
       false,
       probeMessageCount
     );
@@ -1775,7 +1809,11 @@ async function main() {
     console.log(`[CONTROL] VDO requestAs targetBitrate restore info PASS (${JSON.stringify(targetRestoreInfo.state.success.message.info)})`);
 
     probeMessageCount = await getProbeMessageCount(page);
-    const targetUnlockSend = await sendControlMessage(page, { targetBitrate: false, keyframe: true });
+    const targetUnlockSend = await sendControlMessage(page, {
+      targetBitrate: false,
+      keyframe: true,
+      remote: config.remoteToken
+    });
     if (!targetUnlockSend.ok) {
       failure = { stage: 'send-target-video-unlock', state: targetUnlockSend };
       return;

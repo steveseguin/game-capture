@@ -1074,6 +1074,48 @@ async function collectBlockingUiState(page) {
   });
 }
 
+async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = true) {
+  const modal = page.locator('.alertModal:visible').last();
+  try {
+    await modal.waitFor({ state: 'visible', timeout: timeoutMs });
+  } catch {
+    return required
+      ? { ok: false, stage: 'unsupported-alert-not-visible' }
+      : { ok: true, state: { visible: false } };
+  }
+  const text = String(await modal.innerText()).trim();
+  if (!/request failed|did not recognize you as the director/i.test(text)) {
+    return { ok: false, stage: 'unexpected-alert', state: { text } };
+  }
+  const close = modal.locator('.modalClose, .close, button, [role="button"]').first();
+  if (await close.count() === 0) {
+    return { ok: false, stage: 'unsupported-alert-has-no-close-control', state: { text } };
+  }
+  await close.click();
+  await modal.waitFor({ state: 'hidden', timeout: 5000 });
+  return { ok: true, state: { visible: true, text } };
+}
+
+async function settleUnsupportedAlerts(page, settleMs = 6000) {
+  const deadline = Date.now() + settleMs;
+  const dismissed = [];
+  while (Date.now() < deadline) {
+    const result = await waitForAndDismissUnsupportedAlert(
+      page,
+      Math.min(500, Math.max(1, deadline - Date.now())),
+      false
+    );
+    if (!result.ok) return result;
+    if (result.state && result.state.visible) dismissed.push(result.state.text);
+    await wait(100);
+  }
+  const blockingUi = await collectBlockingUiState(page);
+  return {
+    ok: blockingUi.ok,
+    state: { dismissedCount: dismissed.length, dismissed, blockingUi }
+  };
+}
+
 async function waitForDirectorPeer(page, config) {
   const start = Date.now();
   let last = null;
@@ -1349,15 +1391,15 @@ async function installMessageProbe(page, uuid) {
   }, uuid);
 }
 
-async function waitForProbeMessage(page, predicateSource, timeoutMs) {
+async function waitForProbeMessage(page, predicateSource, timeoutMs, minMessageCount = 0) {
   const start = Date.now();
   let last = null;
   while (Date.now() - start < timeoutMs) {
-    last = await page.evaluate((source) => {
+    last = await page.evaluate(({ source, minCount }) => {
       const predicate = new Function('entry', `return (${source})(entry);`);
       const probe = window.__directorRoomE2EProbe || { messages: [] };
       const messages = Array.isArray(probe.messages) ? probe.messages : [];
-      const match = messages.find((entry) => {
+      const match = messages.slice(Math.max(0, minCount)).find((entry) => {
         try {
           return predicate(entry);
         } catch {
@@ -1369,7 +1411,7 @@ async function waitForProbeMessage(page, predicateSource, timeoutMs) {
         latest: messages.length ? messages[messages.length - 1] : null,
         match
       };
-    }, predicateSource);
+    }, { source: predicateSource, minCount: minMessageCount });
     if (last && last.match) {
       return { ok: true, state: last };
     }
@@ -1714,7 +1756,11 @@ async function clickStatsBitrateControl(page, uuid, targetBitrateKbps) {
     }
     await submit.click({ timeout: 10000 });
     await modal.waitFor({ state: 'detached', timeout: 10000 });
-    return { ok: true, targetBitrateKbps };
+    const unsupportedAlert = await waitForAndDismissUnsupportedAlert(page, 1500, false);
+    if (!unsupportedAlert.ok) {
+      return unsupportedAlert;
+    }
+    return { ok: true, targetBitrateKbps, unsupportedAlert: unsupportedAlert.state };
   } catch (error) {
     await page.locator('.promptModal:visible button[id^="cancel_"]:visible')
       .click({ timeout: 1000 })
@@ -2030,10 +2076,13 @@ async function runRemoteControlContract({ page, uuid, config, publisher, report,
     clickStatsBitrateControl(page, uuid, targetBitrate));
   if (bitrateAction.ok) {
     if (enabled) {
-      await contractCheck('bitrate-change-applies', () => waitForStatsInfo(
+      await contractCheck('shared-bitrate-target-applies', () => waitForProbeMessage(
         page,
-        uuid,
-        `(info) => Number(info.quality_url) === ${targetBitrate}`,
+        `(entry) => {
+          const msg = entry && entry.message;
+          const stats = msg && msg.remoteStats && msg.remoteStats['${config.streamId}'];
+          return stats && Number(stats.available_outgoing_bitrate_kbps) === ${targetBitrate};
+        }`,
         Math.max(10000, Math.floor(config.timeoutMs / 3))
       ));
     } else {
@@ -2611,15 +2660,31 @@ async function run() {
     ));
 
     const beforeQualityRestoreMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const qualityHighProbeStart = await getDirectorProbeMessageCount(page);
     const qualityHighClick = await clickDirectorQualityButton(page, uuid, 'change-quality3');
     if (!qualityHighClick.ok) {
       throw Object.assign(new Error('quality high button click failed'), { result: qualityHighClick });
     }
-    await check('director-quality-high-button-restores-video', () => waitForStatsInfo(
+    await check('director-quality-high-shows-unsupported-alert', () =>
+      waitForAndDismissUnsupportedAlert(
+        page,
+        Math.max(5000, Math.floor(config.timeoutMs / 3)),
+        true
+      ));
+    await check('director-quality-high-button-restores-assigned-tier', () => waitForStatsInfo(
       page,
       uuid,
-      `(info) => Number(info.requested_video_bitrate_kbps) === ${config.qualityHighBitrateKbps}`,
+      `(info) => Number(info.requested_video_bitrate_kbps) === -1`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
+    ));
+    await check('director-quality-high-is-explicitly-unsupported', () => waitForProbeMessage(
+      page,
+      `(entry) => {
+        const msg = entry && entry.message;
+        return msg && (msg.rejected === 'bitrate' || msg.rejected === 'optimizedBitrate');
+      }`,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      qualityHighProbeStart
     ));
     await check('post-quality-button-video-is-fresh', () => waitForFreshDirectorMedia(
       page,
@@ -2630,15 +2695,27 @@ async function run() {
     ));
 
     const beforePreviewRateMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const previewRateProbeStart = await getDirectorProbeMessageCount(page);
     const previewRateRequest = await applyVdoPreviewRate(page, uuid, config);
     if (!previewRateRequest.ok) {
       throw Object.assign(new Error('applyVdoPreviewRate failed'), { result: previewRateRequest });
     }
+    await check('vdo-preview-rate-unsupported-alert-handled', () =>
+      waitForAndDismissUnsupportedAlert(page, 1500, false));
     await check('vdo-preview-rate-message-applies', () => waitForStatsInfo(
       page,
       uuid,
-      `(info) => Number(info.requested_video_bitrate_kbps) === ${config.previewBitrateKbps} && Number(info.requested_audio_bitrate_kbps) === ${config.previewAudioBitrateKbps}`,
+      `(info) => Number(info.requested_video_bitrate_kbps) === -1 && Number(info.requested_audio_bitrate_kbps) === ${config.previewAudioBitrateKbps}`,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
+    ));
+    await check('vdo-preview-video-rate-is-explicitly-unsupported', () => waitForProbeMessage(
+      page,
+      `(entry) => {
+        const msg = entry && entry.message;
+        return msg && msg.rejected === 'bitrate';
+      }`,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      previewRateProbeStart
     ));
     await check('post-preview-rate-video-is-fresh', () => waitForFreshDirectorMedia(
       page,
@@ -2647,6 +2724,8 @@ async function run() {
       beforePreviewRateMedia,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
+    await check('unsupported-quality-alert-queue-settles', () =>
+      settleUnsupportedAlerts(page, 6000));
 
     const beforeAudioRateMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
     const audioRateRequest = await requestVdoAudioRate(page, uuid, config.audioRateLimitKbps);
@@ -2723,15 +2802,32 @@ async function run() {
     ));
 
     const beforeStatsBitrateMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const beforeStatsBitrateInfo = await readPeerStatsInfo(page, uuid);
     const statsBitrateClick = await clickStatsBitrateControl(page, uuid, config.targetBitrateKbps);
     if (!statsBitrateClick.ok) {
       throw Object.assign(new Error('clickStatsBitrateControl failed'), { result: statsBitrateClick });
     }
-    await check('director-stats-bitrate-control-info', () => waitForStatsInfo(
+    await check('director-stats-shared-bitrate-target-applies', () => waitForProbeMessage(
+      page,
+      `(entry) => {
+        const msg = entry && entry.message;
+        const stats = msg && msg.remoteStats && msg.remoteStats['${config.streamId}'];
+        return stats && Number(stats.available_outgoing_bitrate_kbps) === ${config.targetBitrateKbps};
+      }`,
+      Math.max(10000, Math.floor(config.timeoutMs / 3))
+    ));
+    const expectedStatsBitrateInfo = {
+      ...beforeStatsBitrateInfo,
+      quality_url: beforeStatsBitrateInfo && beforeStatsBitrateInfo.assigned_tier === 'hq'
+        ? config.targetBitrateKbps
+        : beforeStatsBitrateInfo.quality_url
+    };
+    await check('director-stats-per-peer-tier-remains-assigned', () => observeStatsFieldsUnchanged(
       page,
       uuid,
-      `(info) => Number(info.quality_url) === ${config.targetBitrateKbps}`,
-      Math.max(10000, Math.floor(config.timeoutMs / 3))
+      expectedStatsBitrateInfo,
+      ['assigned_tier', 'quality_url'],
+      3500
     ));
     await check('post-stats-bitrate-control-video-is-fresh', () => waitForFreshDirectorMedia(
       page,
@@ -2740,6 +2836,8 @@ async function run() {
       beforeStatsBitrateMedia,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
+    await check('post-stats-quality-alert-queue-settles', () =>
+      settleUnsupportedAlerts(page, 6000));
 
     const beforeDirectorAudioMuteMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
     const directorAudioMuteClick = await clickDirectorQualityButton(page, uuid, 'mute-guest');
@@ -2795,10 +2893,26 @@ async function run() {
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
     const beforeDirectorVideoUnmuteMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const directorVideoUnmuteProbeStart = await getDirectorProbeMessageCount(page);
     const directorVideoUnmuteClick = await clickDirectorQualityButton(page, uuid, 'mute-video-guest');
     if (!directorVideoUnmuteClick.ok) {
       throw Object.assign(new Error('director video unmute button click failed'), { result: directorVideoUnmuteClick });
     }
+    await check('director-video-unmute-reapplied-quality-shows-unsupported-alert', () =>
+      waitForAndDismissUnsupportedAlert(
+        page,
+        Math.max(5000, Math.floor(config.timeoutMs / 3)),
+        true
+      ));
+    await check('director-video-unmute-reapplied-quality-is-explicitly-unsupported', () => waitForProbeMessage(
+      page,
+      `(entry) => {
+        const msg = entry && entry.message;
+        return msg && (msg.rejected === 'bitrate' || msg.rejected === 'optimizedBitrate');
+      }`,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      directorVideoUnmuteProbeStart
+    ));
     await check('director-video-unmute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
@@ -2863,10 +2977,26 @@ async function run() {
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
     const beforeVideoOnMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const videoOnProbeStart = await getDirectorProbeMessageCount(page);
     const videoOnRequest = await sendDirectorRequest(page, uuid, { video: true });
     if (!videoOnRequest.ok) {
       throw Object.assign(new Error('video on sendRequest failed'), { result: videoOnRequest });
     }
+    await check('director-video-on-reapplied-quality-shows-unsupported-alert', () =>
+      waitForAndDismissUnsupportedAlert(
+        page,
+        Math.max(5000, Math.floor(config.timeoutMs / 3)),
+        true
+      ));
+    await check('director-video-on-reapplied-quality-is-explicitly-unsupported', () => waitForProbeMessage(
+      page,
+      `(entry) => {
+        const msg = entry && entry.message;
+        return msg && (msg.rejected === 'bitrate' || msg.rejected === 'optimizedBitrate');
+      }`,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      videoOnProbeStart
+    ));
     await check('director-video-on-media-update-info', () => waitForStatsInfo(
       page,
       uuid,

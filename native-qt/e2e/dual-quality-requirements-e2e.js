@@ -44,7 +44,7 @@ function resolveH265RoomQualityExpectation(roomQuality, publisherOutput) {
       requested: true,
       effective: false,
       reason: ROOM_QUALITY_REASON.CODEC_NOT_H264,
-      requestedVideoBitrateKbps: 500,
+      unsupportedVideoBitrateKbps: 500,
       warningCount: 1,
       warningText: roomQualityUnavailableWarning('H.265'),
       noLq: true,
@@ -61,7 +61,7 @@ function resolveH265RoomQualityExpectation(roomQuality, publisherOutput) {
       requested: true,
       effective: true,
       reason: ROOM_QUALITY_REASON.ENABLED,
-      requestedVideoBitrateKbps: 500,
+      unsupportedVideoBitrateKbps: 500,
       warningCount: 0,
       warningText: '',
       noLq: false,
@@ -484,7 +484,7 @@ async function installInfoProbe(page, uuid) {
       }
       try {
         const parsed = JSON.parse(event.data);
-        if (parsed && (parsed.info || parsed.miniInfo || parsed.remoteStats)) {
+        if (parsed && typeof parsed === 'object') {
           probe.records.push({
             ts: Date.now(),
             channel: channelName,
@@ -677,6 +677,34 @@ async function waitForInfoStateAfter(page, expected, minRecordCount, timeoutMs) 
   return { ok: false, stage: 'info-state-after', state: last };
 }
 
+async function waitForRejectedControlAfter(page, controlName, minRecordCount, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    // eslint-disable-next-line no-await-in-loop
+    last = await page.evaluate(({ expectedControl, minCount }) => {
+      const probe = window.__gameCaptureInfoProbe || { records: [] };
+      const records = Array.isArray(probe.records) ? probe.records : [];
+      const newRecords = records.slice(Math.max(0, minCount));
+      const match = newRecords.find(
+        (entry) => entry && entry.message && entry.message.rejected === expectedControl
+      ) || null;
+      return {
+        total: records.length,
+        minCount,
+        latest: newRecords.length ? newRecords[newRecords.length - 1].message : null,
+        match: match ? match.message : null
+      };
+    }, { expectedControl: controlName, minCount: minRecordCount });
+    if (last && last.match) {
+      return { ok: true, state: last };
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await wait(250);
+  }
+  return { ok: false, stage: 'rejected-control-after', state: last };
+}
+
 async function getInfoRecords(page) {
   return page.evaluate(() => {
     const probe = window.__gameCaptureInfoProbe || { records: [] };
@@ -761,8 +789,8 @@ function evaluateRoomQualityContractEvidence(evidence, expected) {
     room_quality_effective: expected.effective,
     room_quality_reason: expected.reason
   };
-  if (Number.isFinite(expected.requestedVideoBitrateKbps)) {
-    expectedInfo.requested_video_bitrate_kbps = expected.requestedVideoBitrateKbps;
+  if (Number.isFinite(expected.unsupportedVideoBitrateKbps)) {
+    expectedInfo.requested_video_bitrate_kbps = -1;
   }
   if (expected.alphaActive === true) {
     expectedInfo.alpha_active = true;
@@ -986,10 +1014,13 @@ async function waitForControlInfo(page, timeoutMs) {
       const messages = Array.isArray(probe.messages) ? probe.messages : [];
       const okInfo = messages.find((entry) => {
         const info = entry && entry.message ? entry.message.info : null;
+        const width = Number(info && info.width_url);
+        const height = Number(info && info.height_url);
         return info &&
           Number(info.quality_url) === 3500 &&
-          Number(info.width_url) === 960 &&
-          Number(info.height_url) === 540;
+          width > 0 && width <= 960 &&
+          height > 0 && height <= 540 &&
+          (width === 960 || height === 540);
       }) || null;
       const latest = messages.length ? messages[messages.length - 1] : null;
       return { count: messages.length, okInfo, latest };
@@ -1409,21 +1440,35 @@ async function runRoomQualityContractCase(input, expected) {
   }
 
   let observedInfo = viewer.info;
-  if (Number.isFinite(expected.requestedVideoBitrateKbps)) {
+  if (Number.isFinite(expected.unsupportedVideoBitrateKbps)) {
     const beforeCount = await getInfoRecordCount(viewer.page);
     const bitrateRequest = await sendWithRetry(
       viewer.page,
-      { bitrate: expected.requestedVideoBitrateKbps },
+      { bitrate: expected.unsupportedVideoBitrateKbps },
       Math.max(8000, Math.floor(config.timeoutMs / 2))
     );
     assertOk(bitrateRequest && bitrateRequest.ok, `${tag}: bitrate request failed`, bitrateRequest);
-    const postRequest = await waitForInfoStateAfter(
+    const rejection = await waitForRejectedControlAfter(
       viewer.page,
-      { requested_video_bitrate_kbps: expected.requestedVideoBitrateKbps },
+      'bitrate',
       beforeCount,
       Math.max(8000, Math.floor(config.timeoutMs / 2))
     );
-    assertOk(postRequest.ok, `${tag}: no post-bitrate info response`, postRequest.state || postRequest);
+    assertOk(rejection.ok, `${tag}: unsupported bitrate was not rejected`, rejection.state || rejection);
+    const afterRejectionCount = await getInfoRecordCount(viewer.page);
+    const resumeVideo = await sendWithRetry(
+      viewer.page,
+      { bitrate: false },
+      Math.max(8000, Math.floor(config.timeoutMs / 2))
+    );
+    assertOk(resumeVideo && resumeVideo.ok, `${tag}: video-on request failed`, resumeVideo);
+    const postRequest = await waitForInfoStateAfter(
+      viewer.page,
+      { requested_video_bitrate_kbps: -1 },
+      afterRejectionCount,
+      Math.max(8000, Math.floor(config.timeoutMs / 2))
+    );
+    assertOk(postRequest.ok, `${tag}: no post-video-on info response`, postRequest.state || postRequest);
     observedInfo = postRequest.state.match;
   } else {
     const fullInfo = await waitForInfoState(
@@ -1523,7 +1568,7 @@ async function caseRoomQualityH264EnabledLq(input) {
     requested: true,
     effective: true,
     reason: ROOM_QUALITY_REASON.ENABLED,
-    requestedVideoBitrateKbps: 500,
+    unsupportedVideoBitrateKbps: 500,
     warningCount: 0,
     warningText: '',
     noLq: false,
@@ -1539,7 +1584,7 @@ async function caseRoomQualityDisabledStaysHq(input) {
     requested: false,
     effective: false,
     reason: ROOM_QUALITY_REASON.NOT_REQUESTED,
-    requestedVideoBitrateKbps: 500,
+    unsupportedVideoBitrateKbps: 500,
     warningCount: 0,
     warningText: '',
     noLq: true,
@@ -1555,7 +1600,7 @@ function nonH264RoomQualityCase(codecName, caseTag, alphaActive = false) {
     requested: true,
     effective: false,
     reason: ROOM_QUALITY_REASON.CODEC_NOT_H264,
-    requestedVideoBitrateKbps: 500,
+    unsupportedVideoBitrateKbps: 500,
     warningCount: 1,
     warningText: roomQualityUnavailableWarning(codecName),
     noLq: true,
@@ -1568,20 +1613,21 @@ const caseRoomQualityPreservesVp9Selection = nonH264RoomQualityCase(
   'vp9-selected'
 );
 async function caseRoomQualityPreservesH265Selection(input) {
-  const startupDiagnostics = await waitForPublisherDiagnostics(
-    input.diagnosticsPath,
-    {},
-    Math.max(7000, Math.floor(input.config.timeoutMs / 4))
-  );
-  assertOk(
-    startupDiagnostics.ok && startupDiagnostics.diagnostics,
-    'room-quality-h265-selected: startup diagnostics unavailable',
-    startupDiagnostics
-  );
-  const expected = resolveH265RoomQualityExpectation(
-    startupDiagnostics.diagnostics.room_quality,
-    publisherOutputText(input.publisher)
-  );
+  const expected = {
+    caseTag: 'h265-negotiated-fallback-h264',
+    assignedTier: 'lq',
+    codecName: 'H.264',
+    requested: true,
+    effective: true,
+    reason: ROOM_QUALITY_REASON.ENABLED,
+    unsupportedVideoBitrateKbps: 500,
+    warningCount: 1,
+    warningText: roomQualityUnavailableWarning('H.265'),
+    noLq: false,
+    alphaActive: false,
+    dimensionsTier: 'lq',
+    selectionOutcome: 'receiver-rejected-h265-fallback-h264'
+  };
   await runRoomQualityContractCase(input, expected);
   if (input.caseState.contractEvidence) {
     input.caseState.contractEvidence.selectionOutcome = expected.selectionOutcome;

@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execFile } = require('child_process');
 
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -52,11 +52,16 @@ function parseArgs(argv) {
     room: '',
     durationMs: 15000,
     videoEncoder: '',
+    videoCodec: '',
     ffmpegPath: '',
     ffmpegOptions: '',
     requireHardware: false,
     expectEncoderName: '',
+    expectRequestedEncoder: '',
+    expectEncoderCategory: '',
     forbidEncoderName: '',
+    expectStartFailure: false,
+    requireNvidiaSession: false,
     caseRetries: 0,
     reportDir: path.resolve(__dirname, '../qa/reports')
   };
@@ -81,6 +86,8 @@ function parseArgs(argv) {
       args.durationMs = Math.max(5000, Number(arg.slice('--duration-ms='.length)) || args.durationMs);
     } else if (arg.startsWith('--video-encoder=')) {
       args.videoEncoder = arg.slice('--video-encoder='.length);
+    } else if (arg.startsWith('--video-codec=')) {
+      args.videoCodec = arg.slice('--video-codec='.length);
     } else if (arg.startsWith('--ffmpeg-path=')) {
       args.ffmpegPath = arg.slice('--ffmpeg-path='.length);
     } else if (arg.startsWith('--ffmpeg-options=')) {
@@ -89,8 +96,16 @@ function parseArgs(argv) {
       args.requireHardware = true;
     } else if (arg.startsWith('--expect-encoder-name=')) {
       args.expectEncoderName = arg.slice('--expect-encoder-name='.length).trim();
+    } else if (arg.startsWith('--expect-requested-encoder=')) {
+      args.expectRequestedEncoder = arg.slice('--expect-requested-encoder='.length).trim();
+    } else if (arg.startsWith('--expect-encoder-category=')) {
+      args.expectEncoderCategory = arg.slice('--expect-encoder-category='.length).trim();
     } else if (arg.startsWith('--forbid-encoder-name=')) {
       args.forbidEncoderName = arg.slice('--forbid-encoder-name='.length).trim();
+    } else if (arg === '--expect-start-failure') {
+      args.expectStartFailure = true;
+    } else if (arg === '--require-nvidia-session') {
+      args.requireNvidiaSession = true;
     } else if (arg.startsWith('--case-retries=')) {
       args.caseRetries = Math.max(0, Number(arg.slice('--case-retries='.length)) || args.caseRetries);
     } else if (arg.startsWith('--report-dir=')) {
@@ -116,6 +131,9 @@ function spawnCase(cfg, bitrate, streamId) {
   if (cfg.videoEncoder) {
     args.push(`--video-encoder=${cfg.videoEncoder}`);
   }
+  if (cfg.videoCodec) {
+    args.push(`--video-codec=${cfg.videoCodec}`);
+  }
   if (cfg.ffmpegPath) {
     args.push(`--ffmpeg-path=${cfg.ffmpegPath}`);
   }
@@ -139,18 +157,50 @@ function spawnCase(cfg, bitrate, streamId) {
     });
 
     let output = '';
+    let nvidiaSessionProbeStarted = false;
+    let nvidiaSessionProbe = Promise.resolve({ checked: false, found: false, output: '' });
+    const probeNvidiaSession = () => {
+      if (!cfg.requireNvidiaSession || nvidiaSessionProbeStarted) {
+        return;
+      }
+      nvidiaSessionProbeStarted = true;
+      nvidiaSessionProbe = new Promise((probeResolve) => {
+        // The warm-up creates a real NVENC session for only a short window.
+        // Sample pmon after frames have begun entering that pipeline.
+        setTimeout(() => {
+          execFile('nvidia-smi.exe', ['pmon', '-c', '1'], {
+            windowsHide: true,
+            timeout: 3000,
+            maxBuffer: 1024 * 1024
+          }, (error, stdout, stderr) => {
+            const probeOutput = `${stdout || ''}\n${stderr || ''}`.trim();
+            const found = /(?:game-capture|ffmpeg)(?:\.exe)?/i.test(probeOutput);
+            probeResolve({ checked: true, found, output: probeOutput, error: error ? error.message : '' });
+          });
+        }, 200);
+      });
+    };
     proc.stdout.on('data', (chunk) => {
       const text = chunk.toString();
       output += text;
       process.stdout.write(text);
+      if (/\[FFmpegEncoder\]\s+Started FFmpeg pipeline|\[App\]\s+Video encoder selected/i.test(text)) {
+        probeNvidiaSession();
+      }
     });
     proc.stderr.on('data', (chunk) => {
       const text = chunk.toString();
       output += text;
       process.stderr.write(text);
+      if (/\[FFmpegEncoder\]\s+Started FFmpeg pipeline|\[App\]\s+Video encoder selected/i.test(text)) {
+        probeNvidiaSession();
+      }
     });
     proc.on('exit', (code) => {
-      resolve({ code: code ?? 1, output, args });
+      probeNvidiaSession();
+      nvidiaSessionProbe.then((session) => {
+        resolve({ code: code ?? 1, output, args, nvidiaSession: session });
+      });
     });
   });
 }
@@ -162,10 +212,21 @@ function evaluateCase(result, bitrate, cfg) {
     /\[MFEncoder\]\s+First frame encoded successfully/i.test(result.output) ||
     /\[FFmpegEncoder\]\s+First packet encoded successfully/i.test(result.output) ||
     /\[Frame\]\s+sendVideo\s+failed/i.test(result.output);
-  const activeLineMatch = result.output.match(/\[App\]\s+Video encoder active:\s+(.+?)\s+\(hardware=(true|false)\)/i);
-  const activeEncoderName = activeLineMatch ? activeLineMatch[1].trim() : '';
-  const hardwareActive = activeLineMatch ? activeLineMatch[2].toLowerCase() === 'true' : false;
-  const hasActiveEncoderLog = Boolean(activeLineMatch);
+  const selectionLineMatch = result.output.match(
+    /\[App\]\s+Video encoder selected requested=(.+?) active='([^']+)' category=(\S+) fallbackReason='([^']*)'/i
+  );
+  const legacyActiveLineMatch = result.output.match(
+    /\[App\]\s+Video encoder active:\s+(.+?)\s+\(hardware=(true|false)\)/i
+  );
+  const activeEncoderName = selectionLineMatch
+    ? selectionLineMatch[2].trim()
+    : (legacyActiveLineMatch ? legacyActiveLineMatch[1].trim() : '');
+  const requestedEncoder = selectionLineMatch ? selectionLineMatch[1].trim() : '';
+  const activeCategory = selectionLineMatch ? selectionLineMatch[3].trim() : '';
+  const hardwareActive = selectionLineMatch
+    ? !['software', 'unavailable'].includes(activeCategory.toLowerCase())
+    : Boolean(legacyActiveLineMatch && legacyActiveLineMatch[2].toLowerCase() === 'true');
+  const hasActiveEncoderLog = Boolean(selectionLineMatch || legacyActiveLineMatch);
   const expectedEncoderNames = String(cfg.expectEncoderName || '')
     .split(',')
     .map((name) => name.trim().toLowerCase())
@@ -179,6 +240,10 @@ function evaluateCase(result, bitrate, cfg) {
   const hasForbiddenEncoder = forbiddenEncoderNames.some((name) =>
     activeEncoderName.toLowerCase().includes(name));
   const hardwareRequirementMet = !cfg.requireHardware || hardwareActive;
+  const requestedEncoderMatches = !cfg.expectRequestedEncoder ||
+    requestedEncoder.toLowerCase() === cfg.expectRequestedEncoder.toLowerCase();
+  const encoderCategoryMatches = !cfg.expectEncoderCategory ||
+    activeCategory.toLowerCase() === cfg.expectEncoderCategory.toLowerCase();
   const fatalPatterns = [
     /\[Headless\]\s+startCapture failed/i,
     /\[Headless\]\s+goLive failed/i,
@@ -187,7 +252,11 @@ function evaluateCase(result, bitrate, cfg) {
     /\[App\]\s+Failed to join room/i
   ];
   const hasFatalError = fatalPatterns.some((re) => re.test(result.output));
-  const pass = result.code === 0 &&
+  const hasVisibleStrictFailure = /\[App\]\s+Requested .+ encoder could not start with .+\. No different encoder category was selected\./i.test(result.output);
+  const nvidiaSessionRequirementMet = !cfg.requireNvidiaSession || Boolean(result.nvidiaSession && result.nvidiaSession.found);
+  const pass = cfg.expectStartFailure
+    ? result.code !== 0 && hasFatalError && hasVisibleStrictFailure && !hasActiveEncoderLog
+    : result.code === 0 &&
     hasMainOverride &&
     hasEncoderInit &&
     hasEncodedOutputEvidence &&
@@ -195,6 +264,9 @@ function evaluateCase(result, bitrate, cfg) {
     matchesExpectedEncoder &&
     !hasForbiddenEncoder &&
     hardwareRequirementMet &&
+    requestedEncoderMatches &&
+    encoderCategoryMatches &&
+    nvidiaSessionRequirementMet &&
     !hasFatalError;
   return {
     pass,
@@ -205,10 +277,17 @@ function evaluateCase(result, bitrate, cfg) {
     hasFatalError,
     hasActiveEncoderLog,
     activeEncoderName,
+    requestedEncoder,
+    activeCategory,
     hardwareActive,
     matchesExpectedEncoder,
     hasForbiddenEncoder,
-    hardwareRequirementMet
+    hardwareRequirementMet,
+    requestedEncoderMatches,
+    encoderCategoryMatches,
+    hasVisibleStrictFailure,
+    nvidiaSessionRequirementMet,
+    nvidiaSessionProbe: result.nvidiaSession || { checked: false, found: false, output: '' }
   };
 }
 
@@ -224,23 +303,32 @@ function writeReport(cfg, startedAt, finishedAt, rows) {
     `- Duration (s): ${Math.round((finishedAt - startedAt) / 1000)}`,
     `- Publisher: ${cfg.publisherPath}`,
     `- Video encoder override: ${cfg.videoEncoder || '(default)'}`,
+    `- Video codec override: ${cfg.videoCodec || '(default)'}`,
     `- FFmpeg path override: ${cfg.ffmpegPath || '(auto)'}`,
     `- Require hardware: ${cfg.requireHardware ? 'yes' : 'no'}`,
     `- Expected encoder name contains: ${cfg.expectEncoderName || '(none)'}`,
+    `- Expected requested encoder: ${cfg.expectRequestedEncoder || '(none)'}`,
+    `- Expected encoder category: ${cfg.expectEncoderCategory || '(none)'}`,
     `- Forbidden encoder name contains: ${cfg.forbidEncoderName || '(none)'}`,
+    `- Expected visible startup failure: ${cfg.expectStartFailure ? 'yes' : 'no'}`,
+    `- Require active NVIDIA encoder session: ${cfg.requireNvidiaSession ? 'yes' : 'no'}`,
     '',
-    '| Bitrate (kbps) | Attempts | Exit | Main Override Log | Encoder Init Log | Encoded Output Evidence | Active Encoder Log | Expected Match | Forbidden Match | Hardware Active | Fatal Error Log | Result |',
-    '|---:|---:|---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|'
+    '| Bitrate (kbps) | Attempts | Exit | Requested | Category | Main Override Log | Encoder Init Log | Encoded Output Evidence | Active Encoder Log | Expected Match | Forbidden Match | Hardware Active | NVIDIA Session | Fatal Error Log | Visible Strict Failure | Result |',
+    '|---:|---:|---:|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|'
   ];
 
   for (const row of rows) {
-    lines.push(`| ${row.bitrate} | ${row.attempts} | ${row.code} | ${row.hasMainOverride ? 'yes' : 'no'} | ${row.hasEncoderInit ? 'yes' : 'no'} | ${row.hasEncodedOutputEvidence ? 'yes' : 'no'} | ${row.hasActiveEncoderLog ? 'yes' : 'no'} | ${row.matchesExpectedEncoder ? 'yes' : 'no'} | ${row.hasForbiddenEncoder ? 'yes' : 'no'} | ${row.hardwareActive ? 'yes' : 'no'} | ${row.hasFatalError ? 'yes' : 'no'} | ${row.pass ? 'PASS' : 'FAIL'} |`);
+    lines.push(`| ${row.bitrate} | ${row.attempts} | ${row.code} | ${row.requestedEncoder || 'n/a'} | ${row.activeCategory || 'n/a'} | ${row.hasMainOverride ? 'yes' : 'no'} | ${row.hasEncoderInit ? 'yes' : 'no'} | ${row.hasEncodedOutputEvidence ? 'yes' : 'no'} | ${row.hasActiveEncoderLog ? 'yes' : 'no'} | ${row.matchesExpectedEncoder ? 'yes' : 'no'} | ${row.hasForbiddenEncoder ? 'yes' : 'no'} | ${row.hardwareActive ? 'yes' : 'no'} | ${row.nvidiaSessionRequirementMet ? 'yes' : 'no'} | ${row.hasFatalError ? 'yes' : 'no'} | ${row.hasVisibleStrictFailure ? 'yes' : 'no'} | ${row.pass ? 'PASS' : 'FAIL'} |`);
   }
 
   lines.push('', '## Tail Output', '', '```text');
   for (const row of rows) {
     lines.push(`[${row.bitrate} kbps]`);
     lines.push(...row.output.trim().split(/\r?\n/).slice(-20));
+    if (cfg.requireNvidiaSession) {
+      lines.push('[nvidia-smi pmon -c 1]');
+      lines.push(row.nvidiaSessionProbe.output || row.nvidiaSessionProbe.error || '(no output)');
+    }
     lines.push('');
   }
   lines.push('```', '');

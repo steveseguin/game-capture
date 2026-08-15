@@ -332,9 +332,12 @@ $buildRoot = if ([System.IO.Path]::IsPathRooted($BuildDir)) {
 } else {
     [System.IO.Path]::GetFullPath((Join-Path $script:repoRoot $BuildDir))
 }
-$spoutSenderCandidate = Join-Path $buildRoot "bin\$Configuration\spout_test_sender.exe"
-if (-not (Test-Path -LiteralPath $spoutSenderCandidate -PathType Leaf)) {
-    throw "Exact BuildDir/Configuration Spout fixture does not exist: $spoutSenderCandidate"
+$spoutSenderCandidate = @(
+    (Join-Path $buildRoot "bin\$Configuration\spout_test_sender.exe"),
+    (Join-Path $buildRoot "bin\spout_test_sender.exe")
+) | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+if (-not $spoutSenderCandidate) {
+    throw "Exact BuildDir Spout fixture does not exist under: $buildRoot"
 }
 $resolvedSpoutSenderPath = (Resolve-Path -LiteralPath $spoutSenderCandidate).Path
 $resolvedSpoutSenderSha256 = (
@@ -441,11 +444,6 @@ $lines += "- Dual soak hold-ms: $DualSoakHoldMs"
 $lines += "- Capture window filter: $(if ($captureWindowFilterEffective) { $captureWindowFilterEffective } else { '(default headless selection)' })"
 $lines += "- Managed capture source: $(if ($captureSourceProcess) { 'yes' } else { 'no' })"
 $lines += ""
-
-$ffmpegCliArg = ""
-if ($FfmpegPath) {
-    $ffmpegCliArg = " --ffmpeg-path=`"$FfmpegPath`""
-}
 
 $allPass = $true
 
@@ -568,6 +566,42 @@ $lines += ""
 $lines += "- Result: " + ($(if ($controlPass) { "PASS" } else { "FAIL" }))
 $lines += "- Password: $(if ($ControlPassword -ne '') { $ControlPassword } else { '(default)' })"
 $lines += "- Token length: $($ControlToken.Length)"
+$lines += ""
+
+$iceReportDir = New-BrowserWorkflowReportDirectory 'ice-connectivity'
+$icePass = & $script:runStepImplementation "E2E ICE Connectivity (Auto, Host, STUN, TURN)" {
+    $iceArgs = @(
+        "--prefix", $script:repoRoot, "run", "e2e:ice-connectivity", "--",
+        "--publisher-path=$script:publisherExe",
+        "--report-dir=$iceReportDir",
+        "--password=$ControlPassword",
+        "--cases=all,host-only,stun-only,relay"
+    )
+    & $script:npmExecutable @iceArgs
+    if ($LASTEXITCODE -ne 0) { throw "ICE connectivity workflow exited with code $LASTEXITCODE" }
+}
+$allPass = $allPass -and $icePass
+$lines += "## E2E ICE Connectivity"
+$lines += ""
+$lines += "- Result: " + ($(if ($icePass) { "PASS" } else { "FAIL" }))
+$lines += "- Modes: Auto, Host only, STUN only, Relay only"
+$lines += "- Report directory: $iceReportDir"
+$lines += ""
+
+$iceSettingsReportDir = New-BrowserWorkflowReportDirectory 'ice-settings'
+$iceSettingsPass = & $script:runStepImplementation "Packaged ICE settings defaults and preservation" {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass `
+        -File (Join-Path $script:repoRoot 'e2e\ice-settings-packaged-e2e.ps1') `
+        -PublisherPath $script:publisherExe `
+        -ReportDir $iceSettingsReportDir
+    if ($LASTEXITCODE -ne 0) { throw "Packaged ICE settings workflow exited with code $LASTEXITCODE" }
+}
+$allPass = $allPass -and $iceSettingsPass
+$lines += "## Packaged ICE Settings"
+$lines += ""
+$lines += "- Result: " + ($(if ($iceSettingsPass) { "PASS" } else { "FAIL" }))
+$lines += "- Coverage: missing -> Auto; invalid -> Auto; valid Relay preserved"
+$lines += "- Report directory: $iceSettingsReportDir"
 $lines += ""
 
 $signalEdgeReportDir = New-BrowserWorkflowReportDirectory 'signaling-edge'
@@ -788,9 +822,7 @@ if (-not $SkipDualStream) {
 
     $dualRequirementsPass = & $script:runStepImplementation "E2E Dual Quality Requirements" {
         $dualReqCmd = "npm --prefix `"$repoRoot`" run e2e:dual-quality-requirements -- --publisher-path=`"$publisherExe`" --password=$RefreshPassword --timeout-ms=60000 --hold-ms=2500 --remote-token=$ControlToken"
-        if ($RefreshVideoEncoder) {
-            $dualReqCmd += " --video-encoder=$RefreshVideoEncoder"
-        }
+        $dualReqCmd += " --video-encoder=auto"
         if ($FfmpegPath) {
             $dualReqCmd += " --ffmpeg-path=`"$FfmpegPath`""
         }
@@ -967,26 +999,137 @@ $lines += "- Result: " + ($(if ($bitratePass) { "PASS" } else { "FAIL" }))
 $lines += ""
 
 $hardwareChecksRan = $false
-$hardwareNvencPass = $false
-$hardwareQsvPass = $false
+$hardwareNvencPass = $null
+$hardwareQsvPass = $null
+$hardwareAmdPass = $null
+$softwareEncoderPass = $false
+$autoEncoderPass = $false
+$unsupportedCodecPass = $false
 if ($CheckHardwareEncoders) {
     $hardwareChecksRan = $true
-    $hardwareNvencPass = Run-StepWithRetry "Hardware Smoke (NVENC strict)" (1 + [Math]::Max(0, $HardwareRetries)) {
-        cmd /c "npm --prefix `"$repoRoot`" run e2e:bitrate -- --publisher-path=`"$publisherExe`" --video-encoder=nvenc --bitrates=12000 --require-hardware --expect-encoder-name=nvenc,nvidia --forbid-encoder-name=intel,qsv$ffmpegCliArg"
+    $encoderReportDir = New-BrowserWorkflowReportDirectory 'encoder-policy'
+    $adapterNames = @()
+    try {
+        $adapterNames = @(Get-CimInstance Win32_VideoController -ErrorAction Stop | ForEach-Object { [string]$_.Name })
+    } catch {
+        Write-Warning "Could not enumerate video adapters: $($_.Exception.Message)"
     }
-    $hardwareQsvPass = Run-StepWithRetry "Hardware Smoke (QSV strict)" (1 + [Math]::Max(0, $HardwareRetries)) {
-        cmd /c "npm --prefix `"$repoRoot`" run e2e:bitrate -- --publisher-path=`"$publisherExe`" --video-encoder=qsv --bitrates=12000 --require-hardware --expect-encoder-name=`"intel,qsv,h264 encoder mft,avc dx12`" --forbid-encoder-name=nvenc,nvidia$ffmpegCliArg"
+    $adapterSummary = ($adapterNames -join '; ')
+    $hasNvidiaAdapter = [bool]($adapterNames | Where-Object { $_ -match '(?i)nvidia|geforce|quadro|tesla' })
+    $hasIntelAdapter = [bool]($adapterNames | Where-Object { $_ -match '(?i)intel' })
+    $hasAmdAdapter = [bool]($adapterNames | Where-Object { $_ -match '(?i)amd|radeon' })
+
+    $autoEncoderPass = & $script:runStepImplementation "Encoder Policy (Auto)" {
+        & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+            "--publisher-path=$script:publisherExe" `
+            --video-encoder=auto `
+            --bitrates=12000 `
+            --expect-requested-encoder=Auto `
+            "--report-dir=$encoderReportDir"
+        if ($LASTEXITCODE -ne 0) { throw "Auto encoder workflow exited with code $LASTEXITCODE" }
     }
-    if ($EnforceHardwareEncoders) {
-        $allPass = $allPass -and $hardwareNvencPass -and $hardwareQsvPass
+    $softwareEncoderPass = & $script:runStepImplementation "Encoder Policy (Software strict)" {
+        & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+            "--publisher-path=$script:publisherExe" `
+            --video-encoder=software `
+            --bitrates=12000 `
+            --expect-requested-encoder=Software `
+            --expect-encoder-category=Software `
+            "--report-dir=$encoderReportDir"
+        if ($LASTEXITCODE -ne 0) { throw "Software encoder workflow exited with code $LASTEXITCODE" }
     }
+
+    if ($hasNvidiaAdapter) {
+        $hardwareNvencPass = Run-StepWithRetry "Encoder Policy (NVIDIA strict + active session)" (1 + [Math]::Max(0, $HardwareRetries)) {
+            & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+                "--publisher-path=$script:publisherExe" `
+                --video-encoder=nvenc `
+                --bitrates=12000 `
+                --require-hardware `
+                --require-nvidia-session `
+                --expect-requested-encoder=NVIDIA `
+                --expect-encoder-category=NVIDIA `
+                --expect-encoder-name=nvenc,nvidia `
+                --forbid-encoder-name=intel,qsv `
+                "--report-dir=$encoderReportDir"
+            if ($LASTEXITCODE -ne 0) { throw "NVIDIA encoder workflow exited with code $LASTEXITCODE" }
+        }
+    }
+
+    if ($hasIntelAdapter) {
+        $hardwareQsvPass = & $script:runStepImplementation "Encoder Policy (Intel strict or visible failure)" {
+            & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+                "--publisher-path=$script:publisherExe" `
+                --video-encoder=qsv `
+                --bitrates=12000 `
+                --require-hardware `
+                --expect-requested-encoder=Intel `
+                --expect-encoder-category=Intel `
+                --expect-encoder-name=intel,qsv `
+                --forbid-encoder-name=nvenc,nvidia,amd,amf,avc-dx12 `
+                "--report-dir=$encoderReportDir"
+            if ($LASTEXITCODE -eq 0) { return }
+            & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+                "--publisher-path=$script:publisherExe" `
+                --video-encoder=qsv `
+                --bitrates=12000 `
+                --expect-start-failure `
+                "--report-dir=$encoderReportDir"
+            if ($LASTEXITCODE -ne 0) { throw "Intel selection neither used Intel nor failed visibly" }
+        }
+    }
+
+    if ($hasAmdAdapter) {
+        $hardwareAmdPass = & $script:runStepImplementation "Encoder Policy (AMD strict or visible failure)" {
+            & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+                "--publisher-path=$script:publisherExe" `
+                --video-encoder=amf `
+                --bitrates=12000 `
+                --require-hardware `
+                --expect-requested-encoder=AMD `
+                --expect-encoder-category=AMD `
+                --expect-encoder-name=amd,amf,radeon `
+                --forbid-encoder-name=nvenc,nvidia,intel,qsv,avc-dx12 `
+                "--report-dir=$encoderReportDir"
+            if ($LASTEXITCODE -eq 0) { return }
+            & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+                "--publisher-path=$script:publisherExe" `
+                --video-encoder=amf `
+                --bitrates=12000 `
+                --expect-start-failure `
+                "--report-dir=$encoderReportDir"
+            if ($LASTEXITCODE -ne 0) { throw "AMD selection neither used AMD nor failed visibly" }
+        }
+    }
+
+    $unsupportedCodecPass = & $script:runStepImplementation "Encoder Policy (unsupported explicit codec fails visibly)" {
+        & $script:npmExecutable --prefix $script:repoRoot run e2e:bitrate -- `
+            "--publisher-path=$script:publisherExe" `
+            --video-encoder=nvenc `
+            --video-codec=vp9 `
+            --bitrates=12000 `
+            --expect-start-failure `
+            "--report-dir=$encoderReportDir"
+        if ($LASTEXITCODE -ne 0) { throw "Unsupported explicit encoder/codec workflow did not fail visibly" }
+    }
+
+    $allPass = $allPass -and $autoEncoderPass -and $softwareEncoderPass -and $unsupportedCodecPass
+    if ($hasNvidiaAdapter) { $allPass = $allPass -and [bool]$hardwareNvencPass }
+    if ($hasIntelAdapter) { $allPass = $allPass -and [bool]$hardwareQsvPass }
+    if ($hasAmdAdapter) { $allPass = $allPass -and [bool]$hardwareAmdPass }
 }
-$lines += "## Hardware Encoder Capability"
+$lines += "## Encoder Policy"
 $lines += ""
 if ($hardwareChecksRan) {
-    $lines += "- NVENC strict result: " + ($(if ($hardwareNvencPass) { "PASS" } else { "FAIL" }))
-    $lines += "- QSV strict result: " + ($(if ($hardwareQsvPass) { "PASS" } else { "FAIL" }))
-    $lines += "- Enforced: " + ($(if ($EnforceHardwareEncoders) { "yes" } else { "no" }))
+    $lines += "- Detected adapters: $(if ($adapterSummary) { $adapterSummary } else { '(none enumerated)' })"
+    $lines += "- Auto result: " + ($(if ($autoEncoderPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Software strict result: " + ($(if ($softwareEncoderPass) { "PASS" } else { "FAIL" }))
+    $lines += "- NVIDIA strict result: " + ($(if (-not $hasNvidiaAdapter) { "NOT TESTED (adapter unavailable)" } elseif ($hardwareNvencPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Intel strict result: " + ($(if (-not $hasIntelAdapter) { "NOT TESTED (adapter unavailable)" } elseif ($hardwareQsvPass) { "PASS" } else { "FAIL" }))
+    $lines += "- AMD strict result: " + ($(if (-not $hasAmdAdapter) { "NOT TESTED (adapter unavailable)" } elseif ($hardwareAmdPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Unsupported explicit codec result: " + ($(if ($unsupportedCodecPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Installed adapters enforced automatically: yes"
+    $lines += "- Report directory: $encoderReportDir"
 } else {
     $lines += "- Result: SKIPPED"
 }

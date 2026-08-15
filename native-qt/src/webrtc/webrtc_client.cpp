@@ -110,6 +110,20 @@ std::string selectH264ProfileLevelId(int width, int height, int fps) {
 
 }  // namespace
 
+const char *selectedIcePathName(SelectedIcePath path) {
+    switch (path) {
+        case SelectedIcePath::Host:
+            return "HOST";
+        case SelectedIcePath::Stun:
+            return "STUN";
+        case SelectedIcePath::TurnRelay:
+            return "TURN/RELAY";
+        case SelectedIcePath::Unknown:
+        default:
+            return "UNKNOWN";
+    }
+}
+
 struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     struct RemoteCandidate {
         std::string candidate;
@@ -934,9 +948,8 @@ WebRtcClient::WebRtcClient() : impl_(std::make_shared<Impl>()) {}
 WebRtcClient::~WebRtcClient() { shutdown(); }
 
 bool WebRtcClient::initialize(const PeerConfig &config) {
-    // Relay mode cannot work without at least one TURN server; every other
-    // mode proceeds with whatever servers resolved (a failed TURN registry
-    // fetch degrades to STUN rather than blocking the connection).
+    // Relay mode cannot work without at least one TURN server. Authoritative
+    // Auto/Relay registry validation happens before the client is created.
     if (config.iceMode == IceMode::Relay) {
         const bool hasTurnServer = std::any_of(
             config.iceServers.begin(),
@@ -1188,6 +1201,31 @@ bool WebRtcClient::addRemoteCandidate(const std::string &candidate,
     std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
     auto target = impl_->transportSnapshot();
     if (!target || !target->pc || !impl_->isCurrentTransport(target)) return false;
+    IceMode activeMode = IceMode::All;
+    {
+        std::lock_guard<std::mutex> lock(impl_->configMutex);
+        activeMode = impl_->iceMode;
+    }
+    if (activeMode == IceMode::Relay) {
+        try {
+            const rtc::Candidate parsed(candidate, mid);
+            if (parsed.type() != rtc::Candidate::Type::Relayed) {
+                // libdatachannel's Relay transport policy suppresses local
+                // host candidates from signaling, but libjuice can still
+                // build a direct pair when a remote host candidate is added.
+                // Ignore that candidate in explicit Relay mode so incoming
+                // checks establish the peer-reflexive remote half against
+                // our TURN-relayed local candidate instead.
+                spdlog::debug(
+                    "[WebRTC] Ignoring non-relay remote ICE candidate in explicit Relay mode");
+                return true;
+            }
+        } catch (...) {
+            spdlog::warn(
+                "[WebRTC] Ignoring malformed remote ICE candidate in explicit Relay mode");
+            return false;
+        }
+    }
     Impl::RemoteCandidate remote{candidate, mid, mlineIndex, target->generation};
     bool descriptionReady = false;
     {
@@ -1538,6 +1576,41 @@ bool WebRtcClient::hasConfiguredAudioTrack() const {
     if (!target || !impl_->isCurrentTransport(target)) return false;
     std::lock_guard<std::mutex> lock(target->audioSendMutex);
     return static_cast<bool>(target->audioTrack);
+}
+
+SelectedIcePath WebRtcClient::selectedIcePath() const {
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc || !impl_->isCurrentTransport(target)) {
+        return SelectedIcePath::Unknown;
+    }
+
+    rtc::Candidate local;
+    rtc::Candidate remote;
+    try {
+        if (!target->pc->getSelectedCandidatePair(&local, &remote)) {
+            return SelectedIcePath::Unknown;
+        }
+    } catch (...) {
+        return SelectedIcePath::Unknown;
+    }
+
+    const auto localType = local.type();
+    const auto remoteType = remote.type();
+    if (localType == rtc::Candidate::Type::Relayed ||
+        remoteType == rtc::Candidate::Type::Relayed) {
+        return SelectedIcePath::TurnRelay;
+    }
+    if (localType == rtc::Candidate::Type::ServerReflexive ||
+        localType == rtc::Candidate::Type::PeerReflexive ||
+        remoteType == rtc::Candidate::Type::ServerReflexive ||
+        remoteType == rtc::Candidate::Type::PeerReflexive) {
+        return SelectedIcePath::Stun;
+    }
+    if (localType == rtc::Candidate::Type::Host &&
+        remoteType == rtc::Candidate::Type::Host) {
+        return SelectedIcePath::Host;
+    }
+    return SelectedIcePath::Unknown;
 }
 
 }  // namespace versus::webrtc

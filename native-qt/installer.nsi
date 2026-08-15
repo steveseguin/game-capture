@@ -6,7 +6,7 @@
 ; General
 Name "Game Capture"
 !ifndef VERSION
-!define VERSION "0.2.49"
+!define VERSION "0.2.50"
 !endif
 !ifndef BUILD_BIN_DIR
 !define BUILD_BIN_DIR "build\bin"

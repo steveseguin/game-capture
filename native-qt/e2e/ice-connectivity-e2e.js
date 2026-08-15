@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
 const CASES = {
+  all: { name: 'auto', iceMode: 'all', remoteCandidateType: 'any' },
   'host-only': { name: 'host_only', iceMode: 'host-only', remoteCandidateType: 'host' },
   'stun-only': { name: 'stun_only', iceMode: 'stun-only', remoteCandidateType: 'srflx' },
   relay: { name: 'relay', iceMode: 'relay', remoteCandidateType: 'relay' }
@@ -24,6 +25,9 @@ function remoteCandidateMatches(caseDef, observedType) {
   }
   if (caseDef.iceMode === 'stun-only') {
     return observedType === 'host' || observedType === 'srflx' || observedType === 'prflx';
+  }
+  if (caseDef.iceMode === 'all') {
+    return ['host', 'srflx', 'prflx', 'relay'].includes(observedType);
   }
   return observedType === caseDef.remoteCandidateType;
 }
@@ -63,7 +67,7 @@ function parseArgs(argv) {
     screenshotDir: path.resolve(__dirname, '../../.playwright-mcp'),
     reportDir: path.resolve(__dirname, '../qa/reports'),
     headful: false,
-    caseKeys: ['host-only', 'stun-only', 'relay']
+    caseKeys: ['all', 'host-only', 'stun-only', 'relay']
   };
 
   for (let i = 2; i < argv.length; i++) {
@@ -111,6 +115,9 @@ function parseArgs(argv) {
           }
           if (value === 'turn') {
             return 'relay';
+          }
+          if (value === 'auto') {
+            return 'all';
           }
           return value;
         })
@@ -434,6 +441,9 @@ function spawnPublisher(config, caseConfig) {
     `--ice-mode=${caseConfig.iceMode}`,
     `--window=${caseConfig.windowFilter}`
   ];
+  if (caseConfig.diagnosticsOut) {
+    args.push(`--diagnostics-out=${caseConfig.diagnosticsOut}`);
+  }
 
   if (config.videoEncoder) {
     args.push(`--video-encoder=${config.videoEncoder}`);
@@ -477,6 +487,30 @@ async function waitForPublisherLog(publisher, pattern, timeoutMs) {
   }
   const output = publisherOutputText(publisher);
   return { ok: false, outputTail: output.trim().split(/\r?\n/).slice(-80).join('\n') };
+}
+
+async function waitForSelectedPathDiagnostics(diagnosticsPath, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    try {
+      if (fs.existsSync(diagnosticsPath)) {
+        const raw = fs.readFileSync(diagnosticsPath, 'utf8');
+        const parsed = JSON.parse(raw);
+        const selectedPath = parsed && parsed.signaling
+          ? String(parsed.signaling.selected_ice_path || '')
+          : '';
+        last = { raw, parsed, selectedPath };
+        if (['HOST', 'STUN', 'TURN/RELAY'].includes(selectedPath)) {
+          return { ok: true, ...last };
+        }
+      }
+    } catch (error) {
+      last = { error: error && error.message ? error.message : String(error) };
+    }
+    await wait(500);
+  }
+  return { ok: false, state: last };
 }
 
 async function createCaptureSource(runLabel, sourceWarmupMs) {
@@ -667,13 +701,11 @@ async function collectPeerSnapshot(page, uuid) {
       } : null,
       localCandidate: localCandidate ? {
         candidateType: localCandidate.candidateType || localCandidate.type || '',
-        protocol: localCandidate.protocol || '',
-        address: localCandidate.address || localCandidate.ip || ''
+        protocol: localCandidate.protocol || ''
       } : null,
       remoteCandidate: remoteCandidate ? {
         candidateType: remoteCandidate.candidateType || remoteCandidate.type || '',
-        protocol: remoteCandidate.protocol || '',
-        address: remoteCandidate.address || remoteCandidate.ip || ''
+        protocol: remoteCandidate.protocol || ''
       } : null,
       inboundAudio: inboundAudio ? {
         packetsReceived: Number(inboundAudio.packetsReceived || 0),
@@ -843,6 +875,9 @@ function writeReport(config, startedAt, finishedAt, results) {
     if (entry.iceSummary) {
       lines.push(`- ICE summary: ${entry.iceSummary}`);
     }
+    if (entry.selectedIcePath) {
+      lines.push(`- Selected ICE path: ${entry.selectedIcePath}`);
+    }
     if (entry.offerSummary) {
       lines.push(`- Offer summary: ${entry.offerSummary}`);
     }
@@ -895,7 +930,8 @@ async function executeCase(config, caseDef) {
     viewerDiagnostics: null,
     viewerConsole: [],
     publisherOutput: '',
-    windowFilter: ''
+    windowFilter: '',
+    selectedIcePath: ''
   };
 
   let source = null;
@@ -908,12 +944,18 @@ async function executeCase(config, caseDef) {
   try {
     source = await createCaptureSource(`${config.streamBase}_${caseDef.name}`, config.sourceWarmupMs);
     result.windowFilter = source.windowTitle;
+    fs.mkdirSync(config.reportDir, { recursive: true });
+    const diagnosticsPath = path.join(
+      config.reportDir,
+      `ice-diagnostics-${caseDef.name}-${Date.now()}.json`
+    );
 
     publisher = spawnPublisher(config, {
       streamId,
       label: `${config.label}-${caseDef.name}`,
       iceMode: caseDef.iceMode,
-      windowFilter: source.windowTitle
+      windowFilter: source.windowTitle,
+      diagnosticsOut: diagnosticsPath
     });
 
     assertOk((await waitForPublisherLog(publisher, /\[Headless\] Found .* capturing:/i, 20000)).ok,
@@ -964,6 +1006,24 @@ async function executeCase(config, caseDef) {
     const playable = await waitForPlayablePeer(page, peerUuid, config.timeoutMs, caseDef);
     assertOk(playable.ok, `${caseDef.name}: did not reach playable media state`, playable.snapshot || playable);
     result.initialSnapshot = playable.snapshot;
+    const diagnostics = await waitForSelectedPathDiagnostics(
+      diagnosticsPath,
+      Math.max(10000, Math.floor(config.timeoutMs / 3))
+    );
+    assertOk(diagnostics.ok, `${caseDef.name}: publisher diagnostics never reported a selected ICE path`, diagnostics.state);
+    result.selectedIcePath = diagnostics.selectedPath;
+    assertOk(!/"(?:address|ip|local_address|remote_address)"\s*:/i.test(diagnostics.raw),
+      `${caseDef.name}: publisher diagnostics persisted an ICE address`);
+    if (caseDef.iceMode === 'relay') {
+      assertOk(result.selectedIcePath === 'TURN/RELAY',
+        `${caseDef.name}: relay-only connection was not classified as TURN/RELAY`, diagnostics.parsed.signaling);
+    } else if (caseDef.iceMode === 'host-only') {
+      assertOk(result.selectedIcePath === 'HOST' || result.selectedIcePath === 'STUN',
+        `${caseDef.name}: host-only connection reported an impossible path`, diagnostics.parsed.signaling);
+    } else if (caseDef.iceMode === 'stun-only') {
+      assertOk(result.selectedIcePath === 'HOST' || result.selectedIcePath === 'STUN',
+        `${caseDef.name}: STUN-only connection reported TURN/RELAY`, diagnostics.parsed.signaling);
+    }
 
     await wait(config.holdMs);
     await ensureMediaElementsPlaying(page);

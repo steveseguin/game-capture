@@ -85,10 +85,18 @@ async function cleanupFirefoxChild(child, profilePath, gracefulWaitMs = 1000) {
   } catch (error) {
     cleanupErrors.push(error);
   }
-  try {
-    if (fs.existsSync(profilePath)) fs.rmSync(profilePath, { recursive: true, force: true });
-  } catch (error) {
-    cleanupErrors.push(error);
+  let profileCleanupError = null;
+  for (let attempt = 0; attempt < 50 && fs.existsSync(profilePath); attempt += 1) {
+    try {
+      fs.rmSync(profilePath, { recursive: true, force: true });
+      profileCleanupError = null;
+    } catch (error) {
+      profileCleanupError = error;
+      await wait(100);
+    }
+  }
+  if (profileCleanupError && fs.existsSync(profilePath)) {
+    cleanupErrors.push(profileCleanupError);
   }
   if (cleanupErrors.length > 0) {
     throw new AggregateError(cleanupErrors, 'Installed Firefox cleanup failed');

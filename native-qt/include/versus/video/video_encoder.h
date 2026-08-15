@@ -47,6 +47,9 @@ enum class EncodeFailureKind {
 struct EncoderConfig {
     VideoCodec codec = VideoCodec::H264;
     HardwareEncoder preferredHardware = HardwareEncoder::NVENC;
+    // Auto is vendor-neutral and may fall back to software. When this is true,
+    // preferredHardware is a strict user selection and may not change category.
+    bool explicitEncoderSelection = false;
     bool forceFfmpegNvenc = false;
     std::string ffmpegPath;
     std::string ffmpegOptions;
@@ -193,6 +196,9 @@ class VideoEncoder {
     VideoCodec activeCodec() const;
     std::string activeCodecName() const;
     std::string activeEncoderName() const;
+    std::string requestedEncoderMode() const;
+    std::string activeEncoderCategory() const;
+    std::string encoderFallbackReason() const;
     std::string activeInputFormatName() const;
     bool isHardwareEncoderActive() const;
     EncodeFailureKind lastEncodeFailureKind() const;
@@ -207,8 +213,10 @@ class VideoEncoder {
     struct Impl;
     std::unique_ptr<Impl> impl_;
     EncoderConfig config_;
+    EncoderConfig requestedConfig_;
     PacketCallback packetCallback_;
     bool initialized_ = false;
+    std::string fallbackReason_;
     std::atomic<bool> protectedPacketContractHealthy_{false};
 };
 

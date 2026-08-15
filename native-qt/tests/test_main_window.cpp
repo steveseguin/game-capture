@@ -236,6 +236,9 @@ private slots:
     void testIceModeOptions();
     void testIceModeMapping_data();
     void testIceModeMapping();
+    void testPersistedIceModePreserved_data();
+    void testPersistedIceModePreserved();
+    void testInvalidPersistedIceModeDefaultsToAuto();
     void testAudioSourceOptions();
     void testAudioMixControls();
     void testRoomModeQualityToggle();
@@ -684,7 +687,7 @@ void TestMainWindow::testIceModeOptions() {
     auto *iceModeCombo = window_->findChild<QComboBox*>("iceModeSelect");
     QVERIFY(iceModeCombo != nullptr);
     QCOMPARE(iceModeCombo->count(), 4);
-    QCOMPARE(iceModeCombo->currentData().toString(), QString("stun-only"));
+    QCOMPARE(iceModeCombo->currentData().toString(), QString("all"));
     QVERIFY(iceModeCombo->findData("all") >= 0);
     QVERIFY(iceModeCombo->findData("relay") >= 0);
 }
@@ -701,6 +704,8 @@ void TestMainWindow::testIceModeMapping_data() {
                                  << static_cast<int>(versus::webrtc::IceMode::Relay);
     QTest::newRow("host-only") << QString("host-only")
                                 << static_cast<int>(versus::webrtc::IceMode::HostOnly);
+    QTest::newRow("invalid-defaults-to-auto") << QString("invalid")
+                                               << static_cast<int>(versus::webrtc::IceMode::All);
 }
 
 void TestMainWindow::testIceModeMapping() {
@@ -708,6 +713,43 @@ void TestMainWindow::testIceModeMapping() {
     QFETCH(int, expectedMode);
 
     QCOMPARE(static_cast<int>(versus::ui::MainWindow::iceModeFromUiValue(uiValue)), expectedMode);
+}
+
+void TestMainWindow::testPersistedIceModePreserved_data() {
+    QTest::addColumn<QString>("savedMode");
+    QTest::newRow("auto") << QStringLiteral("all");
+    QTest::newRow("direct-stun") << QStringLiteral("stun-only");
+    QTest::newRow("relay") << QStringLiteral("relay");
+    QTest::newRow("host") << QStringLiteral("host-only");
+}
+
+void TestMainWindow::testPersistedIceModePreserved() {
+    QFETCH(QString, savedMode);
+    delete window_;
+    window_ = nullptr;
+
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.setValue("network/iceMode", savedMode);
+    settings.sync();
+
+    window_ = new versus::ui::MainWindow(nullptr);
+    auto *iceModeCombo = window_->findChild<QComboBox *>("iceModeSelect");
+    QVERIFY(iceModeCombo != nullptr);
+    QCOMPARE(iceModeCombo->currentData().toString(), savedMode);
+}
+
+void TestMainWindow::testInvalidPersistedIceModeDefaultsToAuto() {
+    delete window_;
+    window_ = nullptr;
+
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.setValue("network/iceMode", "invalid-mode");
+    settings.sync();
+
+    window_ = new versus::ui::MainWindow(nullptr);
+    auto *iceModeCombo = window_->findChild<QComboBox *>("iceModeSelect");
+    QVERIFY(iceModeCombo != nullptr);
+    QCOMPARE(iceModeCombo->currentData().toString(), QStringLiteral("all"));
 }
 
 void TestMainWindow::testAudioSourceOptions() {
@@ -2024,7 +2066,7 @@ void TestMainWindow::testConnectionHealthPanelExists() {
     QVERIFY(systemLabel != nullptr);
     QVERIFY(issueLabel != nullptr);
     QVERIFY(healthLabel->text().contains("ICE"));
-    QVERIFY(healthLabel->text().contains("Candidates"));
+    QVERIFY(healthLabel->text().contains("Selected path"));
     QVERIFY(mediaLabel->text().contains("Codec"));
     QVERIFY(systemLabel->text().contains("System"));
     QVERIFY(systemLabel->text().contains("CPU"));

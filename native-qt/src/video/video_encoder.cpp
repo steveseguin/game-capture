@@ -475,6 +475,7 @@ bool shouldRetryH264NvencWithFfmpeg(const EncoderConfig &config,
                                     const std::string &activeEncoderName,
                                     bool hardwareEncoderActive) {
     if (config.codec != VideoCodec::H264 ||
+        !config.explicitEncoderSelection ||
         config.preferredHardware != HardwareEncoder::NVENC ||
         config.forceFfmpegNvenc) {
         return false;
@@ -511,6 +512,83 @@ const char *videoCodecName(VideoCodec codec) {
         default:
             return "Unknown";
     }
+}
+
+std::string toLowerCopy(std::string value);
+
+const char *requestedEncoderModeName(const EncoderConfig &config) {
+    if (!config.explicitEncoderSelection) {
+        return "Auto";
+    }
+    switch (config.preferredHardware) {
+        case HardwareEncoder::NVENC:
+            return config.forceFfmpegNvenc ? "NVIDIA (FFmpeg NVENC)" : "NVIDIA";
+        case HardwareEncoder::QuickSync:
+            return "Intel";
+        case HardwareEncoder::AMF:
+            return "AMD";
+        case HardwareEncoder::None:
+        default:
+            return "Software";
+    }
+}
+
+bool encoderMatchesExplicitSelection(const EncoderConfig &config,
+                                     const std::string &encoderName,
+                                     bool hardware) {
+    if (!config.explicitEncoderSelection) {
+        return true;
+    }
+    if (config.preferredHardware == HardwareEncoder::None) {
+        return !hardware;
+    }
+    if (!hardware) {
+        return false;
+    }
+    const std::string lower = toLowerCopy(encoderName);
+    switch (config.preferredHardware) {
+        case HardwareEncoder::NVENC:
+            return lower.find("nvidia") != std::string::npos ||
+                   lower.find("nvenc") != std::string::npos ||
+                   lower.find("geforce") != std::string::npos;
+        case HardwareEncoder::QuickSync:
+            return lower.find("intel") != std::string::npos ||
+                   lower.find("quick sync") != std::string::npos ||
+                   lower.find("qsv") != std::string::npos;
+        case HardwareEncoder::AMF:
+            return lower.find("amd") != std::string::npos ||
+                   lower.find("radeon") != std::string::npos ||
+                   lower.find("amf") != std::string::npos;
+        case HardwareEncoder::None:
+        default:
+            return false;
+    }
+}
+
+std::string encoderCategoryName(const std::string &encoderName, bool hardware) {
+    if (encoderName.empty()) {
+        return "Unavailable";
+    }
+    if (!hardware) {
+        return "Software";
+    }
+    const std::string lower = toLowerCopy(encoderName);
+    if (lower.find("nvidia") != std::string::npos ||
+        lower.find("nvenc") != std::string::npos ||
+        lower.find("geforce") != std::string::npos) {
+        return "NVIDIA";
+    }
+    if (lower.find("intel") != std::string::npos ||
+        lower.find("quick sync") != std::string::npos ||
+        lower.find("qsv") != std::string::npos) {
+        return "Intel";
+    }
+    if (lower.find("amd") != std::string::npos ||
+        lower.find("radeon") != std::string::npos ||
+        lower.find("amf") != std::string::npos) {
+        return "AMD";
+    }
+    return "Hardware";
 }
 
 std::string trimCopyForPath(const std::string &value) {
@@ -1442,31 +1520,12 @@ class VideoEncoder::Impl {
             setActiveEncoderName(externalEncoderName_);
             activeCodec_.store(config_.codec, std::memory_order_relaxed);
             if (!runWarmupProbeAndPrepareLivePipeline()) {
-                bool recovered = false;
-                if (config_.codec != VideoCodec::H264 &&
-                    config_.preferredHardware != HardwareEncoder::None) {
-                    spdlog::warn("[VideoEncoder] {} hardware path failed warm-up; trying software fallback",
-                                 videoCodecName(config_.codec));
-                    shutdownExternalFfmpegNvenc();
-                    config_.preferredHardware = HardwareEncoder::None;
-                    if (initializeExternalFfmpegNvenc()) {
-                        initialized_ = true;
-                        usingHardware_ = externalUsingHardware_;
-                        setActiveEncoderName(externalEncoderName_);
-                        activeCodec_.store(config_.codec, std::memory_order_relaxed);
-                        recovered = runWarmupProbeAndPrepareLivePipeline();
-                    }
-                }
-                if (!recovered) {
-                    spdlog::warn("[VideoEncoder] FFmpeg warm-up probe failed; falling back to Media Foundation");
-                    shutdownExternalFfmpegNvenc();
-                    initialized_ = false;
-                    usingHardware_ = false;
-                    setActiveEncoderName("");
-                    activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
-                } else {
-                    frameCount_ = 0;
-                }
+                spdlog::warn("[VideoEncoder] FFmpeg warm-up probe failed");
+                shutdownExternalFfmpegNvenc();
+                initialized_ = false;
+                usingHardware_ = false;
+                setActiveEncoderName("");
+                activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
             } else {
                 frameCount_ = 0;
             }
@@ -1600,6 +1659,7 @@ class VideoEncoder::Impl {
                 initialized_ = true;
 
                 if (!config_.forceFfmpegNvenc &&
+                    config_.explicitEncoderSelection &&
                     config_.preferredHardware == HardwareEncoder::NVENC &&
                     !matchesPreferredHardware(activeEncoderName(), HardwareEncoder::NVENC)) {
                     spdlog::warn(
@@ -4388,19 +4448,26 @@ class VideoEncoder::Impl {
             }
         };
 
-        if (preferred == HardwareEncoder::None) {
-            appendMatching(softwareEncoders, [](const EncoderCandidate &) { return true; });
+        if (!config_.explicitEncoderSelection &&
+            preferred != HardwareEncoder::None) {
+            // Auto is vendor-neutral: accept any healthy hardware encoder in
+            // the order provided by Media Foundation, then software.
             appendMatching(hardwareEncoders, [](const EncoderCandidate &) { return true; });
+            appendMatching(softwareEncoders, [](const EncoderCandidate &) { return true; });
+        } else if (preferred == HardwareEncoder::None) {
+            // Explicit Software, and Auto's internal software fallback, must
+            // never silently resolve back to hardware.
+            appendMatching(softwareEncoders, [](const EncoderCandidate &) { return true; });
         } else {
-            // Try explicit matches first. If the driver exposes only a generic
-            // hardware MFT name, prefer that before a known wrong-vendor MFT.
+            // Explicit vendor selections accept only a confirmed match.
             std::stable_sort(hardwareEncoders.begin(), hardwareEncoders.end(),
                              [&](const EncoderCandidate &left, const EncoderCandidate &right) {
                                  return hardwarePreferenceScore(left, preferred) <
                                         hardwarePreferenceScore(right, preferred);
                              });
-            appendMatching(hardwareEncoders, [](const EncoderCandidate &) { return true; });
-            appendMatching(softwareEncoders, [](const EncoderCandidate &) { return true; });
+            appendMatching(hardwareEncoders, [&](const EncoderCandidate &candidate) {
+                return matchesPreferredHardware(candidate.name, preferred);
+            });
         }
 
         return ordered;
@@ -4621,25 +4688,68 @@ VideoEncoder::~VideoEncoder() { shutdown(); }
 
 bool VideoEncoder::initialize(const EncoderConfig &config) {
     config_ = config;
+    requestedConfig_ = config;
+    fallbackReason_.clear();
     if (config_.codec == VideoCodec::VP9 && config_.requireEveryFrameKeyframe) {
         config_.gopSize = 1;
         config_.bFrames = 0;
         config_.lowLatency = true;
     }
-    initialized_ = impl_->initialize(config_);
-    if (initialized_ && detail::shouldRetryH264NvencWithFfmpeg(
-                            config_,
-                            impl_->activeEncoderName(),
-                            impl_->isHardwareEncoder())) {
+    if (config_.explicitEncoderSelection &&
+        config_.codec == VideoCodec::VP9 &&
+        config_.preferredHardware != HardwareEncoder::None) {
+        spdlog::error(
+            "[VideoEncoder] Requested encoder mode {} cannot provide VP9; refusing software category fallback",
+            requestedEncoderModeName(config_));
+        initialized_ = false;
+        return false;
+    }
+
+    auto initializeCandidate = [this](const EncoderConfig &candidate) {
+        impl_->shutdown();
+        if (!impl_->initialize(candidate)) {
+            return false;
+        }
+        config_ = candidate;
+        return true;
+    };
+
+    if (!config_.explicitEncoderSelection && config_.codec != VideoCodec::H264) {
+        const EncoderConfig requested = config_;
+        const std::array<HardwareEncoder, 4> candidates = {
+            HardwareEncoder::NVENC,
+            HardwareEncoder::QuickSync,
+            HardwareEncoder::AMF,
+            HardwareEncoder::None};
+        initialized_ = false;
+        for (const HardwareEncoder candidateMode : candidates) {
+            if (requested.codec == VideoCodec::VP9 && candidateMode != HardwareEncoder::None) {
+                continue;
+            }
+            EncoderConfig candidate = requested;
+            candidate.preferredHardware = candidateMode;
+            if (initializeCandidate(candidate)) {
+                initialized_ = true;
+                break;
+            }
+        }
+    } else {
+        initialized_ = initializeCandidate(config_);
+    }
+
+    const EncoderConfig requestedConfig = config;
+    if (detail::shouldRetryH264NvencWithFfmpeg(
+            requestedConfig,
+            impl_->activeEncoderName(),
+            initialized_ && impl_->isHardwareEncoder())) {
         const std::string mediaFoundationEncoder = impl_->activeEncoderName();
-        EncoderConfig ffmpegNvencConfig = config_;
+        EncoderConfig ffmpegNvencConfig = requestedConfig;
         ffmpegNvencConfig.forceFfmpegNvenc = true;
         spdlog::warn(
             "[VideoEncoder] Requested NVENC resolved to unconfirmed encoder '{}'; trying FFmpeg h264_nvenc",
-            mediaFoundationEncoder);
+            mediaFoundationEncoder.empty() ? "unavailable" : mediaFoundationEncoder);
 
-        impl_->shutdown();
-        if (impl_->initialize(ffmpegNvencConfig) &&
+        if (initializeCandidate(ffmpegNvencConfig) &&
             impl_->isHardwareEncoder() &&
             !detail::shouldRetryH264NvencWithFfmpeg(
                 ffmpegNvencConfig,
@@ -4647,16 +4757,36 @@ bool VideoEncoder::initialize(const EncoderConfig &config) {
                 impl_->isHardwareEncoder())) {
             config_ = std::move(ffmpegNvencConfig);
             initialized_ = true;
+            fallbackReason_ = "NVIDIA Media Foundation was unavailable; using FFmpeg NVENC.";
             spdlog::info(
                 "[VideoEncoder] NVENC fallback active: {}",
                 impl_->activeEncoderName());
         } else {
-            spdlog::warn(
-                "[VideoEncoder] FFmpeg h264_nvenc fallback failed; restoring Media Foundation encoder '{}'",
-                mediaFoundationEncoder);
+            spdlog::error(
+                "[VideoEncoder] Explicit NVIDIA selection failed; FFmpeg h264_nvenc was unavailable or unhealthy");
             impl_->shutdown();
-            initialized_ = impl_->initialize(config_);
+            config_ = requestedConfig;
+            initialized_ = false;
         }
+    }
+    if (initialized_ && !encoderMatchesExplicitSelection(
+                            requestedConfig,
+                            impl_->activeEncoderName(),
+                            impl_->isHardwareEncoder())) {
+        spdlog::error(
+            "[VideoEncoder] Requested encoder mode {} resolved to disallowed category '{}' via '{}'; rejecting",
+            requestedEncoderModeName(requestedConfig),
+            encoderCategoryName(impl_->activeEncoderName(), impl_->isHardwareEncoder()),
+            impl_->activeEncoderName());
+        impl_->shutdown();
+        config_ = requestedConfig;
+        initialized_ = false;
+    }
+    if (initialized_ && !requestedConfig.explicitEncoderSelection &&
+        !impl_->isHardwareEncoder()) {
+        fallbackReason_ = requestedConfig.codec == VideoCodec::VP9
+            ? "No supported hardware VP9 path is available; Auto selected software."
+            : "No healthy supported hardware encoder was available; Auto selected software.";
     }
     protectedPacketContractHealthy_.store(
         initialized_ && config_.requireEveryFrameKeyframe &&
@@ -4679,6 +4809,7 @@ bool VideoEncoder::initialize(const EncoderConfig &config) {
 void VideoEncoder::shutdown() {
     impl_->shutdown();
     initialized_ = false;
+    fallbackReason_.clear();
     protectedPacketContractHealthy_.store(false, std::memory_order_relaxed);
 }
 
@@ -4735,6 +4866,18 @@ std::string VideoEncoder::activeCodecName() const {
 
 std::string VideoEncoder::activeEncoderName() const {
     return impl_->activeEncoderName();
+}
+
+std::string VideoEncoder::requestedEncoderMode() const {
+    return requestedEncoderModeName(requestedConfig_);
+}
+
+std::string VideoEncoder::activeEncoderCategory() const {
+    return encoderCategoryName(impl_->activeEncoderName(), impl_->isHardwareEncoder());
+}
+
+std::string VideoEncoder::encoderFallbackReason() const {
+    return fallbackReason_;
 }
 
 std::string VideoEncoder::activeInputFormatName() const {

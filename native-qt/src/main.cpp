@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
     versus::app::VideoSourceMode videoSourceMode = versus::app::VideoSourceMode::Window;
     versus::app::AudioSourceMode audioSourceMode = versus::app::AudioSourceMode::SelectedWindow;
     std::string audioSourceArg = "selected-window";
-    versus::webrtc::IceMode iceMode = versus::webrtc::IceMode::StunOnly;
+    versus::webrtc::IceMode iceMode = versus::webrtc::IceMode::All;
     int width = 0;
     int height = 0;
     int fps = 0;
@@ -602,23 +602,31 @@ int main(int argc, char *argv[]) {
 
         if (normalized == "nvenc" || normalized == "nvidia") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::NVENC;
+            encoderOverride.explicitEncoderSelection = true;
             hasVideoConfigOverride = true;
         } else if (normalized == "ffmpeg" || normalized == "ffmpeg_nvenc") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::NVENC;
+            encoderOverride.explicitEncoderSelection = true;
             encoderOverride.forceFfmpegNvenc = true;
             spdlog::warn("[Main] External FFmpeg NVENC mode is experimental; prefer --video-encoder=nvenc for production.");
             hasVideoConfigOverride = true;
         } else if (normalized == "qsv" || normalized == "quicksync" || normalized == "intel") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::QuickSync;
+            encoderOverride.explicitEncoderSelection = true;
             hasVideoConfigOverride = true;
         } else if (normalized == "amf" || normalized == "amd") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::AMF;
+            encoderOverride.explicitEncoderSelection = true;
             hasVideoConfigOverride = true;
         } else if (normalized == "software" || normalized == "none") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::None;
+            encoderOverride.explicitEncoderSelection = true;
+            hasVideoConfigOverride = true;
+        } else if (normalized == "auto") {
+            encoderOverride.explicitEncoderSelection = false;
             hasVideoConfigOverride = true;
         } else {
-            spdlog::warn("[Main] Unknown --video-encoder value '{}'; expected nvenc|qsv|amf|software|ffmpeg", videoEncoderArg);
+            spdlog::warn("[Main] Unknown --video-encoder value '{}'; expected auto|nvenc|qsv|amf|software|ffmpeg", videoEncoderArg);
         }
     }
 
@@ -905,4 +913,3 @@ int main(int argc, char *argv[]) {
     core.shutdown();
     return result;
 }
-
