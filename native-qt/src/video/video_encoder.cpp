@@ -471,6 +471,27 @@ bool protectedVp9RuntimeContractHealthy(
         mostRecentProtectedPacketHealthy;
 }
 
+bool shouldRetryH264NvencWithFfmpeg(const EncoderConfig &config,
+                                    const std::string &activeEncoderName,
+                                    bool hardwareEncoderActive) {
+    if (config.codec != VideoCodec::H264 ||
+        config.preferredHardware != HardwareEncoder::NVENC ||
+        config.forceFfmpegNvenc) {
+        return false;
+    }
+
+    std::string normalizedEncoder = activeEncoderName;
+    std::transform(
+        normalizedEncoder.begin(),
+        normalizedEncoder.end(),
+        normalizedEncoder.begin(),
+        [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    const bool confirmedNvidia =
+        normalizedEncoder.find("nvidia") != std::string::npos ||
+        normalizedEncoder.find("nvenc") != std::string::npos;
+    return !hardwareEncoderActive || !confirmedNvidia;
+}
+
 }  // namespace detail
 
 namespace {
@@ -4606,6 +4627,37 @@ bool VideoEncoder::initialize(const EncoderConfig &config) {
         config_.lowLatency = true;
     }
     initialized_ = impl_->initialize(config_);
+    if (initialized_ && detail::shouldRetryH264NvencWithFfmpeg(
+                            config_,
+                            impl_->activeEncoderName(),
+                            impl_->isHardwareEncoder())) {
+        const std::string mediaFoundationEncoder = impl_->activeEncoderName();
+        EncoderConfig ffmpegNvencConfig = config_;
+        ffmpegNvencConfig.forceFfmpegNvenc = true;
+        spdlog::warn(
+            "[VideoEncoder] Requested NVENC resolved to unconfirmed encoder '{}'; trying FFmpeg h264_nvenc",
+            mediaFoundationEncoder);
+
+        impl_->shutdown();
+        if (impl_->initialize(ffmpegNvencConfig) &&
+            impl_->isHardwareEncoder() &&
+            !detail::shouldRetryH264NvencWithFfmpeg(
+                ffmpegNvencConfig,
+                impl_->activeEncoderName(),
+                impl_->isHardwareEncoder())) {
+            config_ = std::move(ffmpegNvencConfig);
+            initialized_ = true;
+            spdlog::info(
+                "[VideoEncoder] NVENC fallback active: {}",
+                impl_->activeEncoderName());
+        } else {
+            spdlog::warn(
+                "[VideoEncoder] FFmpeg h264_nvenc fallback failed; restoring Media Foundation encoder '{}'",
+                mediaFoundationEncoder);
+            impl_->shutdown();
+            initialized_ = impl_->initialize(config_);
+        }
+    }
     protectedPacketContractHealthy_.store(
         initialized_ && config_.requireEveryFrameKeyframe &&
             impl_->activeCodec() == VideoCodec::VP9 &&

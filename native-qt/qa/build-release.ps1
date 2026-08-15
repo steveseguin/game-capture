@@ -601,7 +601,9 @@ $sourceProvenance = Get-ReleaseSourceProvenance -SourceRoot $repoRoot
 if ($sourceProvenance.snapshotSha256 -cne $ExpectedSourceSnapshotSha256 -or
     [int64]$sourceProvenance.snapshotFileCount -ne $ExpectedSourceSnapshotFileCount -or
     $sourceProvenance.snapshotAlgorithm -cne $ExpectedSourceSnapshotAlgorithm) {
-    throw "Release source snapshot changed between orchestration and packaging."
+    throw "Release source snapshot changed between orchestration and packaging. " +
+        "Expected sha256=$ExpectedSourceSnapshotSha256 fileCount=$ExpectedSourceSnapshotFileCount algorithm='$ExpectedSourceSnapshotAlgorithm'; " +
+        "actual sha256=$($sourceProvenance.snapshotSha256) fileCount=$($sourceProvenance.snapshotFileCount) algorithm='$($sourceProvenance.snapshotAlgorithm)'."
 }
 if ($sourceProvenance.gitCommit -notmatch '^(?:[0-9a-f]{40}|[0-9a-f]{64})$') {
     throw "Release source provenance requires a lowercase Git commit object id."

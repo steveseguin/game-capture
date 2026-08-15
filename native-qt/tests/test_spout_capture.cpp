@@ -148,6 +148,7 @@ class TestSpoutCapture : public QObject {
 
   private slots:
     void testFfmpegProbeIsBoundedAndCached();
+    void testUnconfirmedNvencRequestsRetryWithFfmpeg();
     void testMediaFoundationWarmupCannotLeakProbeIdentity();
     void testBundledFfmpegHelpSurfaceIsCoveredByProtectedPolicy();
     void testProtectedVp9RuntimeContractUsesLivePackets();
@@ -157,6 +158,28 @@ class TestSpoutCapture : public QObject {
     void testContinuesAfterSenderResize();
     void testContinuesAfterSenderRestartWithSameName();
 };
+
+void TestSpoutCapture::testUnconfirmedNvencRequestsRetryWithFfmpeg() {
+    versus::video::EncoderConfig config;
+    config.codec = versus::video::VideoCodec::H264;
+    config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+
+    QVERIFY(versus::video::detail::shouldRetryH264NvencWithFfmpeg(
+        config, "H264 Encoder MFT", true));
+    QVERIFY(versus::video::detail::shouldRetryH264NvencWithFfmpeg(
+        config, "libx264", false));
+    QVERIFY(!versus::video::detail::shouldRetryH264NvencWithFfmpeg(
+        config, "NVIDIA H.264 Encoder MFT", true));
+
+    config.forceFfmpegNvenc = true;
+    QVERIFY(!versus::video::detail::shouldRetryH264NvencWithFfmpeg(
+        config, "FFmpeg h264_nvenc", true));
+
+    config.forceFfmpegNvenc = false;
+    config.preferredHardware = versus::video::HardwareEncoder::QuickSync;
+    QVERIFY(!versus::video::detail::shouldRetryH264NvencWithFfmpeg(
+        config, "H264 Encoder MFT", true));
+}
 
 void TestSpoutCapture::testFfmpegProbeIsBoundedAndCached() {
     const QString helperPath =

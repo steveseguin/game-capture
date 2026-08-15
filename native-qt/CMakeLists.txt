@@ -1,6 +1,13 @@
 ﻿cmake_minimum_required(VERSION 3.24)
 project(game-capture-native-qt VERSION 0.2.49 LANGUAGES CXX)
 
+# CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
+# declares a 3.1 minimum, so give bundled dependencies the modern floor
+# without requiring developers to pass an extra configure flag.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "4.0")
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)

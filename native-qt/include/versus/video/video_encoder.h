@@ -164,6 +164,13 @@ bool protectedVp9RuntimeContractHealthy(bool initialized,
                                         const std::string &activeEncoderName,
                                         bool mostRecentProtectedPacketHealthy);
 
+// A vendor-neutral Media Foundation MFT can be enumerated as hardware even
+// when the requested NVIDIA MFT failed. Use the bundled FFmpeg NVENC path to
+// preserve the user's explicit NVENC choice in that case.
+bool shouldRetryH264NvencWithFfmpeg(const EncoderConfig &config,
+                                    const std::string &activeEncoderName,
+                                    bool hardwareEncoderActive);
+
 }  // namespace detail
 
 class VideoEncoder {

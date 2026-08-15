@@ -1,7 +1,7 @@
 param(
-    [string]$ReleaseTag = "autobuild-2026-07-07-13-44",
-    [string]$AssetName = "ffmpeg-n8.1.2-22-g94138f6973-win64-lgpl-shared-8.1.zip",
-    [string]$ExpectedSha256 = "86db305478bd15928c3f71ebab7cee11a2affc73d580cd35e4c9c635cbaedaf9",
+    [string]$ReleaseTag = "autobuild-2026-07-31-14-10",
+    [string]$AssetName = "ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip",
+    [string]$ExpectedSha256 = "c222a490dde4e7059f45495deef6bfb98dbcacc2b43df5b607546252037aa95c",
     [string]$OutputRoot = "",
     [string]$CacheDir = "",
     [switch]$Force = $false
