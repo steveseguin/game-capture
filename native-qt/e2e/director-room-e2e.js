@@ -1087,7 +1087,7 @@ async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = tru
   // Current VDO.Ninja displays Game Capture's rejection `message` verbatim.
   // Keep accepting the legacy generic copy while hosted VDO deployments roll forward.
   const recognizedRejection =
-    /not authorized|not supported|cannot be changed|only available to|request failed|did not recognize you as the director/i;
+    /not authorized|not supported|not publishing|not applicable|cannot be changed|only available to|request failed|did not recognize you as the director/i;
   if (!recognizedRejection.test(text)) {
     return { ok: false, stage: 'unexpected-alert', state: { text } };
   }
@@ -2760,11 +2760,18 @@ async function run() {
     if (!meshUiRequest.ok) {
       throw Object.assign(new Error('VDO mesh report request failed'), { result: meshUiRequest });
     }
-    await check('director-mesh-ui-consumes-connection-map', () => waitForDirectorMeshNode(
-      page,
-      uuid,
-      Math.max(10000, Math.floor(config.timeoutMs / 3))
-    ));
+    await check('director-mesh-ui-consumes-connection-map', async () => {
+      const node = await waitForDirectorMeshNode(
+        page,
+        uuid,
+        Math.max(10000, Math.floor(config.timeoutMs / 3))
+      );
+      // Hosted VDO can briefly show its legacy Director-recognition modal even
+      // after it consumes a successful connection map. The payload assertion
+      // above and healthy rendered node are authoritative for Game Capture.
+      const alerts = await settleUnsupportedAlerts(page, 2000);
+      return { ok: node.ok && alerts.ok, state: { node, alerts } };
+    });
 
     const settingsMessageCount = await getDirectorProbeMessageCount(page);
     const directorSettingsRequest = await sendDirectorRequest(page, uuid, {
