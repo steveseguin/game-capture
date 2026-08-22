@@ -4271,6 +4271,11 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
         return;
     }
 
+    std::lock_guard<std::mutex> infoSendLock(peer->dataInfoSendMutex);
+    if (!peer->client || !peer->client->isDataChannelOpen()) {
+        return;
+    }
+
     const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
     const PeerRole peerRole = peer->role.load(std::memory_order_relaxed);
     const bool roleValid = peer->roleValid.load(std::memory_order_relaxed);
@@ -4602,7 +4607,8 @@ void VersusApp::sendPeerMediaDevices(const std::shared_ptr<PeerSession> &peer) {
         return;
     }
 
-    const std::string selectedWindowId = lifecycleStateSnapshot().selectedWindowId;
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+    const std::string selectedWindowId = lifecycleState.selectedWindowId;
     nlohmann::json devices = nlohmann::json::array();
     devices.push_back({
         {"deviceId", selectedWindowId.empty() ? "game-capture-window" : selectedWindowId},
@@ -4611,20 +4617,197 @@ void VersusApp::sendPeerMediaDevices(const std::shared_ptr<PeerSession> &peer) {
         {"groupId", "game-capture"}
     });
 
-    const auto inputDevices = microphoneAudioCapture_.GetInputDevices();
-    for (const auto &device : inputDevices) {
-        devices.push_back({
-            {"deviceId", device.id.empty() ? "default" : device.id},
-            {"kind", "audioinput"},
-            {"label", device.name.empty() ? "Microphone/input device" : device.name},
-            {"groupId", device.isDefault ? "default-audioinput" : "audioinput"}
-        });
+    const bool microphoneAvailable =
+        lifecycleState.audioSourceMode == AudioSourceMode::DefaultMicrophone ||
+        lifecycleState.includeMicrophone;
+    if (microphoneAvailable) {
+        const auto inputDevices = microphoneAudioCapture_.GetInputDevices();
+        for (const auto &device : inputDevices) {
+            devices.push_back({
+                {"deviceId", device.id.empty() ? "default" : device.id},
+                {"kind", "audioinput"},
+                {"label", device.name.empty() ? "Microphone/input device" : device.name},
+                {"groupId", device.isDefault ? "default-audioinput" : "audioinput"}
+            });
+        }
     }
 
     nlohmann::json msg;
     msg["UUID"] = peer->uuid;
     msg["mediaDevices"] = devices;
     peer->client->sendDataMessage(msg.dump());
+}
+
+void VersusApp::sendPeerConnectionMap(
+    const std::shared_ptr<PeerSession> &requestingPeer,
+    const nlohmann::json &request,
+    bool authorized) {
+    if (!requestingPeer || !requestingPeer->client ||
+        !requestingPeer->client->isDataChannelOpen()) {
+        return;
+    }
+
+    const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+    const std::string sourceStreamId = lifecycleState.streamId.empty()
+        ? std::string("game-capture")
+        : lifecycleState.streamId;
+    const std::string sourceLabel = lifecycleState.startOptions.label.empty()
+        ? sourceStreamId
+        : lifecycleState.startOptions.label;
+    const bool microphoneAvailable =
+        lifecycleState.audioSourceMode == AudioSourceMode::DefaultMicrophone ||
+        lifecycleState.includeMicrophone;
+
+    nlohmann::json connectionMap;
+    connectionMap["status"] = authorized ? "ok" : "rejected";
+    connectionMap["uuid"] = sourceStreamId;
+    connectionMap["streamID"] = sourceStreamId;
+    connectionMap["label"] = sourceLabel;
+    connectionMap["browser"] = std::string("Game Capture ") + APP_VERSION;
+    connectionMap["runtime"] = {
+        {"name", "Game Capture Native Qt"},
+        {"version", APP_VERSION},
+#if defined(_WIN32)
+        {"platform", "Windows"}
+#else
+        {"platform", "Unknown"}
+#endif
+    };
+    connectionMap["source"] = {
+        {"streamID", sourceStreamId},
+        {"type", videoSourceModeName(lifecycleState.videoSourceMode)},
+        {"label", sourceLabel},
+        {"sourceId", lifecycleState.selectedWindowId},
+        {"capturing", capturing_.load(std::memory_order_relaxed)}
+    };
+    // The UUID carried in the request identifies the requested guest from the
+    // director's side. The peer UUID here is the director identity as observed
+    // by Game Capture, which is what VDO.Ninja uses to join this edge back to
+    // the director node.
+    connectionMap["requesterUUID"] = requestingPeer->uuid;
+    if (request.contains("meshRequestId")) {
+        connectionMap["meshRequestId"] = request["meshRequestId"];
+    }
+
+    connectionMap["capabilities"] = {
+        {"videoTrack", true},
+        {"audioTrack", lifecycleState.audioSourceMode != AudioSourceMode::None ||
+                           lifecycleState.includeMicrophone},
+        {"microphone", microphoneAvailable},
+        {"whip", false},
+        {"whipRestart", false},
+        {"recoveryActions", nlohmann::json::array({"refreshConnection", "refreshAll"})}
+    };
+    connectionMap["whip"] = {
+        {"active", false},
+        {"restartSupported", false}
+    };
+    connectionMap["connections"] = nlohmann::json::array();
+
+    if (!authorized) {
+        connectionMap["message"] = "Connection diagnostics are only available to the room director.";
+        requestingPeer->rejectedControlCount.fetch_add(1, std::memory_order_relaxed);
+        recordPeerEvent(requestingPeer, "rejected-control getConnectionMap");
+    } else {
+        std::vector<std::shared_ptr<PeerSession>> peers;
+        {
+            std::lock_guard<std::mutex> lock(peerSessionsMutex_);
+            peers.reserve(peerSessions_.size());
+            for (const auto &entry : peerSessions_) {
+                if (entry.second) {
+                    peers.push_back(entry.second);
+                }
+            }
+        }
+
+        for (const auto &peer : peers) {
+            if (!peer) {
+                continue;
+            }
+
+            webrtc::ConnectionState state = webrtc::ConnectionState::Disconnected;
+            webrtc::SelectedIcePath selectedPath = webrtc::SelectedIcePath::Unknown;
+            bool activeVideoTrack = false;
+            bool activeAudioTrack = false;
+            {
+                std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+                if (peer->client) {
+                    state = peer->client->connectionState();
+                    selectedPath = peer->client->selectedIcePath();
+                    activeVideoTrack = peer->client->hasActiveVideoTrack();
+                    activeAudioTrack = peer->client->hasActiveAudioTrack();
+                }
+            }
+
+            const char *candidateType = "unknown";
+            switch (selectedPath) {
+                case webrtc::SelectedIcePath::Host:
+                    candidateType = "host";
+                    break;
+                case webrtc::SelectedIcePath::Stun:
+                    candidateType = "srflx";
+                    break;
+                case webrtc::SelectedIcePath::TurnRelay:
+                    candidateType = "relay";
+                    break;
+                case webrtc::SelectedIcePath::Unknown:
+                default:
+                    break;
+            }
+
+            nlohmann::json connection = {
+                {"peerUUID", peer->uuid},
+                {"peerStreamID", peer->uuid},
+                {"direction", "outgoing"},
+                {"state", connectionStateName(state)},
+                {"iceState", connectionStateName(state)},
+                {"candidateType", candidateType},
+                {"icePath", webrtc::selectedIcePathName(selectedPath)},
+                {"transport", "webrtc"},
+                {"bandwidth", -1},
+                {"audioEnabled", peer->audioEnabled.load(std::memory_order_relaxed) &&
+                                     activeAudioTrack},
+                {"videoEnabled", peer->videoEnabled.load(std::memory_order_relaxed) &&
+                                     activeVideoTrack},
+                {"bytesSent", peer->videoBytesSent.load(std::memory_order_relaxed) +
+                                  peer->audioBytesSent.load(std::memory_order_relaxed)},
+                {"bytesReceived", 0},
+                {"videoBytesSent", peer->videoBytesSent.load(std::memory_order_relaxed)},
+                {"videoFramesSent", peer->videoFramesSent.load(std::memory_order_relaxed)},
+                {"audioBytesSent", peer->audioBytesSent.load(std::memory_order_relaxed)},
+                {"audioPacketsSent", peer->audioPacketsSent.load(std::memory_order_relaxed)},
+                {"receiveTrafficSupported", false},
+                {"nackCount", 0},
+                {"pliCount", 0}
+            };
+            connectionMap["connections"].push_back(std::move(connection));
+        }
+    }
+
+    nlohmann::json response;
+    response["connectionMap"] = std::move(connectionMap);
+    if (request.contains("meshRequestId")) {
+        response["meshRequestId"] = request["meshRequestId"];
+    }
+    if (!authorized) {
+        response["rejected"] = "getConnectionMap";
+        response["message"] = "Connection diagnostics are only available to the room director.";
+    }
+
+    const bool sent = requestingPeer->client->sendDataMessage(response.dump());
+    if (sent) {
+        spdlog::info("[App] Sent source-specific connection map to {}:{} source={} status={}",
+                     requestingPeer->uuid,
+                     requestingPeer->session,
+                     sourceStreamId,
+                     authorized ? "ok" : "rejected");
+    } else {
+        spdlog::warn("[App] Failed to send connection map to {}:{} source={} status={}",
+                     requestingPeer->uuid,
+                     requestingPeer->session,
+                     sourceStreamId,
+                     authorized ? "ok" : "rejected");
+    }
 }
 
 void VersusApp::sendPeerMediaDeviceChange(const std::shared_ptr<PeerSession> &peer,
@@ -4858,6 +5041,11 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
         peer->rejectedControlCount.fetch_add(1, std::memory_order_relaxed);
         recordPeerEvent(peer, std::string("rejected-control ") + (rejectedName ? rejectedName : "unknown"));
+        spdlog::warn("[App] Sending rejected control {} to {}:{} message={}",
+                     rejectedName ? rejectedName : "unknown",
+                     peer->uuid,
+                     peer->session,
+                     message ? message : "");
         peer->client->sendDataMessage(rejected.dump());
     };
 
@@ -4968,12 +5156,30 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             spdlog::warn("[App] Rejected unauthorized changeMicrophone from {}", peer->uuid);
             sendRejectedControl("changeMicrophone", "Remote microphone changes are not authorized.");
         } else {
+            const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
+            const bool microphoneAvailable =
+                lifecycleState.audioSourceMode == AudioSourceMode::DefaultMicrophone ||
+                lifecycleState.includeMicrophone;
+            const std::string currentDeviceId = lifecycleState.microphoneDeviceId.empty()
+                ? std::string("default")
+                : lifecycleState.microphoneDeviceId;
+            const bool sameDevice =
+                microphoneAvailable &&
+                (deviceId.empty() || deviceId == currentDeviceId);
             sendPeerMediaDeviceChange(
                 peer,
                 "microphone",
-                false,
+                sameDevice,
                 deviceId,
-                "Changing microphone devices live from VDO.Ninja Control Center is not supported.");
+                sameDevice
+                    ? ""
+                    : (microphoneAvailable
+                           ? "Changing microphone devices live from VDO.Ninja Control Center is not supported."
+                           : "Game Capture is not publishing a microphone track."));
+            if (sameDevice) {
+                sendPeerAudioOptions(peer);
+                sendPeerMediaDevices(peer);
+            }
         }
     }
     if (msg.contains("changeSpeaker")) {
@@ -5049,9 +5255,12 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         spdlog::warn("[App] Rejected unsupported VDO control mirrorGuestState from {}", peer->uuid);
         sendRejectedControl("mirrorGuestState", "This VDO.Ninja Control Center command is not supported by Game Capture.");
     }
-    if (msg.contains("getConnectionMap")) {
-        spdlog::warn("[App] Rejected unsupported VDO control getConnectionMap from {}", peer->uuid);
-        sendRejectedControl("getConnectionMap", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+    if (msg.contains("getConnectionMap") && jsonBoolLike(msg["getConnectionMap"], true)) {
+        if (!directorAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized VDO control getConnectionMap from {}", peer->uuid);
+        }
+        sendPeerConnectionMap(peer, msg, directorAuthorized);
+        return;
     }
     if (msg.contains("reconnectPeer")) {
         spdlog::warn("[App] Rejected unsupported VDO control reconnectPeer from {}", peer->uuid);
@@ -6227,6 +6436,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
                 primaryPtsSentThisCall.push_back(packet.pts);
+                peer->videoBytesSent.fetch_add(packet.data.size(), std::memory_order_relaxed);
+                peer->videoFramesSent.fetch_add(1, std::memory_order_relaxed);
                 advanceMonotonic(peer->lastPrimaryPtsSent, packet.pts);
                 sentWidth = primaryFrameWidth;
                 sentHeight = primaryFrameHeight;
@@ -6401,6 +6612,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
                 continue;
             }
+            peer->videoBytesSent.fetch_add(alphaPacket.data.size(), std::memory_order_relaxed);
             alphaPacketsSent_.fetch_add(1, std::memory_order_relaxed);
             if (!result.primarySent) {
                 videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
@@ -6419,6 +6631,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             sentAny = true;
             videoBytesSentThisCall += primaryPacket.data.size();
             primaryPtsSentThisCall.push_back(primaryPacket.pts);
+            peer->videoBytesSent.fetch_add(primaryPacket.data.size(), std::memory_order_relaxed);
+            peer->videoFramesSent.fetch_add(1, std::memory_order_relaxed);
             advanceMonotonic(peer->lastPrimaryPtsSent, primaryPacket.pts);
             sentWidth = primaryFrameWidth;
             sentHeight = primaryFrameHeight;
@@ -6458,6 +6672,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
                 primaryPtsSentThisCall.push_back(packet.pts);
+                peer->videoBytesSent.fetch_add(packet.data.size(), std::memory_order_relaxed);
+                peer->videoFramesSent.fetch_add(1, std::memory_order_relaxed);
                 advanceMonotonic(peer->lastPrimaryPtsSent, packet.pts);
                 if (sentWidth <= 0 || sentHeight <= 0) {
                     sentWidth = kLqWidth;
@@ -7403,6 +7619,8 @@ void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket 
         if (peer->client->sendAudio(packet)) {
             bytesSent += packet.data.size();
             packetsSent++;
+            peer->audioBytesSent.fetch_add(packet.data.size(), std::memory_order_relaxed);
+            peer->audioPacketsSent.fetch_add(1, std::memory_order_relaxed);
         } else {
             audioSendFailures_.fetch_add(1, std::memory_order_relaxed);
         }

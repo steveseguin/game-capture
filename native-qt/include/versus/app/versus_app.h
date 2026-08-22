@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <nlohmann/json_fwd.hpp>
+
 #include "versus/signaling/vdo_signaling.h"
 #include "versus/app/alpha_frame_pairer.h"
 #include "versus/app/dual_stream_policy.h"
@@ -348,6 +350,9 @@ class VersusApp {
     void sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer);
     void sendPeerVideoOptions(const std::shared_ptr<PeerSession> &peer);
     void sendPeerMediaDevices(const std::shared_ptr<PeerSession> &peer);
+    void sendPeerConnectionMap(const std::shared_ptr<PeerSession> &requestingPeer,
+                               const nlohmann::json &request,
+                               bool authorized);
     void sendPeerMediaDeviceChange(const std::shared_ptr<PeerSession> &peer,
                                    const char *kind,
                                    bool ok,
@@ -678,6 +683,10 @@ class VersusApp {
         std::atomic<int> localCandidateSendFailures{0};
         std::atomic<int> remoteCandidatesApplied{0};
         std::atomic<int> rejectedControlCount{0};
+        std::atomic<uint64_t> videoBytesSent{0};
+        std::atomic<uint64_t> videoFramesSent{0};
+        std::atomic<uint64_t> audioBytesSent{0};
+        std::atomic<uint64_t> audioPacketsSent{0};
         std::atomic<bool> duplicateOfferRecheckPending{false};
         std::atomic<uint64_t> duplicateOfferRechecksScheduled{0};
         std::atomic<uint64_t> duplicateOfferRechecksCoalesced{0};
@@ -700,6 +709,9 @@ class VersusApp {
         // Serializes WebRtcClient use with async teardown. Recursive re-entry
         // is needed for callbacks delivered synchronously by libdatachannel.
         std::recursive_mutex clientOperationMutex;
+        // Preserve info-message ordering across the maintenance thread and
+        // Control Center handlers so an older snapshot cannot arrive last.
+        std::mutex dataInfoSendMutex;
         bool sessionInitializing = true;
         bool removed = false;
         bool offerCreationInProgress = false;

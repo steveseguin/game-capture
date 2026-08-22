@@ -1428,6 +1428,45 @@ async function getDirectorProbeMessageCount(page) {
   });
 }
 
+async function requestDirectorMeshReport(page) {
+  return page.evaluate(() => {
+    if (typeof window.requestMeshData !== 'function') {
+      return { ok: false, reason: 'requestMeshData-unavailable' };
+    }
+    window.requestMeshData();
+    return { ok: true };
+  });
+}
+
+async function waitForDirectorMeshNode(page, uuid, timeoutMs) {
+  const start = Date.now();
+  let last = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await page.evaluate((peerUuid) => {
+      const mesh = window.meshData || null;
+      const node = mesh && mesh.nodes ? mesh.nodes[peerUuid] : null;
+      return node ? {
+        ok: node.health === 'healthy' &&
+          String(node.browser || '').startsWith('Game Capture ') &&
+          Array.isArray(node.connections) &&
+          node.connections.some((connection) => connection && connection.state === 'connected'),
+        node: {
+          streamID: node.streamID || '',
+          label: node.label || '',
+          browser: node.browser || '',
+          health: node.health || '',
+          connectionCount: Array.isArray(node.connections) ? node.connections.length : 0
+        }
+      } : { ok: false, node: null };
+    }, uuid);
+    if (last && last.ok) {
+      return { ok: true, state: last };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'director-mesh-node', state: last };
+}
+
 async function waitForDirectorSettingsPayload(page, timeoutMs, minMessageCount = 0) {
   const start = Date.now();
   let last = null;
@@ -2599,6 +2638,67 @@ async function run() {
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
 
+    const meshRequestId = `connection-map-${Date.now()}`;
+    const connectionMapProbeStart = await getDirectorProbeMessageCount(page);
+    const connectionMapRequest = await sendDirectorRequest(page, uuid, {
+      getConnectionMap: true,
+      UUID: uuid,
+      meshRequestId
+    });
+    if (!connectionMapRequest.ok) {
+      throw Object.assign(new Error('getConnectionMap sendRequest failed'), { result: connectionMapRequest });
+    }
+    await check('director-source-specific-connection-map', () => waitForProbeMessage(
+      page,
+      `(entry) => {
+        const msg = entry && entry.message;
+        const map = msg && msg.connectionMap;
+        const connections = map && Array.isArray(map.connections) ? map.connections : [];
+        return map &&
+          map.status === 'ok' &&
+          msg.meshRequestId === '${meshRequestId}' &&
+          map.meshRequestId === '${meshRequestId}' &&
+          map.streamID === '${config.streamId}' &&
+          map.label === '${config.label}' &&
+          String(map.browser || '').startsWith('Game Capture ') &&
+          map.runtime && map.runtime.name === 'Game Capture Native Qt' &&
+          map.runtime.version && map.runtime.platform === 'Windows' &&
+          map.source && map.source.streamID === '${config.streamId}' &&
+          map.source.type === '${config.source}' &&
+          map.source.label === '${config.label}' &&
+          String(map.requesterUUID || '').length > 0 &&
+          map.capabilities && map.capabilities.videoTrack === true &&
+          map.capabilities.microphone === ${config.includeMicrophone || config.audioSource === 'default-microphone'} &&
+          map.capabilities.whip === false &&
+          map.capabilities.whipRestart === false &&
+          Array.isArray(map.capabilities.recoveryActions) &&
+          map.capabilities.recoveryActions.includes('refreshConnection') &&
+          map.whip && map.whip.active === false && map.whip.restartSupported === false &&
+          connections.some((connection) =>
+            connection &&
+            connection.peerUUID === map.requesterUUID &&
+            connection.direction === 'outgoing' &&
+            connection.state === 'connected' &&
+            ['host', 'srflx', 'relay'].includes(connection.candidateType) &&
+            ['HOST', 'STUN', 'TURN/RELAY'].includes(connection.icePath) &&
+            connection.transport === 'webrtc' &&
+            Number(connection.bytesSent) > 0 &&
+            Number(connection.videoFramesSent) > 0);
+      }`,
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      connectionMapProbeStart
+    ));
+
+    const meshUiRequest = await requestDirectorMeshReport(page);
+    if (!meshUiRequest.ok) {
+      throw Object.assign(new Error('VDO mesh report request failed'), { result: meshUiRequest });
+    }
+    await check('director-mesh-ui-consumes-connection-map', () => waitForDirectorMeshNode(
+      page,
+      uuid,
+      Math.max(10000, Math.floor(config.timeoutMs / 3))
+    ));
+
     const settingsMessageCount = await getDirectorProbeMessageCount(page);
     const directorSettingsRequest = await sendDirectorRequest(page, uuid, {
       getAudioSettings: true,
@@ -2612,6 +2712,18 @@ async function run() {
       Math.max(10000, Math.floor(config.timeoutMs / 3)),
       settingsMessageCount
     ));
+    if (!config.includeMicrophone && config.audioSource !== 'default-microphone') {
+      await check('director-does-not-advertise-phantom-microphone', () => waitForProbeMessage(
+        page,
+        `(entry) => {
+          const msg = entry && entry.message;
+          return msg && Array.isArray(msg.mediaDevices) &&
+            msg.mediaDevices.every((device) => device && device.kind !== 'audioinput');
+        }`,
+        Math.max(10000, Math.floor(config.timeoutMs / 3)),
+        settingsMessageCount
+      ));
+    }
 
     const oneShotStatsRequest = await sendDirectorRequest(page, uuid, {
       requestStats: true
