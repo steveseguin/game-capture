@@ -1084,7 +1084,11 @@ async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = tru
       : { ok: true, state: { visible: false } };
   }
   const text = String(await modal.innerText()).trim();
-  if (!/request failed|did not recognize you as the director/i.test(text)) {
+  // Current VDO.Ninja displays Game Capture's rejection `message` verbatim.
+  // Keep accepting the legacy generic copy while hosted VDO deployments roll forward.
+  const recognizedRejection =
+    /not authorized|not supported|cannot be changed|only available to|request failed|did not recognize you as the director/i;
+  if (!recognizedRejection.test(text)) {
     return { ok: false, stage: 'unexpected-alert', state: { text } };
   }
   const close = modal.locator('.modalClose, .close, button, [role="button"]').first();
