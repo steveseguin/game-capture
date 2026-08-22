@@ -3630,7 +3630,7 @@ bool VersusApp::isControlMessageAuthorized(const std::shared_ptr<PeerSession> &p
         peer->roomMode &&
         peer->roleValid.load(std::memory_order_relaxed) &&
         peer->role.load(std::memory_order_relaxed) == PeerRole::Director) {
-        return true;
+        return remoteControlEnabled_.load(std::memory_order_relaxed);
     }
 
     if (!remoteControlEnabled_.load(std::memory_order_relaxed)) {
@@ -4705,6 +4705,7 @@ void VersusApp::sendPeerConnectionMap(
     connectionMap["connections"] = nlohmann::json::array();
 
     if (!authorized) {
+        connectionMap["reason"] = "unauthorized";
         connectionMap["message"] = "Connection diagnostics are only available to the room director.";
         requestingPeer->rejectedControlCount.fetch_add(1, std::memory_order_relaxed);
         recordPeerEvent(requestingPeer, "rejected-control getConnectionMap");
@@ -4791,6 +4792,7 @@ void VersusApp::sendPeerConnectionMap(
     }
     if (!authorized) {
         response["rejected"] = "getConnectionMap";
+        response["reason"] = "unauthorized";
         response["message"] = "Connection diagnostics are only available to the room director.";
     }
 
@@ -4835,6 +4837,7 @@ void VersusApp::sendPeerMediaDeviceChange(const std::shared_ptr<PeerSession> &pe
         } else if (kind && std::string(kind) == "speaker") {
             msg["rejected"] = "changeSpeaker";
         }
+        msg["reason"] = "unsupported";
         msg["message"] = error.empty() ? "Device change is not supported by Game Capture." : error;
     }
     peer->client->sendDataMessage(msg.dump());
@@ -5033,18 +5036,25 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         peer->roomMode &&
         peer->roleValid.load(std::memory_order_relaxed) &&
         peer->role.load(std::memory_order_relaxed) == PeerRole::Director;
-    auto sendRejectedControl = [this, &peer](const char *rejectedName, const char *message) {
+    const bool sharedControlAuthorized = directorAuthorized
+        ? remoteControlEnabled_.load(std::memory_order_relaxed)
+        : controlAuthorized;
+    auto sendRejectedControl = [this, &peer](const char *rejectedName,
+                                             const char *reason,
+                                             const char *message) {
         nlohmann::json rejected;
         rejected["rejected"] = rejectedName;
+        rejected["reason"] = reason;
         if (message && *message) {
             rejected["message"] = message;
         }
         peer->rejectedControlCount.fetch_add(1, std::memory_order_relaxed);
         recordPeerEvent(peer, std::string("rejected-control ") + (rejectedName ? rejectedName : "unknown"));
-        spdlog::warn("[App] Sending rejected control {} to {}:{} message={}",
+        spdlog::warn("[App] Sending rejected control {} to {}:{} reason={} message={}",
                      rejectedName ? rejectedName : "unknown",
                      peer->uuid,
                      peer->session,
+                     reason ? reason : "unknown",
                      message ? message : "");
         peer->client->sendDataMessage(rejected.dump());
     };
@@ -5074,10 +5084,21 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                          requestAsTarget);
             return;
         }
-        if (!controlAuthorized) {
+        if (!sharedControlAuthorized) {
             spdlog::warn("[App] Ignoring unauthorized requestAs control from {} for '{}'",
                          peer->uuid,
                          requestAsTarget);
+            const char *rejectedName = msg.contains("targetBitrate")
+                ? "targetBitrate"
+                : (msg.contains("optimizedBitrate")
+                       ? "optimizedBitrate"
+                       : (msg.contains("targetAudioBitrate")
+                              ? "targetAudioBitrate"
+                              : "requestResolution"));
+            sendRejectedControl(
+                rejectedName,
+                "unauthorized",
+                "This shared-stream control is not authorized.");
             return;
         }
     }
@@ -5085,7 +5106,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("hangup")) {
         if (!controlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized VDO hangup from {}", peer->uuid);
-            sendRejectedControl("hangup", "Remote hangup is not authorized.");
+            sendRejectedControl("hangup", "unauthorized", "Remote hangup is not authorized.");
         } else {
             spdlog::info("[App] Remote hangup requested by {}:{}; stopping stream", peer->uuid, peer->session);
             stopLive();
@@ -5098,6 +5119,18 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (audioSettingsRequested || videoSettingsRequested) {
         if (!directorAuthorized) {
             spdlog::warn("[App] Rejected unauthorized Control Center settings request from {}", peer->uuid);
+            if (audioSettingsRequested) {
+                sendRejectedControl(
+                    "getAudioSettings",
+                    "unauthorized",
+                    "Audio settings are only available to the room director.");
+            }
+            if (videoSettingsRequested) {
+                sendRejectedControl(
+                    "getVideoSettings",
+                    "unauthorized",
+                    "Video settings are only available to the room director.");
+            }
         } else {
             if (audioSettingsRequested) {
                 sendPeerAudioOptions(peer);
@@ -5109,9 +5142,12 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
     }
     if (msg.contains("refreshMicrophone")) {
-        if (!directorAuthorized) {
+        if (!directorAuthorized || !sharedControlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized refreshMicrophone from {}", peer->uuid);
-            sendRejectedControl("refreshMicrophone", "Remote microphone refresh is not authorized.");
+            sendRejectedControl(
+                "refreshMicrophone",
+                "unauthorized",
+                "Remote microphone refresh is not authorized.");
         } else {
             sendPeerAudioOptions(peer);
             sendPeerMediaDevices(peer);
@@ -5120,16 +5156,16 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("refreshVideo")) {
         if (!controlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized refreshVideo from {}", peer->uuid);
-            sendRejectedControl("refreshVideo", "Remote video refresh is not authorized.");
+            sendRejectedControl("refreshVideo", "unauthorized", "Remote video refresh is not authorized.");
         } else {
             sendPeerVideoOptions(peer);
             sendPeerMediaDevices(peer);
         }
     }
     if (msg.contains("changeCamera")) {
-        if (!directorAuthorized) {
+        if (!directorAuthorized || !sharedControlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized changeCamera from {}", peer->uuid);
-            sendRejectedControl("changeCamera", "Remote camera changes are not authorized.");
+            sendRejectedControl("changeCamera", "unauthorized", "Remote camera changes are not authorized.");
         } else {
             const std::string deviceId = msg["changeCamera"].is_string() ? msg["changeCamera"].get<std::string>() : "";
             const std::string selectedWindowId = lifecycleStateSnapshot().selectedWindowId;
@@ -5152,9 +5188,12 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("changeMicrophone")) {
         const std::string deviceId =
             msg["changeMicrophone"].is_string() ? msg["changeMicrophone"].get<std::string>() : "";
-        if (!directorAuthorized) {
+        if (!directorAuthorized || !sharedControlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized changeMicrophone from {}", peer->uuid);
-            sendRejectedControl("changeMicrophone", "Remote microphone changes are not authorized.");
+            sendRejectedControl(
+                "changeMicrophone",
+                "unauthorized",
+                "Remote microphone changes are not authorized.");
         } else {
             const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
             const bool microphoneAvailable =
@@ -5185,9 +5224,9 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("changeSpeaker")) {
         const std::string deviceId =
             msg["changeSpeaker"].is_string() ? msg["changeSpeaker"].get<std::string>() : "";
-        if (!directorAuthorized) {
+        if (!directorAuthorized || !sharedControlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized changeSpeaker from {}", peer->uuid);
-            sendRejectedControl("changeSpeaker", "Remote speaker changes are not authorized.");
+            sendRejectedControl("changeSpeaker", "unauthorized", "Remote speaker changes are not authorized.");
         } else {
             sendPeerMediaDeviceChange(
                 peer,
@@ -5240,20 +5279,32 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     for (const char *unsupportedKey : unsupportedVdoControlKeys) {
         if (msg.contains(unsupportedKey)) {
             spdlog::warn("[App] Rejected unsupported VDO control {} from {}", unsupportedKey, peer->uuid);
-            sendRejectedControl(unsupportedKey, "This VDO.Ninja Control Center command is not supported by Game Capture.");
+            sendRejectedControl(
+                unsupportedKey,
+                "unsupported",
+                "This VDO.Ninja Control Center command is not supported by Game Capture.");
         }
     }
     if (msg.contains("group")) {
         spdlog::warn("[App] Rejected unsupported VDO control group from {}", peer->uuid);
-        sendRejectedControl("group", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+        sendRejectedControl(
+            "group",
+            "unsupported",
+            "This VDO.Ninja Control Center command is not supported by Game Capture.");
     }
     if (msg.contains("rotate")) {
         spdlog::warn("[App] Rejected unsupported VDO control rotate from {}", peer->uuid);
-        sendRejectedControl("rotate", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+        sendRejectedControl(
+            "rotate",
+            "unsupported",
+            "This VDO.Ninja Control Center command is not supported by Game Capture.");
     }
     if (msg.contains("mirrorGuestState") && msg.contains("mirrorGuestTarget")) {
         spdlog::warn("[App] Rejected unsupported VDO control mirrorGuestState from {}", peer->uuid);
-        sendRejectedControl("mirrorGuestState", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+        sendRejectedControl(
+            "mirrorGuestState",
+            "unsupported",
+            "This VDO.Ninja Control Center command is not supported by Game Capture.");
     }
     if (msg.contains("getConnectionMap") && jsonBoolLike(msg["getConnectionMap"], true)) {
         if (!directorAuthorized) {
@@ -5264,7 +5315,10 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     }
     if (msg.contains("reconnectPeer")) {
         spdlog::warn("[App] Rejected unsupported VDO control reconnectPeer from {}", peer->uuid);
-        sendRejectedControl("reconnectPeer", "This VDO.Ninja Control Center command is not supported by Game Capture.");
+        sendRejectedControl(
+            "reconnectPeer",
+            "unsupported",
+            "This VDO.Ninja Control Center command is not supported by Game Capture.");
     }
 
     const bool hasInlineInitFields =
@@ -5453,14 +5507,15 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     bool directorMediaStateChanged = false;
     bool directorMediaStateAuthorized = true;
     if (msg.contains("remoteVideoMuted") || msg.contains("volume")) {
-        directorMediaStateAuthorized = directorAuthorized;
+        directorMediaStateAuthorized = directorAuthorized && sharedControlAuthorized;
     }
     if (msg.contains("remoteVideoMuted")) {
         if (!directorMediaStateAuthorized) {
             spdlog::warn("[App] Rejected unauthorized remoteVideoMuted from {}", peer->uuid);
-            nlohmann::json rejected;
-            rejected["rejected"] = "remoteVideoMuted";
-            peer->client->sendDataMessage(rejected.dump());
+            sendRejectedControl(
+                "remoteVideoMuted",
+                "unauthorized",
+                "Remote video mute control is not authorized.");
         } else {
             const bool muted = jsonBoolLike(msg["remoteVideoMuted"], false);
             peer->videoEnabled.store(!muted, std::memory_order_relaxed);
@@ -5477,9 +5532,10 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     if (msg.contains("volume")) {
         if (!directorMediaStateAuthorized) {
             spdlog::warn("[App] Rejected unauthorized volume control from {}", peer->uuid);
-            nlohmann::json rejected;
-            rejected["rejected"] = "volume";
-            peer->client->sendDataMessage(rejected.dump());
+            sendRejectedControl(
+                "volume",
+                "unauthorized",
+                "Remote audio mute control is not authorized.");
         } else {
             const int volume = jsonIntLike(msg["volume"], 100);
             const bool muted = volume <= 0;
@@ -5517,6 +5573,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             if (!peerVideoRouteRejected) {
                 sendRejectedControl(
                     controlName,
+                    "unsupported",
                     "Per-peer Low/High quality selection is not supported; video uses its assigned stream tier.");
                 peerVideoRouteRejected = true;
             }
@@ -5546,12 +5603,12 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         peerMediaRateChanged = true;
     }
     if (msg.contains("targetBitrate")) {
-        const bool sharedBitrateAuthorized = directorAuthorized
-            ? remoteControlEnabled_.load(std::memory_order_relaxed)
-            : controlAuthorized;
-        if (!sharedBitrateAuthorized) {
+        if (!sharedControlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized targetBitrate from {}", peer->uuid);
-            sendRejectedControl("targetBitrate", "Shared-stream bitrate control is not authorized.");
+            sendRejectedControl(
+                "targetBitrate",
+                "unauthorized",
+                "Shared-stream bitrate control is not authorized.");
         } else {
             const bool unlockTargetBitrate =
                 msg["targetBitrate"].is_boolean() && !msg["targetBitrate"].get<bool>();
@@ -5579,15 +5636,23 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         }
     }
     if (msg.contains("targetAudioBitrate")) {
-        const bool unlockTargetAudioBitrate =
-            msg["targetAudioBitrate"].is_boolean() && !msg["targetAudioBitrate"].get<bool>();
-        const int requestedAudioBitrate =
-            unlockTargetAudioBitrate ? -1 : jsonIntLike(msg["targetAudioBitrate"], -1);
-        if (unlockTargetAudioBitrate || requestedAudioBitrate > 0) {
-            peer->requestedAudioBitrateKbps.store(requestedAudioBitrate, std::memory_order_relaxed);
-            peerMediaRateChanged = true;
-            if (!applyRuntimeAudioControl(requestedAudioBitrate)) {
-                spdlog::warn("[App] Failed to apply data-channel audio bitrate request from {}", peer->uuid);
+        if (!sharedControlAuthorized) {
+            spdlog::warn("[App] Rejected unauthorized targetAudioBitrate from {}", peer->uuid);
+            sendRejectedControl(
+                "targetAudioBitrate",
+                "unauthorized",
+                "Shared-stream audio bitrate control is not authorized.");
+        } else {
+            const bool unlockTargetAudioBitrate =
+                msg["targetAudioBitrate"].is_boolean() && !msg["targetAudioBitrate"].get<bool>();
+            const int requestedAudioBitrate =
+                unlockTargetAudioBitrate ? -1 : jsonIntLike(msg["targetAudioBitrate"], -1);
+            if (unlockTargetAudioBitrate || requestedAudioBitrate > 0) {
+                peer->requestedAudioBitrateKbps.store(requestedAudioBitrate, std::memory_order_relaxed);
+                peerMediaRateChanged = true;
+                if (!applyRuntimeAudioControl(requestedAudioBitrate)) {
+                    spdlog::warn("[App] Failed to apply data-channel audio bitrate request from {}", peer->uuid);
+                }
             }
         }
     }
@@ -5604,10 +5669,34 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     int requestedFps = 0;
     bool vdoScaleResolutionRequest = false;
     bool vdoScaleResolutionCover = false;
-    if (action == "bitrate" && actionValue) {
+    const bool actionRequestsResolution =
+        action == "requestresolution" ||
+        action == "setwidth" ||
+        action == "width" ||
+        action == "setheight" ||
+        action == "height";
+    const bool actionRequestsBitrate = action == "bitrate" && actionValue;
+    const bool messageRequestsResolution = msg.contains("requestResolution");
+    const bool globalVideoControlDenied =
+        (actionRequestsResolution || actionRequestsBitrate || messageRequestsResolution) &&
+        !sharedControlAuthorized;
+    if (globalVideoControlDenied) {
+        const bool bitrateControlDenied = actionRequestsBitrate && !messageRequestsResolution;
+        spdlog::warn("[App] Rejected unauthorized shared video control {} from {}",
+                     bitrateControlDenied ? "bitrate" : "requestResolution",
+                     peer->uuid);
+        sendRejectedControl(
+            bitrateControlDenied ? "bitrate" : "requestResolution",
+            "unauthorized",
+            bitrateControlDenied
+                ? "Shared-stream bitrate control is not authorized."
+                : "Shared-stream resolution control is not authorized.");
+    }
+    if (!globalVideoControlDenied && actionRequestsBitrate) {
         requestedBitrate = jsonIntLike(*actionValue, 0);
     }
-    if (msg.contains("requestResolution") && msg["requestResolution"].is_object()) {
+    if (!globalVideoControlDenied &&
+        msg.contains("requestResolution") && msg["requestResolution"].is_object()) {
         const auto &resolution = msg["requestResolution"];
         vdoScaleResolutionRequest = resolution.contains("w") || resolution.contains("h");
         if (resolution.contains("c")) {
@@ -5624,10 +5713,11 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         } else if (resolution.contains("fps")) {
             requestedFps = jsonIntLike(resolution["fps"], 0);
         }
-    } else if (msg.contains("requestResolution") && msg["requestResolution"].is_string()) {
+    } else if (!globalVideoControlDenied &&
+               msg.contains("requestResolution") && msg["requestResolution"].is_string()) {
         parseResolutionString(msg["requestResolution"].get<std::string>(), requestedWidth, requestedHeight);
     }
-    if (action == "requestresolution" && actionValue) {
+    if (!globalVideoControlDenied && action == "requestresolution" && actionValue) {
         if (actionValue->is_string()) {
             parseResolutionString(actionValue->get<std::string>(), requestedWidth, requestedHeight);
         } else if (actionValue->is_object()) {
@@ -5644,19 +5734,23 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             }
         }
     }
-    if ((action == "setwidth" || action == "width") && actionValue) {
+    if (!globalVideoControlDenied &&
+        (action == "setwidth" || action == "width") && actionValue) {
         requestedWidth = jsonIntLike(*actionValue, requestedWidth);
     }
-    if ((action == "setheight" || action == "height") && actionValue) {
+    if (!globalVideoControlDenied &&
+        (action == "setheight" || action == "height") && actionValue) {
         requestedHeight = jsonIntLike(*actionValue, requestedHeight);
     }
 
     bool videoSettingsControlRequested = false;
     if (msg.contains("requestVideoHack")) {
-        const std::string token = controlTokenFromMessage();
-
-        if (!isControlMessageAuthorized(peer, token)) {
+        if (!sharedControlAuthorized) {
             spdlog::warn("[App] Rejected unauthorized requestVideoHack from {}", peer->uuid);
+            sendRejectedControl(
+                "requestVideoHack",
+                "unauthorized",
+                "Remote video settings control is not authorized.");
         } else {
             const std::string keyName = msg.contains("keyname") && msg["keyname"].is_string()
                 ? toLowerCopy(msg["keyname"].get<std::string>())
@@ -5681,6 +5775,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             } else {
                 nlohmann::json rejected;
                 rejected["rejected"] = "requestVideoHack";
+                rejected["reason"] = "unsupported";
                 rejected["message"] = "This Game Capture setting cannot be changed from VDO.Ninja Control Center.";
                 if (!keyName.empty()) {
                     rejected["keyname"] = keyName;
@@ -5733,6 +5828,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
             spdlog::warn("[App] Rejected unauthorized connection refresh from {}", peer->uuid);
             sendRejectedControl(
                 refreshAllRequested ? "refreshAll" : "refreshConnection",
+                "unauthorized",
                 refreshAllRequested
                     ? "Remote full refresh is not authorized."
                     : "Remote connection refresh is not authorized.");

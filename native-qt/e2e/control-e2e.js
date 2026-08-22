@@ -757,6 +757,42 @@ async function waitForProbeMessageField(page, timeoutMs, field, expectedValue, m
   return { ok: false, stage: `${field}-message`, state: lastState };
 }
 
+async function waitForRejectedControl(page, timeoutMs, control, reason, minMessageCount = 0) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate(({ expectedControl, expectedReason, minCount }) => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const candidates = messages.slice(Math.max(0, minCount));
+      const success = candidates.find((entry) => {
+        const message = entry && entry.message ? entry.message : null;
+        return message &&
+          message.rejected === expectedControl &&
+          message.reason === expectedReason &&
+          typeof message.message === 'string' &&
+          message.message.length > 0;
+      }) || null;
+      return {
+        messageCount: messages.length,
+        minCount,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        success
+      };
+    }, {
+      expectedControl: control,
+      expectedReason: reason,
+      minCount: minMessageCount
+    });
+
+    if (lastState && lastState.success) {
+      return { ok: true, state: lastState };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: `${control}-${reason}-rejection`, state: lastState };
+}
+
 async function waitForRejectedConnectionMap(page, timeoutMs, meshRequestId, minMessageCount = 0) {
   const start = Date.now();
   let lastState = null;
@@ -770,9 +806,11 @@ async function waitForRejectedConnectionMap(page, timeoutMs, meshRequestId, minM
         const map = message && message.connectionMap;
         return message && map &&
           message.rejected === 'getConnectionMap' &&
+          message.reason === 'unauthorized' &&
           message.meshRequestId === expectedRequestId &&
           map.meshRequestId === expectedRequestId &&
           map.status === 'rejected' &&
+          map.reason === 'unauthorized' &&
           Array.isArray(map.connections) &&
           map.connections.length === 0 &&
           typeof map.message === 'string' &&
@@ -1229,7 +1267,20 @@ async function main() {
       failure = unauthorizedSettingsResult;
       return;
     }
-    console.log('[CONTROL] VDO settings unauthorized guard PASS');
+    for (const controlName of ['getAudioSettings', 'getVideoSettings']) {
+      const rejection = await waitForRejectedControl(
+        page,
+        Math.max(3000, Math.floor(config.timeoutMs / 5)),
+        controlName,
+        'unauthorized',
+        probeMessageCount
+      );
+      if (!rejection.ok) {
+        failure = rejection;
+        return;
+      }
+    }
+    console.log('[CONTROL] VDO settings unauthorized responses PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
     const remoteTokenSettingsSend = await sendControlMessage(page, {
@@ -1250,7 +1301,18 @@ async function main() {
       failure = remoteTokenSettingsResult;
       return;
     }
-    console.log('[CONTROL] VDO settings remote-token guard PASS');
+    const remoteTokenSettingsRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'getVideoSettings',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!remoteTokenSettingsRejected.ok) {
+      failure = remoteTokenSettingsRejected;
+      return;
+    }
+    console.log('[CONTROL] VDO settings remote-token authorization response PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
     const aliasTokenRefreshVideoSend = await sendControlMessage(page, {
@@ -1261,11 +1323,11 @@ async function main() {
       failure = { stage: 'send-refresh-video-token-alias-request', state: aliasTokenRefreshVideoSend };
       return;
     }
-    const aliasTokenRefreshVideoRejected = await waitForProbeMessageField(
+    const aliasTokenRefreshVideoRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'refreshVideo',
+      'unauthorized',
       probeMessageCount
     );
     if (!aliasTokenRefreshVideoRejected.ok) {
@@ -1323,11 +1385,11 @@ async function main() {
       failure = { stage: 'send-refresh-microphone-request', state: remoteTokenRefreshMicrophoneSend };
       return;
     }
-    const refreshMicrophoneRejected = await waitForProbeMessageField(
+    const refreshMicrophoneRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'refreshMicrophone',
+      'unauthorized',
       probeMessageCount
     );
     if (!refreshMicrophoneRejected.ok) {
@@ -1342,11 +1404,11 @@ async function main() {
       failure = { stage: 'send-unauthorized-hangup', state: unauthorizedHangupSend };
       return;
     }
-    const unauthorizedHangupRejected = await waitForProbeMessageField(
+    const unauthorizedHangupRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'hangup',
+      'unauthorized',
       probeMessageCount
     );
     if (!unauthorizedHangupRejected.ok) {
@@ -1366,11 +1428,11 @@ async function main() {
       failure = { stage: 'send-unsupported-audio-hack', state: unsupportedAudioHackSend };
       return;
     }
-    const unsupportedAudioHackRejected = await waitForProbeMessageField(
+    const unsupportedAudioHackRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'requestAudioHack',
+      'unsupported',
       probeMessageCount
     );
     if (!unsupportedAudioHackRejected.ok) {
@@ -1390,11 +1452,11 @@ async function main() {
       failure = { stage: 'send-unsupported-lowcut', state: unsupportedLowcutSend };
       return;
     }
-    const unsupportedLowcutRejected = await waitForProbeMessageField(
+    const unsupportedLowcutRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'requestChangeLowcut',
+      'unsupported',
       probeMessageCount
     );
     if (!unsupportedLowcutRejected.ok) {
@@ -1411,11 +1473,11 @@ async function main() {
       failure = { stage: 'send-unsupported-restart-whip', state: unsupportedRestartWhipSend };
       return;
     }
-    const unsupportedRestartWhipRejected = await waitForProbeMessageField(
+    const unsupportedRestartWhipRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'restartWhip',
+      'unsupported',
       probeMessageCount
     );
     if (!unsupportedRestartWhipRejected.ok) {
@@ -1441,11 +1503,11 @@ async function main() {
         failure = { stage: `send-unsupported-${controlName}`, state: sendResult };
         return;
       }
-      const rejection = await waitForProbeMessageField(
+      const rejection = await waitForRejectedControl(
         page,
         Math.max(3000, Math.floor(config.timeoutMs / 5)),
-        'rejected',
         controlName,
+        'unsupported',
         probeMessageCount
       );
       if (!rejection.ok) {
@@ -1477,7 +1539,127 @@ async function main() {
       failure = unauthorizedVideoHackResult;
       return;
     }
-    console.log('[CONTROL] VDO requestVideoHack unauthorized guard PASS');
+    const unauthorizedVideoHackRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'requestVideoHack',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedVideoHackRejected.ok) {
+      failure = unauthorizedVideoHackRejected;
+      return;
+    }
+    console.log('[CONTROL] VDO requestVideoHack unauthorized response PASS');
+
+    const unauthorizedTargetBitrate = config.bitrateKbps + 1111;
+    probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedTargetBitrateSend = await sendControlMessage(page, {
+      targetBitrate: unauthorizedTargetBitrate
+    });
+    if (!unauthorizedTargetBitrateSend.ok) {
+      failure = { stage: 'send-unauthorized-target-bitrate', state: unauthorizedTargetBitrateSend };
+      return;
+    }
+    const unauthorizedTargetBitrateRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'targetBitrate',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedTargetBitrateRejected.ok) {
+      failure = unauthorizedTargetBitrateRejected;
+      return;
+    }
+
+    const unauthorizedTargetAudioBitrate = 24;
+    probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedTargetAudioBitrateSend = await sendControlMessage(page, {
+      targetAudioBitrate: unauthorizedTargetAudioBitrate
+    });
+    if (!unauthorizedTargetAudioBitrateSend.ok) {
+      failure = { stage: 'send-unauthorized-target-audio-bitrate', state: unauthorizedTargetAudioBitrateSend };
+      return;
+    }
+    const unauthorizedTargetAudioBitrateRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'targetAudioBitrate',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedTargetAudioBitrateRejected.ok) {
+      failure = unauthorizedTargetAudioBitrateRejected;
+      return;
+    }
+
+    const unauthorizedResolution = { w: 322, h: 242, c: false };
+    probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedResolutionSend = await sendControlMessage(page, {
+      requestResolution: unauthorizedResolution
+    });
+    if (!unauthorizedResolutionSend.ok) {
+      failure = { stage: 'send-unauthorized-resolution', state: unauthorizedResolutionSend };
+      return;
+    }
+    const unauthorizedResolutionRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'requestResolution',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedResolutionRejected.ok) {
+      failure = unauthorizedResolutionRejected;
+      return;
+    }
+
+    const unauthorizedActionBitrate = config.bitrateKbps + 1333;
+    probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedActionBitrateSend = await sendControlMessage(page, {
+      action: 'bitrate',
+      value: unauthorizedActionBitrate
+    });
+    if (!unauthorizedActionBitrateSend.ok) {
+      failure = { stage: 'send-unauthorized-action-bitrate', state: unauthorizedActionBitrateSend };
+      return;
+    }
+    const unauthorizedActionBitrateRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'bitrate',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedActionBitrateRejected.ok) {
+      failure = unauthorizedActionBitrateRejected;
+      return;
+    }
+
+    const unauthorizedRequestAsBitrate = config.bitrateKbps + 1555;
+    probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedRequestAsSend = await sendControlMessage(page, {
+      UUID: 'control-e2e-requester',
+      requestAs: config.streamId,
+      targetBitrate: unauthorizedRequestAsBitrate
+    });
+    if (!unauthorizedRequestAsSend.ok) {
+      failure = { stage: 'send-unauthorized-request-as', state: unauthorizedRequestAsSend };
+      return;
+    }
+    const unauthorizedRequestAsRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'targetBitrate',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedRequestAsRejected.ok) {
+      failure = unauthorizedRequestAsRejected;
+      return;
+    }
+    console.log('[CONTROL] VDO unauthorized shared encoder controls PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
     const videoHackFrameRate = 30;
@@ -1693,11 +1875,11 @@ async function main() {
       failure = rateLimitInfo;
       return;
     }
-    const rateLimitUnsupported = await waitForProbeMessageField(
+    const rateLimitUnsupported = await waitForRejectedControl(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      'rejected',
       'bitrate',
+      'unsupported',
       probeMessageCount
     );
     if (!rateLimitUnsupported.ok) {
@@ -1752,11 +1934,11 @@ async function main() {
       failure = routeRestoreInfo;
       return;
     }
-    const routeRestoreUnsupported = await waitForProbeMessageField(
+    const routeRestoreUnsupported = await waitForRejectedControl(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      'rejected',
       'bitrate',
+      'unsupported',
       probeMessageCount
     );
     if (!routeRestoreUnsupported.ok) {
@@ -1772,11 +1954,11 @@ async function main() {
       failure = { stage: 'send-optimized-bitrate', state: optimizedBitrateSend };
       return;
     }
-    const optimizedBitrateInfo = await waitForProbeMessageField(
+    const optimizedBitrateInfo = await waitForRejectedControl(
       page,
       Math.max(5000, Math.floor(config.timeoutMs / 3)),
-      'rejected',
       'optimizedBitrate',
+      'unsupported',
       probeMessageCount
     );
     if (!optimizedBitrateInfo.ok) {
@@ -1902,7 +2084,10 @@ async function main() {
     console.log(`[CONTROL] VDO targetBitrate unlock info PASS (${JSON.stringify(targetUnlockInfo.state.success.message.info)})`);
 
     probeMessageCount = await getProbeMessageCount(page);
-    const targetAudioUnlockSend = await sendControlMessage(page, { targetAudioBitrate: false });
+    const targetAudioUnlockSend = await sendControlMessage(page, {
+      targetAudioBitrate: false,
+      remote: config.remoteToken
+    });
     if (!targetAudioUnlockSend.ok) {
       failure = { stage: 'send-target-audio-unlock', state: targetAudioUnlockSend };
       return;
@@ -1925,11 +2110,11 @@ async function main() {
       failure = { stage: 'send-unauthorized-remote-video-muted', state: unauthorizedRemoteVideoMuteSend };
       return;
     }
-    const unauthorizedRemoteVideoMuteRejected = await waitForProbeMessageField(
+    const unauthorizedRemoteVideoMuteRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'remoteVideoMuted',
+      'unauthorized',
       probeMessageCount
     );
     if (!unauthorizedRemoteVideoMuteRejected.ok) {
@@ -1937,6 +2122,25 @@ async function main() {
       return;
     }
     console.log('[CONTROL] VDO remoteVideoMuted unauthorized guard PASS');
+
+    probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedVolumeSend = await sendControlMessage(page, { volume: 0 });
+    if (!unauthorizedVolumeSend.ok) {
+      failure = { stage: 'send-unauthorized-volume', state: unauthorizedVolumeSend };
+      return;
+    }
+    const unauthorizedVolumeRejected = await waitForRejectedControl(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      'volume',
+      'unauthorized',
+      probeMessageCount
+    );
+    if (!unauthorizedVolumeRejected.ok) {
+      failure = unauthorizedVolumeRejected;
+      return;
+    }
+    console.log('[CONTROL] VDO volume unauthorized response PASS');
 
     probeMessageCount = await getProbeMessageCount(page);
     const remoteVideoMuteSend = await sendControlMessage(page, {
@@ -1947,11 +2151,11 @@ async function main() {
       failure = { stage: 'send-remote-video-muted', state: remoteVideoMuteSend };
       return;
     }
-    const remoteVideoMuteRejected = await waitForProbeMessageField(
+    const remoteVideoMuteRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'remoteVideoMuted',
+      'unauthorized',
       probeMessageCount
     );
     if (!remoteVideoMuteRejected.ok) {
@@ -1979,11 +2183,11 @@ async function main() {
       failure = { stage: 'send-unauthorized-refresh-connection', state: unauthorizedRefreshConnectionSend };
       return;
     }
-    const unauthorizedRefreshConnectionRejected = await waitForProbeMessageField(
+    const unauthorizedRefreshConnectionRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'refreshConnection',
+      'unauthorized',
       probeMessageCount
     );
     if (!unauthorizedRefreshConnectionRejected.ok) {
@@ -1998,11 +2202,11 @@ async function main() {
       failure = { stage: 'send-unauthorized-refresh-connection-false', state: unauthorizedRefreshConnectionFalseSend };
       return;
     }
-    const unauthorizedRefreshConnectionFalseRejected = await waitForProbeMessageField(
+    const unauthorizedRefreshConnectionFalseRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'refreshConnection',
+      'unauthorized',
       probeMessageCount
     );
     if (!unauthorizedRefreshConnectionFalseRejected.ok) {
@@ -2017,11 +2221,11 @@ async function main() {
       failure = { stage: 'send-unauthorized-refresh-all', state: unauthorizedRefreshAllSend };
       return;
     }
-    const unauthorizedRefreshAllRejected = await waitForProbeMessageField(
+    const unauthorizedRefreshAllRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
-      'rejected',
       'refreshAll',
+      'unauthorized',
       probeMessageCount
     );
     if (!unauthorizedRefreshAllRejected.ok) {
@@ -2050,6 +2254,35 @@ async function main() {
     console.log('[CONTROL] Post-control decode PASS');
 
     const stdoutText = publisher.stdout.join('');
+    for (const deniedBitrate of [
+      unauthorizedTargetBitrate,
+      unauthorizedActionBitrate,
+      unauthorizedRequestAsBitrate
+    ]) {
+      if (stdoutText.includes(`[App] Applying runtime bitrate update: ${deniedBitrate} kbps`)) {
+        failure = { stage: 'publisher-unauthorized-video-bitrate-log', state: { deniedBitrate } };
+        return;
+      }
+    }
+    if (stdoutText.includes(
+      `[App] Applying runtime audio bitrate update: ${unauthorizedTargetAudioBitrate} kbps`
+    )) {
+      failure = {
+        stage: 'publisher-unauthorized-audio-bitrate-log',
+        state: { unauthorizedTargetAudioBitrate }
+      };
+      return;
+    }
+    const unauthorizedResolutionText = `${unauthorizedResolution.w}x${unauthorizedResolution.h}`;
+    if (stdoutText.includes(`runtime resolution request ${unauthorizedResolutionText}`) ||
+        stdoutText.includes(`runtime video reconfigure: ${unauthorizedResolutionText}`)) {
+      failure = {
+        stage: 'publisher-unauthorized-resolution-log',
+        state: { unauthorizedResolution }
+      };
+      return;
+    }
+    console.log('[CONTROL] Unauthorized shared controls did not reconfigure publisher');
     if (stdoutText.includes(`[App] Applying runtime bitrate update: ${requestAsMismatchBitrate} kbps`)) {
       failure = { stage: 'publisher-request-as-mismatch-log', state: { requestAsMismatchBitrate } };
       return;
