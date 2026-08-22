@@ -122,6 +122,93 @@ check(
   wrapperFailure
 );
 
+const signalingScripts = [
+  'e2e:signaling-regressions',
+  'e2e:signaling-regressions:edge',
+  'e2e:signaling-regressions:firefox',
+  'e2e:signaling-regressions:firefox-installed'
+];
+const signalingWrapperPath = path.join(__dirname, 'run-signaling-regressions-e2e.js');
+let signalingWrapperContractValid = fs.existsSync(signalingWrapperPath) && signalingScripts.every(
+  (name) => String(packageJson.scripts[name] || '').includes('run-signaling-regressions-e2e.js')
+);
+let signalingWrapperFailure = 'Signaling scripts must use the packaged-artifact resolver';
+if (signalingWrapperContractValid) {
+  try {
+    const { prepareSignalingArgs } = require(signalingWrapperPath);
+    if (typeof prepareSignalingArgs !== 'function') {
+      throw new Error('wrapper does not export prepareSignalingArgs');
+    }
+    const fakeHash = 'b'.repeat(64);
+    const fakeDependencies = {
+      resolveCurrentPackage: () => ({
+        publisherPath: 'fixture-publisher.exe',
+        artifactManifestPath: 'fixture-manifest.json',
+        manifestBuildDir: 'fixture-build'
+      }),
+      resolveSpoutSender: (buildDir) => {
+        if (buildDir !== 'fixture-build') {
+          throw new Error(`unexpected build directory: ${buildDir}`);
+        }
+        return 'fixture-spout.exe';
+      },
+      resolveInstalledFirefox: () => 'fixture-firefox.exe',
+      sha256File: () => fakeHash
+    };
+    const forwarded = prepareSignalingArgs(['--browser=edge'], fakeDependencies);
+    const requiredIdentityArguments = [
+      '--publisher-path=fixture-publisher.exe',
+      '--artifact-manifest-path=fixture-manifest.json',
+      `--artifact-manifest-sha256=${fakeHash}`,
+      '--spout-sender-path=fixture-spout.exe',
+      `--expected-spout-sender-sha256=${fakeHash}`
+    ];
+    signalingWrapperContractValid = requiredIdentityArguments.every(
+      (argument) => forwarded.includes(argument)
+    );
+    const installedFirefoxArgs = prepareSignalingArgs(
+      ['--browser', 'firefox-installed'],
+      fakeDependencies
+    );
+    signalingWrapperContractValid = signalingWrapperContractValid &&
+      installedFirefoxArgs.includes('--firefox-path=fixture-firefox.exe') &&
+      installedFirefoxArgs.includes(`--expected-firefox-sha256=${fakeHash}`);
+
+    let partialArtifactIdentityRejected = false;
+    try {
+      prepareSignalingArgs(
+        ['--browser=edge', '--publisher-path=incomplete.exe'],
+        fakeDependencies
+      );
+    } catch (error) {
+      partialArtifactIdentityRejected = /must be supplied together/i.test(error.message);
+    }
+    let partialFirefoxIdentityRejected = false;
+    try {
+      prepareSignalingArgs(
+        ['--browser=firefox-installed', '--firefox-path=incomplete.exe'],
+        fakeDependencies
+      );
+    } catch (error) {
+      partialFirefoxIdentityRejected = /must be supplied together/i.test(error.message);
+    }
+    signalingWrapperContractValid = signalingWrapperContractValid &&
+      partialArtifactIdentityRejected &&
+      partialFirefoxIdentityRejected;
+    if (!signalingWrapperContractValid) {
+      signalingWrapperFailure = 'resolver did not enforce complete artifact and browser identities';
+    }
+  } catch (error) {
+    signalingWrapperContractValid = false;
+    signalingWrapperFailure = error.message;
+  }
+}
+check(
+  'bare-signaling-commands-resolve-exact-artifacts',
+  signalingWrapperContractValid,
+  signalingWrapperFailure
+);
+
 const readinessScript = fs.readFileSync(
   path.join(nativeRoot, 'qa', 'run-release-readiness.ps1'),
   'utf8'

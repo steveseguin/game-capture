@@ -128,8 +128,14 @@ function resolveInstalledFirefox() {
   return candidates[0];
 }
 
-function main() {
-  const sourceArgs = process.argv.slice(2);
+function prepareSignalingArgs(sourceArgs, overrides = {}) {
+  const dependencies = {
+    resolveCurrentPackage,
+    resolveSpoutSender,
+    resolveInstalledFirefox,
+    sha256File,
+    ...overrides
+  };
   const forwardedArgs = [];
   let buildDir = '';
   for (let index = 0; index < sourceArgs.length; index += 1) {
@@ -152,49 +158,60 @@ function main() {
     '--spout-sender-path',
     '--expected-spout-sender-sha256'
   ]);
-  const explicitArtifactOptionCount = forwardedArgs.filter(
-    (arg) => artifactOptions.has(optionName(arg))
-  ).length;
-  if (explicitArtifactOptionCount === 0) {
+  const explicitArtifactOptions = new Set(
+    forwardedArgs.map(optionName).filter((name) => artifactOptions.has(name))
+  );
+  if (explicitArtifactOptions.size === 0) {
     const {
       publisherPath,
       artifactManifestPath,
       manifestBuildDir
-    } = resolveCurrentPackage();
+    } = dependencies.resolveCurrentPackage();
     const resolvedBuildDir = buildDir || manifestBuildDir;
-    const spoutSenderPath = resolveSpoutSender(resolvedBuildDir);
+    const spoutSenderPath = dependencies.resolveSpoutSender(resolvedBuildDir);
     forwardedArgs.push(
       `--publisher-path=${publisherPath}`,
       `--artifact-manifest-path=${artifactManifestPath}`,
-      `--artifact-manifest-sha256=${sha256File(artifactManifestPath)}`,
+      `--artifact-manifest-sha256=${dependencies.sha256File(artifactManifestPath)}`,
       `--spout-sender-path=${spoutSenderPath}`,
-      `--expected-spout-sender-sha256=${sha256File(spoutSenderPath)}`
+      `--expected-spout-sender-sha256=${dependencies.sha256File(spoutSenderPath)}`
     );
     console.log(`[SIGNAL-E2E] Resolved packaged publisher: ${publisherPath}`);
     console.log(`[SIGNAL-E2E] Resolved manifest build directory: ${resolvedBuildDir}`);
     console.log(`[SIGNAL-E2E] Resolved Spout fixture: ${spoutSenderPath}`);
+  } else if (explicitArtifactOptions.size !== artifactOptions.size) {
+    throw new Error('Packaged artifact identity arguments must be supplied together');
   } else if (buildDir) {
     throw new Error('--build-dir cannot be combined with explicit artifact identity arguments');
   }
 
   const installedFirefox = forwardedArgs.some(
-    (arg) => arg === '--browser=firefox-installed'
+    (arg, index) => arg === '--browser=firefox-installed' ||
+      (arg === '--browser' && forwardedArgs[index + 1] === 'firefox-installed')
   );
   const firefoxIdentityOptions = new Set([
     '--firefox-path',
     '--expected-firefox-sha256'
   ]);
-  const explicitFirefoxOptionCount = forwardedArgs.filter(
-    (arg) => firefoxIdentityOptions.has(optionName(arg))
-  ).length;
-  if (installedFirefox && explicitFirefoxOptionCount === 0) {
-    const firefoxPath = resolveInstalledFirefox();
+  const explicitFirefoxOptions = new Set(
+    forwardedArgs.map(optionName).filter((name) => firefoxIdentityOptions.has(name))
+  );
+  if (installedFirefox && explicitFirefoxOptions.size === 0) {
+    const firefoxPath = dependencies.resolveInstalledFirefox();
     forwardedArgs.push(
       `--firefox-path=${firefoxPath}`,
-      `--expected-firefox-sha256=${sha256File(firefoxPath)}`
+      `--expected-firefox-sha256=${dependencies.sha256File(firefoxPath)}`
     );
     console.log(`[SIGNAL-E2E] Resolved installed Firefox: ${firefoxPath}`);
+  } else if (installedFirefox && explicitFirefoxOptions.size !== firefoxIdentityOptions.size) {
+    throw new Error('Installed Firefox path and SHA-256 arguments must be supplied together');
   }
+
+  return forwardedArgs;
+}
+
+function main() {
+  const forwardedArgs = prepareSignalingArgs(process.argv.slice(2));
 
   const child = spawn(process.execPath, [harnessPath, ...forwardedArgs], {
     cwd: nativeRoot,
@@ -215,9 +232,13 @@ function main() {
   });
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`[SIGNAL-E2E] ${error.message}`);
-  process.exitCode = 1;
+module.exports = { prepareSignalingArgs };
+
+if (require.main === module) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`[SIGNAL-E2E] ${error.message}`);
+    process.exitCode = 1;
+  }
 }
