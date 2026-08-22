@@ -757,6 +757,43 @@ async function waitForProbeMessageField(page, timeoutMs, field, expectedValue, m
   return { ok: false, stage: `${field}-message`, state: lastState };
 }
 
+async function waitForRejectedConnectionMap(page, timeoutMs, meshRequestId, minMessageCount = 0) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate(({ expectedRequestId, minCount }) => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const candidates = messages.slice(Math.max(0, minCount));
+      const success = candidates.find((entry) => {
+        const message = entry && entry.message ? entry.message : null;
+        const map = message && message.connectionMap;
+        return message && map &&
+          message.rejected === 'getConnectionMap' &&
+          message.meshRequestId === expectedRequestId &&
+          map.meshRequestId === expectedRequestId &&
+          map.status === 'rejected' &&
+          Array.isArray(map.connections) &&
+          map.connections.length === 0 &&
+          typeof map.message === 'string' &&
+          map.message.length > 0;
+      }) || null;
+      return {
+        messageCount: messages.length,
+        minCount,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        success
+      };
+    }, { expectedRequestId: meshRequestId, minCount: minMessageCount });
+
+    if (lastState && lastState.success) {
+      return { ok: true, state: lastState };
+    }
+    await wait(250);
+  }
+  return { ok: false, stage: 'rejected-connection-map', state: lastState };
+}
+
 async function waitForRequestedVideoInfo(page, timeoutMs, expectedVideoBitrate, expectedMuted, minMessageCount = 0) {
   const start = Date.now();
   let lastState = null;
@@ -1156,6 +1193,28 @@ async function main() {
     }
 
     let probeMessageCount = await getProbeMessageCount(page);
+    const unauthorizedConnectionMapRequestId = `unauthorized-map-${Date.now()}`;
+    const unauthorizedConnectionMapSend = await sendControlMessage(page, {
+      getConnectionMap: true,
+      meshRequestId: unauthorizedConnectionMapRequestId
+    });
+    if (!unauthorizedConnectionMapSend.ok) {
+      failure = { stage: 'send-unauthorized-connection-map', state: unauthorizedConnectionMapSend };
+      return;
+    }
+    const unauthorizedConnectionMapRejected = await waitForRejectedConnectionMap(
+      page,
+      Math.max(3000, Math.floor(config.timeoutMs / 5)),
+      unauthorizedConnectionMapRequestId,
+      probeMessageCount
+    );
+    if (!unauthorizedConnectionMapRejected.ok) {
+      failure = unauthorizedConnectionMapRejected;
+      return;
+    }
+    console.log('[CONTROL] VDO getConnectionMap unauthorized structured rejection PASS');
+
+    probeMessageCount = await getProbeMessageCount(page);
     const unauthorizedSettingsSend = await sendControlMessage(page, { getAudioSettings: true, getVideoSettings: true });
     if (!unauthorizedSettingsSend.ok) {
       failure = { stage: 'send-unauthorized-settings-request', state: unauthorizedSettingsSend };
