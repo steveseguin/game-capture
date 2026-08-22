@@ -425,6 +425,9 @@ class VersusApp {
                             PeerRole role,
                             bool videoEnabled,
                             bool audioEnabled);
+    bool applyPeerInitFallbackIfPending(const std::shared_ptr<PeerSession> &peer,
+                                        bool videoEnabled,
+                                        bool audioEnabled);
     void pruneTimedOutPeerInits(int64_t nowMs);
     bool ensureLqEncoderInitializedLocked();
     void shutdownLqEncoderLocked();
@@ -645,6 +648,10 @@ class VersusApp {
         std::atomic<bool> videoEnabled{true};
         std::atomic<bool> audioEnabled{true};
         std::atomic<int64_t> initDeadlineMs{0};
+        // Serializes explicit role initialization with the timeout fallback.
+        // Recursive entry lets the fallback reuse applyPeerInitState while
+        // keeping its pending check and state update atomic.
+        std::recursive_mutex initStateMutex;
         std::string peerLabel;
         std::string systemApp;
         std::string systemVersion;

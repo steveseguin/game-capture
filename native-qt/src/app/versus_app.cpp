@@ -4074,6 +4074,7 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
     if (!peer) {
         return;
     }
+    std::lock_guard<std::recursive_mutex> initLock(peer->initStateMutex);
 
     peer->roleValid.store(roleValid, std::memory_order_relaxed);
     peer->role.store(role, std::memory_order_relaxed);
@@ -4122,8 +4123,21 @@ void VersusApp::applyPeerInitState(const std::shared_ptr<PeerSession> &peer,
     recordPeerEvent(peer, std::string("peer-init direct role=") + peerRoleName(role) + " tier=hq");
 }
 
+bool VersusApp::applyPeerInitFallbackIfPending(const std::shared_ptr<PeerSession> &peer,
+                                               bool videoEnabled,
+                                               bool audioEnabled) {
+    if (!peer) {
+        return false;
+    }
+    std::lock_guard<std::recursive_mutex> initLock(peer->initStateMutex);
+    if (peer->initReceived.load(std::memory_order_relaxed)) {
+        return false;
+    }
+    applyPeerInitState(peer, true, PeerRole::Viewer, videoEnabled, audioEnabled);
+    return true;
+}
+
 void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
-    const RoomQualityDecision roomQuality = roomQualityDecisionSnapshot();
     std::vector<std::shared_ptr<PeerSession>> expired;
     std::vector<std::shared_ptr<PeerSession>> disconnected;
     {
@@ -4181,12 +4195,11 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
             continue;
         }
 
+        if (!applyPeerInitFallbackIfPending(peer, true, true)) {
+            continue;
+        }
         if (peer->roomMode) {
-            const StreamTier fallbackTier = assignStreamTier(
-                true,
-                roomQuality.effective,
-                true,
-                PeerRole::Viewer);
+            const StreamTier fallbackTier = peer->assignedTier.load(std::memory_order_relaxed);
             spdlog::info("[App] Implicit room init fallback {}:{} -> viewer/{}",
                          peer->uuid,
                          peer->session,
@@ -4197,7 +4210,6 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
                          peer->uuid,
                          peer->session);
         }
-        applyPeerInitState(peer, true, PeerRole::Viewer, true, true);
         applyPeerMediaPlan(peer, peer->roomMode ? "room-init-fallback" : "direct-init-fallback");
         sendPeerDataInfo(peer, true);
     }

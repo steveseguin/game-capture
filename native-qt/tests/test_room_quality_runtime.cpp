@@ -225,6 +225,36 @@ class VersusAppTestAccess {
         std::lock_guard<std::mutex> videoLock(app.videoSendMutex_);
         return app.ensureLqEncoderInitializedLocked();
     }
+
+    static bool raceDirectorInitAgainstFallback(VersusApp &app) {
+        for (int iteration = 0; iteration < 500; ++iteration) {
+            auto peer = std::make_shared<VersusApp::PeerSession>();
+            peer->roomMode = true;
+            peer->initReceived.store(false, std::memory_order_relaxed);
+            std::atomic<bool> start{false};
+            std::thread fallback([&]() {
+                while (!start.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                app.applyPeerInitFallbackIfPending(peer, true, true);
+            });
+            std::thread director([&]() {
+                while (!start.load(std::memory_order_acquire)) {
+                    std::this_thread::yield();
+                }
+                app.applyPeerInitState(peer, true, PeerRole::Director, true, true);
+            });
+            start.store(true, std::memory_order_release);
+            fallback.join();
+            director.join();
+            if (!peer->initReceived.load(std::memory_order_relaxed) ||
+                !peer->roleValid.load(std::memory_order_relaxed) ||
+                peer->role.load(std::memory_order_relaxed) != PeerRole::Director) {
+                return false;
+            }
+        }
+        return true;
+    }
 };
 
 }  // namespace versus::app
@@ -295,7 +325,17 @@ class TestRoomQualityRuntime : public QObject {
     void testLqRejectsActualCommittedCodecMismatch();
     void testLifecycleRoomQualityMutationIsAtomic();
     void testDiagnosticsRoomQualitySnapshotIsCoherent();
+    void testExplicitDirectorInitWinsTimeoutFallbackRace();
 };
+
+void TestRoomQualityRuntime::testExplicitDirectorInitWinsTimeoutFallbackRace() {
+    versus::app::VersusApp app;
+    app.setVideoConfig(selectedConfig(versus::video::VideoCodec::H264));
+    versus::app::VersusAppTestAccess::setRoomQualityContext(app, true, true);
+    versus::app::VersusAppTestAccess::enforceRoomQualityCompatibility(app);
+
+    QVERIFY(versus::app::VersusAppTestAccess::raceDirectorInitAgainstFallback(app));
+}
 
 void TestRoomQualityRuntime::testNonH264RoomQualityPreservesSelectedCodec_data() {
     QTest::addColumn<int>("codecValue");
