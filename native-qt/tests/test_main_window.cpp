@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 #include <QtTest/qtestwheel.h>
 #include <QAccessible>
+#include <QAction>
 #include <QApplication>
 #include <QAbstractItemView>
 #include <QPushButton>
@@ -48,6 +49,10 @@ class MainWindowTestAccess {
 
     static void syncCodecUiState(MainWindow &window) {
         window.syncCodecUiState();
+    }
+
+    static bool resetPersistedSettingsToDefaults(MainWindow &window) {
+        return window.resetPersistedSettingsToDefaults();
     }
 
     static QCheckBox *advancedToggle(MainWindow &window) {
@@ -207,6 +212,7 @@ private slots:
     void testDarkThemeApplied();
     void testGoLiveButtonDisabledInitially();
     void testGoLiveButtonEnabledAfterSelection();
+    void testResetDefaultsRestoresFreshInstallState();
     void testStatusLabelUpdates();
     void testSystemTrayExists();
     void testStatsPanelHiddenInitially();
@@ -315,21 +321,22 @@ void TestMainWindow::testDarkThemeApplied() {
     // Check for dark theme colors
     QVERIFY(stylesheet.contains("#0b1016"));  // Background color
     QVERIFY(stylesheet.contains("#00c2ff"));  // Accent color
+    QVERIFY(stylesheet.contains("#06131a"));  // High-contrast text on bright controls
+    QVERIFY(stylesheet.contains("QPushButton:disabled"));
+    QVERIFY(stylesheet.contains("QPushButton:focus"));
+    QVERIFY(stylesheet.contains("selection-color: #06131a"));
+    QVERIFY(stylesheet.contains("QWidget#itemWidget[selectedSource=\"true\"]"));
 }
 
 void TestMainWindow::testGoLiveButtonDisabledInitially() {
-    auto buttons = window_->findChildren<QPushButton*>();
-    QPushButton *goLiveButton = nullptr;
-
-    for (auto *button : buttons) {
-        if (button->text() == "GO LIVE") {
-            goLiveButton = button;
-            break;
-        }
-    }
-
+    auto *goLiveButton = window_->findChild<QPushButton *>("goLiveButton");
     QVERIFY(goLiveButton != nullptr);
     QVERIFY(!goLiveButton->isEnabled());  // Should be disabled initially
+    QCOMPARE(goLiveButton->text(), QString("SELECT A SOURCE"));
+    QCOMPARE(goLiveButton->accessibleName(), QString("Go live unavailable"));
+    QVERIFY(goLiveButton->accessibleDescription().contains("Select a video source"));
+    QVERIFY(goLiveButton->toolTip().contains("Select a video source"));
+    QVERIFY(goLiveButton->styleSheet().isEmpty());
 }
 
 void TestMainWindow::testGoLiveButtonEnabledAfterSelection() {
@@ -350,21 +357,110 @@ void TestMainWindow::testGoLiveButtonEnabledAfterSelection() {
     // Simulate window selection
     auto *listWidget = windowList->findChild<QListWidget*>();
     QVERIFY(listWidget != nullptr);
-    emit listWidget->itemClicked(listWidget->item(0));
+    QCOMPARE(listWidget->accessibleName(), QString("Available capture sources"));
+    QVERIFY(listWidget->item(0)->data(Qt::AccessibleTextRole).toString().contains("Test Window"));
+    listWidget->setCurrentRow(0);
+    QCoreApplication::processEvents();
 
     // Find GO LIVE button and check if enabled
-    auto buttons = window_->findChildren<QPushButton*>();
-    QPushButton *goLiveButton = nullptr;
-
-    for (auto *button : buttons) {
-        if (button->text() == "GO LIVE") {
-            goLiveButton = button;
-            break;
-        }
-    }
-
+    auto *goLiveButton = window_->findChild<QPushButton *>("goLiveButton");
     QVERIFY(goLiveButton != nullptr);
     QVERIFY(goLiveButton->isEnabled());  // Should be enabled after selection
+    QCOMPARE(goLiveButton->text(), QString("GO LIVE"));
+    QCOMPARE(goLiveButton->accessibleName(), QString("Go live"));
+    QCOMPARE(
+        listWidget->itemWidget(listWidget->item(0))->property("selectedSource").toBool(),
+        true);
+}
+
+void TestMainWindow::testResetDefaultsRestoresFreshInstallState() {
+    auto *resetAction = window_->findChild<QAction *>("resetDefaultsAction");
+    auto *streamInput = window_->findChild<QLineEdit *>("streamIdInput");
+    auto *passwordInput = window_->findChild<QLineEdit *>("passwordInput");
+    auto *roomInput = window_->findChild<QLineEdit *>("roomInput");
+    auto *labelInput = window_->findChild<QLineEdit *>("streamLabelInput");
+    auto *advancedToggle = window_->findChild<QCheckBox *>("advancedToggle");
+    auto *codec = window_->findChild<QComboBox *>("codecSelect");
+    auto *encoder = window_->findChild<QComboBox *>("encoderSelect");
+    auto *resolution = window_->findChild<QComboBox *>("resolutionSelect");
+    auto *fps = window_->findChild<QComboBox *>("fpsSelect");
+    auto *viewerLimit = window_->findChild<QSpinBox *>("viewerLimitSpin");
+    auto *remoteControl = window_->findChild<QCheckBox *>("remoteControlCheck");
+    auto *remoteToken = window_->findChild<QLineEdit *>("remoteControlTokenInput");
+    auto *goLiveButton = window_->findChild<QPushButton *>("goLiveButton");
+    auto *windowList = window_->findChild<versus::ui::WindowListWidget *>();
+
+    QVERIFY(resetAction != nullptr);
+    QVERIFY(resetAction->isEnabled());
+    QVERIFY(streamInput != nullptr);
+    QVERIFY(passwordInput != nullptr);
+    QVERIFY(roomInput != nullptr);
+    QVERIFY(labelInput != nullptr);
+    QVERIFY(advancedToggle != nullptr);
+    QVERIFY(codec != nullptr);
+    QVERIFY(encoder != nullptr);
+    QVERIFY(resolution != nullptr);
+    QVERIFY(fps != nullptr);
+    QVERIFY(viewerLimit != nullptr);
+    QVERIFY(remoteControl != nullptr);
+    QVERIFY(remoteToken != nullptr);
+    QVERIFY(goLiveButton != nullptr);
+    QVERIFY(windowList != nullptr);
+
+    streamInput->setText("https://vdo.ninja/?view=custom-stream");
+    passwordInput->setText("secret");
+    roomInput->setText("custom-room");
+    labelInput->setText("custom-label");
+    advancedToggle->setChecked(true);
+    codec->setCurrentIndex(codec->findData("av1"));
+    encoder->setCurrentIndex(encoder->findData("software"));
+    resolution->setCurrentIndex(resolution->findData("1280x720"));
+    fps->setCurrentIndex(fps->findData(30));
+    viewerLimit->setValue(25);
+    remoteControl->setChecked(true);
+    remoteToken->setText("custom-token");
+
+    std::vector<versus::video::WindowInfo> windows;
+    versus::video::WindowInfo source;
+    source.id = "reset-test-source";
+    source.name = "Reset Test Source";
+    source.executableName = "reset-test.exe";
+    windows.push_back(source);
+    windowList->setWindowList(windows);
+    auto *listWidget = windowList->findChild<QListWidget *>("sourceList");
+    QVERIFY(listWidget != nullptr);
+    listWidget->setCurrentRow(0);
+    QCoreApplication::processEvents();
+    QVERIFY(goLiveButton->isEnabled());
+
+    QSettings settings("VDO.Ninja", "Game Capture");
+    settings.setValue("test/obsoleteValue", "remove-me");
+    settings.sync();
+
+    QVERIFY(versus::ui::MainWindowTestAccess::resetPersistedSettingsToDefaults(*window_));
+
+    QCOMPARE(streamInput->text(), QString());
+    QCOMPARE(passwordInput->text(), QString());
+    QCOMPARE(roomInput->text(), QString());
+    QCOMPARE(labelInput->text(), QString());
+    QVERIFY(!advancedToggle->isChecked());
+    QCOMPARE(codec->currentData().toString(), QString("h264"));
+    QCOMPARE(encoder->currentData().toString(), QString("auto"));
+    QCOMPARE(resolution->currentData().toString(), QString("1920x1080"));
+    QCOMPARE(fps->currentData().toInt(), 60);
+    QCOMPARE(viewerLimit->value(), 10);
+    QVERIFY(!remoteControl->isChecked());
+    QCOMPARE(remoteToken->text(), QString());
+    QCOMPARE(windowList->selectedWindowId(), QString());
+    QVERIFY(!goLiveButton->isEnabled());
+    QCOMPARE(goLiveButton->text(), QString("SELECT A SOURCE"));
+    QCOMPARE(window_->size(), QSize(980, 720));
+    QVERIFY(resetAction->isEnabled());
+
+    settings.sync();
+    QVERIFY(!settings.contains("test/obsoleteValue"));
+    QCOMPARE(settings.value("video/codec").toString(), QString("h264"));
+    QCOMPARE(settings.value("video/encoderMode").toString(), QString("auto"));
 }
 
 void TestMainWindow::testStatusLabelUpdates() {

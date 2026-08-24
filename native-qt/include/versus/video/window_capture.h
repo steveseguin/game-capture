@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,9 +32,29 @@ struct CapturedFrame {
     enum class Format { BGRA, NV12, I420, Gray } format = Format::BGRA;
 };
 
+namespace detail {
+
+class CaptureFramePacer {
+  public:
+    explicit CaptureFramePacer(int targetFps = 0);
+
+    void reset(int targetFps);
+    bool shouldAdmit(std::chrono::steady_clock::time_point now);
+
+  private:
+    std::chrono::steady_clock::duration interval_{};
+    std::chrono::steady_clock::time_point nextDue_{};
+    bool scheduled_ = false;
+};
+
+bool frameAdmissionAllowed(const std::function<bool()> &admissionCallback);
+
+}  // namespace detail
+
 class WindowCapture {
   public:
     using FrameCallback = std::function<void(CapturedFrame)>;
+    using FrameAdmissionCallback = std::function<bool()>;
 
     WindowCapture();
     ~WindowCapture();
@@ -41,11 +62,17 @@ class WindowCapture {
     std::vector<WindowInfo> getWindows();
     WindowInfo *findWindowByName(const std::string &partialName);
 
-    bool startCapture(const std::string &windowId, int width, int height, int fps);
+    bool startCapture(const std::string &windowId,
+                      int width,
+                      int height,
+                      int fps,
+                      bool preserveAlpha = false);
     void stopCapture();
     bool isCapturing() const;
 
     void setFrameCallback(FrameCallback cb);
+    void setFrameAdmissionCallback(FrameAdmissionCallback cb);
+    uint64_t framesSkippedBeforeReadback() const;
 
     // Capture a static thumbnail of a window (does not require active capture)
     static QPixmap captureWindowThumbnail(const std::string &windowId, int maxWidth = 120, int maxHeight = 68);
@@ -54,6 +81,7 @@ class WindowCapture {
     struct Impl;
     std::unique_ptr<Impl> impl_;
     FrameCallback frameCallback_;
+    FrameAdmissionCallback frameAdmissionCallback_;
     std::atomic<bool> capturing_{false};
 };
 

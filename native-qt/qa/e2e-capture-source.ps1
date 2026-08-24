@@ -1,7 +1,9 @@
 param(
     [string]$Title = "Game Capture E2E Source",
     [int]$Width = 1280,
-    [int]$Height = 720
+    [int]$Height = 720,
+    [ValidateRange(16, 60000)]
+    [int]$FrameIntervalMs = 250
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,7 +44,7 @@ $form.Controls.Add($label)
 
 $tick = 0
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 250
+$timer.Interval = $FrameIntervalMs
 $timer.Add_Tick({
     $script:tick++
     $phase = $script:tick % 6

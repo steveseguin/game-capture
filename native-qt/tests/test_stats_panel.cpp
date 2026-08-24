@@ -158,7 +158,8 @@ void TestStatsPanel::testRttColorGreen() {
     for (auto *label : labels) {
         if (label->text().contains("50 ms")) {
             QString style = label->styleSheet();
-            QVERIFY2(style.contains("#00ba6a"), "RTT should be green for < 100ms");
+            QVERIFY2(style.contains("#4bd98a"), "RTT should be green for < 100ms");
+            QVERIFY(label->text().contains("Good"));
             return;
         }
     }
@@ -176,7 +177,8 @@ void TestStatsPanel::testRttColorYellow() {
     for (auto *label : labels) {
         if (label->text().contains("150 ms")) {
             QString style = label->styleSheet();
-            QVERIFY2(style.contains("#e6cc33"), "RTT should be yellow for 100-200ms");
+            QVERIFY2(style.contains("#f0c95a"), "RTT should be yellow for 100-200ms");
+            QVERIFY(label->text().contains("Caution"));
             return;
         }
     }
@@ -194,7 +196,8 @@ void TestStatsPanel::testRttColorRed() {
     for (auto *label : labels) {
         if (label->text().contains("250 ms")) {
             QString style = label->styleSheet();
-            QVERIFY2(style.contains("#e63333"), "RTT should be red for > 200ms");
+            QVERIFY2(style.contains("#ff6673"), "RTT should be red for > 200ms");
+            QVERIFY(label->text().contains("Poor"));
             return;
         }
     }

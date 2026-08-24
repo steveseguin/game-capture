@@ -8,6 +8,19 @@ const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
 function detectPublisherBinary() {
+  const publisherArgIndex = process.argv.indexOf('--publisher');
+  if (publisherArgIndex >= 0) {
+    const requested = process.argv[publisherArgIndex + 1];
+    if (!requested) {
+      throw new Error('--publisher requires a path to game-capture.exe');
+    }
+    const resolved = path.resolve(requested);
+    if (!fs.existsSync(resolved)) {
+      throw new Error(`Requested publisher does not exist: ${resolved}`);
+    }
+    return resolved;
+  }
+
   const candidates = [
     path.resolve(__dirname, '../build-review2/bin/Release/game-capture.exe'),
     path.resolve(__dirname, '../build-test/bin/Release/game-capture.exe'),
@@ -302,12 +315,12 @@ async function main() {
     const fps = await measureVideoFps(viewerPage, 10000);
     console.log(`[VERIFY] Chrome viewer sample: rvfcFps=${fps.rvfcFps.toFixed(2)} decodedFps=${fps.decodedFps.toFixed(2)} frames=${fps.rvfcFrames} size=${fps.videoWidth}x${fps.videoHeight}`);
 
-    const effectiveFps = Math.max(fps.rvfcFps || 0, fps.decodedFps || 0);
-    if (effectiveFps < 45) {
-      throw new Error(`Chrome FPS below expectation: ${effectiveFps.toFixed(2)} (<45)`);
+    const effectiveFps = fps.decodedFps > 0 ? fps.decodedFps : fps.rvfcFps;
+    if (effectiveFps < 55) {
+      throw new Error(`Chrome decoded FPS is not near 60: ${effectiveFps.toFixed(2)} (<55)`);
     }
 
-    console.log('[VERIFY] PASS: Chrome viewer sustained >45fps sample for 1080p60 publish');
+    console.log('[VERIFY] PASS: Chrome viewer sustained near-60fps decoded output for 1080p60 publish');
   } finally {
     if (publisher && !pubState.exited) {
       publisher.kill();

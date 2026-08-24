@@ -27,6 +27,7 @@ class WindowListWidget : public QWidget {
     void setEmptyText(const QString &text);
     void setSpoutModeEnabled(bool enabled);
     void setCameraModeEnabled(bool enabled);
+    void clearSelection();
 
   signals:
     void windowSelected(const QString &windowId);
@@ -43,6 +44,7 @@ class WindowListWidget : public QWidget {
     QString secondaryTextFor(const versus::video::WindowInfo &window) const;
     QWidget* createItemWidget(const versus::video::WindowInfo &window);
     void updateItemWidget(QWidget *widget, const versus::video::WindowInfo &window, bool forceThumbnailRefresh);
+    void updateSelectionVisuals();
 
     QListWidget *listWidget_ = nullptr;
     QLabel *headerLabel_ = nullptr;

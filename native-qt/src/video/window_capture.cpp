@@ -1,4 +1,5 @@
 #include "versus/video/window_capture.h"
+#include "versus/video/aspect_fit.h"
 
 #include <algorithm>
 #include <atomic>
@@ -44,6 +45,45 @@ using com_ptr = Microsoft::WRL::ComPtr<T>;
 #endif
 
 namespace versus::video {
+
+namespace detail {
+
+CaptureFramePacer::CaptureFramePacer(int targetFps) {
+    reset(targetFps);
+}
+
+void CaptureFramePacer::reset(int targetFps) {
+    scheduled_ = false;
+    nextDue_ = {};
+    interval_ = targetFps > 0
+        ? std::chrono::nanoseconds(1000000000LL / std::max(1, targetFps))
+        : std::chrono::steady_clock::duration::zero();
+}
+
+bool CaptureFramePacer::shouldAdmit(std::chrono::steady_clock::time_point now) {
+    if (interval_ <= std::chrono::steady_clock::duration::zero()) {
+        return true;
+    }
+    if (!scheduled_) {
+        nextDue_ = now + interval_;
+        scheduled_ = true;
+        return true;
+    }
+    if (now < nextDue_) {
+        return false;
+    }
+
+    const auto overdue = now - nextDue_;
+    const auto intervalsElapsed = (overdue / interval_) + 1;
+    nextDue_ += interval_ * intervalsElapsed;
+    return true;
+}
+
+bool frameAdmissionAllowed(const std::function<bool()> &admissionCallback) {
+    return !admissionCallback || admissionCallback();
+}
+
+}  // namespace detail
 
 namespace {
 
@@ -284,6 +324,22 @@ class WindowCapture::Impl {
             return false;
         }
 
+        // Video-processor scaling keeps large window textures on the GPU until
+        // they have been reduced to the configured output size. Capture still
+        // works without these optional interfaces; processFrameUnsafe falls
+        // back to the original full-size readback path in that case.
+        hr = device_->QueryInterface(videoDevice_.put());
+        if (FAILED(hr) || !videoDevice_) {
+            spdlog::warn("[Capture::Impl] ID3D11VideoDevice unavailable; GPU capture scaling disabled hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
+        }
+        hr = context_->QueryInterface(videoContext_.put());
+        if (FAILED(hr) || !videoContext_) {
+            videoDevice_ = nullptr;
+            spdlog::warn("[Capture::Impl] ID3D11VideoContext unavailable; GPU capture scaling disabled hr=0x{:08x}",
+                         static_cast<unsigned int>(hr));
+        }
+
         useGraphicsCapture_ = false;
 #ifdef VERSUS_USE_GRAPHICS_CAPTURE
         try {
@@ -367,8 +423,13 @@ class WindowCapture::Impl {
         return windows;
     }
 
-    bool startCapture(HWND hwnd, int width, int height, int fps) {
-        spdlog::info("[Capture::Impl] startCapture hwnd={} {}x{} @{}fps", (void*)hwnd, width, height, fps);
+    bool startCapture(HWND hwnd, int width, int height, int fps, bool preserveAlpha) {
+        spdlog::info("[Capture::Impl] startCapture hwnd={} {}x{} @{}fps preserveAlpha={}",
+                     (void*)hwnd,
+                     width,
+                     height,
+                     fps,
+                     preserveAlpha);
         if (capturing_.load(std::memory_order_acquire)) {
             spdlog::info("[Capture::Impl] Already capturing, stopping first");
             stopCapture();
@@ -377,6 +438,9 @@ class WindowCapture::Impl {
         targetWidth_ = width;
         targetHeight_ = height;
         targetFps_ = fps;
+        preserveAlpha_ = preserveAlpha;
+        framePacer_.reset(fps);
+        framesSkippedBeforeReadback_.store(0, std::memory_order_relaxed);
 
         if (useGraphicsCapture_) {
             spdlog::info("[Capture::Impl] Using Windows Graphics Capture API");
@@ -393,6 +457,16 @@ class WindowCapture::Impl {
         }
         outputDuplication_ = nullptr;
         stagingTexture_ = nullptr;
+        scaledTexture_ = nullptr;
+        scaledOutputView_ = nullptr;
+        videoProcessor_ = nullptr;
+        videoProcessorEnumerator_ = nullptr;
+        scalerSourceWidth_ = 0;
+        scalerSourceHeight_ = 0;
+        scalerTargetWidth_ = 0;
+        scalerTargetHeight_ = 0;
+        stagingWidth_ = 0;
+        stagingHeight_ = 0;
         if (framePool_) {
             framePool_.Close();
             framePool_ = nullptr;
@@ -414,10 +488,22 @@ class WindowCapture::Impl {
         graphicsDevice_ = nullptr;
         lastContentWidth_ = 0;
         lastContentHeight_ = 0;
+        const uint64_t skipped = framesSkippedBeforeReadback_.load(std::memory_order_relaxed);
+        if (skipped > 0) {
+            spdlog::info("[Capture::Impl] Skipped {} frame(s) before GPU readback", skipped);
+        }
     }
 
     void setFrameCallback(FrameCallback callback) {
         frameCallback_ = std::move(callback);
+    }
+
+    void setFrameAdmissionCallback(FrameAdmissionCallback callback) {
+        frameAdmissionCallback_ = std::move(callback);
+    }
+
+    uint64_t framesSkippedBeforeReadback() const {
+        return framesSkippedBeforeReadback_.load(std::memory_order_relaxed);
     }
 
     bool isCapturing() const { return capturing_.load(std::memory_order_acquire); }
@@ -738,6 +824,234 @@ class WindowCapture::Impl {
         }
     }
 
+    bool ensureGpuScaler(const D3D11_TEXTURE2D_DESC &sourceDesc,
+                         int targetWidth,
+                         int targetHeight) {
+        if (!videoDevice_ || !videoContext_ ||
+            targetWidth <= 0 || targetHeight <= 0 ||
+            sourceDesc.Width == 0 || sourceDesc.Height == 0) {
+            return false;
+        }
+
+        if (videoProcessor_ && videoProcessorEnumerator_ && scaledTexture_ && scaledOutputView_ &&
+            scalerSourceWidth_ == sourceDesc.Width &&
+            scalerSourceHeight_ == sourceDesc.Height &&
+            scalerSourceFormat_ == sourceDesc.Format &&
+            scalerTargetWidth_ == static_cast<UINT>(targetWidth) &&
+            scalerTargetHeight_ == static_cast<UINT>(targetHeight)) {
+            return true;
+        }
+
+        videoProcessor_ = nullptr;
+        videoProcessorEnumerator_ = nullptr;
+        scaledOutputView_ = nullptr;
+        scaledTexture_ = nullptr;
+
+        D3D11_VIDEO_PROCESSOR_CONTENT_DESC contentDesc = {};
+        contentDesc.InputFrameFormat = D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE;
+        contentDesc.InputFrameRate.Numerator = static_cast<UINT>(std::max(1, targetFps_));
+        contentDesc.InputFrameRate.Denominator = 1;
+        contentDesc.InputWidth = sourceDesc.Width;
+        contentDesc.InputHeight = sourceDesc.Height;
+        contentDesc.OutputFrameRate = contentDesc.InputFrameRate;
+        contentDesc.OutputWidth = static_cast<UINT>(targetWidth);
+        contentDesc.OutputHeight = static_cast<UINT>(targetHeight);
+        contentDesc.Usage = D3D11_VIDEO_USAGE_OPTIMAL_SPEED;
+
+        HRESULT hr = videoDevice_->CreateVideoProcessorEnumerator(
+            &contentDesc,
+            videoProcessorEnumerator_.put());
+        if (FAILED(hr) || !videoProcessorEnumerator_) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] Failed to create GPU scaler enumerator hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            return false;
+        }
+
+        UINT sourceSupport = 0;
+        UINT targetSupport = 0;
+        hr = videoProcessorEnumerator_->CheckVideoProcessorFormat(sourceDesc.Format, &sourceSupport);
+        if (FAILED(hr) || (sourceSupport & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_INPUT) == 0) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] GPU scaler does not support capture format {} as input hr=0x{:08x}",
+                             static_cast<unsigned int>(sourceDesc.Format),
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            videoProcessorEnumerator_ = nullptr;
+            return false;
+        }
+        hr = videoProcessorEnumerator_->CheckVideoProcessorFormat(DXGI_FORMAT_B8G8R8A8_UNORM, &targetSupport);
+        if (FAILED(hr) || (targetSupport & D3D11_VIDEO_PROCESSOR_FORMAT_SUPPORT_OUTPUT) == 0) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] GPU scaler does not support BGRA output hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            videoProcessorEnumerator_ = nullptr;
+            return false;
+        }
+
+        hr = videoDevice_->CreateVideoProcessor(
+            videoProcessorEnumerator_.get(),
+            0,
+            videoProcessor_.put());
+        if (FAILED(hr) || !videoProcessor_) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] Failed to create GPU scaler hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            videoProcessorEnumerator_ = nullptr;
+            return false;
+        }
+
+        D3D11_TEXTURE2D_DESC outputDesc = {};
+        outputDesc.Width = static_cast<UINT>(targetWidth);
+        outputDesc.Height = static_cast<UINT>(targetHeight);
+        outputDesc.MipLevels = 1;
+        outputDesc.ArraySize = 1;
+        outputDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+        outputDesc.SampleDesc.Count = 1;
+        outputDesc.Usage = D3D11_USAGE_DEFAULT;
+        outputDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
+        hr = device_->CreateTexture2D(&outputDesc, nullptr, scaledTexture_.put());
+        if (FAILED(hr) || !scaledTexture_) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] Failed to create GPU-scaled capture texture hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            videoProcessor_ = nullptr;
+            videoProcessorEnumerator_ = nullptr;
+            return false;
+        }
+
+        D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC outputViewDesc = {};
+        outputViewDesc.ViewDimension = D3D11_VPOV_DIMENSION_TEXTURE2D;
+        outputViewDesc.Texture2D.MipSlice = 0;
+        hr = videoDevice_->CreateVideoProcessorOutputView(
+            scaledTexture_.get(),
+            videoProcessorEnumerator_.get(),
+            &outputViewDesc,
+            scaledOutputView_.put());
+        if (FAILED(hr) || !scaledOutputView_) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] Failed to create GPU scaler output view hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            scaledTexture_ = nullptr;
+            videoProcessor_ = nullptr;
+            videoProcessorEnumerator_ = nullptr;
+            return false;
+        }
+
+        scalerSourceWidth_ = sourceDesc.Width;
+        scalerSourceHeight_ = sourceDesc.Height;
+        scalerSourceFormat_ = sourceDesc.Format;
+        scalerTargetWidth_ = static_cast<UINT>(targetWidth);
+        scalerTargetHeight_ = static_cast<UINT>(targetHeight);
+        gpuScaleFailureLogged_ = false;
+        spdlog::info("[Capture::Impl] GPU capture scaler ready: {}x{} -> {}x{}",
+                     sourceDesc.Width,
+                     sourceDesc.Height,
+                     targetWidth,
+                     targetHeight);
+        return true;
+    }
+
+    ID3D11Texture2D *scaleFrameOnGpu(ID3D11Texture2D *texture,
+                                     const D3D11_TEXTURE2D_DESC &sourceDesc,
+                                     int sourceX,
+                                     int sourceY,
+                                     int contentWidth,
+                                     int contentHeight) {
+        // Video-processor drivers are optimized for opaque video and need not
+        // retain the source texture's per-pixel alpha. Transparent and chroma
+        // workflows keep the established alpha-preserving CPU path.
+        if (preserveAlpha_) {
+            return nullptr;
+        }
+
+        const int targetWidth = std::max(1, targetWidth_);
+        const int targetHeight = std::max(1, targetHeight_);
+        if (!ensureGpuScaler(sourceDesc, targetWidth, targetHeight)) {
+            return nullptr;
+        }
+
+        D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC inputViewDesc = {};
+        inputViewDesc.ViewDimension = D3D11_VPIV_DIMENSION_TEXTURE2D;
+        inputViewDesc.Texture2D.MipSlice = 0;
+        inputViewDesc.Texture2D.ArraySlice = 0;
+        winrt::com_ptr<ID3D11VideoProcessorInputView> inputView;
+        HRESULT hr = videoDevice_->CreateVideoProcessorInputView(
+            texture,
+            videoProcessorEnumerator_.get(),
+            &inputViewDesc,
+            inputView.put());
+        if (FAILED(hr) || !inputView) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] Failed to create GPU scaler input view hr=0x{:08x}",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            return nullptr;
+        }
+
+        const RECT sourceRect = {
+            sourceX,
+            sourceY,
+            sourceX + contentWidth,
+            sourceY + contentHeight};
+        const AspectFitRect fit = computeAspectFitRect(
+            contentWidth,
+            contentHeight,
+            targetWidth,
+            targetHeight);
+        if (fit.width <= 0 || fit.height <= 0) {
+            return nullptr;
+        }
+        const RECT destinationRect = {
+            fit.x,
+            fit.y,
+            fit.x + fit.width,
+            fit.y + fit.height};
+        const RECT outputRect = {0, 0, targetWidth, targetHeight};
+        D3D11_VIDEO_COLOR background = {};
+        background.RGBA.A = 1.0f;
+
+        videoContext_->VideoProcessorSetOutputTargetRect(videoProcessor_.get(), TRUE, &outputRect);
+        videoContext_->VideoProcessorSetOutputBackgroundColor(videoProcessor_.get(), FALSE, &background);
+        videoContext_->VideoProcessorSetStreamFrameFormat(
+            videoProcessor_.get(), 0, D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE);
+        videoContext_->VideoProcessorSetStreamSourceRect(videoProcessor_.get(), 0, TRUE, &sourceRect);
+        videoContext_->VideoProcessorSetStreamDestRect(videoProcessor_.get(), 0, TRUE, &destinationRect);
+
+        D3D11_VIDEO_PROCESSOR_STREAM stream = {};
+        stream.Enable = TRUE;
+        stream.OutputIndex = 0;
+        stream.InputFrameOrField = 0;
+        stream.pInputSurface = inputView.get();
+        hr = videoContext_->VideoProcessorBlt(
+            videoProcessor_.get(),
+            scaledOutputView_.get(),
+            0,
+            1,
+            &stream);
+        if (FAILED(hr)) {
+            if (!gpuScaleFailureLogged_) {
+                spdlog::warn("[Capture::Impl] GPU capture scaling failed hr=0x{:08x}; using CPU fallback",
+                             static_cast<unsigned int>(hr));
+                gpuScaleFailureLogged_ = true;
+            }
+            return nullptr;
+        }
+        return scaledTexture_.get();
+    }
+
     void processFrameUnsafe(ID3D11Texture2D *texture,
                             int64_t timestamp,
                             int contentWidth,
@@ -748,14 +1062,40 @@ class WindowCapture::Impl {
             return;
         }
         std::lock_guard<std::mutex> processLock(processFrameMutex_);
+        if (!detail::frameAdmissionAllowed(frameAdmissionCallback_) ||
+            !framePacer_.shouldAdmit(std::chrono::steady_clock::now())) {
+            framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
         D3D11_TEXTURE2D_DESC desc;
         texture->GetDesc(&desc);
         if (desc.Width == 0 || desc.Height == 0) {
             return;
         }
 
-        if (!stagingTexture_ || stagingWidth_ != desc.Width || stagingHeight_ != desc.Height) {
-            D3D11_TEXTURE2D_DESC stagingDesc = desc;
+        const int maxSourceX = std::max(0, static_cast<int>(desc.Width) - 1);
+        const int maxSourceY = std::max(0, static_cast<int>(desc.Height) - 1);
+        sourceX = std::clamp(sourceX, 0, maxSourceX);
+        sourceY = std::clamp(sourceY, 0, maxSourceY);
+        contentWidth = std::max(1, std::min<int>(contentWidth, static_cast<int>(desc.Width) - sourceX));
+        contentHeight = std::max(1, std::min<int>(contentHeight, static_cast<int>(desc.Height) - sourceY));
+
+        ID3D11Texture2D *readbackSource = scaleFrameOnGpu(
+            texture,
+            desc,
+            sourceX,
+            sourceY,
+            contentWidth,
+            contentHeight);
+        const bool gpuScaled = readbackSource != nullptr;
+        if (!gpuScaled) {
+            readbackSource = texture;
+        }
+
+        D3D11_TEXTURE2D_DESC readbackDesc;
+        readbackSource->GetDesc(&readbackDesc);
+        if (!stagingTexture_ || stagingWidth_ != readbackDesc.Width || stagingHeight_ != readbackDesc.Height) {
+            D3D11_TEXTURE2D_DESC stagingDesc = readbackDesc;
             stagingDesc.Usage = D3D11_USAGE_STAGING;
             stagingDesc.BindFlags = 0;
             stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -763,11 +1103,11 @@ class WindowCapture::Impl {
             if (FAILED(device_->CreateTexture2D(&stagingDesc, nullptr, stagingTexture_.put()))) {
                 return;
             }
-            stagingWidth_ = desc.Width;
-            stagingHeight_ = desc.Height;
+            stagingWidth_ = readbackDesc.Width;
+            stagingHeight_ = readbackDesc.Height;
         }
 
-        context_->CopyResource(stagingTexture_.get(), texture);
+        context_->CopyResource(stagingTexture_.get(), readbackSource);
         ScopedD3DTextureMap mapped{context_.get(), stagingTexture_.get()};
         const HRESULT mapHr = context_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped.mapped);
         if (FAILED(mapHr)) {
@@ -777,14 +1117,9 @@ class WindowCapture::Impl {
         }
         mapped.active = true;
 
-        const int maxSourceX = std::max(0, static_cast<int>(desc.Width) - 1);
-        const int maxSourceY = std::max(0, static_cast<int>(desc.Height) - 1);
-        sourceX = std::clamp(sourceX, 0, maxSourceX);
-        sourceY = std::clamp(sourceY, 0, maxSourceY);
-
         CapturedFrame frame;
-        frame.width = std::max(1, std::min<int>(contentWidth, static_cast<int>(desc.Width) - sourceX));
-        frame.height = std::max(1, std::min<int>(contentHeight, static_cast<int>(desc.Height) - sourceY));
+        frame.width = gpuScaled ? static_cast<int>(readbackDesc.Width) : contentWidth;
+        frame.height = gpuScaled ? static_cast<int>(readbackDesc.Height) : contentHeight;
         frame.stride = frame.width * 4;
         frame.timestamp = timestamp;
         frame.format = CapturedFrame::Format::BGRA;
@@ -792,8 +1127,10 @@ class WindowCapture::Impl {
         frame.data.resize(dataSize);
         const auto *mappedBytes = static_cast<const uint8_t *>(mapped.mapped.pData);
         for (int y = 0; y < frame.height; ++y) {
-            const uint8_t *srcRow = mappedBytes + static_cast<size_t>(sourceY + y) * mapped.mapped.RowPitch +
-                                    static_cast<size_t>(sourceX) * 4;
+            const int readbackX = gpuScaled ? 0 : sourceX;
+            const int readbackY = gpuScaled ? y : sourceY + y;
+            const uint8_t *srcRow = mappedBytes + static_cast<size_t>(readbackY) * mapped.mapped.RowPitch +
+                                    static_cast<size_t>(readbackX) * 4;
             uint8_t *dstRow = frame.data.data() + static_cast<size_t>(y) * frame.stride;
             std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
         }
@@ -805,6 +1142,12 @@ class WindowCapture::Impl {
 
     winrt::com_ptr<ID3D11Device> device_;
     winrt::com_ptr<ID3D11DeviceContext> context_;
+    winrt::com_ptr<ID3D11VideoDevice> videoDevice_;
+    winrt::com_ptr<ID3D11VideoContext> videoContext_;
+    winrt::com_ptr<ID3D11VideoProcessorEnumerator> videoProcessorEnumerator_;
+    winrt::com_ptr<ID3D11VideoProcessor> videoProcessor_;
+    winrt::com_ptr<ID3D11Texture2D> scaledTexture_;
+    winrt::com_ptr<ID3D11VideoProcessorOutputView> scaledOutputView_;
     winrt::com_ptr<ID3D11Texture2D> stagingTexture_;
     winrt::com_ptr<IDXGIOutputDuplication> outputDuplication_;
 
@@ -823,10 +1166,19 @@ class WindowCapture::Impl {
     int targetWidth_ = 0;
     int targetHeight_ = 0;
     int targetFps_ = 60;
+    bool preserveAlpha_ = false;
+    detail::CaptureFramePacer framePacer_{60};
     std::atomic<bool> capturing_{false};
+    std::atomic<uint64_t> framesSkippedBeforeReadback_{0};
 
     UINT stagingWidth_ = 0;
     UINT stagingHeight_ = 0;
+    UINT scalerSourceWidth_ = 0;
+    UINT scalerSourceHeight_ = 0;
+    DXGI_FORMAT scalerSourceFormat_ = DXGI_FORMAT_UNKNOWN;
+    UINT scalerTargetWidth_ = 0;
+    UINT scalerTargetHeight_ = 0;
+    bool gpuScaleFailureLogged_ = false;
     int lastContentWidth_ = 0;
     int lastContentHeight_ = 0;
     LONG desktopLeft_ = 0;
@@ -837,6 +1189,7 @@ class WindowCapture::Impl {
 
     std::mutex processFrameMutex_;
     FrameCallback frameCallback_;
+    FrameAdmissionCallback frameAdmissionCallback_;
     std::thread captureThread_;
 };
 
@@ -846,9 +1199,11 @@ class WindowCapture::Impl {
   public:
     bool initialize() { return false; }
     std::vector<WindowInfo> enumerateWindows() { return {}; }
-    bool startCapture(void *, int, int, int) { return false; }
+    bool startCapture(void *, int, int, int, bool) { return false; }
     void stopCapture() {}
     void setFrameCallback(FrameCallback) {}
+    void setFrameAdmissionCallback(FrameAdmissionCallback) {}
+    uint64_t framesSkippedBeforeReadback() const { return 0; }
     bool isCapturing() const { return false; }
 };
 
@@ -872,7 +1227,11 @@ WindowInfo *WindowCapture::findWindowByName(const std::string &partialName) {
     return const_cast<WindowInfo *>(findBestWindowMatch(cached, partialName));
 }
 
-bool WindowCapture::startCapture(const std::string &windowId, int width, int height, int fps) {
+bool WindowCapture::startCapture(const std::string &windowId,
+                                 int width,
+                                 int height,
+                                 int fps,
+                                 bool preserveAlpha) {
 #ifdef _WIN32
     spdlog::info("[Capture] startCapture called with windowId={}", windowId);
     HWND hwnd = nullptr;
@@ -885,7 +1244,9 @@ bool WindowCapture::startCapture(const std::string &windowId, int width, int hei
         return false;
     }
     spdlog::info("[Capture] Window handle valid, calling impl->startCapture");
-    capturing_.store(impl_->startCapture(hwnd, width, height, fps), std::memory_order_release);
+    capturing_.store(
+        impl_->startCapture(hwnd, width, height, fps, preserveAlpha),
+        std::memory_order_release);
     spdlog::info("[Capture] impl->startCapture returned {}", capturing_.load(std::memory_order_acquire));
     return capturing_.load(std::memory_order_acquire);
 #else
@@ -905,6 +1266,15 @@ bool WindowCapture::isCapturing() const {
 void WindowCapture::setFrameCallback(FrameCallback cb) {
     frameCallback_ = std::move(cb);
     impl_->setFrameCallback(frameCallback_);
+}
+
+void WindowCapture::setFrameAdmissionCallback(FrameAdmissionCallback cb) {
+    frameAdmissionCallback_ = std::move(cb);
+    impl_->setFrameAdmissionCallback(frameAdmissionCallback_);
+}
+
+uint64_t WindowCapture::framesSkippedBeforeReadback() const {
+    return impl_->framesSkippedBeforeReadback();
 }
 
 QPixmap WindowCapture::captureWindowThumbnail(const std::string &windowId, int maxWidth, int maxHeight) {

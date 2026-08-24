@@ -432,7 +432,10 @@ class VersusApp {
     bool ensureLqEncoderInitializedLocked();
     void shutdownLqEncoderLocked();
     bool isControlMessageAuthorized(const std::shared_ptr<PeerSession> &peer, const std::string &token) const;
-    bool encodeAndSendVideoFrame(const versus::video::CapturedFrame &frame, bool forceKeyframe);
+    bool encodeAndSendVideoFrame(
+        const versus::video::CapturedFrame &frame,
+        bool forceKeyframe,
+        int64_t outputTimestamp = std::numeric_limits<int64_t>::min());
     bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
     std::shared_ptr<const versus::video::CapturedFrame> getCachedVideoFrame();
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
@@ -552,6 +555,7 @@ class VersusApp {
     std::mutex encodeNotifyMutex_;
     std::condition_variable encodeFrameCV_;
     bool encodeFrameReady_ = false;
+    std::atomic<bool> videoEncodeInProgress_{false};
     struct AlphaEncodeJob {
         std::vector<uint8_t> gray;
         int width = 0;

@@ -10,6 +10,9 @@ class TestWindowCapture : public QObject {
     void testFindBestWindowMatchUsesLargestExecutableOnlyCandidate();
     void testInvalidWindowIdRejected();
     void testInvalidWindowIdThumbnailReturnsNull();
+    void testFramePacerAdmitsAtRequestedCadence();
+    void testFramePacerDoesNotBurstAfterDelay();
+    void testFrameAdmissionCallbackCanRejectBeforeReadback();
 };
 
 void TestWindowCapture::testFindBestWindowMatchPrefersTitleMatchOverExecutableOnly() {
@@ -43,6 +46,39 @@ void TestWindowCapture::testInvalidWindowIdRejected() {
 void TestWindowCapture::testInvalidWindowIdThumbnailReturnsNull() {
     QPixmap thumbnail = versus::video::WindowCapture::captureWindowThumbnail("bad_window_id");
     QVERIFY(thumbnail.isNull());
+}
+
+void TestWindowCapture::testFramePacerAdmitsAtRequestedCadence() {
+    versus::video::detail::CaptureFramePacer pacer(60);
+    const auto start = std::chrono::steady_clock::time_point{};
+
+    QVERIFY(pacer.shouldAdmit(start));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(10)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(17)));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(25)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(34)));
+}
+
+void TestWindowCapture::testFramePacerDoesNotBurstAfterDelay() {
+    versus::video::detail::CaptureFramePacer pacer(30);
+    const auto start = std::chrono::steady_clock::time_point{};
+
+    QVERIFY(pacer.shouldAdmit(start));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(200)));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(201)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(234)));
+}
+
+void TestWindowCapture::testFrameAdmissionCallbackCanRejectBeforeReadback() {
+    int calls = 0;
+    const std::function<bool()> reject = [&calls]() {
+        ++calls;
+        return false;
+    };
+
+    QVERIFY(!versus::video::detail::frameAdmissionAllowed(reject));
+    QCOMPARE(calls, 1);
+    QVERIFY(versus::video::detail::frameAdmissionAllowed({}));
 }
 
 QTEST_MAIN(TestWindowCapture)

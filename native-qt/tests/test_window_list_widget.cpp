@@ -118,10 +118,22 @@ void TestWindowListWidget::testSetWindowList() {
     // Check first item data
     auto *item1 = listWidget->item(0);
     QCOMPARE(item1->data(Qt::UserRole).toString(), QString("hwnd_123"));
+    QVERIFY(item1->text().isEmpty());
+    QCOMPARE(item1->data(Qt::AccessibleTextRole).toString(),
+             QString("Game Window 1 - game1.exe"));
+
+    QWidget *itemWidget1 = listWidget->itemWidget(item1);
+    QVERIFY(itemWidget1 != nullptr);
+    auto *title1 = itemWidget1->findChild<QLabel*>("title");
+    QVERIFY(title1 != nullptr);
+    QCOMPARE(title1->text(), QString("Game Window 1"));
 
     // Check second item data
     auto *item2 = listWidget->item(1);
     QCOMPARE(item2->data(Qt::UserRole).toString(), QString("hwnd_456"));
+    QVERIFY(item2->text().isEmpty());
+    QCOMPARE(item2->data(Qt::AccessibleTextRole).toString(),
+             QString("Game Window 2 - game2.exe"));
 }
 
 void TestWindowListWidget::testWindowSelection() {
