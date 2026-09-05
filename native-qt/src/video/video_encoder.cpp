@@ -1,4 +1,5 @@
 #include "versus/video/video_encoder.h"
+#include "versus/video/h264_color_metadata.h"
 #include "versus/video/aspect_fit.h"
 #include "versus/video/window_capture.h"
 
@@ -1882,6 +1883,12 @@ class VideoEncoder::Impl {
             }
 
             packet.data.assign(encodedData, encodedData + encodedSize);
+            const auto colorPacking = inputPackingFromSubtype(inputSubtype_);
+            if (config_.codec == VideoCodec::H264 && !usingHardware_ &&
+                (colorPacking == InputPacking::NV12 || colorPacking == InputPacking::I420 ||
+                 colorPacking == InputPacking::YV12)) {
+                detail::tagSoftwareH264Color(packet.data);
+            }
             LONGLONG outTimestamp = timestamp;
             if (FAILED(resultSample->GetSampleTime(&outTimestamp))) {
                 outTimestamp = mfPendingSourceTimestamps_.empty()

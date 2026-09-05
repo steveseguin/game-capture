@@ -19,6 +19,7 @@ class TestWindowCapture : public QObject {
     void testGdiThumbnailIsOpaque();
     void testFramePacerAdmitsAtRequestedCadence();
     void testFramePacerDoesNotBurstAfterDelay();
+    void testFramePacerToleratesCallbackJitterWithoutIncreasingAverageRate();
     void testFrameAdmissionCallbackCanRejectBeforeReadback();
 };
 
@@ -127,6 +128,26 @@ void TestWindowCapture::testFramePacerDoesNotBurstAfterDelay() {
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(200)));
     QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(201)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(234)));
+}
+
+void TestWindowCapture::testFramePacerToleratesCallbackJitterWithoutIncreasingAverageRate() {
+    using namespace std::chrono;
+    const auto start = steady_clock::time_point{};
+    versus::video::detail::CaptureFramePacer pacer(60);
+    int admitted = 0;
+    // A 60-Hz producer whose callbacks alternate by 1 ms around the deadline.
+    // Rejected early callbacks cannot be recovered by the next output slot.
+    for (int i = 0; i < 600; ++i) {
+        const auto jitter = microseconds(i % 2 ? -1000 : 0);
+        admitted += pacer.shouldAdmit(start + nanoseconds(16666666LL * i) + jitter);
+    }
+    QCOMPARE(admitted, 600);
+    pacer.reset(60);
+    admitted = 0;
+    for (int i = 0; i < 10000; ++i) {
+        admitted += pacer.shouldAdmit(start + milliseconds(i));
+    }
+    QVERIFY(admitted >= 599 && admitted <= 601);
 }
 
 void TestWindowCapture::testFrameAdmissionCallbackCanRejectBeforeReadback() {

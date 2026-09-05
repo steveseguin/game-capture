@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include "versus/app/alpha_frame_pairer.h"
+#include "versus/video/h264_color_metadata.h"
 
 #include <algorithm>
 #include <atomic>
@@ -81,6 +82,8 @@ class TestAlphaFramePairer : public QObject {
     void testProtectedVp9OptionsRejectNormalizedTopologyAndFileAliases();
     void testMediaFoundationWarmupLifecycleFailsClosedAndClearsIdentity();
     void testH264AccessUnitKeyframeTruthAndAlphaStartup();
+    void testSoftwareH264ColorMetadataMatchesFfmpeg();
+    void testSoftwareH264ColorMetadataRejectsInvalidHeaders();
     void testExternalSourceIdentityQueueIsBoundedAndFifo();
     void testProtectedKeyframeGuaranteeUsesLiveRuntimeState();
     void testVp9PayloadKeyframeDetectionIsTruthful();
@@ -810,6 +813,58 @@ void TestAlphaFramePairer::testMediaFoundationWarmupLifecycleFailsClosedAndClear
                  "configure-fresh",
                  "clear-identity",
              }));
+}
+
+void TestAlphaFramePairer::testSoftwareH264ColorMetadataMatchesFfmpeg() {
+    using versus::video::detail::tagSoftwareH264Color;
+    auto bytes = [](const char *hex) {
+        const auto decoded = QByteArray::fromHex(hex);
+        return std::vector<uint8_t>(decoded.begin(), decoded.end());
+    };
+    // Baseline QSV SPS with timing/restrictions and emulation-prevention bytes.
+    // Expected SPS independently produced by FFmpeg h264_metadata with
+    // video_full_range_flag=0:colour_primaries=1:transfer_characteristics=13:matrix_coefficients=6.
+    const auto original = bytes("2742000d95b0507ec044000003000400000300f276870ab8");
+    const auto expected = bytes("2742000d95b0507ec05a80868320000003002000000793b43855c0");
+    const auto suffix = bytes("00000168ce3c800000000165b80000030280");
+    auto sample = bytes("0000000109f000000001");
+    auto reference = sample;
+    sample.insert(sample.end(), original.begin(), original.end());
+    reference.insert(reference.end(), expected.begin(), expected.end());
+    sample.insert(sample.end(), suffix.begin(), suffix.end());
+    reference.insert(reference.end(), suffix.begin(), suffix.end());
+    tagSoftwareH264Color(sample);
+    QCOMPARE(sample, reference); // AUD/PPS/slice bytes and prefixes are unchanged.
+    tagSoftwareH264Color(sample);
+    QCOMPARE(sample, reference); // Repeated metadata tagging is idempotent.
+
+    // Same SPS with no VUI. Expected insertion also checked against FFmpeg.
+    sample = bytes("0000012742000d95b0507e40");
+    tagSoftwareH264Color(sample);
+    QCOMPARE(sample, bytes("0000012742000d95b0507e9a80868301"));
+}
+
+void TestAlphaFramePairer::testSoftwareH264ColorMetadataRejectsInvalidHeaders() {
+    using versus::video::detail::tagSoftwareH264Sps;
+    using versus::video::detail::tagSoftwareH264Color;
+    const auto decoded = QByteArray::fromHex("2742000d95b0507ec044000003000400000300f276870ab8");
+    const std::vector<uint8_t> original(decoded.begin(), decoded.end());
+    for (size_t n = 0; n < original.size(); ++n) {
+        std::vector<uint8_t> truncated(original.begin(), original.begin() + n);
+        const auto before = truncated;
+        QVERIFY(!tagSoftwareH264Sps(truncated));
+        QCOMPARE(truncated, before);
+    }
+    auto unsupported = original;
+    unsupported[1] = 100; // High profile carries unsupported additional syntax.
+    const auto before = unsupported;
+    QVERIFY(!tagSoftwareH264Sps(unsupported));
+    QCOMPARE(unsupported, before);
+    std::vector<uint8_t> avcc{0, 0, 0, static_cast<uint8_t>(original.size())};
+    avcc.insert(avcc.end(), original.begin(), original.end());
+    const auto avccBefore = avcc;
+    tagSoftwareH264Color(avcc);
+    QCOMPARE(avcc, avccBefore);
 }
 
 void TestAlphaFramePairer::testH264AccessUnitKeyframeTruthAndAlphaStartup() {

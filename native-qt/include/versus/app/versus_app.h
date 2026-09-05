@@ -557,7 +557,6 @@ class VersusApp {
     std::mutex encodeNotifyMutex_;
     std::condition_variable encodeFrameCV_;
     bool encodeFrameReady_ = false;
-    std::atomic<bool> videoEncodeInProgress_{false};
     struct AlphaEncodeJob {
         std::vector<uint8_t> gray;
         int width = 0;

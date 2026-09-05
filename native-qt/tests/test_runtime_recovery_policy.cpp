@@ -10,7 +10,6 @@ class TestRuntimeRecoveryPolicy : public QObject {
     void testTemporarySoftwareEncoderPressureRemainsRetryable();
     void testBoundedOutputStallFallsBackImmediately();
     void testHardSoftwareEncoderFailuresUseCountedRecovery();
-    void testCapturePipelineAllowsOneFrameToWaitBehindEncoder();
     void testOutputPacerTargetsSixtyFpsWithoutCatchupBursts();
     void testAnonymousViewerResolutionHintIsSilent();
     void testExplicitResolutionControlGetsAuthorizationFeedback();
@@ -50,16 +49,6 @@ void TestRuntimeRecoveryPolicy::testHardSoftwareEncoderFailuresUseCountedRecover
     QCOMPARE(
         classifySoftwareEncoderFailure(EncodeFailureKind::InvalidInput),
         SoftwareEncoderFailureDisposition::CountedFailure);
-}
-
-void TestRuntimeRecoveryPolicy::testCapturePipelineAllowsOneFrameToWaitBehindEncoder() {
-    using versus::app::shouldAdmitCapturedFrame;
-
-    QVERIFY(shouldAdmitCapturedFrame(false, false, false, false));
-    QVERIFY(shouldAdmitCapturedFrame(true, true, false, true));
-    QVERIFY(!shouldAdmitCapturedFrame(true, true, true, true));
-    QVERIFY(shouldAdmitCapturedFrame(true, true, true, false));
-    QVERIFY(!shouldAdmitCapturedFrame(true, false, false, false));
 }
 
 void TestRuntimeRecoveryPolicy::testOutputPacerTargetsSixtyFpsWithoutCatchupBursts() {

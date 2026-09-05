@@ -1,5 +1,9 @@
 # Integrated capture review — 2026-09-05
 
+The remaining capture cadence and software H.264 color issues below are followed
+up in [the subsequent validation report](capture-color-validation-2026-09-05.md).
+This document preserves the original package's results.
+
 Reviewed and integrated upstream `eba6657` with the prior capture, control, audio and encoder fixes. The upstream paced-output design is retained. Maintenance replays now explicitly use that same output clock, avoiding both stale timestamps and mixed camera/output clock epochs.
 
 Two window-capture changes address a confirmed runtime rate problem: successful FPS changes update the capture limiter, and readback admission uses the actual pending image plus encoder activity. An idle encoder can have its single queued image replaced; a busy encoder with another image queued still suppresses readback. The pending queue remains bounded to one image.

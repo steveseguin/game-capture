@@ -78,7 +78,8 @@ Use `--color-check=1` to add eight fixed SDR RGB patches above the moving fixtur
 Receiver canvas samples are compared with the known source values; `colorMaxError`
 reports the largest channel difference across initial and final samples, and
 `colorAccurate` uses a four-level tolerance. `finalColors` checks the output after
-the requested recovery workflows. Color accuracy is separate from delivery success. The test is a basic
+the requested recovery workflows. A requested color check now fails the overall
+workflow when `colorAccurate` is false. The test is a basic
 flat-color check, not a high-motion or perceptual video quality metric.
 
 External NV12 H.264/H.265/AV1/VP9 output declares the matrix/range produced by the
@@ -87,13 +88,15 @@ are separate properties; untagged HD output must not imply a BT.709 conversion
 matrix when its input was converted using BT.601. VP9's gray alpha input keeps
 full range and does not receive the primary NV12 color metadata.
 
-The 1080p SDR patch comparison currently exposes a remaining color shift in
+The earlier 1080p SDR patch comparison exposed a color shift in
 Media Foundation Auto/Software H.264 (maximum channel error 19/255). Setting
 matching input/output Media Foundation color attributes did not change the
 received pixels on the review machine, so that ineffective change was removed.
 The separate codec color properties also returned E_NOTIMPL on this machine.
-Media Foundation must not be reported as passing the four-level color tolerance
-merely because delivery passes. VP9 initially measured 8/255; matching its
+Software H.264 now tags its Baseline SPS color metadata explicitly; see the
+[follow-up results](capture-color-validation-2026-09-05.md). Media Foundation must
+not be reported as passing the four-level tolerance merely because delivery
+passes. VP9 initially measured 8/255; matching its
 metadata to the converter reduced this to 2/255, including after signaling loss
 and source restart. External QSV/NVIDIA H.264 and QSV AV1 also measured 2/255.
 The FFmpeg option names are documented in the
@@ -130,7 +133,11 @@ selects the newest pending image or repeats the cached image when capture suppli
 no new image. Encoded output therefore can reach the requested FPS even when fresh
 capture is slower. Use `--capture-cadence=1` during runtime control workflows with
 a sufficiently fast source to check the captured-frame counter as well as receiver
-FPS. This distinguishes fresh images from repeated output.
+FPS, including startup. Set `--capture-cadence-min=0.95` to require at least 95%
+of the requested capture rate (the legacy default is 80%). `initialCapture` and
+each runtime entry retain diagnostics before and after measurement. Browser
+runtime entries also record source playback counters. These count acquisitions
+separately from encoded repeats; they do not count pixel-level unique frames.
 
 To check increases above the startup capture rate, use `--fps=30 --source-fps=60
 --control-fps=60 --video-controls=1`. The fixture remains at 60 FPS while the
@@ -144,15 +151,14 @@ updates an atomic runtime target after successful reconfiguration; its capture
 callback resets the limiter under the frame-processing lock. Camera rate
 increases still require their own validation.
 
-Window readback admission checks the actual pending-frame slot under its mutex.
-The encode notification flag is not a reliable queue-occupancy indicator: capture
-can set it after an output slot wakes but before that slot consumes the image.
-Using the flag would then reject fresh capture even with an empty queue. The
-actual slot maintains the intended one-pending-image bound while allowing
-capture and encoding to overlap. Readback is suppressed only when encoding is
-busy and the next image is already queued. During the output pacer's idle wait,
-capture can replace the one queued image; blocking those updates unnecessarily
-couples the capture and output schedules and reduces fresh-image cadence.
+Window capture can replace the single pending image while encoding is busy.
+Readback remains rate-limited, and the application never queues more than one
+pending image. Admission no longer depends on encoder activity or notification
+phase. On Windows supporting `IGraphicsCaptureSession5`, the OS capture interval
+is set to half the requested frame period to avoid undershooting at the default
+60-Hz boundary. Runtime FPS changes update both capture limiters. WGC admission
+uses the compositor's frame timestamp rather than callback arrival time, and
+coalesced pool entries are drained to the newest image after a stall.
 
 The application retains separate resampling phase/history for primary and
 additional audio capture. Non-48 kHz streaming chunks must share an
@@ -202,3 +208,8 @@ browser window. The harness uses the documented
 and verifies the actual bounds, moving decoded output, output dimensions and FPS.
 This exercises Windows Graphics Capture while the real application's window
 changes size; it does not establish recovery after closing and reopening a window.
+
+Add `--shutdown-window-paused=1` to pause the owned browser source before quitting
+the publisher and check idle-capture shutdown. The source resumes before the next
+encoder case. See the [capture cadence and color follow-up](capture-color-validation-2026-09-05.md)
+for the Windows interval fix, software H.264 metadata fix, and package results.

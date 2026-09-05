@@ -9,6 +9,8 @@ const {promisify} = require('util');
 const execFileAsync = promisify(execFile);
 const {chromium} = require('playwright');
 const opts = Object.fromEntries(process.argv.slice(2).map(s => { const i=s.indexOf('='); return [s.slice(2,i),s.slice(i+1)]; }));
+const captureCadenceMin=Number(opts['capture-cadence-min']||0.8);
+if(!(captureCadenceMin>0&&captureCadenceMin<=1))throw Error('Capture cadence minimum must be in (0,1]');
 const publisher = path.resolve(opts.publisher);
 const senderExe = opts.sender ? path.resolve(opts.sender) : null;
 const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : null;
@@ -210,6 +212,9 @@ async function main() {
       if(sender && (sender.killed||sender.exitCode!==null)) {
         sender=launch(senderExe,senderArgs,'source-next-case');await sleep(2000);
       }
+      if(sourcePage)await sourcePage.evaluate(async()=>{
+        const video=document.querySelector('video');if(video.paused)await video.play();
+      });
       const [encoder,codec]=entry.split(':');const name=encoder+'-'+codec;
       const controlPath=path.join(run,name+'-control.json');
       const stream='review'+crypto.randomBytes(10).toString('hex');
@@ -256,7 +261,13 @@ async function main() {
         await page.goto(`https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput`,{waitUntil:'domcontentloaded',timeout:45000});
         result.initialConnectMs=await waitVideo(page);
         await sleep(2000);
+        const steadyBefore=await api(control,'/diagnostics');
         result.stages.push({name:'steady',metrics:await measure(page,15000)});
+        const steadyAfter=await api(control,'/diagnostics');
+        result.initialCapture={before:steadyBefore,after:steadyAfter,
+          fps:(steadyAfter.video.frames_captured-steadyBefore.video.frames_captured)*1000/(steadyAfter.generated_steady_ms-steadyBefore.generated_steady_ms)};
+        console.log(name,'initial fresh capture FPS',result.initialCapture.fps);
+        if(opts['capture-cadence']==='1'&&!(result.initialCapture.fps>=fps*captureCadenceMin))throw Error('Initial fresh capture cadence below requested minimum');
         result.audio=await audioProbe(page);result.motion=await motionProbe(page);
         if(opts['color-check']==='1') {
           result.colors=await colorProbe(page);
@@ -322,12 +333,26 @@ async function main() {
             },{bitrate:target.bitrate,remote:stream});
             await sleep(4000);
             const captureBefore=await api(control,'/diagnostics');
+            const sourceBefore=sourcePage?await sourcePage.evaluate(()=>{
+              const q=document.querySelector('video').getVideoPlaybackQuality();
+              return {at:performance.now(),total:q.totalVideoFrames,dropped:q.droppedVideoFrames};
+            }):null;
             const metrics=await measure(page,8000),motion=await motionProbe(page);
             const entry={target,metrics,motion,diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
+            entry.captureBefore=captureBefore;
+            if(sourcePage) {
+              const after=await sourcePage.evaluate(()=>{
+                const q=document.querySelector('video').getVideoPlaybackQuality();
+                return {at:performance.now(),total:q.totalVideoFrames,dropped:q.droppedVideoFrames};
+              });
+              entry.sourcePlayback={before:sourceBefore,after,
+                presentedFps:((after.total-after.dropped)-(sourceBefore.total-sourceBefore.dropped))*1000/(after.at-sourceBefore.at)};
+            }
             const captureSeconds=(entry.diagnostics.generated_steady_ms-captureBefore.generated_steady_ms)/1000;
             entry.captureFps=(entry.diagnostics.video.frames_captured-captureBefore.video.frames_captured)/captureSeconds;
             console.log(name,'runtime target FPS',target.f,'fresh capture FPS',entry.captureFps);
-            if(opts['capture-cadence']==='1'&&!(entry.captureFps>=target.f*.8))throw Error('Fresh capture cadence did not follow runtime FPS');
+            entry.captureFullRate=entry.captureFps>=target.f*.95;
+            if(opts['capture-cadence']==='1'&&!(entry.captureFps>=target.f*captureCadenceMin))throw Error('Fresh capture cadence did not follow runtime FPS');
             if(entry.diagnostics.video.configured_bitrate_kbps!==target.bitrate)throw Error('Runtime bitrate change was not applied');
             if(!motion.moving||!metrics.some(m=>m.kind==='video'&&m.width===target.w&&m.height===target.h&&m.fps>=target.f*.8&&m.fps<=target.f*1.15))
               throw Error('Runtime video controls did not preserve moving video at the requested format');
@@ -434,7 +459,7 @@ async function main() {
         if(opts.resize==='1'&&(result.final.source.width!==1280||result.final.source.height!==960||result.final.source.resize_count<1)) {
           throw Error('Publisher did not observe the live source resize');
         }
-        result.ok=result.motion.moving&&(!proxy||!sender||result.restartedMotion.moving)&&
+        result.ok=(opts['color-check']!=='1'||result.colorAccurate)&&result.motion.moving&&(!proxy||!sender||result.restartedMotion.moving)&&
           Math.abs(result.audio.dominantHz-440)<10&&result.audio.clippedSamples===0&&
           result.stages.every(s=>s.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.8&&m.width===width&&m.height===height)&&s.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001));
         console.log(name,'delivery',result.ok,'full rate',result.fullRate,'encoder',result.final.video.active_encoder,'received codecs',result.receivedCodecs,
@@ -443,6 +468,13 @@ async function main() {
         if(control)try{result.final=await api(control,'/diagnostics');}catch{}
         if(page)try{await page.screenshot({path:path.join(run,name+'-failure.png')});}catch{}
       } finally {
+        if(sourcePage&&opts['shutdown-window-paused']==='1') {
+          try {
+            await sourcePage.evaluate(()=>document.querySelector('video').pause());
+            await sleep(1500);
+            result.shutdownWindowPaused=await sourcePage.evaluate(()=>document.querySelector('video').paused);
+          } catch(e) {result.shutdownWindowPauseError=String(e);result.ok=false;}
+        }
         if(opts['shutdown-source-loss']==='1') {sender.kill();await sleep(1500);}
         if(handshakeProxy) {
           const before=stalledHandshakes;stallHandshake=true;

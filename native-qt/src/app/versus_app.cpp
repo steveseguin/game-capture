@@ -913,15 +913,11 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     };
     windowCapture_.setFrameCallback(frameCallback);
     windowCapture_.setFrameAdmissionCallback([this]() {
-        // The notification flag can be raised between an output slot's wakeup
-        // and consumption of its image. Inspect the actual queue so that such
-        // a notification cannot block readback after the image was consumed.
-        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        return shouldAdmitCapturedFrame(
-            live_.load(std::memory_order_acquire),
-            encodeThreadRunning_.load(std::memory_order_acquire),
-            pendingVideoFrame_ != nullptr,
-            videoEncodeInProgress_.load(std::memory_order_acquire));
+        // Capture is rate-limited before readback and handleVideoFrame replaces
+        // a single pending image. Keep the latest image even while encoding;
+        // rejecting it based on output-thread phase lowers motion cadence.
+        return !live_.load(std::memory_order_acquire) ||
+            encodeThreadRunning_.load(std::memory_order_acquire);
     });
     spoutCapture_.setFrameCallback(frameCallback);
     cameraCapture_.setFrameCallback(frameCallback);
@@ -7538,20 +7534,12 @@ void VersusApp::startEncodeThread() {
                     break;
                 }
                 encodeFrameReady_ = false;
-                videoEncodeInProgress_.store(true, std::memory_order_release);
             }
 
             nextFrameDue = advanceOutputFrameDeadline(
                 scheduledFrameDue,
                 Clock::now(),
                 frameInterval);
-
-            struct EncodeProgressGuard {
-                std::atomic<bool> &flag;
-                ~EncodeProgressGuard() {
-                    flag.store(false, std::memory_order_release);
-                }
-            } encodeProgressGuard{videoEncodeInProgress_};
 
             if (!live_) {
                 continue;
@@ -7608,7 +7596,6 @@ void VersusApp::stopEncodeThread() {
             encodeThread_.join();
         }
     }
-    videoEncodeInProgress_.store(false, std::memory_order_release);
     stopAlphaEncodeThread();
 }
 

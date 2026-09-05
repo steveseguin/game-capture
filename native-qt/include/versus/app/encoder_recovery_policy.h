@@ -31,18 +31,6 @@ inline SoftwareEncoderFailureDisposition classifySoftwareEncoderFailure(
     return SoftwareEncoderFailureDisposition::CountedFailure;
 }
 
-// Avoid readback when an encoder is busy and already has its next image queued.
-// While it waits for an output slot, allow replacing that one queued image with
-// fresher content. Rejecting these idle-time captures couples two independent
-// pacers and can discard every other image even when encoding keeps up.
-inline bool shouldAdmitCapturedFrame(
-    bool live,
-    bool encodeThreadRunning,
-    bool pendingFrameReady,
-    bool encodeInProgress) {
-    return !live || (encodeThreadRunning && (!pendingFrameReady || !encodeInProgress));
-}
-
 inline std::chrono::nanoseconds outputFrameInterval(int fps) {
     return std::chrono::nanoseconds(
         1000000000LL / std::max(1, fps));

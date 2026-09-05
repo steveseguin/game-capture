@@ -71,11 +71,19 @@ bool CaptureFramePacer::shouldAdmit(std::chrono::steady_clock::time_point now) {
         scheduled_ = true;
         return true;
     }
-    if (now < nextDue_) {
+    // Callback jitter must not discard slightly early frames from a source
+    // already running at the requested rate. Keep the deadline phase and skip
+    // missed slots, so this allowance cannot accumulate into catch-up bursts.
+    const auto tolerance = std::min(
+        interval_ / 4,
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::milliseconds(2)));
+    const auto admissionTime = now + tolerance;
+    if (admissionTime < nextDue_) {
         return false;
     }
 
-    const auto overdue = now - nextDue_;
+    const auto overdue = admissionTime - nextDue_;
     const auto intervalsElapsed = (overdue / interval_) + 1;
     nextDue_ += interval_ * intervalsElapsed;
     return true;
@@ -553,6 +561,11 @@ class WindowCapture::Impl {
         if (captureThread_.joinable()) {
             captureThread_.join();
         }
+        // Retire the frame pool before releasing resources used by its callbacks.
+        if (framePool_) {
+            framePool_.Close();
+            framePool_ = nullptr;
+        }
         outputDuplication_ = nullptr;
         stagingTexture_ = nullptr;
         scaledTexture_ = nullptr;
@@ -565,10 +578,6 @@ class WindowCapture::Impl {
         scalerTargetHeight_ = 0;
         stagingWidth_ = 0;
         stagingHeight_ = 0;
-        if (framePool_) {
-            framePool_.Close();
-            framePool_ = nullptr;
-        }
         if (captureSession_) {
             captureSession_.Close();
             captureSession_ = nullptr;
@@ -708,6 +717,7 @@ class WindowCapture::Impl {
             framePool_.FrameArrived([this](auto const &sender, auto const &) { onFrameArrived(sender); });
             captureSession_ = framePool_.CreateCaptureSession(captureItem_);
             captureSession_.IsCursorCaptureEnabled(false);
+            applyCaptureUpdateInterval(targetFps_);
             applyBorderlessCapturePreference();
             captureSession_.StartCapture();
             capturing_.store(true, std::memory_order_release);
@@ -722,6 +732,26 @@ class WindowCapture::Impl {
         } catch (...) {
             spdlog::error("[Capture::Impl] Unknown exception in startGraphicsCapture");
             return false;
+        }
+    }
+
+    void applyCaptureUpdateInterval(int fps) {
+        // Windows 11 24H2 defaults to an OS-side 60-Hz minimum interval.
+        // Compositor jitter can undershoot that rate before our own limiter
+        // sees a frame. Leave half an interval of headroom and keep our
+        // readback limiter authoritative. Older Windows has no session5.
+        // https://github.com/robmikh/Win32CaptureSample/issues/92
+        if (!captureSession_) return;
+        try {
+            if (auto timing = captureSession_.try_as<winrt::Windows::Graphics::Capture::IGraphicsCaptureSession5>()) {
+                const auto interval = winrt::Windows::Foundation::TimeSpan{
+                    5000000LL / std::max(1, fps)};
+                timing.MinUpdateInterval(interval);
+                spdlog::info("[Capture::Impl] OS capture update interval set to {}us for {} FPS", interval.count() / 10, fps);
+            }
+        } catch (const winrt::hresult_error &e) {
+            spdlog::debug("[Capture::Impl] Optional capture update interval unavailable hr=0x{:08x}",
+                          static_cast<unsigned int>(e.code()));
         }
     }
 
@@ -799,6 +829,15 @@ class WindowCapture::Impl {
         auto frame = sender.TryGetNextFrame();
         if (!frame) {
             return;
+        }
+        // If callbacks coalesced during a stall, read back the newest image
+        // instead of chasing old pool entries in a catch-up burst.
+        for (int i = 1; i < kFramePoolBufferCount; ++i) {
+            auto next = sender.TryGetNextFrame();
+            if (!next) break;
+            frame.Close();
+            frame = std::move(next);
+            framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
         }
 
         const auto contentSize = frame.ContentSize();
@@ -1171,9 +1210,18 @@ class WindowCapture::Impl {
         if (requestedFps != targetFps_) {
             targetFps_ = requestedFps;
             framePacer_.reset(targetFps_);
+            applyCaptureUpdateInterval(targetFps_);
         }
+        // WGC SystemRelativeTime is the compositor's QPC timestamp in 100-ns
+        // units. Callback/lock scheduling jitter must not discard source frames
+        // around a deadline. Desktop duplication retains its wall-clock limiter.
+        const auto frameTime = useGraphicsCapture_
+            ? std::chrono::steady_clock::time_point(
+                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<int64_t, std::ratio<1, 10000000>>(timestamp)))
+            : std::chrono::steady_clock::now();
         if (!detail::frameAdmissionAllowed(frameAdmissionCallback_) ||
-            !framePacer_.shouldAdmit(std::chrono::steady_clock::now())) {
+            !framePacer_.shouldAdmit(frameTime)) {
             framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
