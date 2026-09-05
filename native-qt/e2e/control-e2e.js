@@ -793,6 +793,34 @@ async function waitForRejectedControl(page, timeoutMs, control, reason, minMessa
   return { ok: false, stage: `${control}-${reason}-rejection`, state: lastState };
 }
 
+async function waitForNoRejectedControl(page, timeoutMs, control, minMessageCount = 0) {
+  const start = Date.now();
+  let lastState = null;
+  while (Date.now() - start < timeoutMs) {
+    lastState = await page.evaluate(({ expectedControl, minCount }) => {
+      const probe = window.__gameCaptureControlProbe || { messages: [] };
+      const messages = Array.isArray(probe.messages) ? probe.messages : [];
+      const candidates = messages.slice(Math.max(0, minCount));
+      const rejection = candidates.find((entry) => {
+        const message = entry && entry.message ? entry.message : null;
+        return message && message.rejected === expectedControl;
+      }) || null;
+      return {
+        messageCount: messages.length,
+        minCount,
+        latest: messages.length ? messages[messages.length - 1] : null,
+        rejection
+      };
+    }, { expectedControl: control, minCount: minMessageCount });
+
+    if (lastState && lastState.rejection) {
+      return { ok: false, stage: `${control}-unexpected-rejection`, state: lastState };
+    }
+    await wait(250);
+  }
+  return { ok: true, state: lastState };
+}
+
 async function waitForRejectedConnectionMap(page, timeoutMs, meshRequestId, minMessageCount = 0) {
   const start = Date.now();
   let lastState = null;
@@ -1594,24 +1622,46 @@ async function main() {
       return;
     }
 
-    const unauthorizedResolution = { w: 322, h: 242, c: false };
+    const anonymousViewerResolution = { w: 322, h: 242, c: false };
     probeMessageCount = await getProbeMessageCount(page);
     const unauthorizedResolutionSend = await sendControlMessage(page, {
-      requestResolution: unauthorizedResolution
+      requestResolution: anonymousViewerResolution
     });
     if (!unauthorizedResolutionSend.ok) {
       failure = { stage: 'send-unauthorized-resolution', state: unauthorizedResolutionSend };
       return;
     }
-    const unauthorizedResolutionRejected = await waitForRejectedControl(
+    const anonymousResolutionSilent = await waitForNoRejectedControl(
+      page,
+      Math.max(1500, Math.floor(config.timeoutMs / 10)),
+      'requestResolution',
+      probeMessageCount
+    );
+    if (!anonymousResolutionSilent.ok) {
+      failure = anonymousResolutionSilent;
+      return;
+    }
+    console.log('[CONTROL] Anonymous viewer requestResolution was ignored without rejection');
+
+    const tokenedUnauthorizedResolution = { w: 324, h: 244, c: false };
+    probeMessageCount = await getProbeMessageCount(page);
+    const tokenedUnauthorizedResolutionSend = await sendControlMessage(page, {
+      requestResolution: tokenedUnauthorizedResolution,
+      remote: `${config.remoteToken}-invalid`
+    });
+    if (!tokenedUnauthorizedResolutionSend.ok) {
+      failure = { stage: 'send-tokened-unauthorized-resolution', state: tokenedUnauthorizedResolutionSend };
+      return;
+    }
+    const tokenedUnauthorizedResolutionRejected = await waitForRejectedControl(
       page,
       Math.max(3000, Math.floor(config.timeoutMs / 5)),
       'requestResolution',
       'unauthorized',
       probeMessageCount
     );
-    if (!unauthorizedResolutionRejected.ok) {
-      failure = unauthorizedResolutionRejected;
+    if (!tokenedUnauthorizedResolutionRejected.ok) {
+      failure = tokenedUnauthorizedResolutionRejected;
       return;
     }
 
@@ -2273,14 +2323,16 @@ async function main() {
       };
       return;
     }
-    const unauthorizedResolutionText = `${unauthorizedResolution.w}x${unauthorizedResolution.h}`;
-    if (stdoutText.includes(`runtime resolution request ${unauthorizedResolutionText}`) ||
-        stdoutText.includes(`runtime video reconfigure: ${unauthorizedResolutionText}`)) {
-      failure = {
-        stage: 'publisher-unauthorized-resolution-log',
-        state: { unauthorizedResolution }
-      };
-      return;
+    for (const deniedResolution of [anonymousViewerResolution, tokenedUnauthorizedResolution]) {
+      const deniedResolutionText = `${deniedResolution.w}x${deniedResolution.h}`;
+      if (stdoutText.includes(`runtime resolution request ${deniedResolutionText}`) ||
+          stdoutText.includes(`runtime video reconfigure: ${deniedResolutionText}`)) {
+        failure = {
+          stage: 'publisher-unauthorized-resolution-log',
+          state: { deniedResolution }
+        };
+        return;
+      }
     }
     console.log('[CONTROL] Unauthorized shared controls did not reconfigure publisher');
     if (stdoutText.includes(`[App] Applying runtime bitrate update: ${requestAsMismatchBitrate} kbps`)) {

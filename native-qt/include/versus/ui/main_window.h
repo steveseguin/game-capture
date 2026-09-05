@@ -64,6 +64,7 @@ class MainWindow : public QMainWindow {
     void onStatsTimer();
     void onBitratePresetChanged(int index);
     void onAdvancedToggleChanged(bool checked);
+    void onResetToDefaults();
 
   private:
     friend class MainWindowTestAccess;
@@ -86,6 +87,7 @@ class MainWindow : public QMainWindow {
     void refreshFfmpegStatus();
     bool hasPendingAsyncOperation() const;
     void loadPersistedSettings();
+    bool resetPersistedSettingsToDefaults();
     void showFirewallWarningIfNeeded();
     void maybeQuitAfterPendingOperations();
     void savePersistedSettings();
@@ -179,6 +181,7 @@ class MainWindow : public QMainWindow {
     QAction *copyShareLinkTrayAction_ = nullptr;
     QAction *openShareLinkAction_ = nullptr;
     QAction *openShareLinkTrayAction_ = nullptr;
+    QAction *resetDefaultsAction_ = nullptr;
     QAction *minimizeToTrayOnCloseAction_ = nullptr;
 
     // Stats timer

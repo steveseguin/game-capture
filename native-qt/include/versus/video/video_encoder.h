@@ -38,6 +38,7 @@ enum class EncodeFailureKind {
     None,
     Timeout,
     Backpressure,
+    OutputStalled,
     ProcessExited,
     IoFailure,
     InvalidInput,

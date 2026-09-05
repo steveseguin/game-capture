@@ -125,11 +125,12 @@ moving content and continued audio; diagnostics must confirm each bitrate.
 bound as well as a lower bound, so 60 FPS cannot pass a 30 FPS request. The simple
 fixture does not prove bitrate saturation or high-motion quality at either rate.
 
-The encode thread paces frame admission using the current configured FPS because
-capture may retain its original cadence after a runtime setting change. It selects
-the newest pending frame after waiting and wakes promptly on shutdown. This caps
-encoding without requiring a capture restart; it does not create additional
-frames when the capture source supplies fewer than the requested rate.
+The encode thread uses the current configured FPS to schedule output slots. It
+selects the newest pending image or repeats the cached image when capture supplies
+no new image. Encoded output therefore can reach the requested FPS even when fresh
+capture is slower. Use `--capture-cadence=1` during runtime control workflows with
+a sufficiently fast source to check the captured-frame counter as well as receiver
+FPS. This distinguishes fresh images from repeated output.
 
 To check increases above the startup capture rate, use `--fps=30 --source-fps=60
 --control-fps=60 --video-controls=1`. The fixture remains at 60 FPS while the
@@ -138,8 +139,20 @@ publisher starts at 30, requests 720p60, then returns to 1080p30. Add
 is active and verify moving video, dimensions, FPS and audio after recovery.
 Spout's capture thread now reads an atomic runtime FPS target for its receive
 limit, retry intervals and frame-count timeouts. The target changes only after
-the application's encoder reconfiguration succeeds. Camera and window capture
-rate increases require their own validation.
+the application's encoder reconfiguration succeeds. Window capture likewise
+updates an atomic runtime target after successful reconfiguration; its capture
+callback resets the limiter under the frame-processing lock. Camera rate
+increases still require their own validation.
+
+Window readback admission checks the actual pending-frame slot under its mutex.
+The encode notification flag is not a reliable queue-occupancy indicator: capture
+can set it after an output slot wakes but before that slot consumes the image.
+Using the flag would then reject fresh capture even with an empty queue. The
+actual slot maintains the intended one-pending-image bound while allowing
+capture and encoding to overlap. Readback is suppressed only when encoding is
+busy and the next image is already queued. During the output pacer's idle wait,
+capture can replace the one queued image; blocking those updates unnecessarily
+couples the capture and output schedules and reduces fresh-image cadence.
 
 The application retains separate resampling phase/history for primary and
 additional audio capture. Non-48 kHz streaming chunks must share an
@@ -173,8 +186,7 @@ source-restart, resize and color-patch options are rejected in this mode. The
 browser source remains alive throughout signaling recovery; this does not test
 reopening a closed window. Audio uses the independent controlled loopback tone.
 
-Maintenance replays now advance the cached capture timestamp by elapsed time
-since the frame was received. They retain the capture source's timestamp epoch
+Maintenance replays now use the same steady output clock as scheduled encoding
 and leave the cached preview image/timestamp unchanged. Reusing the old timestamp
 for each new encoding reduced a multi-second source outage to a few RTP ticks;
 the transport's monotonic clamp cannot represent elapsed time by itself. This
@@ -183,3 +195,10 @@ follows the sampling-clock requirement in
 The source-loss workflow records receiver metrics during the outage as well as
 after restart. A repeated cached image during source loss is intentional and is
 not evidence that live capture has recovered.
+
+Add `--window-resize=1` with `--window-video` to resize and restore the owned
+browser window. The harness uses the documented
+[Chrome window bounds API](https://chromedevtools.github.io/devtools-protocol/tot/Browser/#method-setWindowBounds)
+and verifies the actual bounds, moving decoded output, output dimensions and FPS.
+This exercises Windows Graphics Capture while the real application's window
+changes size; it does not establish recovery after closing and reopening a window.

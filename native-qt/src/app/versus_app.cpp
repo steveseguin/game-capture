@@ -1,5 +1,7 @@
 #include "versus/app/versus_app.h"
+#include "versus/app/encoder_recovery_policy.h"
 #include "versus/app/keyframe_request_policy.h"
+#include "versus/app/remote_control_policy.h"
 
 #include "versus/audio/audio_format_converter.h"
 #include "versus/video/aspect_fit.h"
@@ -910,6 +912,17 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         handleVideoFrame(std::move(frame));
     };
     windowCapture_.setFrameCallback(frameCallback);
+    windowCapture_.setFrameAdmissionCallback([this]() {
+        // The notification flag can be raised between an output slot's wakeup
+        // and consumption of its image. Inspect the actual queue so that such
+        // a notification cannot block readback after the image was consumed.
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        return shouldAdmitCapturedFrame(
+            live_.load(std::memory_order_acquire),
+            encodeThreadRunning_.load(std::memory_order_acquire),
+            pendingVideoFrame_ != nullptr,
+            videoEncodeInProgress_.load(std::memory_order_acquire));
+    });
     spoutCapture_.setFrameCallback(frameCallback);
     cameraCapture_.setFrameCallback(frameCallback);
     {
@@ -920,7 +933,18 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     resetSourceHealth(mode, sourceId);
     uint32_t selectedWindowProcessId = 0;
     if (mode == VideoSourceMode::Window && !sourceId.empty()) {
-        if (!windowCapture_.startCapture(sourceId, 1920, 1080, 60)) {
+        video::EncoderConfig captureConfig;
+        {
+            std::lock_guard<std::mutex> lock(videoSendMutex_);
+            captureConfig = videoConfig_;
+        }
+        if (!windowCapture_.startCapture(
+                sourceId,
+                captureConfig.width > 0 ? captureConfig.width : 1920,
+                captureConfig.height > 0 ? captureConfig.height : 1080,
+                captureConfig.frameRate > 0 ? captureConfig.frameRate : 60,
+                captureConfig.enableAlpha ||
+                    captureConfig.alphaBackgroundMode != video::AlphaBackgroundMode::None)) {
             return false;
         }
         auto windows = windowCapture_.getWindows();
@@ -2103,6 +2127,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"frames_captured", videoFramesCaptured_.load(std::memory_order_relaxed)},
         {"frames_sent", videoFramesSent_.load(std::memory_order_relaxed)},
         {"frames_dropped", videoFramesDropped_.load(std::memory_order_relaxed)},
+        {"frames_skipped_before_readback", windowCapture_.framesSkippedBeforeReadback()},
         {"dropped_frame_rate", metrics.droppedFrameRate}
     };
     root["audio"] = {
@@ -3831,6 +3856,9 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     if (fpsChanged && spoutCapture_.isCapturing()) {
         spoutCapture_.setFrameRate(nextConfig.frameRate);
     }
+    if (fpsChanged && windowCapture_.isCapturing()) {
+        windowCapture_.setFrameRate(nextConfig.frameRate);
+    }
     if (roomQualityRoutingChanged) {
         updateRoomQualityDecisionForCodecLocked();
     }
@@ -5118,10 +5146,23 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                        : (msg.contains("targetAudioBitrate")
                               ? "targetAudioBitrate"
                               : "requestResolution"));
-            sendRejectedControl(
-                rejectedName,
-                "unauthorized",
-                "This shared-stream control is not authorized.");
+            const bool anonymousResolutionHint =
+                std::string(rejectedName) == "requestResolution" &&
+                !shouldReportUnauthorizedResolutionControl(
+                    directorAuthorized,
+                    !controlToken.empty());
+            if (anonymousResolutionHint) {
+                recordPeerEvent(peer, "ignored-viewer-resolution-hint");
+                spdlog::debug(
+                    "[App] Silently ignored anonymous viewer resolution hint from {}:{}",
+                    peer->uuid,
+                    peer->session);
+            } else {
+                sendRejectedControl(
+                    rejectedName,
+                    "unauthorized",
+                    "This shared-stream control is not authorized.");
+            }
             return;
         }
     }
@@ -5705,15 +5746,28 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         !sharedControlAuthorized;
     if (globalVideoControlDenied) {
         const bool bitrateControlDenied = actionRequestsBitrate && !messageRequestsResolution;
-        spdlog::warn("[App] Rejected unauthorized shared video control {} from {}",
-                     bitrateControlDenied ? "bitrate" : "requestResolution",
-                     peer->uuid);
-        sendRejectedControl(
-            bitrateControlDenied ? "bitrate" : "requestResolution",
-            "unauthorized",
-            bitrateControlDenied
-                ? "Shared-stream bitrate control is not authorized."
-                : "Shared-stream resolution control is not authorized.");
+        const bool reportRejection =
+            bitrateControlDenied ||
+            shouldReportUnauthorizedResolutionControl(
+                directorAuthorized,
+                !controlToken.empty());
+        if (reportRejection) {
+            spdlog::warn("[App] Rejected unauthorized shared video control {} from {}",
+                         bitrateControlDenied ? "bitrate" : "requestResolution",
+                         peer->uuid);
+            sendRejectedControl(
+                bitrateControlDenied ? "bitrate" : "requestResolution",
+                "unauthorized",
+                bitrateControlDenied
+                    ? "Shared-stream bitrate control is not authorized."
+                    : "Shared-stream resolution control is not authorized.");
+        } else {
+            recordPeerEvent(peer, "ignored-viewer-resolution-hint");
+            spdlog::debug(
+                "[App] Silently ignored anonymous viewer resolution hint from {}:{}",
+                peer->uuid,
+                peer->session);
+        }
     }
     if (!globalVideoControlDenied && actionRequestsBitrate) {
         requestedBitrate = jsonIntLike(*actionValue, 0);
@@ -5914,8 +5968,18 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     }
 }
 
-bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool forceKeyframe) {
+bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
+                                        bool forceKeyframe,
+                                        int64_t outputTimestamp) {
     if (!live_) {
+        return false;
+    }
+
+    const int64_t frameOutputTimestamp =
+        outputTimestamp == std::numeric_limits<int64_t>::min()
+        ? frame.timestamp
+        : outputTimestamp;
+    if (frameOutputTimestamp == std::numeric_limits<int64_t>::min()) {
         return false;
     }
 
@@ -6073,7 +6137,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
             alphaFrameAdmission = queueAlphaEncodeFrame(
                 alphaWidth,
                 alphaHeight,
-                frame.timestamp,
+                frameOutputTimestamp,
                 std::move(alphaGrayBuffer_));
         }
     }
@@ -6155,12 +6219,13 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
 
         const auto encodeStart = std::chrono::steady_clock::now();
         const bool hardwareEncodingBefore = videoEncoder_.isHardwareEncoderActive();
-        const bool encodeOk = alphaFrameAdmission.valid()
-            ? videoEncoder_.encodeWithSourceTimestamp(
-                  frame,
-                  hqPacket,
-                  alphaFrameAdmission.sourceTimestamp)
-            : videoEncoder_.encode(frame, hqPacket);
+        const int64_t encoderSourceTimestamp = alphaFrameAdmission.valid()
+            ? alphaFrameAdmission.sourceTimestamp
+            : frameOutputTimestamp;
+        const bool encodeOk = videoEncoder_.encodeWithSourceTimestamp(
+            frame,
+            hqPacket,
+            encoderSourceTimestamp);
         hqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now() - encodeStart)
                                  .count();
@@ -6414,13 +6479,24 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
         } else {
+            const SoftwareEncoderFailureDisposition softwareFailureDisposition =
+                classifySoftwareEncoderFailure(encodeFailureKind);
             const bool transientExternalFailure =
-                encodeFailureKind == video::EncodeFailureKind::Timeout ||
-                encodeFailureKind == video::EncodeFailureKind::Backpressure;
+                softwareFailureDisposition == SoftwareEncoderFailureDisposition::Transient;
+            const bool immediateSoftwareFallback =
+                softwareFailureDisposition == SoftwareEncoderFailureDisposition::ImmediateFallback;
             if (externalFfmpegEncoder &&
                 !hardwareEncodingBefore &&
                 videoEncoder_.activeCodec() != video::VideoCodec::H264 &&
-                !transientExternalFailure) {
+                immediateSoftwareFallback) {
+                if (fallbackUnstableSoftwareCodec(
+                        "Software external encoder stopped producing output")) {
+                    renegotiateH264CodecFallback = true;
+                }
+            } else if (externalFfmpegEncoder &&
+                       !hardwareEncodingBefore &&
+                       videoEncoder_.activeCodec() != video::VideoCodec::H264 &&
+                       !transientExternalFailure) {
                 const int64_t failNowMs = steadyNowMs();
                 if (softwareExternalFailWindowStartMs_ == 0 ||
                     (failNowMs - softwareExternalFailWindowStartMs_) > 15000) {
@@ -6467,7 +6543,10 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame, bool 
                 videoEncoderLq_.requestKeyframe();
             }
             const auto lqEncodeStart = std::chrono::steady_clock::now();
-            if (videoEncoderLq_.encode(frame, lqPacket)) {
+            if (videoEncoderLq_.encodeWithSourceTimestamp(
+                    frame,
+                    lqPacket,
+                    frameOutputTimestamp)) {
                 lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         std::chrono::steady_clock::now() - lqEncodeStart)
                                         .count();
@@ -6877,26 +6956,9 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
     return true;
 }
 
-std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame(bool forReplay) {
-    std::shared_ptr<const video::CapturedFrame> cached;
-    std::chrono::steady_clock::time_point receivedAt;
-    {
-        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        cached = cachedVideoFrame_;
-        receivedAt = cachedVideoFrameReceivedAt_;
-    }
-    if (!forReplay || !cached) {
-        return cached;
-    }
-    // A maintenance replay is a new presentation of the cached image. Keeping
-    // its original PTS compresses an entire source outage into a few RTP ticks,
-    // disrupting receiver timing when fresh frames resume. Preserve the source
-    // clock's epoch (camera timestamps need not share steady_clock's epoch).
-    const auto age100ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::steady_clock::now() - receivedAt).count() / 100;
-    auto replay = std::make_shared<video::CapturedFrame>(*cached);
-    replay->timestamp += age100ns;
-    return replay;
+std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame() {
+    std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+    return cachedVideoFrame_;
 }
 
 void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
@@ -6914,7 +6976,6 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
         pendingVideoFrame_ = sharedFrame;
         cachedVideoFrame_ = sharedFrame;
-        cachedVideoFrameReceivedAt_ = std::chrono::steady_clock::now();
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -7143,9 +7204,12 @@ void VersusApp::startVideoMaintenanceThread() {
                 (lastKeyframeMs == 0) || ((nowMs - lastKeyframeMs) >= kPeriodicKeyframeMs);
 
             if (staleSend || periodicKeyframeDue) {
-                const auto cachedFrame = getCachedVideoFrame(true);
+                const auto cachedFrame = getCachedVideoFrame();
                 if (cachedFrame && !cachedFrame->data.empty()) {
-                    encodeAndSendVideoFrame(*cachedFrame, periodicKeyframeDue);
+                    // Replays share the paced output clock, including for
+                    // camera sources whose capture timestamps have another epoch.
+                    encodeAndSendVideoFrame(*cachedFrame, periodicKeyframeDue,
+                        outputFrameTimestamp100ns(std::chrono::steady_clock::now()));
                 } else if (periodicKeyframeDue) {
                     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
@@ -7457,21 +7521,37 @@ void VersusApp::startEncodeThread() {
 
     encodeThread_ = std::thread([this]() {
         spdlog::info("[EncodeThread] Started");
-        std::chrono::steady_clock::time_point nextFrameAdmission{};
-        int pacedFps = 0;
+        using Clock = std::chrono::steady_clock;
+        auto nextFrameDue = Clock::now();
         while (encodeThreadRunning_.load()) {
+            const VideoStateSnapshot videoState = videoStateSnapshot();
+            const auto frameInterval = outputFrameInterval(
+                std::max(1, videoState.config.frameRate));
+            const auto scheduledFrameDue = nextFrameDue;
             {
                 std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
-                encodeFrameCV_.wait_for(lock, std::chrono::milliseconds(50),
-                    [this] { return encodeFrameReady_ || !encodeThreadRunning_.load(); });
+                encodeFrameCV_.wait_until(
+                    lock,
+                    scheduledFrameDue,
+                    [this] { return !encodeThreadRunning_.load(); });
                 if (!encodeThreadRunning_.load()) {
                     break;
                 }
-                if (!encodeFrameReady_) {
-                    continue;
-                }
                 encodeFrameReady_ = false;
+                videoEncodeInProgress_.store(true, std::memory_order_release);
             }
+
+            nextFrameDue = advanceOutputFrameDeadline(
+                scheduledFrameDue,
+                Clock::now(),
+                frameInterval);
+
+            struct EncodeProgressGuard {
+                std::atomic<bool> &flag;
+                ~EncodeProgressGuard() {
+                    flag.store(false, std::memory_order_release);
+                }
+            } encodeProgressGuard{videoEncodeInProgress_};
 
             if (!live_) {
                 continue;
@@ -7488,43 +7568,26 @@ void VersusApp::startEncodeThread() {
                 spdlog::info("[EncodeThread] Video track became active; forcing keyframe on next frame");
             }
 
-            // Capture can keep its original cadence after a runtime FPS change.
-            // Pace admission here and take the newest pending frame after the
-            // wait, rather than encoding every capture at the old frame rate.
-            const int requestedFps = std::clamp(videoStateSnapshot().config.frameRate, 1, 120);
-            const auto framePeriod = std::chrono::microseconds(1000000 / requestedFps);
-            if (requestedFps != pacedFps) {
-                nextFrameAdmission = std::chrono::steady_clock::now();
-                pacedFps = requestedFps;
-            }
-            {
-                std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
-                encodeFrameCV_.wait_until(lock, nextFrameAdmission,
-                    [this] { return !encodeThreadRunning_.load() || !live_.load(); });
-                if (!encodeThreadRunning_.load()) {
-                    break;
-                }
-                if (!live_.load()) {
-                    continue;
-                }
-            }
-
             std::shared_ptr<const video::CapturedFrame> frame;
             {
                 std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-                frame = std::move(pendingVideoFrame_);
+                if (pendingVideoFrame_) {
+                    frame = std::move(pendingVideoFrame_);
+                } else {
+                    frame = cachedVideoFrame_;
+                }
             }
 
             if (!frame || frame->data.empty()) {
                 continue;
             }
 
-            const auto admittedAt = std::chrono::steady_clock::now();
-            // Preserve cadence through small scheduler delays, but do not
-            // accumulate a catch-up burst after capture or encoding stalls.
-            nextFrameAdmission = admittedAt - nextFrameAdmission > framePeriod
-                ? admittedAt + framePeriod : nextFrameAdmission + framePeriod;
-            if (!encodeAndSendVideoFrame(*frame, false)) {
+            const int64_t outputTimestamp = outputFrameTimestamp100ns(
+                scheduledFrameDue);
+            if (!encodeAndSendVideoFrame(
+                    *frame,
+                    false,
+                    outputTimestamp)) {
                 static int sendFailCount = 0;
                 if (++sendFailCount % 100 == 1) {
                     spdlog::warn("[EncodeThread] encodeAndSendVideoFrame failed (count={})", sendFailCount);
@@ -7545,6 +7608,7 @@ void VersusApp::stopEncodeThread() {
             encodeThread_.join();
         }
     }
+    videoEncodeInProgress_.store(false, std::memory_order_release);
     stopAlphaEncodeThread();
 }
 

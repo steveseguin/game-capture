@@ -1,6 +1,7 @@
 ﻿#include "versus/ui/main_window.h"
 
 #include <QAbstractItemView>
+#include <QAccessible>
 #include <QApplication>
 #include <QClipboard>
 #include <QColorDialog>
@@ -69,6 +70,7 @@ static const QString COLOR_BG = "#0b1016";
 static const QString COLOR_INPUT = "#101b27";
 static const QString COLOR_ACCENT = "#00c2ff";
 static const QString COLOR_ACCENT_HOVER = "#3dd8ff";
+static const QString COLOR_ACCENT_TEXT = "#06131a";
 static const QString COLOR_TEXT = "#eaf4ff";
 static const QString COLOR_TEXT_DIM = "#89a2ba";
 static const QString COLOR_RED = "#ff4d5a";
@@ -191,6 +193,33 @@ QString colorToHex(const QColor &color) {
     return color.isValid()
         ? color.name(QColor::HexRgb).toUpper()
         : QStringLiteral("#00FF00");
+}
+
+double relativeLuminance(const QColor &color) {
+    const auto linearChannel = [](double channel) {
+        return channel <= 0.04045
+            ? channel / 12.92
+            : std::pow((channel + 0.055) / 1.055, 2.4);
+    };
+    return 0.2126 * linearChannel(color.redF()) +
+           0.7152 * linearChannel(color.greenF()) +
+           0.0722 * linearChannel(color.blueF());
+}
+
+double contrastRatio(const QColor &first, const QColor &second) {
+    const double firstLuminance = relativeLuminance(first);
+    const double secondLuminance = relativeLuminance(second);
+    const double lighter = std::max(firstLuminance, secondLuminance);
+    const double darker = std::min(firstLuminance, secondLuminance);
+    return (lighter + 0.05) / (darker + 0.05);
+}
+
+QString readableTextColor(const QColor &background) {
+    const QColor darkText(COLOR_ACCENT_TEXT);
+    const QColor lightText(COLOR_TEXT);
+    return contrastRatio(background, darkText) >= contrastRatio(background, lightText)
+        ? COLOR_ACCENT_TEXT
+        : COLOR_TEXT;
 }
 
 versus::webrtc::IceMode MainWindow::iceModeFromUiValue(const QString &value) {
@@ -1022,6 +1051,66 @@ void MainWindow::savePersistedSettings() {
     settings.sync();
 }
 
+bool MainWindow::resetPersistedSettingsToDefaults() {
+    if (!runtimeOptions_.persistedSettingsEnabled ||
+        !configControlsEnabled_ ||
+        isLive_ ||
+        startInProgress_ ||
+        stopInProgress_) {
+        return false;
+    }
+
+    QSettings settings = makeUiSettings();
+    settings.clear();
+    settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        return false;
+    }
+
+    loadPersistedSettings();
+    selectedWindowId_.clear();
+    if (windowListWidget_) {
+        windowListWidget_->clearSelection();
+        windowListWidget_->requestThumbnailRefresh();
+    }
+    resize(980, 720);
+    refreshWindowList();
+    refreshSelectedWindowPreview();
+    updateGoLiveButton();
+    savePersistedSettings();
+    updateStatus("Settings reset to defaults. Select a source to continue.", "ready");
+    return true;
+}
+
+void MainWindow::onResetToDefaults() {
+    if (!runtimeOptions_.persistedSettingsEnabled) {
+        QMessageBox::information(
+            this,
+            "Reset Unavailable",
+            "Persistent settings are disabled for this session.");
+        return;
+    }
+
+    const auto answer = QMessageBox::question(
+        this,
+        "Reset Game Capture to Defaults?",
+        "This clears saved stream details, room and password values, video, audio, remote-control settings, "
+        "and the saved window layout.\n\n"
+        "It does not uninstall Game Capture, change Windows Firewall rules, or delete logs.",
+        QMessageBox::Reset | QMessageBox::Cancel,
+        QMessageBox::Cancel);
+    if (answer != QMessageBox::Reset) {
+        return;
+    }
+
+    if (!resetPersistedSettingsToDefaults()) {
+        QMessageBox::warning(
+            this,
+            "Reset Failed",
+            "Game Capture could not reset its saved settings. Stop streaming and try again.");
+    }
+}
+
 void MainWindow::connectPersistedSettingSignals() {
     auto saveNow = [this]() {
         savePersistedSettings();
@@ -1167,6 +1256,16 @@ void MainWindow::setupMenuBar() {
     });
 
     fileMenu->addSeparator();
+    resetDefaultsAction_ = fileMenu->addAction("&Reset to Defaults...");
+    resetDefaultsAction_->setObjectName("resetDefaultsAction");
+    resetDefaultsAction_->setEnabled(runtimeOptions_.persistedSettingsEnabled);
+    resetDefaultsAction_->setStatusTip(
+        runtimeOptions_.persistedSettingsEnabled
+            ? QStringLiteral("Clear saved settings and restore factory defaults")
+            : QStringLiteral("Persistent settings are disabled for this session"));
+    connect(resetDefaultsAction_, &QAction::triggered, this, &MainWindow::onResetToDefaults);
+
+    fileMenu->addSeparator();
     auto *quitAction = fileMenu->addAction("Quit");
     connect(quitAction, &QAction::triggered, this, [this]() {
         requestQuit();
@@ -1217,6 +1316,7 @@ void MainWindow::setupUI() {
     sourceLabel->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
     sourceModeSelect_ = new QComboBox(this);
     sourceModeSelect_->setObjectName("sourceModeSelect");
+    sourceModeSelect_->setAccessibleName("Video source type");
     sourceModeSelect_->addItem("Window", QVariant("window"));
     sourceModeSelect_->addItem("Camera / Webcam", QVariant("camera"));
     sourceModeSelect_->addItem("Spout2 (avatar apps)", QVariant("spout"));
@@ -1226,6 +1326,7 @@ void MainWindow::setupUI() {
         "Start or enable Spout output in that app first. For transparency, use VP9 with OBS alpha workflow. "
         "If Spout frames are black, run both apps on the same GPU.");
     installComboWheelGuard(sourceModeSelect_);
+    sourceLabel->setBuddy(sourceModeSelect_);
     connect(sourceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         const QString sourceMode = sourceModeSelect_
             ? sourceModeSelect_->currentData().toString()
@@ -1263,6 +1364,7 @@ void MainWindow::setupUI() {
         previousSourceMode_ = sourceMode;
         selectedWindowId_.clear();
         if (windowListWidget_) {
+            windowListWidget_->clearSelection();
             windowListWidget_->requestThumbnailRefresh();
         }
         updateStatus(
@@ -1292,6 +1394,7 @@ void MainWindow::setupUI() {
         QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
     cameraResolutionSelect_ = new QComboBox(this);
     cameraResolutionSelect_->setObjectName("cameraResolutionSelect");
+    cameraResolutionSelect_->setAccessibleName("Camera resolution");
     cameraResolutionSelect_->addItem("1920x1080", QVariant("1920x1080"));
     cameraResolutionSelect_->addItem("1280x720", QVariant("1280x720"));
     cameraResolutionSelect_->addItem("960x540", QVariant("960x540"));
@@ -1299,12 +1402,14 @@ void MainWindow::setupUI() {
     cameraResolutionSelect_->setToolTip(
         "Requested camera capture resolution. If the camera does not offer this exact mode, Game Capture uses the closest supported mode.");
     installComboWheelGuard(cameraResolutionSelect_);
+    cameraResolutionLabel->setBuddy(cameraResolutionSelect_);
 
     auto *cameraFpsLabel = new QLabel("Frame Rate", this);
     cameraFpsLabel->setStyleSheet(
         QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
     cameraFpsSelect_ = new QComboBox(this);
     cameraFpsSelect_->setObjectName("cameraFpsSelect");
+    cameraFpsSelect_->setAccessibleName("Camera frame rate");
     cameraFpsSelect_->addItem("60 fps", QVariant(60));
     cameraFpsSelect_->addItem("30 fps", QVariant(30));
     cameraFpsSelect_->addItem("24 fps", QVariant(24));
@@ -1312,6 +1417,7 @@ void MainWindow::setupUI() {
     cameraFpsSelect_->setToolTip(
         "Requested camera frame rate. If the camera does not offer this exact rate, Game Capture uses the closest supported rate.");
     installComboWheelGuard(cameraFpsSelect_);
+    cameraFpsLabel->setBuddy(cameraFpsSelect_);
 
     cameraOptionsLayout->addWidget(cameraResolutionLabel);
     cameraOptionsLayout->addWidget(cameraResolutionSelect_, 1);
@@ -1325,11 +1431,13 @@ void MainWindow::setupUI() {
     microphoneLabel->setStyleSheet(QString("color: %1; font-weight: 600;").arg(COLOR_TEXT_DIM));
     microphoneDeviceSelect_ = new QComboBox(this);
     microphoneDeviceSelect_->setObjectName("microphoneDeviceSelect");
+    microphoneDeviceSelect_->setAccessibleName("Microphone or input device");
     microphoneDeviceSelect_->setToolTip(
         "Choose the microphone/input used by Camera mode, the microphone audio source, or the additional audio mix. "
         "If the selected device is unavailable, capture falls back to the Windows default input.");
     refreshMicrophoneDevices();
     installComboWheelGuard(microphoneDeviceSelect_);
+    microphoneLabel->setBuddy(microphoneDeviceSelect_);
     microphoneLayout->addWidget(microphoneLabel);
     microphoneLayout->addWidget(microphoneDeviceSelect_, 1);
     layout->addLayout(microphoneLayout);
@@ -1358,6 +1466,7 @@ void MainWindow::setupUI() {
 
     previewLabel_ = new QLabel("Select a window to see live preview", this);
     previewLabel_->setObjectName("selectedPreview");
+    previewLabel_->setAccessibleName("Selected source preview");
     previewLabel_->setAlignment(Qt::AlignCenter);
     previewLabel_->setMinimumHeight(150);
     previewLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -1390,11 +1499,14 @@ void MainWindow::setupUI() {
     basicForm->setSpacing(8);
 
     streamIdInput_ = new QLineEdit(this);
+    streamIdInput_->setObjectName("streamIdInput");
+    streamIdInput_->setAccessibleName("Stream ID or VDO.Ninja URL");
     streamIdInput_->setPlaceholderText("Stream ID or VDO.Ninja URL (push/view)");
     basicForm->addRow("Stream / URL", streamIdInput_);
 
     passwordInput_ = new QLineEdit(this);
     passwordInput_->setObjectName("passwordInput");
+    passwordInput_->setAccessibleName("Stream password");
     passwordInput_->setPlaceholderText("Password (leave blank for default, 'false' to disable)");
     if (auto *passwordRow = wrapSensitiveLineEdit(passwordInput_, &passwordRevealButton_, "password", this)) {
         if (passwordRevealButton_) {
@@ -1412,6 +1524,7 @@ void MainWindow::setupUI() {
     layout->addWidget(urlHint);
 
     advancedToggle_ = new QCheckBox("Show advanced settings", this);
+    advancedToggle_->setObjectName("advancedToggle");
     advancedToggle_->setChecked(false);
     advancedToggle_->setProperty("locked", false);
     advancedToggle_->setCursor(Qt::PointingHandCursor);
@@ -1435,16 +1548,19 @@ void MainWindow::setupUI() {
     });
 
     roomInput_ = new QLineEdit(this);
+    roomInput_->setObjectName("roomInput");
     roomInput_->setPlaceholderText("Room ID (optional)");
     roomInput_->setToolTip(
         "Room mode can route non-scene viewers to a lower-quality tier for bandwidth compatibility. Use the room-quality toggle below to disable that behavior.");
     advancedForm->addRow("Room", roomInput_);
 
     labelInput_ = new QLineEdit(this);
+    labelInput_->setObjectName("streamLabelInput");
     labelInput_->setPlaceholderText("Stream label (optional)");
     advancedForm->addRow("Label", labelInput_);
 
     resolutionSelect_ = new QComboBox(this);
+    resolutionSelect_->setObjectName("resolutionSelect");
     resolutionSelect_->addItem("1920x1080", QVariant("1920x1080"));
     resolutionSelect_->addItem("1280x720", QVariant("1280x720"));
     resolutionSelect_->addItem("960x540", QVariant("960x540"));
@@ -1452,12 +1568,14 @@ void MainWindow::setupUI() {
     advancedForm->addRow("Resolution", resolutionSelect_);
 
     fpsSelect_ = new QComboBox(this);
+    fpsSelect_->setObjectName("fpsSelect");
     fpsSelect_->addItem("60", QVariant(60));
     fpsSelect_->addItem("30", QVariant(30));
     installComboWheelGuard(fpsSelect_);
     advancedForm->addRow("FPS", fpsSelect_);
 
     bitrateSelect_ = new QComboBox(this);
+    bitrateSelect_->setObjectName("bitrateSelect");
     bitrateSelect_->addItem("Ultra (20000 kbps)", QVariant(20000));
     bitrateSelect_->addItem("High (12000 kbps)", QVariant(12000));
     bitrateSelect_->addItem("Medium (6000 kbps)", QVariant(6000));
@@ -1693,6 +1811,8 @@ void MainWindow::setupUI() {
     buttonLayout->addStretch();
 
     goLiveButton_ = new QPushButton("GO LIVE", this);
+    goLiveButton_->setObjectName("goLiveButton");
+    goLiveButton_->setAccessibleName("Go live");
     goLiveButton_->setFixedSize(200, 50);
     goLiveButton_->setEnabled(false);
     updateGoLiveButton();
@@ -1754,6 +1874,13 @@ void MainWindow::setupUI() {
     auto makeAudioMeter = [this](const QString &objectName) {
         auto *meter = new QProgressBar(this);
         meter->setObjectName(objectName);
+        const QString accessibleName = objectName == "audioMeter"
+            ? QStringLiteral("Mixed output audio level")
+            : (objectName == "primaryAudioMeter"
+                ? QStringLiteral("Primary audio source level")
+                : QStringLiteral("Microphone audio level"));
+        meter->setAccessibleName(accessibleName);
+        meter->setAccessibleDescription("Audio level from 0 to 100 percent.");
         meter->setRange(0, 100);
         meter->setValue(0);
         meter->setTextVisible(false);
@@ -1767,6 +1894,12 @@ void MainWindow::setupUI() {
     auto makeLevelLabel = [this](const QString &objectName) {
         auto *label = new QLabel("-inf dB", this);
         label->setObjectName(objectName);
+        const QString accessibleName = objectName == "audioLevelLabel"
+            ? QStringLiteral("Mixed output decibel level")
+            : (objectName == "primaryAudioLevelLabel"
+                ? QStringLiteral("Primary audio decibel level")
+                : QStringLiteral("Microphone decibel level"));
+        label->setAccessibleName(accessibleName);
         label->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
         label->setMinimumWidth(70);
         label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -1823,6 +1956,9 @@ void MainWindow::setupUI() {
 
     copyShareLinkButton_ = new QPushButton("Copy Link", this);
     copyShareLinkButton_->setObjectName("shareCopyButton");
+    copyShareLinkButton_->setAccessibleDescription(
+        "Copies the viewer link after streaming starts.");
+    copyShareLinkButton_->setToolTip("Available after streaming starts");
     copyShareLinkButton_->setEnabled(false);
     connect(copyShareLinkButton_, &QPushButton::clicked, this, [this]() {
         if (copyShareLinkAction_) {
@@ -1833,6 +1969,9 @@ void MainWindow::setupUI() {
 
     openShareLinkButton_ = new QPushButton("Open Link", this);
     openShareLinkButton_->setObjectName("shareOpenButton");
+    openShareLinkButton_->setAccessibleDescription(
+        "Opens the viewer link after streaming starts.");
+    openShareLinkButton_->setToolTip("Available after streaming starts");
     openShareLinkButton_->setEnabled(false);
     connect(openShareLinkButton_, &QPushButton::clicked, this, [this]() {
         if (openShareLinkAction_) {
@@ -1868,10 +2007,6 @@ void MainWindow::setupUI() {
     resize(980, 720);
     setMinimumSize(760, 520);
 
-    // Keep desktop UX consistent: buttons should show a hand cursor on hover.
-    for (auto *button : findChildren<QPushButton *>()) {
-        button->setCursor(Qt::PointingHandCursor);
-    }
 }
 
 void MainWindow::setupTrayIcon() {
@@ -1969,12 +2104,6 @@ void MainWindow::setupTrayIcon() {
 }
 
 void MainWindow::applyDarkTheme() {
-    QFont uiFont("Bahnschrift", 10);
-    if (!QFontDatabase().families().contains(uiFont.family())) {
-        uiFont = QFont("Segoe UI", 10);
-    }
-    qApp->setFont(uiFont);
-
     QString styleSheet = QString(R"(
         QMainWindow, QWidget {
             background-color: %1;
@@ -1983,7 +2112,7 @@ void MainWindow::applyDarkTheme() {
         QLineEdit, QComboBox, QSpinBox {
             background-color: %3;
             color: %2;
-            border: 1px solid #263443;
+            border: 1px solid #50667b;
             border-radius: 4px;
             padding: 6px 8px;
             min-height: 20px;
@@ -1991,9 +2120,20 @@ void MainWindow::applyDarkTheme() {
         QLineEdit:focus, QComboBox:focus, QSpinBox:focus {
             border-color: %4;
         }
+        QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled {
+            background-color: #0d141b;
+            color: #667b8f;
+            border-color: #2c3d4d;
+        }
         QCheckBox {
             color: %2;
             spacing: 8px;
+            border: 1px solid transparent;
+            border-radius: 3px;
+            padding: 2px;
+        }
+        QCheckBox:focus {
+            border-color: %4;
         }
         QCheckBox:disabled {
             color: #5f7285;
@@ -2006,7 +2146,7 @@ void MainWindow::applyDarkTheme() {
             height: 14px;
         }
         QCheckBox::indicator:unchecked {
-            border: 1px solid #4a6076;
+            border: 1px solid #70859a;
             background-color: #0d1620;
         }
         QCheckBox::indicator:disabled,
@@ -2037,11 +2177,12 @@ void MainWindow::applyDarkTheme() {
             background-color: %3;
             color: %2;
             selection-background-color: %4;
+            selection-color: %6;
         }
         QListWidget {
             background-color: %3;
             color: %2;
-            border: 1px solid #263443;
+            border: 1px solid #50667b;
             border-radius: 4px;
         }
         QListWidget::item {
@@ -2049,31 +2190,50 @@ void MainWindow::applyDarkTheme() {
             border-radius: 4px;
         }
         QListWidget::item:selected {
-            background-color: %4;
+            background-color: #16435a;
+            color: %2;
+            border: 2px solid %4;
         }
         QListWidget::item:hover {
             background-color: #162634;
         }
+        QWidget#itemWidget {
+            background-color: transparent;
+            border: 2px solid transparent;
+            border-radius: 4px;
+        }
+        QWidget#itemWidget[selectedSource="true"] {
+            background-color: #16435a;
+            border-color: %4;
+        }
+        QWidget#itemWidget QLabel {
+            background-color: transparent;
+        }
         QPushButton {
             background-color: %4;
-            color: white;
-            border: none;
+            color: %6;
+            border: 1px solid #56dcff;
             border-radius: 4px;
             padding: 8px 16px;
             font-weight: bold;
         }
-        QPushButton:hover {
+        QPushButton:hover:enabled {
             background-color: %5;
         }
+        QPushButton:focus {
+            border: 2px solid %6;
+            padding: 7px 15px;
+        }
         QPushButton:disabled {
-            background-color: #2b3a48;
-            color: #7891aa;
+            background-color: #1c2630;
+            color: #708399;
+            border: 1px solid #3c4c5b;
         }
         QPushButton#goLiveButton {
             font-size: 14px;
         }
         QFrame#previewFrame {
-            border: 1px solid #263443;
+            border: 1px solid #50667b;
             border-radius: 8px;
             background-color: #0e1822;
         }
@@ -2086,12 +2246,12 @@ void MainWindow::applyDarkTheme() {
             border-radius: 6px;
         }
         QScrollBar::handle:vertical {
-            background-color: #444;
+            background-color: #667d92;
             border-radius: 6px;
             min-height: 20px;
         }
         QScrollBar::handle:vertical:hover {
-            background-color: #555;
+            background-color: #89a2ba;
         }
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
             height: 0px;
@@ -2099,10 +2259,14 @@ void MainWindow::applyDarkTheme() {
         QMenu {
             background-color: %3;
             color: %2;
-            border: 1px solid #263443;
+            border: 1px solid #50667b;
         }
         QMenu::item:selected {
             background-color: %4;
+            color: %6;
+        }
+        QMenu::item:disabled {
+            color: #667b8f;
         }
         QMenuBar {
             background-color: #0d151f;
@@ -2110,7 +2274,19 @@ void MainWindow::applyDarkTheme() {
         QMenuBar::item:selected {
             background-color: #162634;
         }
-    )").arg(COLOR_BG, COLOR_TEXT, COLOR_INPUT, COLOR_ACCENT, COLOR_ACCENT_HOVER);
+        QToolTip {
+            background-color: #142332;
+            color: %2;
+            border: 1px solid #6e879e;
+            padding: 4px;
+        }
+    )").arg(
+        COLOR_BG,
+        COLOR_TEXT,
+        COLOR_INPUT,
+        COLOR_ACCENT,
+        COLOR_ACCENT_HOVER,
+        COLOR_ACCENT_TEXT);
 
     qApp->setStyleSheet(styleSheet);
 }
@@ -2118,15 +2294,8 @@ void MainWindow::applyDarkTheme() {
 void MainWindow::onWindowSelected(const QString &windowId) {
     selectedWindowId_ = windowId;
     const bool hasSelection = !windowId.isEmpty();
-    goLiveButton_->setEnabled(hasSelection);
-    if (goLiveAction_) {
-        goLiveAction_->setEnabled(hasSelection);
-    }
-    if (goLiveMenuAction_) {
-        goLiveMenuAction_->setEnabled(hasSelection);
-    }
-
     refreshSelectedWindowPreview();
+    updateGoLiveButton();
     if (hasSelection) {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
         updateStatus(
@@ -2136,6 +2305,15 @@ void MainWindow::onWindowSelected(const QString &windowId) {
                     ? "Ready to capture camera"
                     : "Ready to go live"),
             "ready");
+    } else {
+        const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
+        updateStatus(
+            sourceMode == "spout"
+                ? "Select a Spout2 sender"
+                : (sourceMode == "camera"
+                    ? "Select a camera"
+                    : "Select a window to capture"),
+            "idle");
     }
 }
 
@@ -2791,10 +2969,14 @@ void MainWindow::updateGoLiveButton() {
 
     if (startInProgress_) {
         goLiveButton_->setText("STARTING...");
+        goLiveButton_->setAccessibleName("Starting stream");
+        goLiveButton_->setAccessibleDescription("Game Capture is starting the stream.");
+        goLiveButton_->setToolTip("Starting the stream...");
         goLiveButton_->setEnabled(false);
         goLiveButton_->setStyleSheet(QString(
-            "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }")
-            .arg(COLOR_YELLOW));
+            "QPushButton:disabled { background-color: %1; color: %2; border: 1px solid #ffd47a; "
+            "font-size: 14px; font-weight: bold; }")
+            .arg(COLOR_YELLOW, COLOR_ACCENT_TEXT));
         if (goLiveAction_) {
             goLiveAction_->setText("Starting...");
             goLiveAction_->setEnabled(false);
@@ -2808,10 +2990,14 @@ void MainWindow::updateGoLiveButton() {
 
     if (stopInProgress_) {
         goLiveButton_->setText("STOPPING...");
+        goLiveButton_->setAccessibleName("Stopping stream");
+        goLiveButton_->setAccessibleDescription("Game Capture is stopping the stream.");
+        goLiveButton_->setToolTip("Stopping the stream...");
         goLiveButton_->setEnabled(false);
         goLiveButton_->setStyleSheet(QString(
-            "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }")
-            .arg(COLOR_YELLOW));
+            "QPushButton:disabled { background-color: %1; color: %2; border: 1px solid #ffd47a; "
+            "font-size: 14px; font-weight: bold; }")
+            .arg(COLOR_YELLOW, COLOR_ACCENT_TEXT));
         if (goLiveAction_) {
             goLiveAction_->setText("Stopping...");
             goLiveAction_->setEnabled(false);
@@ -2825,11 +3011,16 @@ void MainWindow::updateGoLiveButton() {
 
     if (isLive_) {
         goLiveButton_->setText("STOP");
+        goLiveButton_->setAccessibleName("Stop streaming");
+        goLiveButton_->setAccessibleDescription("Stop the active stream.");
+        goLiveButton_->setToolTip("Stop streaming");
         goLiveButton_->setEnabled(true);
         goLiveButton_->setStyleSheet(QString(
-            "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #ff4444; }"
-        ).arg(COLOR_RED));
+            "QPushButton { background-color: %1; color: %2; border: 1px solid #ff8991; "
+            "font-size: 14px; font-weight: bold; }"
+            "QPushButton:hover:enabled { background-color: #ff7a84; }"
+            "QPushButton:focus { border: 2px solid %2; }"
+        ).arg(COLOR_RED, COLOR_ACCENT_TEXT));
         if (goLiveAction_) {
             goLiveAction_->setText("Stop");
             goLiveAction_->setEnabled(true);
@@ -2839,24 +3030,39 @@ void MainWindow::updateGoLiveButton() {
             goLiveMenuAction_->setEnabled(true);
         }
     } else {
-        goLiveButton_->setText("GO LIVE");
-        goLiveButton_->setEnabled(!selectedWindowId_.isEmpty());
-        goLiveButton_->setStyleSheet(QString(
-            "QPushButton { background-color: %1; color: white; font-size: 14px; font-weight: bold; }"
-            "QPushButton:hover { background-color: %2; }"
-        ).arg(COLOR_ACCENT, COLOR_ACCENT_HOVER));
+        const bool sourceSelected = !selectedWindowId_.isEmpty();
+        goLiveButton_->setText(sourceSelected ? "GO LIVE" : "SELECT A SOURCE");
+        goLiveButton_->setAccessibleName(sourceSelected ? "Go live" : "Go live unavailable");
+        goLiveButton_->setAccessibleDescription(
+            sourceSelected
+                ? QStringLiteral("Start streaming the selected source.")
+                : QStringLiteral("Select a video source above before going live."));
+        goLiveButton_->setToolTip(
+            sourceSelected
+                ? QStringLiteral("Start streaming the selected source")
+                : QStringLiteral("Select a video source above before going live"));
+        goLiveButton_->setEnabled(sourceSelected);
+        goLiveButton_->setStyleSheet(QString());
         if (goLiveAction_) {
             goLiveAction_->setText("Go Live");
-            goLiveAction_->setEnabled(!selectedWindowId_.isEmpty());
+            goLiveAction_->setEnabled(sourceSelected);
         }
         if (goLiveMenuAction_) {
             goLiveMenuAction_->setText("Go Live");
-            goLiveMenuAction_->setEnabled(!selectedWindowId_.isEmpty());
+            goLiveMenuAction_->setEnabled(sourceSelected);
+            goLiveMenuAction_->setStatusTip(
+                sourceSelected
+                    ? QStringLiteral("Start streaming the selected source")
+                    : QStringLiteral("Select a source before going live"));
         }
     }
 }
 
 void MainWindow::updateStatus(const QString &text, const QString &statusClass) {
+    if (!statusLabel_) {
+        return;
+    }
+    const bool changed = statusLabel_->text() != text;
     statusLabel_->setText(text);
 
     QString color;
@@ -2872,6 +3078,10 @@ void MainWindow::updateStatus(const QString &text, const QString &statusClass) {
 
     statusLabel_->setStyleSheet(QString("color: %1; font-weight: %2;")
         .arg(color, statusClass == "live" ? "bold" : "normal"));
+    if (changed && statusLabel_->isVisible()) {
+        QAccessibleEvent event(statusLabel_, QAccessible::Alert);
+        QAccessible::updateAccessibility(&event);
+    }
 }
 
 void MainWindow::updateStats(const StreamStats &stats) {
@@ -2919,6 +3129,27 @@ void MainWindow::onStatsTimer() {
             stats.encoder = encoderName;
         }
         stats.rtt = 0;
+
+        if (encoderStatusLabel_) {
+            const QString requestedEncoder = QString::fromStdString(
+                core_->getRequestedVideoEncoderMode());
+            const QString activeEncoder = encoderName.empty()
+                ? QStringLiteral("Unknown")
+                : QString::fromStdString(encoderName);
+            const QString encoderCategory = QString::fromStdString(
+                core_->getVideoEncoderCategory());
+            const QString fallbackReason = QString::fromStdString(
+                core_->getVideoEncoderFallbackReason());
+            QString statusText = QString("Requested Encoder: %1 | Active Encoder: %2 (%3)")
+                .arg(requestedEncoder, activeEncoder, encoderCategory);
+            if (!fallbackReason.isEmpty()) {
+                statusText += QString(" | Fallback: %1").arg(fallbackReason);
+            }
+            encoderStatusLabel_->setText(statusText);
+            encoderStatusLabel_->setStyleSheet(fallbackReason.isEmpty()
+                ? QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM)
+                : QString("color: %1; font-size: 11px; font-weight: bold;").arg(COLOR_YELLOW));
+        }
 
         updateStats(stats);
         updateOperatorHealthUi(health);
@@ -3032,11 +3263,13 @@ void MainWindow::updateAlphaBackgroundColorButton() {
         return;
     }
     const QString hex = colorToHex(alphaBackgroundColor_);
+    const QString textColor = readableTextColor(alphaBackgroundColor_);
     alphaBackgroundColorButton_->setText(hex);
     alphaBackgroundColorButton_->setStyleSheet(QString(
         "QPushButton { background-color: %1; color: %2; border: 1px solid #2a4158; border-radius: 6px; font-weight: 700; }"
+        "QPushButton:focus { border: 2px solid %2; }"
         "QPushButton:disabled { background-color: #172330; color: #6f849a; }")
-        .arg(hex, alphaBackgroundColor_.lightness() > 140 ? "#07111b" : "#ffffff"));
+        .arg(hex, textColor));
 }
 
 void MainWindow::chooseAlphaBackgroundColor() {
@@ -3261,6 +3494,10 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
 void MainWindow::setConfigControlsEnabled(bool enabled) {
     configControlsEnabled_ = enabled;
 
+    if (resetDefaultsAction_) {
+        resetDefaultsAction_->setEnabled(enabled && runtimeOptions_.persistedSettingsEnabled);
+    }
+
     if (windowListWidget_) {
         windowListWidget_->setEnabled(enabled);
     }
@@ -3282,13 +3519,16 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     setSensitiveRevealEnabled(passwordInput_, passwordRevealButton_, enabled, "password");
     if (advancedToggle_) {
         const bool locked = !enabled;
-        advancedToggle_->setEnabled(true);
-        advancedToggle_->setCheckable(!locked);
+        advancedToggle_->setEnabled(enabled);
+        advancedToggle_->setCheckable(true);
         advancedToggle_->setProperty("locked", locked);
-        advancedToggle_->setCursor(locked ? Qt::ForbiddenCursor : Qt::PointingHandCursor);
+        advancedToggle_->setCursor(enabled ? Qt::PointingHandCursor : Qt::ArrowCursor);
         advancedToggle_->setToolTip(locked
             ? QStringLiteral("Cannot change settings while live. Stop stream first.")
             : QString());
+        advancedToggle_->setAccessibleDescription(locked
+            ? QStringLiteral("Unavailable while streaming. Stop the stream before changing advanced settings.")
+            : QStringLiteral("Show or hide advanced stream, audio, encoder, and network settings."));
         advancedToggle_->style()->unpolish(advancedToggle_);
         advancedToggle_->style()->polish(advancedToggle_);
         advancedToggle_->update();

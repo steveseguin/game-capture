@@ -428,7 +428,7 @@ void TestSpoutCapture::testExternalFfmpegStallRestartsOnceAndDropsPreRestartIden
                  rejectedPacket,
                  kPreRestartIdentity + 16),
              "The full identity pipeline did not reject the next admission");
-    QCOMPARE(encoder.lastEncodeFailureKind(), versus::video::EncodeFailureKind::Backpressure);
+    QCOMPARE(encoder.lastEncodeFailureKind(), versus::video::EncodeFailureKind::OutputStalled);
     QCOMPARE(readLaunchCount(statePath), 4);  // one bounded recovery: warm-up + clean
 
     constexpr int64_t kPostRestartIdentity = 0x52000000LL;

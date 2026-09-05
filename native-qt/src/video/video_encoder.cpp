@@ -3374,7 +3374,7 @@ class VideoEncoder::Impl {
                 spdlog::warn(
                     "[FFmpegEncoder] FFmpeg accepted input without producing output; restarting the bounded identity pipeline");
                 lastEncodeFailureKind_.store(
-                    EncodeFailureKind::Backpressure,
+                    EncodeFailureKind::OutputStalled,
                     std::memory_order_relaxed);
                 if (recoverExternalFfmpegNvenc()) {
                     // restartExternalFfmpegNvenc() clears its own transient
@@ -3382,7 +3382,7 @@ class VideoEncoder::Impl {
                     // this encode call so callers can distinguish the bounded
                     // stall from an ordinary no-output-yet timeout.
                     lastEncodeFailureKind_.store(
-                        EncodeFailureKind::Backpressure,
+                        EncodeFailureKind::OutputStalled,
                         std::memory_order_relaxed);
                 }
             } else if (enqueueResult == ExternalEnqueueResult::Backpressure) {
@@ -4247,9 +4247,18 @@ class VideoEncoder::Impl {
             return true;
         }
         const bool detachExplicitlyShutdownObject = activeObjectExplicitlyShutdown_;
-        const HRESULT hr = detachExplicitlyShutdownObject
+        HRESULT hr = detachExplicitlyShutdownObject
             ? activeActivation_->DetachObject()
             : activeActivation_->ShutdownObject();
+        if (detachExplicitlyShutdownObject && hr == E_NOTIMPL) {
+            // DetachObject is optional. NVIDIA's H.264 activation object can
+            // return E_NOTIMPL even though its encoder initialized and encoded
+            // correctly. ShutdownObject still releases the activation object's
+            // retained reference before we request a clean live instance.
+            spdlog::info(
+                "[VideoEncoder] IMFActivate::DetachObject is not implemented; falling back to ShutdownObject");
+            hr = activeActivation_->ShutdownObject();
+        }
         activeObjectExplicitlyShutdown_ = false;
         activeActivation_.Reset();
         if (FAILED(hr)) {

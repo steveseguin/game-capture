@@ -7,7 +7,7 @@
 #include <QSet>
 #include <QPainter>
 #include <QLinearGradient>
-#include <QSignalBlocker>
+#include <QStyle>
 
 #include "versus/video/window_capture.h"
 
@@ -21,7 +21,10 @@ WindowListWidget::WindowListWidget(QWidget *parent)
     // Header with label and refresh button
     auto *headerLayout = new QHBoxLayout();
     headerLabel_ = new QLabel("Select Game/Window:", this);
+    headerLabel_->setObjectName("sourceListHeader");
     refreshButton_ = new QPushButton("Refresh", this);
+    refreshButton_->setObjectName("refreshSourcesButton");
+    refreshButton_->setAccessibleName("Refresh available sources");
     refreshButton_->setFixedWidth(80);
 
     headerLayout->addWidget(headerLabel_);
@@ -31,6 +34,10 @@ WindowListWidget::WindowListWidget(QWidget *parent)
 
     // Window list
     listWidget_ = new QListWidget(this);
+    listWidget_->setObjectName("sourceList");
+    listWidget_->setAccessibleName("Available capture sources");
+    listWidget_->setAccessibleDescription(
+        "Choose a source, then use the Go Live button. Press Enter to select the focused source.");
     listWidget_->setMinimumHeight(200);
     listWidget_->setSpacing(4);
     layout->addWidget(listWidget_);
@@ -178,17 +185,14 @@ QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &win
     titleLabel->setTextFormat(Qt::PlainText);
     titleLabel->setObjectName("title");
     QFont titleFont = titleLabel->font();
-    titleFont.setPointSize(10);
+    titleFont.setBold(true);
     titleLabel->setFont(titleFont);
     titleLabel->setWordWrap(true);
 
     auto *exeLabel = new QLabel(secondaryTextFor(window));
     exeLabel->setTextFormat(Qt::PlainText);
     exeLabel->setObjectName("exe");
-    QFont exeFont = exeLabel->font();
-    exeFont.setPointSize(8);
-    exeLabel->setFont(exeFont);
-    exeLabel->setStyleSheet("color: #888888;");
+    exeLabel->setStyleSheet("color: #a9b9c8;");
 
     textLayout->addWidget(titleLabel);
     textLayout->addWidget(exeLabel);
@@ -296,10 +300,21 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
     // Add new windows and update existing ones
     for (const auto &window : windows) {
         QString id = QString::fromStdString(window.id);
+        const QString title = QString::fromStdString(window.name).trimmed();
+        const QString secondary = secondaryTextFor(window);
+        const QString accessibleText = secondary.isEmpty()
+            ? title
+            : QString("%1 - %2").arg(title, secondary);
 
         if (windowItems_.contains(id)) {
             // Update existing item
             QListWidgetItem *item = windowItems_[id];
+            // The custom row widget renders the visible title/details. Leaving
+            // DisplayRole populated makes the item delegate paint the same text
+            // underneath that widget, which can show through and overlap it.
+            item->setText(QString());
+            item->setData(Qt::AccessibleTextRole, accessibleText);
+            item->setToolTip(accessibleText);
             if (QWidget *widget = listWidget_->itemWidget(item)) {
                 updateItemWidget(widget, window, forceThumbnailRefresh);
             }
@@ -307,6 +322,9 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
             // Add new item
             auto *item = new QListWidgetItem();
             item->setData(Qt::UserRole, id);
+            item->setText(QString());
+            item->setData(Qt::AccessibleTextRole, accessibleText);
+            item->setToolTip(accessibleText);
             item->setSizeHint(QSize(0, 84));
 
             QWidget *widget = createItemWidget(window);
@@ -321,10 +339,24 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
     if (!selectedWindowId_.isEmpty() && windowItems_.contains(selectedWindowId_)) {
         listWidget_->setCurrentItem(windowItems_[selectedWindowId_]);
     }
+    updateSelectionVisuals();
 }
 
 QString WindowListWidget::selectedWindowId() const {
     return selectedWindowId_;
+}
+
+void WindowListWidget::clearSelection() {
+    const bool hadSelection = !selectedWindowId_.isEmpty();
+    selectedWindowId_.clear();
+    if (listWidget_) {
+        listWidget_->clearSelection();
+        listWidget_->setCurrentItem(nullptr);
+    }
+    updateSelectionVisuals();
+    if (hadSelection) {
+        emit windowSelected(QString());
+    }
 }
 
 QString WindowListWidget::selectedWindowName() const {
@@ -397,7 +429,22 @@ void WindowListWidget::onSelectionChanged() {
     }
 
     selectedWindowId_ = id;
+    updateSelectionVisuals();
     emit windowSelected(selectedWindowId_);
+}
+
+void WindowListWidget::updateSelectionVisuals() {
+    for (auto it = windowItems_.constBegin(); it != windowItems_.constEnd(); ++it) {
+        QListWidgetItem *item = it.value();
+        QWidget *widget = item && listWidget_ ? listWidget_->itemWidget(item) : nullptr;
+        if (!widget) {
+            continue;
+        }
+        widget->setProperty("selectedSource", it.key() == selectedWindowId_);
+        widget->style()->unpolish(widget);
+        widget->style()->polish(widget);
+        widget->update();
+    }
 }
 
 void WindowListWidget::onRefreshClicked() {

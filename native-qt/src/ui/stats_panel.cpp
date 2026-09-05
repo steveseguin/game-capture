@@ -70,6 +70,8 @@ void StatsPanel::setupUI() {
     // RTT
     gridLayout->addWidget(createLabel("RTT:"), row, 0);
     rttValue_ = createValue();
+    rttValue_->setObjectName("rttValue");
+    rttValue_->setAccessibleName("Round-trip network latency");
     gridLayout->addWidget(rttValue_, row++, 1);
 
     mainLayout->addLayout(gridLayout);
@@ -82,8 +84,6 @@ void StatsPanel::updateStats(const StreamStats &stats) {
     resolutionValue_->setText(QString::number(stats.width) + "x" + QString::number(stats.height));
     codecValue_->setText(QString::fromStdString(stats.codec));
     encoderValue_->setText(QString::fromStdString(stats.encoder));
-    rttValue_->setText(QString::number(static_cast<int>(stats.rtt)) + " ms");
-
     updateRttColor(stats.rtt);
 }
 
@@ -100,13 +100,21 @@ void StatsPanel::clear() {
 
 void StatsPanel::updateRttColor(double rtt) {
     QString color;
+    QString severity;
     if (rtt > 200) {
-        color = "#e63333";  // Red
+        color = "#ff6673";
+        severity = "Poor";
     } else if (rtt > 100) {
-        color = "#e6cc33";  // Yellow
+        color = "#f0c95a";
+        severity = "Caution";
     } else {
-        color = "#00ba6a";  // Green
+        color = "#4bd98a";
+        severity = "Good";
     }
+    rttValue_->setText(QString("%1 ms (%2)")
+        .arg(static_cast<int>(rtt))
+        .arg(severity));
+    rttValue_->setAccessibleDescription(QString("Network latency is %1.").arg(severity));
     rttValue_->setStyleSheet(QString("color: %1;").arg(color));
 }
 

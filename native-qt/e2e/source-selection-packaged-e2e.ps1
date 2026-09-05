@@ -32,6 +32,8 @@ $runDir = Join-Path ([IO.Path]::GetFullPath($ReportDir)) ([guid]::NewGuid().ToSt
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
 $discovery = Join-Path $runDir 'control.json'
 $results = [Collections.Generic.List[object]]::new()
+$completed = $false
+$failureMessage = $null
 $process = $null
 $control = $null
 $sourceProcesses = [Collections.Generic.List[object]]::new()
@@ -45,9 +47,15 @@ function Record([string]$Name, [bool]$Passed) {
     Write-Host "$Name : $Passed"
 }
 function Go-Enabled {
-    $condition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'GO LIVE')
-    $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+    $button = $null
+    # Accessible names describe the current action/state; visible button text
+    # is no longer its UI Automation name in the accessible desktop UI.
+    foreach ($name in @('Go live', 'Go live unavailable', 'GO LIVE')) {
+        $condition = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+        $button = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if ($button) { break }
+    }
     if (-not $button) { throw 'Go Live button not found.' }
     return $button.Current.IsEnabled
 }
@@ -142,6 +150,10 @@ try {
     Start-Sleep -Milliseconds 3200
     Record 'automatic-refresh-preserves-selection' ($second.Current.IsSelected -and (Go-Enabled))
     Save-SourceScreenshot 'source-list-renamed.png'
+    $completed = $true
+} catch {
+    $failureMessage = $_.Exception.Message
+    throw
 } finally {
     if ($process -and -not $process.HasExited) {
         if (-not $control -and (Test-Path -LiteralPath $discovery)) {
@@ -158,6 +170,9 @@ try {
         if (-not $sourceProcess.HasExited) { Stop-Process -Id $sourceProcess.Id -Force }
     }
     [pscustomobject]@{
+        ok = ($completed -and @($results | Where-Object { -not $_.passed }).Count -eq 0)
+        completed = $completed
+        error = $failureMessage
         publisher = $publisher
         sha256 = (Get-FileHash -LiteralPath $publisher).Hash
         results = @($results.ToArray())

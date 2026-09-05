@@ -274,6 +274,24 @@ async function main() {
           await sourcePage.screenshot({path:path.join(run,name+'-source-browser.png')});
           if(result.browserPause.motion.moving||!result.browserResume.motion.moving)throw Error('Browser playback controls did not reach the receiver');
           console.log(name,'browser pause, seek and resume verified');
+          if(opts['window-resize']==='1') {
+            const session=await sourcePage.context().newCDPSession(sourcePage);
+            const original=await session.send('Browser.getWindowForTarget');
+            result.windowResizes=[];
+            try {
+              for(const bounds of [{width:960,height:640},original.bounds]) {
+                await session.send('Browser.setWindowBounds',{windowId:original.windowId,bounds});
+                await sleep(4000);await waitVideo(page);
+                const actual=await session.send('Browser.getWindowBounds',{windowId:original.windowId});
+                const entry={requested:bounds,actual:actual.bounds,motion:await motionProbe(page),metrics:await measure(page,8000),diagnostics:await api(control,'/diagnostics')};
+                result.windowResizes.push(entry);
+                if(actual.bounds.width!==bounds.width||actual.bounds.height!==bounds.height||!entry.motion.moving||
+                  !entry.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.8&&m.width===width&&m.height===height))
+                  throw Error('Live browser resize did not preserve moving output');
+              }
+            } finally {await session.send('Browser.setWindowBounds',{windowId:original.windowId,bounds:original.bounds});await session.detach();}
+            console.log(name,'live browser resize and restore verified');
+          }
         }
         await page.reload({waitUntil:'domcontentloaded'});
         result.reloadRecoveryMs=await waitVideo(page);
@@ -303,8 +321,13 @@ async function main() {
               window.reviewChannels.find(c=>c.readyState==='open').send(JSON.stringify({action:'bitrate',remote,value:bitrate}));
             },{bitrate:target.bitrate,remote:stream});
             await sleep(4000);
+            const captureBefore=await api(control,'/diagnostics');
             const metrics=await measure(page,8000),motion=await motionProbe(page);
             const entry={target,metrics,motion,diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
+            const captureSeconds=(entry.diagnostics.generated_steady_ms-captureBefore.generated_steady_ms)/1000;
+            entry.captureFps=(entry.diagnostics.video.frames_captured-captureBefore.video.frames_captured)/captureSeconds;
+            console.log(name,'runtime target FPS',target.f,'fresh capture FPS',entry.captureFps);
+            if(opts['capture-cadence']==='1'&&!(entry.captureFps>=target.f*.8))throw Error('Fresh capture cadence did not follow runtime FPS');
             if(entry.diagnostics.video.configured_bitrate_kbps!==target.bitrate)throw Error('Runtime bitrate change was not applied');
             if(!motion.moving||!metrics.some(m=>m.kind==='video'&&m.width===target.w&&m.height===target.h&&m.fps>=target.f*.8&&m.fps<=target.f*1.15))
               throw Error('Runtime video controls did not preserve moving video at the requested format');

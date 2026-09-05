@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.52 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.55 LANGUAGES CXX)
 
 # CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
 # declares a 3.1 minimum, so give bundled dependencies the modern floor
@@ -468,6 +468,13 @@ if(VERSUS_BUILD_TESTS)
     target_link_libraries(test_keyframe_request_policy PRIVATE versus-lib Qt6::Test)
     add_test(NAME KeyframeRequestPolicyTest COMMAND test_keyframe_request_policy)
     versus_set_qt_test_environment(KeyframeRequestPolicyTest)
+
+    # Gate: software encoder recovery and anonymous-viewer control policy
+    add_executable(test_runtime_recovery_policy tests/test_runtime_recovery_policy.cpp)
+    set_target_properties(test_runtime_recovery_policy PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_runtime_recovery_policy PRIVATE versus-lib Qt6::Test)
+    add_test(NAME RuntimeRecoveryPolicyTest COMMAND test_runtime_recovery_policy)
+    versus_set_qt_test_environment(RuntimeRecoveryPolicyTest)
 
     # Gate: Room Quality request/effect policy and runtime state integrity
     add_executable(test_room_quality_runtime tests/test_room_quality_runtime.cpp)
