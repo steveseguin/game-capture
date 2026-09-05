@@ -23,6 +23,7 @@ class SpoutCapture {
     bool startCapture(const std::string &senderName, int width, int height, int fps);
     void stopCapture();
     bool isCapturing() const;
+    void setFrameRate(int fps);
 
     void setFrameCallback(FrameCallback cb);
 

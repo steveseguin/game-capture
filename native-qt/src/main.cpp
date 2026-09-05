@@ -2,10 +2,12 @@
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QMetaObject>
 #include <QObject>
 #include <QPointer>
 #include <QTimer>
+#include <QUuid>
 
 #include <algorithm>
 #include <array>
@@ -218,6 +220,7 @@ int main(int argc, char *argv[]) {
     std::string diagnosticsOutArg;
     bool localControlEnabled = false;
     int localControlPort = 0;
+    bool localControlPortSpecified = false;
     std::string localControlTokenArg;
     std::string localControlDiscoveryArg;
 
@@ -396,6 +399,7 @@ int main(int argc, char *argv[]) {
             const auto parsed = parseNonNegativeInteger(arg.substr(21));
             if (parsed) {
                 localControlPort = std::clamp(*parsed, 0, 65535);
+                localControlPortSpecified = true;
                 localControlEnabled = true;
             }
         } else if (arg.find("--local-control-token=") == 0) {
@@ -410,7 +414,7 @@ int main(int argc, char *argv[]) {
     if (!localControlEnabled && boolEnvEnabled(std::getenv("GAME_CAPTURE_LOCAL_CONTROL"))) {
         localControlEnabled = true;
     }
-    if (localControlPort == 0) {
+    if (!localControlPortSpecified) {
         if (const char *envPort = std::getenv("GAME_CAPTURE_LOCAL_CONTROL_PORT")) {
             const auto parsed = parseNonNegativeInteger(envPort);
             if (parsed) {
@@ -431,6 +435,17 @@ int main(int argc, char *argv[]) {
 
     // Set up logging - console for headless, file otherwise
     std::string logPath = resolveLogFilePath();
+    // Preserve the conventional log name for the first publisher. Other
+    // publishers must not truncate or mix records into its active log.
+    QLockFile logLock(QString::fromStdString(logPath) + ".lock");
+    logLock.setStaleLockTime(0); // Held for the process lifetime, not a short write.
+    if (!logLock.tryLock(0)) {
+        const std::filesystem::path defaultPath(logPath);
+        const std::string uniqueName = defaultPath.stem().string() + '-' +
+            QUuid::createUuid().toString(QUuid::WithoutBraces).toStdString() +
+            defaultPath.extension().string();
+        logPath = (defaultPath.parent_path() / uniqueName).string();
+    }
     try {
         std::vector<spdlog::sink_ptr> sinks;
         sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath, true));

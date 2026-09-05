@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <atomic>
 #include <exception>
+#include <chrono>
+#include <future>
 #include <mutex>
 #include <thread>
 
@@ -208,6 +210,101 @@ bool tryParseWindowHandle(const std::string &windowId, HWND &outHwnd) {
     outHwnd = reinterpret_cast<HWND>(static_cast<uintptr_t>(rawValue));
     return outHwnd != nullptr;
 }
+
+struct ThumbnailPixels {
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> pixels;
+};
+
+struct GdiThumbnailSurface {
+    HDC screen = nullptr;
+    HDC memory = nullptr;
+    HBITMAP bitmap = nullptr;
+    HGDIOBJ previous = nullptr;
+    ~GdiThumbnailSurface() {
+        if (previous && previous != HGDI_ERROR) { SelectObject(memory, previous); }
+        if (bitmap) { DeleteObject(bitmap); }
+        if (memory) { DeleteDC(memory); }
+        if (screen) { ReleaseDC(nullptr, screen); }
+    }
+};
+
+ThumbnailPixels captureNativeThumbnail(HWND hwnd) {
+    // Get window dimensions
+    RECT rect;
+    if (!GetWindowRect(hwnd, &rect)) {
+        return {};
+    }
+
+    int width = rect.right - rect.left;
+    int height = rect.bottom - rect.top;
+
+    if (width <= 0 || height <= 0) {
+        return {};
+    }
+
+    // Create compatible DC and bitmap
+    GdiThumbnailSurface surface;
+    surface.screen = GetDC(nullptr);
+    if (!surface.screen) { return {}; }
+    surface.memory = CreateCompatibleDC(surface.screen);
+    surface.bitmap = CreateCompatibleBitmap(surface.screen, width, height);
+    if (!surface.memory || !surface.bitmap) { return {}; }
+    surface.previous = SelectObject(surface.memory, surface.bitmap);
+    if (!surface.previous || surface.previous == HGDI_ERROR) { return {}; }
+    HDC hdcMem = surface.memory;
+
+    // This can block indefinitely in the source process. Only call on the
+    // single background worker, which owns every GDI object it passes in.
+    BOOL captured = PrintWindow(hwnd, hdcMem, PW_RENDERFULLCONTENT);
+
+    if (!captured) {
+        // Fall back to BitBlt from window DC
+        HDC hdcWindow = GetWindowDC(hwnd);
+        if (hdcWindow) {
+            captured = BitBlt(hdcMem, 0, 0, width, height, hdcWindow, 0, 0, SRCCOPY);
+            ReleaseDC(hwnd, hdcWindow);
+        }
+    }
+
+    if (!captured) {
+        return {};
+    }
+
+    // Get bitmap bits
+    BITMAPINFOHEADER bi;
+    bi.biSize = sizeof(BITMAPINFOHEADER);
+    bi.biWidth = width;
+    bi.biHeight = -height;  // Top-down DIB
+    bi.biPlanes = 1;
+    bi.biBitCount = 32;
+    bi.biCompression = BI_RGB;
+    bi.biSizeImage = 0;
+    bi.biXPelsPerMeter = 0;
+    bi.biYPelsPerMeter = 0;
+    bi.biClrUsed = 0;
+    bi.biClrImportant = 0;
+
+    std::vector<uint8_t> bits(static_cast<size_t>(width) * static_cast<size_t>(height) * 4);
+    // GetDIBits requires the bitmap to be deselected from its device context.
+    SelectObject(hdcMem, surface.previous);
+    surface.previous = nullptr;
+    const int copiedScanlines = GetDIBits(hdcMem, surface.bitmap, 0, height, bits.data(),
+                                          reinterpret_cast<BITMAPINFO *>(&bi), DIB_RGB_COLORS);
+
+    if (copiedScanlines != height) {
+        return {};
+    }
+
+    return {width, height, std::move(bits)};
+}
+
+// A hung PrintWindow must not accumulate workers on each refresh. The worker
+// captures no application objects and owns its resources until Windows returns;
+// shutdown does not wait on a foreign window's message loop.
+std::mutex thumbnailWorkerMutex;
+std::shared_future<ThumbnailPixels> thumbnailWorkerResult;
 
 QPixmap captureViaScreenGrab(HWND hwnd, int maxWidth, int maxHeight) {
     auto *screen = QGuiApplication::primaryScreen();
@@ -910,94 +1007,43 @@ void WindowCapture::setFrameCallback(FrameCallback cb) {
 QPixmap WindowCapture::captureWindowThumbnail(const std::string &windowId, int maxWidth, int maxHeight) {
 #ifdef _WIN32
     HWND hwnd = nullptr;
-    if (!tryParseWindowHandle(windowId, hwnd)) {
-        return QPixmap();
+    if (!tryParseWindowHandle(windowId, hwnd) || !IsWindow(hwnd) || maxWidth <= 0 || maxHeight <= 0) {
+        return {};
     }
 
-    // Check if window is valid
-    if (!IsWindow(hwnd)) {
-        return QPixmap();
-    }
-
-    // Get window dimensions
-    RECT rect;
-    if (!GetWindowRect(hwnd, &rect)) {
-        return QPixmap();
-    }
-
-    int width = rect.right - rect.left;
-    int height = rect.bottom - rect.top;
-
-    if (width <= 0 || height <= 0) {
-        return QPixmap();
-    }
-
-    // Create compatible DC and bitmap
-    HDC hdcScreen = GetDC(nullptr);
-    HDC hdcMem = CreateCompatibleDC(hdcScreen);
-    HBITMAP hBitmap = CreateCompatibleBitmap(hdcScreen, width, height);
-    HGDIOBJ hOld = SelectObject(hdcMem, hBitmap);
-
-    // Try PrintWindow first (works for partially occluded windows)
-    BOOL captured = PrintWindow(hwnd, hdcMem, PW_RENDERFULLCONTENT);
-
-    if (!captured) {
-        // Fall back to BitBlt from window DC
-        HDC hdcWindow = GetWindowDC(hwnd);
-        if (hdcWindow) {
-            BitBlt(hdcMem, 0, 0, width, height, hdcWindow, 0, 0, SRCCOPY);
-            ReleaseDC(hwnd, hdcWindow);
-            captured = TRUE;
+    std::shared_future<ThumbnailPixels> result;
+    try {
+        {
+            std::lock_guard<std::mutex> lock(thumbnailWorkerMutex);
+            if (!thumbnailWorkerResult.valid() ||
+                thumbnailWorkerResult.wait_for(std::chrono::milliseconds(0)) == std::future_status::ready) {
+                auto task = std::make_shared<std::packaged_task<ThumbnailPixels()>>(
+                    [hwnd]() { return captureNativeThumbnail(hwnd); });
+                thumbnailWorkerResult = task->get_future().share();
+                std::thread([task]() { (*task)(); }).detach();
+                result = thumbnailWorkerResult;
+            }
         }
+        // While a source is stalled, use the existing non-PrintWindow fallback
+        // for subsequent requests without launching another worker or waiting.
+        if (result.valid() && result.wait_for(std::chrono::milliseconds(100)) == std::future_status::ready) {
+            const auto &native = result.get();
+            if (!native.pixels.empty()) {
+                QImage image(native.pixels.data(), native.width, native.height,
+                             native.width * 4, QImage::Format_ARGB32);
+                return QPixmap::fromImage(image.copy()).scaled(
+                    maxWidth, maxHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            }
+        }
+    } catch (const std::exception &error) {
+        spdlog::warn("[WindowCapture] Thumbnail capture failed: {}", error.what());
     }
-
-    if (!captured) {
-        SelectObject(hdcMem, hOld);
-        DeleteObject(hBitmap);
-        DeleteDC(hdcMem);
-        ReleaseDC(nullptr, hdcScreen);
-        return captureViaScreenGrab(hwnd, maxWidth, maxHeight);
-    }
-
-    // Get bitmap bits
-    BITMAPINFOHEADER bi;
-    bi.biSize = sizeof(BITMAPINFOHEADER);
-    bi.biWidth = width;
-    bi.biHeight = -height;  // Top-down DIB
-    bi.biPlanes = 1;
-    bi.biBitCount = 32;
-    bi.biCompression = BI_RGB;
-    bi.biSizeImage = 0;
-    bi.biXPelsPerMeter = 0;
-    bi.biYPelsPerMeter = 0;
-    bi.biClrUsed = 0;
-    bi.biClrImportant = 0;
-
-    std::vector<uint8_t> bits(width * height * 4);
-    const int copiedScanlines = GetDIBits(hdcMem, hBitmap, 0, height, bits.data(),
-                                          reinterpret_cast<BITMAPINFO *>(&bi), DIB_RGB_COLORS);
-
-    // Clean up GDI resources
-    SelectObject(hdcMem, hOld);
-    DeleteObject(hBitmap);
-    DeleteDC(hdcMem);
-    ReleaseDC(nullptr, hdcScreen);
-
-    if (copiedScanlines <= 0) {
-        return captureViaScreenGrab(hwnd, maxWidth, maxHeight);
-    }
-
-    // Create QImage from the captured bits (BGRA format)
-    QImage image(bits.data(), width, height, width * 4, QImage::Format_ARGB32);
-
-    // Scale to thumbnail size maintaining aspect ratio
-    QPixmap pixmap = QPixmap::fromImage(image.copy());  // copy() to detach from bits buffer
-    return pixmap.scaled(maxWidth, maxHeight, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return captureViaScreenGrab(hwnd, maxWidth, maxHeight);
 #else
     Q_UNUSED(windowId)
     Q_UNUSED(maxWidth)
     Q_UNUSED(maxHeight)
-    return QPixmap();
+    return {};
 #endif
 }
 

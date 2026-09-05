@@ -93,7 +93,7 @@ bool convertInterleavedAudioToFloat(const uint8_t *data,
     return true;
 }
 
-std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk) {
+std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk, AudioResamplerState *state) {
     constexpr uint32_t kOpusSampleRate = 48000;
     constexpr uint32_t kOpusChannels = 2;
 
@@ -141,7 +141,39 @@ std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk) {
     }
 
     if (inputSampleRate == kOpusSampleRate) {
+        if (state) *state = {};
         return stereo;
+    }
+
+    if (state) {
+        if (state->sampleRate != inputSampleRate || state->channels != inputChannels) {
+            *state = {};
+            state->sampleRate = inputSampleRate;
+            state->channels = inputChannels;
+        }
+        const uint64_t start = state->framesSeen;
+        const uint64_t end = start + inputFrames;
+        std::vector<float> output;
+        output.reserve(static_cast<size_t>(inputFrames * uint64_t(kOpusSampleRate) / inputSampleRate + 2) * 2);
+        while (true) {
+            const uint64_t source = state->nextOutputNumerator / kOpusSampleRate;
+            const uint64_t remainder = state->nextOutputNumerator % kOpusSampleRate;
+            // Fractional positions need the next sample. Defer across chunks
+            // instead of duplicating the final sample or resetting the phase.
+            if (source >= end || (remainder != 0 && source + 1 >= end)) break;
+            for (size_t channel = 0; channel < 2; ++channel) {
+                const float first = source < start
+                    ? (channel == 0 ? state->previousLeft : state->previousRight)
+                    : stereo[(source - start) * 2 + channel];
+                const float second = remainder == 0 ? first : stereo[(source + 1 - start) * 2 + channel];
+                output.push_back(first + (second - first) * (static_cast<float>(remainder) / kOpusSampleRate));
+            }
+            state->nextOutputNumerator += inputSampleRate;
+        }
+        state->framesSeen = end;
+        state->previousLeft = stereo[stereo.size() - 2];
+        state->previousRight = stereo.back();
+        return output;
     }
 
     const double exactOutputFrames =

@@ -34,7 +34,7 @@ class WindowListWidget : public QWidget {
     void autoRefreshRequested();
 
   private slots:
-    void onItemClicked(QListWidgetItem *item);
+    void onSelectionChanged();
     void onRefreshClicked();
     void onAutoRefresh();
 

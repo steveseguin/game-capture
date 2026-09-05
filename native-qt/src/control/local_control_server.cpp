@@ -8,12 +8,15 @@
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QRandomGenerator>
+#include <QSaveFile>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QUrl>
 #include <QUrlQuery>
+#include <QUuid>
 
 #include <algorithm>
 #include <utility>
@@ -68,6 +71,12 @@ bool ensureParentDir(const QString &path) {
     return parent.exists() || QDir().mkpath(parent.absolutePath());
 }
 
+bool saveDocument(const QString &path, const QByteArray &bytes) {
+    QSaveFile file(path);
+    return file.open(QIODevice::WriteOnly) &&
+           file.write(bytes) == bytes.size() && file.commit();
+}
+
 QJsonDocument jsonDocumentFromBytes(const QByteArray &bytes) {
     QJsonParseError error{};
     const QJsonDocument doc = QJsonDocument::fromJson(bytes, &error);
@@ -86,8 +95,11 @@ QByteArray bearerValue(const QByteArray &value) {
     return {};
 }
 
-QString timestampForFile() {
-    return QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz");
+QString uniqueReportFileSuffix() {
+    // Multiple requests (or publishers) can create reports in one millisecond.
+    // Keep the readable timestamp without using it as the report's identity.
+    return QDateTime::currentDateTimeUtc().toString("yyyyMMdd-HHmmss-zzz") +
+           '-' + QUuid::createUuid().toString(QUuid::WithoutBraces);
 }
 
 QJsonArray readLogTail(const QString &path, int maxLines) {
@@ -328,15 +340,40 @@ bool LocalControlServer::tryParseRequest(QTcpSocket *socket, HttpRequest &reques
         if (colon <= 0) {
             continue;
         }
-        request.headers.insert(line.left(colon).trimmed().toLower(), line.mid(colon + 1).trimmed());
+        const QByteArray name = line.left(colon).trimmed().toLower();
+        if (name == "content-length" && request.headers.contains(name)) {
+            sendError(socket, 400, "Duplicate Content-Length");
+            return false;
+        }
+        request.headers.insert(name, line.mid(colon + 1).trimmed());
     }
 
-    const int contentLength = request.headers.value("content-length").toInt();
-    const qsizetype totalNeeded = headerEnd + 4 + std::max(0, contentLength);
+    // This API accepts fixed-length bodies only. Never interpret unsupported
+    // transfer coding or invalid lengths as an empty request body.
+    if (request.headers.contains("transfer-encoding")) {
+        sendError(socket, 400, "Transfer-Encoding is not supported");
+        return false;
+    }
+    qint64 contentLength = 0;
+    if (request.headers.contains("content-length")) {
+        const QByteArray value = request.headers.value("content-length");
+        bool valid = false;
+        contentLength = value.toLongLong(&valid);
+        if (!valid || value.isEmpty() ||
+            !std::all_of(value.begin(), value.end(), [](char c) { return c >= '0' && c <= '9'; })) {
+            sendError(socket, 400, "Invalid Content-Length");
+            return false;
+        }
+    }
+    if (contentLength > kMaxRequestBytes - headerEnd - 4) {
+        sendError(socket, 400, "Request too large");
+        return false;
+    }
+    const qsizetype totalNeeded = headerEnd + 4 + static_cast<qsizetype>(contentLength);
     if (buffer.size() < totalNeeded) {
         return false;
     }
-    request.body = buffer.mid(headerEnd + 4, std::max(0, contentLength));
+    request.body = buffer.mid(headerEnd + 4, static_cast<qsizetype>(contentLength));
     buffer.remove(0, totalNeeded);
     return true;
 }
@@ -386,8 +423,9 @@ void LocalControlServer::routeRequest(QTcpSocket *socket, const HttpRequest &req
         return;
     }
     if (request.method == "GET" && path == "/logs/recent") {
-        const int lines = std::clamp(url.query().contains("lines=")
-                                         ? QUrlQuery(url).queryItemValue("lines").toInt()
+        const QUrlQuery query(url);
+        const int lines = std::clamp(query.hasQueryItem("lines")
+                                         ? query.queryItemValue("lines").toInt()
                                          : kDefaultLogLines,
                                      1,
                                      2000);
@@ -428,19 +466,16 @@ void LocalControlServer::routeRequest(QTcpSocket *socket, const HttpRequest &req
             QString pathOut = body.value("path").toString();
             if (pathOut.isEmpty()) {
                 QDir().mkpath(config_.reportDir);
-                pathOut = QDir(config_.reportDir).filePath(QString("diagnostics-%1.json").arg(timestampForFile()));
+                pathOut = QDir(config_.reportDir).filePath(QString("diagnostics-%1.json").arg(uniqueReportFileSuffix()));
             }
             if (!ensureParentDir(pathOut)) {
                 sendError(socket, 500, "Could not create diagnostics output directory");
                 return;
             }
-            QFile file(pathOut);
-            if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            if (!saveDocument(pathOut, diagnosticsProvider_() + '\n')) {
                 sendError(socket, 500, "Could not write diagnostics file");
                 return;
             }
-            file.write(diagnosticsProvider_());
-            file.write("\n");
             QJsonObject response{{"ok", true}, {"command", command}, {"path", pathOut}};
             sendJson(socket, 200, QJsonDocument(response).toJson(QJsonDocument::Compact));
             return;
@@ -584,7 +619,7 @@ QByteArray LocalControlServer::issueReportJson(const QByteArray &requestBody) {
         QJsonObject error{{"ok", false}, {"error", "Could not create issue report directory"}, {"path", config_.reportDir}};
         return QJsonDocument(error).toJson(QJsonDocument::Compact);
     }
-    const QString reportPath = QDir(config_.reportDir).filePath(QString("issue-report-%1.json").arg(timestampForFile()));
+    const QString reportPath = QDir(config_.reportDir).filePath(QString("issue-report-%1.json").arg(uniqueReportFileSuffix()));
 
     QJsonObject report;
     report["schema"] = "game-capture-issue-report-v1";
@@ -621,6 +656,11 @@ bool LocalControlServer::writeDiscoveryFile() {
     if (config_.discoveryPath.isEmpty() || !ensureParentDir(config_.discoveryPath)) {
         return false;
     }
+    // Serialize replacement and ownership-checked cleanup across app instances.
+    QLockFile lock(config_.discoveryPath + ".lock");
+    if (!lock.tryLock(100)) {
+        return false;
+    }
     QJsonObject root{
         {"schema", "game-capture-local-control-v1"},
         {"pid", QCoreApplication::applicationPid()},
@@ -644,12 +684,11 @@ bool LocalControlServer::writeDiscoveryFile() {
         }},
         {"commands", QJsonArray{"stop", "quit", "export_diagnostics", "refresh_peer_transports", "issue_report"}},
     };
-    QFile file(config_.discoveryPath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented) + '\n';
+    if (!saveDocument(config_.discoveryPath, bytes)) {
         return false;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    file.write("\n");
+    discoveryFileContents_ = bytes;
     return true;
 }
 
@@ -657,8 +696,20 @@ void LocalControlServer::removeDiscoveryFile() {
     if (config_.discoveryPath.isEmpty() || !discoveryFileWritten_) {
         return;
     }
-    QFile::remove(config_.discoveryPath);
     discoveryFileWritten_ = false;
+    QLockFile lock(config_.discoveryPath + ".lock");
+    if (!lock.tryLock(100)) {
+        return;
+    }
+    QFile file(config_.discoveryPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        return;
+    }
+    const bool ownsFile = file.readAll() == discoveryFileContents_;
+    file.close();
+    if (ownsFile) {
+        QFile::remove(config_.discoveryPath);
+    }
 }
 
 }  // namespace versus::control

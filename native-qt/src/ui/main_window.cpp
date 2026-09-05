@@ -236,7 +236,10 @@ versus::app::VideoSourceMode videoSourceModeFromUiValue(const QString &value) {
 }
 
 QSettings makeUiSettings() {
-    return QSettings(APP_SETTINGS_ORG, APP_SETTINGS_NAME);
+    // The organization/application-only overload always uses NativeFormat.
+    // Explicitly honor the default so UI gates can use isolated INI files.
+    return QSettings(QSettings::defaultFormat(), QSettings::UserScope,
+                     APP_SETTINGS_ORG, APP_SETTINGS_NAME);
 }
 
 class ComboWheelGuard final : public QObject {
@@ -560,16 +563,18 @@ MainWindow::ParsedStreamTarget MainWindow::parseStreamTargetInput(const QString 
     }
 
     parsed.isUrl = true;
-    QUrlQuery query(url);
-    parsed.streamId = query.queryItemValue("push").trimmed();
+    // Match the browser's URLSearchParams: raw '+' means a space, while
+    // percent-encoded values must be decoded exactly once before signaling.
+    QUrlQuery query(url.query(QUrl::FullyEncoded).replace('+', QStringLiteral("%20")));
+    parsed.streamId = query.queryItemValue("push", QUrl::FullyDecoded).trimmed();
     if (parsed.streamId.isEmpty()) {
-        parsed.streamId = query.queryItemValue("view").trimmed();
+        parsed.streamId = query.queryItemValue("view", QUrl::FullyDecoded).trimmed();
     }
     if (parsed.streamId.isEmpty()) {
-        parsed.streamId = query.queryItemValue("streamid").trimmed();
+        parsed.streamId = query.queryItemValue("streamid", QUrl::FullyDecoded).trimmed();
     }
-    parsed.room = query.queryItemValue("room").trimmed();
-    parsed.password = query.queryItemValue("password").trimmed();
+    parsed.room = query.queryItemValue("room", QUrl::FullyDecoded).trimmed();
+    parsed.password = query.queryItemValue("password", QUrl::FullyDecoded).trimmed();
     parsed.valid = !parsed.streamId.isEmpty();
     return parsed;
 }
@@ -2505,7 +2510,8 @@ void MainWindow::onGoLiveClicked() {
                      static_cast<int>(config.alphaBackgroundMode));
 
         const bool requiresFfmpeg =
-            codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha;
+            codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
+            (config.explicitEncoderSelection && config.preferredHardware == versus::video::HardwareEncoder::QuickSync);
         const versus::video::FfmpegProbeInfo ffmpegInfo =
             versus::video::VideoEncoder::probeFfmpeg(config.ffmpegPath);
         if (requiresFfmpeg && !ffmpegInfo.resolved) {
@@ -2513,7 +2519,7 @@ void MainWindow::onGoLiveClicked() {
             QMessageBox::warning(
                 this,
                 "FFmpeg Required",
-                "VP9/AV1/H.265, FFmpeg NVENC, and the OBS alpha workflow require ffmpeg.exe. Use a bundled release, repair/reinstall Game Capture, or choose a custom FFmpeg path.");
+                "VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, and the OBS alpha workflow require ffmpeg.exe. Use a bundled release, repair/reinstall Game Capture, or choose a custom FFmpeg path.");
             refreshFfmpegStatus();
             return;
         }
@@ -2985,7 +2991,7 @@ void MainWindow::syncCodecUiState() {
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
     const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
-    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || usesExternalFfmpeg || alphaWorkflowSelected;
+    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || mode == "qsv" || usesExternalFfmpeg || alphaWorkflowSelected;
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
@@ -3057,10 +3063,11 @@ void MainWindow::refreshFfmpegStatus() {
     const bool needsFfmpeg =
         codecSelect_ &&
         (codecUsesExternalFfmpeg(selectedCodec) ||
-         (encoderSelect_ && encoderSelect_->currentData().toString() == "ffmpeg_nvenc") ||
+         (encoderSelect_ && (encoderSelect_->currentData().toString() == "ffmpeg_nvenc" ||
+                             encoderSelect_->currentData().toString() == "qsv")) ||
          alphaWorkflowSelected);
     if (!needsFfmpeg) {
-        ffmpegStatusLabel_->setText("Only needed for VP9/AV1/H.265 or FFmpeg NVENC.");
+        ffmpegStatusLabel_->setText("Needed for VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, or OBS alpha.");
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
         return;
     }

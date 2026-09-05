@@ -12,6 +12,8 @@ void holdNextTextBeforeDispatch();
 void releaseHeldText();
 void failNextSend();
 void throwNextSend();
+void holdNextOpen();
+void closeNextOpen();
 
 [[nodiscard]] std::size_t socketCount();
 [[nodiscard]] std::size_t sentMessageCount();

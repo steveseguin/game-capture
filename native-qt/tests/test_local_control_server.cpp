@@ -261,6 +261,14 @@ void TestLocalControlServer::testRecentLogTailReadsFromEnd() {
     QCOMPARE(lines.size(), 2);
     QCOMPARE(lines.at(0).toString(), QString("line-09998"));
     QCOMPARE(lines.at(1).toString(), QString("line-09999"));
+    for (const QString &query : {QString("headlines=2"), QString("filter=lines=2")}) {
+        const QByteArray ignored = httpRequest(server.port(), authGet("/logs/recent?" + query));
+        QCOMPARE(statusCode(ignored), 200);
+        const QJsonArray defaultLines = responseObject(ignored).value("lines").toArray();
+        QCOMPARE(defaultLines.size(), 250);
+        QCOMPARE(defaultLines.first().toString(), QString("line-09750"));
+        QCOMPARE(defaultLines.last().toString(), QString("line-09999"));
+    }
 }
 
 void TestLocalControlServer::testIssueReportFailureReturnsServerError() {

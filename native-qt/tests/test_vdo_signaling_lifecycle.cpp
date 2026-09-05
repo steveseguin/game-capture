@@ -419,6 +419,28 @@ int runSendThrowIsContained() {
 }
 
 int runChild(const QString &scenario) {
+    if (scenario == QStringLiteral("cancel-pending-connect") ||
+        scenario == QStringLiteral("close-during-connect")) {
+        rtc::signaling_lifecycle_test::reset();
+        const bool cancel = scenario == QStringLiteral("cancel-pending-connect");
+        if (cancel) rtc::signaling_lifecycle_test::holdNextOpen();
+        else rtc::signaling_lifecycle_test::closeNextOpen();
+        VdoSignaling signaling;
+        const auto start = std::chrono::steady_clock::now();
+        const bool connected = signaling.connect("ws://lifecycle.test/pending", [&]() {
+            return cancel && std::chrono::steady_clock::now() - start >= 50ms;
+        });
+        if (connected || signaling.isConnected() || std::chrono::steady_clock::now() - start > 1s) {
+            return failScenario(scenario.toStdString(), "connect-did-not-abort-promptly");
+        }
+        // A cancelled/closed attempt must not poison a subsequent healthy one.
+        if (!signaling.connect("ws://lifecycle.test/retry")) {
+            return failScenario(scenario.toStdString(), "retry-failed");
+        }
+        signaling.disconnect();
+        rtc::signaling_lifecycle_test::joinCallbacks();
+        return passScenario(scenario.toStdString());
+    }
     if (scenario == QStringLiteral("control-hang")) {
         std::cout << "CONTROL_HANG_ENTERED" << std::endl;
         for (;;) {
@@ -531,6 +553,8 @@ int runSupervisor() {
         abortControl);
 
     for (const QString &scenario : {
+             QStringLiteral("cancel-pending-connect"),
+             QStringLiteral("close-during-connect"),
              QStringLiteral("same-thread-disconnect"),
              QStringLiteral("external-destruction-waits"),
              QStringLiteral("pre-admission-destruction-waits"),

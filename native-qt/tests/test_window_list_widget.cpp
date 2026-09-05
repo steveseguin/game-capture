@@ -20,7 +20,9 @@ private slots:
     void testSetEmptyWindowList();
     void testEmptyTextRefreshesVisiblePlaceholder();
     void testSetWindowList();
+    void testSourceTitlesRemainLiteral();
     void testWindowSelection();
+    void testKeyboardSelectionAndRefresh();
     void testRefreshSignal();
     void testAutoRefreshTimer();
     void testSelectionPersistence();
@@ -75,6 +77,17 @@ void TestWindowListWidget::testSetEmptyWindowList() {
     auto *item = listWidget->item(0);
     QVERIFY(item != nullptr);
     QVERIFY(!(item->flags() & Qt::ItemIsSelectable));
+}
+
+void TestWindowListWidget::testSourceTitlesRemainLiteral() {
+    for (const QString &text : {QString("Source <b>Title</b> &amp;"), QString("Renamed <i>Title</i>")}) {
+        widget_->setWindowList({{"invalid-handle", text.toStdString(), "source.exe", 1, 640, 360}});
+        auto *label = widget_->findChild<QLabel *>("title");
+        QVERIFY(label);
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        label->setSelection(0, text.size());
+        QCOMPARE(label->selectedText(), text);
+    }
 }
 
 void TestWindowListWidget::testEmptyTextRefreshesVisiblePlaceholder() {
@@ -141,9 +154,9 @@ void TestWindowListWidget::testWindowSelection() {
     auto *listWidget = widget_->findChild<QListWidget*>();
     QVERIFY(listWidget != nullptr);
 
-    // Simulate click on first item
+    // Select the first item through the real selection model
     auto *item = listWidget->item(0);
-    emit listWidget->itemClicked(item);
+    listWidget->setCurrentItem(item);
 
     QCOMPARE(spy.count(), 1);
     QList<QVariant> arguments = spy.takeFirst();
@@ -193,7 +206,7 @@ void TestWindowListWidget::testSelectionPersistence() {
 
     // Select the first window
     auto *listWidget = widget_->findChild<QListWidget*>();
-    emit listWidget->itemClicked(listWidget->item(0));
+    listWidget->setCurrentRow(0);
     QCOMPARE(widget_->selectedWindowId(), QString("hwnd_123"));
 
     // Refresh the list (simulating auto-refresh)
@@ -215,7 +228,7 @@ void TestWindowListWidget::testSelectionClearsWhenWindowMissing() {
 
     auto *listWidget = widget_->findChild<QListWidget*>();
     QVERIFY(listWidget != nullptr);
-    emit listWidget->itemClicked(listWidget->item(0));
+    listWidget->setCurrentRow(0);
     QCOMPARE(widget_->selectedWindowId(), QString("hwnd_123"));
 
     std::vector<versus::video::WindowInfo> differentWindows;
@@ -284,6 +297,35 @@ void TestWindowListWidget::testSpoutModeShowsSenderDetails() {
     QCOMPARE(details->text(), QString("Spout2 sender - 640x360"));
     QVERIFY(!thumbnail->pixmap().isNull());
     QCOMPARE(thumbnail->property("hasThumbnail").toBool(), true);
+}
+
+void TestWindowListWidget::testKeyboardSelectionAndRefresh() {
+    widget_->setSpoutModeEnabled(true);
+    versus::video::WindowInfo first;
+    first.id = "spout:first";
+    first.name = "First";
+    auto second = first;
+    second.id = "spout:second";
+    second.name = "Second";
+    widget_->setWindowList({first, second});
+    auto *list = widget_->findChild<QListWidget*>();
+    QSignalSpy spy(widget_, &versus::ui::WindowListWidget::windowSelected);
+    QTest::keyClick(list, Qt::Key_Home);
+    QCOMPARE(widget_->selectedWindowId(), QString("spout:first"));
+    QTest::keyClick(list, Qt::Key_Down);
+    QCOMPARE(widget_->selectedWindowId(), QString("spout:second"));
+    QCOMPARE(spy.count(), 2);
+    widget_->setWindowList({first, second});
+    QCOMPARE(spy.count(), 2);
+    QCOMPARE(list->currentRow(), 1);
+    widget_->setWindowList({first});
+    QVERIFY(widget_->selectedWindowId().isEmpty());
+    QVERIFY(list->selectedItems().isEmpty());
+    QCOMPARE(spy.count(), 3);
+    QTest::keyClick(list, Qt::Key_Home);
+    QCOMPARE(widget_->selectedWindowId(), QString("spout:first"));
+    list->clearSelection();
+    QVERIFY(widget_->selectedWindowId().isEmpty());
 }
 
 QTEST_MAIN(TestWindowListWidget)

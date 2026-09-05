@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <QtCore/QCryptographicHash>
+#include <QtCore/QSaveFile>
 
 #include <algorithm>
 #include <array>
@@ -1141,6 +1142,8 @@ void VersusApp::stopCapture() {
     }
     audioCapture_.StopCapture();
     microphoneAudioCapture_.StopCapture();
+    primaryAudioResampler_ = {};
+    additionalAudioResampler_ = {};
     {
         std::lock_guard<std::mutex> lock(additionalAudioMutex_);
         additionalAudioBuffer_.clear();
@@ -2353,13 +2356,18 @@ bool VersusApp::writeDiagnosticsJson(const std::string &path) const {
             }
         }
 
-        std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
-        if (!out) {
+#ifdef _WIN32
+        QSaveFile out(QString::fromStdWString(outputPath.native()));
+#else
+        QSaveFile out(QString::fromStdString(outputPath.native()));
+#endif
+        if (!out.open(QIODevice::WriteOnly)) {
             spdlog::warn("[Diagnostics] Failed to open diagnostics output '{}'", path);
             return false;
         }
-        out << buildDiagnosticsJson() << '\n';
-        if (!out.good()) {
+        const std::string bytes = buildDiagnosticsJson() + '\n';
+        if (out.write(bytes.data(), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size()) ||
+            !out.commit()) {
             spdlog::warn("[Diagnostics] Failed while writing diagnostics output '{}'", path);
             return false;
         }
@@ -2603,7 +2611,7 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
         return;
     }
 
-    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk);
+    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &additionalAudioResampler_);
     if (normalizedSamples.empty()) {
         return;
     }
@@ -2666,7 +2674,7 @@ void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
     }
     lastPrimaryAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
 
-    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk);
+    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &primaryAudioResampler_);
     if (normalizedSamples.empty()) {
         return;
     }
@@ -3820,6 +3828,9 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     const bool roomQualityRoutingChanged =
         usesVp9AlphaTrack(videoConfig_) != usesVp9AlphaTrack(nextConfig);
     videoConfig_ = nextConfig;
+    if (fpsChanged && spoutCapture_.isCapturing()) {
+        spoutCapture_.setFrameRate(nextConfig.frameRate);
+    }
     if (roomQualityRoutingChanged) {
         updateRoomQualityDecisionForCodecLocked();
     }
@@ -6866,9 +6877,26 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
     return true;
 }
 
-std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame() {
-    std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-    return cachedVideoFrame_;
+std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame(bool forReplay) {
+    std::shared_ptr<const video::CapturedFrame> cached;
+    std::chrono::steady_clock::time_point receivedAt;
+    {
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        cached = cachedVideoFrame_;
+        receivedAt = cachedVideoFrameReceivedAt_;
+    }
+    if (!forReplay || !cached) {
+        return cached;
+    }
+    // A maintenance replay is a new presentation of the cached image. Keeping
+    // its original PTS compresses an entire source outage into a few RTP ticks,
+    // disrupting receiver timing when fresh frames resume. Preserve the source
+    // clock's epoch (camera timestamps need not share steady_clock's epoch).
+    const auto age100ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - receivedAt).count() / 100;
+    auto replay = std::make_shared<video::CapturedFrame>(*cached);
+    replay->timestamp += age100ns;
+    return replay;
 }
 
 void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
@@ -6886,6 +6914,7 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
         pendingVideoFrame_ = sharedFrame;
         cachedVideoFrame_ = sharedFrame;
+        cachedVideoFrameReceivedAt_ = std::chrono::steady_clock::now();
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -6933,7 +6962,9 @@ void VersusApp::startSignalingRecovery() {
                 std::lock_guard<std::mutex> lock(signalingOpsMutex_);
                 signaling_.disconnect();
 
-                if (signaling_.connect(lifecycleState.startOptions.server)) {
+                if (signaling_.connect(lifecycleState.startOptions.server, [this]() {
+                        return stopRequested_.load() || !live_.load();
+                    })) {
                     signaling_.setPassword(lifecycleState.password);
                     if (lifecycleState.password == "false" ||
                         lifecycleState.password == "0" ||
@@ -7112,7 +7143,7 @@ void VersusApp::startVideoMaintenanceThread() {
                 (lastKeyframeMs == 0) || ((nowMs - lastKeyframeMs) >= kPeriodicKeyframeMs);
 
             if (staleSend || periodicKeyframeDue) {
-                const auto cachedFrame = getCachedVideoFrame();
+                const auto cachedFrame = getCachedVideoFrame(true);
                 if (cachedFrame && !cachedFrame->data.empty()) {
                     encodeAndSendVideoFrame(*cachedFrame, periodicKeyframeDue);
                 } else if (periodicKeyframeDue) {
@@ -7426,6 +7457,8 @@ void VersusApp::startEncodeThread() {
 
     encodeThread_ = std::thread([this]() {
         spdlog::info("[EncodeThread] Started");
+        std::chrono::steady_clock::time_point nextFrameAdmission{};
+        int pacedFps = 0;
         while (encodeThreadRunning_.load()) {
             {
                 std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
@@ -7455,6 +7488,27 @@ void VersusApp::startEncodeThread() {
                 spdlog::info("[EncodeThread] Video track became active; forcing keyframe on next frame");
             }
 
+            // Capture can keep its original cadence after a runtime FPS change.
+            // Pace admission here and take the newest pending frame after the
+            // wait, rather than encoding every capture at the old frame rate.
+            const int requestedFps = std::clamp(videoStateSnapshot().config.frameRate, 1, 120);
+            const auto framePeriod = std::chrono::microseconds(1000000 / requestedFps);
+            if (requestedFps != pacedFps) {
+                nextFrameAdmission = std::chrono::steady_clock::now();
+                pacedFps = requestedFps;
+            }
+            {
+                std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
+                encodeFrameCV_.wait_until(lock, nextFrameAdmission,
+                    [this] { return !encodeThreadRunning_.load() || !live_.load(); });
+                if (!encodeThreadRunning_.load()) {
+                    break;
+                }
+                if (!live_.load()) {
+                    continue;
+                }
+            }
+
             std::shared_ptr<const video::CapturedFrame> frame;
             {
                 std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
@@ -7465,6 +7519,11 @@ void VersusApp::startEncodeThread() {
                 continue;
             }
 
+            const auto admittedAt = std::chrono::steady_clock::now();
+            // Preserve cadence through small scheduler delays, but do not
+            // accumulate a catch-up burst after capture or encoding stalls.
+            nextFrameAdmission = admittedAt - nextFrameAdmission > framePeriod
+                ? admittedAt + framePeriod : nextFrameAdmission + framePeriod;
             if (!encodeAndSendVideoFrame(*frame, false)) {
                 static int sendFailCount = 0;
                 if (++sendFailCount % 100 == 1) {

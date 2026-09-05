@@ -877,7 +877,8 @@ bool VdoSignaling::tryParseSignalPayload(const std::string &payload, ParsedSigna
     return parseSignalPayloadJson(msg, impl_->password, impl_->salt, impl_->encryptionDisabled, parsed);
 }
 
-bool VdoSignaling::connect(const std::string &server) {
+bool VdoSignaling::connect(const std::string &server, const std::function<bool()> &shouldCancel) {
+    if (shouldCancel && shouldCancel()) return false;
     const auto socketLifecycle = impl_->socketLifecycle;
     bool hasActiveSocket = false;
     {
@@ -945,6 +946,9 @@ bool VdoSignaling::connect(const std::string &server) {
         }
         spdlog::info("[Signaling] WebSocket onClosed callback triggered");
         impl_->connected.store(false);
+        // A socket that closes before the connect waiter observes onOpen
+        // cannot subsequently connect. Do not wait for the full timeout.
+        impl_->connectionFailed.store(true);
         if (impl_->onDisconnected) {
             impl_->onDisconnected();
         }
@@ -990,6 +994,10 @@ bool VdoSignaling::connect(const std::string &server) {
     auto start = std::chrono::steady_clock::now();
     while (!impl_->connected.load()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (shouldCancel && shouldCancel()) {
+            disconnect();
+            return false;
+        }
         if (impl_->connectionFailed.load()) {
             disconnect();
             return false;
@@ -1001,6 +1009,10 @@ bool VdoSignaling::connect(const std::string &server) {
         }
     }
 
+    if (shouldCancel && shouldCancel()) {
+        disconnect();
+        return false;
+    }
     return true;
 }
 

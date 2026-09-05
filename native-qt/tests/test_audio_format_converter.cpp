@@ -24,6 +24,8 @@ class TestAudioFormatConverter : public QObject {
     void testCommonMicrophoneRatesAndChannelLayouts();
     void testOptInPhysicalInputLifecycleStress();
     void testInvalidFormatsRejected();
+    void testStreamingResamplingIsIndependentOfChunkBoundaries();
+    void testStreamingResamplingIsIndependentOfChunkBoundaries_data();
 };
 
 namespace {
@@ -44,6 +46,46 @@ void verifyNear(float actual, float expected, float tolerance = 0.00001f) {
 }
 
 }  // namespace
+
+void TestAudioFormatConverter::testStreamingResamplingIsIndependentOfChunkBoundaries_data() {
+    QTest::addColumn<int>("rate");
+    QTest::addColumn<int>("chunkFrames");
+    for (int rate : {16000, 44100, 96000}) {
+        for (int size : {1, 64, 257}) {
+            QTest::newRow(qPrintable(QString("%1Hz-%2frames").arg(rate).arg(size))) << rate << size;
+        }
+    }
+}
+
+void TestAudioFormatConverter::testStreamingResamplingIsIndependentOfChunkBoundaries() {
+    QFETCH(int, rate);
+    QFETCH(int, chunkFrames);
+    versus::audio::StreamChunk whole;
+    whole.sampleRate = rate;
+    whole.channels = 1;
+    for (int i = 0; i < rate; ++i) whole.samples.push_back(std::sin(i * 0.1f));
+    versus::audio::AudioResamplerState wholeState, chunkState;
+    const auto expected = versus::audio::normalizeAudioForOpus(whole, &wholeState);
+    QCOMPARE(expected.size() / 2, static_cast<size_t>((int64_t(rate - 1) * 48000 / rate) + 1));
+    std::vector<float> actual;
+    for (size_t offset = 0; offset < whole.samples.size(); offset += chunkFrames) {
+        versus::audio::StreamChunk chunk;
+        chunk.sampleRate = whole.sampleRate;
+        chunk.channels = whole.channels;
+        chunk.samples.assign(whole.samples.begin() + offset,
+                             whole.samples.begin() + std::min(offset + chunkFrames, whole.samples.size()));
+        const auto output = versus::audio::normalizeAudioForOpus(chunk, &chunkState);
+        actual.insert(actual.end(), output.begin(), output.end());
+    }
+    QCOMPARE(actual.size(), expected.size());
+    for (size_t i = 0; i < actual.size(); ++i) verifyNear(actual[i], expected[i]);
+    // A capture format change starts a new interpolation sequence.
+    auto changed = whole;
+    changed.sampleRate = rate == 44100 ? 16000 : 44100;
+    versus::audio::AudioResamplerState fresh;
+    QCOMPARE(versus::audio::normalizeAudioForOpus(changed, &chunkState),
+             versus::audio::normalizeAudioForOpus(changed, &fresh));
+}
 
 void TestAudioFormatConverter::testPcm16Conversion() {
     const auto bytes = bytesFor<int16_t>({std::numeric_limits<int16_t>::min(), 0, 16384, 32767});

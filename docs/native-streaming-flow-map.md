@@ -293,6 +293,7 @@ Owner: VersusApp exposes a read-only JSON snapshot; individual component owners 
 
 Triggers:
 - `--diagnostics-out=<path>` writes diagnostics during headless timeout and again on process exit.
+- Diagnostics snapshots are replaced atomically: readers see complete JSON, and failed replacements preserve the previous file.
 - GUI mode also writes on process exit when the same argument is provided.
 
 Snapshot boundaries:

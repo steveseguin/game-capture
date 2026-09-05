@@ -73,6 +73,7 @@ struct WebSocketState {
 };
 
 struct Harness {
+    std::atomic<int> nextOpenMode{0};
     std::mutex mutex;
     std::vector<std::shared_ptr<WebSocketState>> sockets;
     std::vector<std::thread> callbackThreads;
@@ -153,6 +154,15 @@ void WebSocket::setMessageCallback(std::function<void(Message)> callback) {
 }
 
 void WebSocket::open(const std::string & /*url*/) {
+    const int mode = signaling_lifecycle_detail::harness().nextOpenMode.exchange(0);
+    if (mode == 1) return;
+    if (mode == 2) {
+        state_->open.store(true);
+        state_->onOpen.invoke();
+        state_->open.store(false);
+        state_->onClosed.invoke();
+        return;
+    }
     state_->open.store(true, std::memory_order_release);
     const auto state = state_;
     signaling_lifecycle_detail::launchCallback([state]() {
@@ -219,6 +229,7 @@ void joinCallbacks() {
 void reset() {
     joinCallbacks();
     auto &instance = signaling_lifecycle_detail::harness();
+    instance.nextOpenMode.store(0);
     {
         std::lock_guard<std::mutex> lock(instance.mutex);
         instance.sockets.clear();
@@ -230,6 +241,9 @@ void reset() {
         instance.releaseText = false;
     }
 }
+
+void holdNextOpen() { signaling_lifecycle_detail::harness().nextOpenMode.store(1); }
+void closeNextOpen() { signaling_lifecycle_detail::harness().nextOpenMode.store(2); }
 
 void holdNextTextBeforeDispatch() {
     auto &instance = signaling_lifecycle_detail::harness();

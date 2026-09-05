@@ -2,6 +2,7 @@
 #include <QtTest/qtestwheel.h>
 #include <QAccessible>
 #include <QApplication>
+#include <QTemporaryDir>
 #include <QAbstractItemView>
 #include <QPushButton>
 #include <QLabel>
@@ -271,15 +272,15 @@ private slots:
     void testAlphaWorkflowMessaging();
 
 private:
+    QTemporaryDir settingsDir_;
     versus::ui::MainWindow *window_ = nullptr;
 };
 
 void TestMainWindow::initTestCase() {
     QSettings::setDefaultFormat(QSettings::IniFormat);
-    const QString settingsRoot = QDir::temp().filePath("game-capture-test-settings");
-    QDir(settingsRoot).removeRecursively();
-    QDir().mkpath(settingsRoot);
-    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsRoot);
+    QVERIFY(settingsDir_.isValid());
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir_.path());
+    QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, settingsDir_.path());
 }
 
 void TestMainWindow::cleanupTestCase() {
@@ -287,7 +288,7 @@ void TestMainWindow::cleanupTestCase() {
 }
 
 void TestMainWindow::init() {
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.clear();
     settings.sync();
 
@@ -350,7 +351,7 @@ void TestMainWindow::testGoLiveButtonEnabledAfterSelection() {
     // Simulate window selection
     auto *listWidget = windowList->findChild<QListWidget*>();
     QVERIFY(listWidget != nullptr);
-    emit listWidget->itemClicked(listWidget->item(0));
+    listWidget->setCurrentRow(0);
 
     // Find GO LIVE button and check if enabled
     auto buttons = window_->findChildren<QPushButton*>();
@@ -555,7 +556,7 @@ void TestMainWindow::testPersistedCameraOptions() {
     delete window_;
     window_ = nullptr;
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.setValue("video/sourceMode", "camera");
     settings.setValue("camera/resolution", "1280x720");
     settings.setValue("camera/fps", 24);
@@ -577,7 +578,7 @@ void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
     delete window_;
     window_ = nullptr;
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.setValue("video/sourceMode", "spout");
     settings.setValue("audio/source", "selected-window");
     settings.sync();
@@ -596,7 +597,7 @@ void TestMainWindow::testPersistedCameraModeUsesMicrophone() {
     delete window_;
     window_ = nullptr;
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.setValue("video/sourceMode", "camera");
     settings.setValue("audio/source", "selected-window");
     settings.sync();
@@ -639,7 +640,7 @@ void TestMainWindow::testSpoutSelectionPreviewMessaging() {
     auto *listWidget = windowList->findChild<QListWidget*>();
     QVERIFY(listWidget != nullptr);
     QCOMPARE(listWidget->count(), 1);
-    emit listWidget->itemClicked(listWidget->item(0));
+    listWidget->setCurrentRow(0);
 
     QVERIFY(preview->text().contains("Spout2 sender selected"));
     QVERIFY(preview->text().contains("VTubeStudioSpout"));
@@ -674,7 +675,7 @@ void TestMainWindow::testCameraSelectionPreviewMessaging() {
     auto *listWidget = windowList->findChild<QListWidget*>();
     QVERIFY(listWidget != nullptr);
     QCOMPARE(listWidget->count(), 1);
-    emit listWidget->itemClicked(listWidget->item(0));
+    listWidget->setCurrentRow(0);
 
     QVERIFY(preview->text().contains("Camera selected"));
     QVERIFY(preview->text().contains("Test Webcam"));
@@ -728,7 +729,7 @@ void TestMainWindow::testPersistedIceModePreserved() {
     delete window_;
     window_ = nullptr;
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.setValue("network/iceMode", savedMode);
     settings.sync();
 
@@ -742,7 +743,7 @@ void TestMainWindow::testInvalidPersistedIceModeDefaultsToAuto() {
     delete window_;
     window_ = nullptr;
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.setValue("network/iceMode", "invalid-mode");
     settings.sync();
 
@@ -873,7 +874,7 @@ void TestMainWindow::testRoomQualityUnavailableUi() {
     QCOMPARE(accessible->text(QAccessible::Description),
              kRoomQualityUnavailableAccessibleDescription);
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.sync();
     QCOMPARE(settings.value("stream/roomModeLqEnabled").toBool(), true);
 
@@ -897,7 +898,7 @@ void TestMainWindow::testRoomQualityLatentPreferenceSurvivesRestart() {
     QCoreApplication::processEvents();
     QCOMPARE(roomQualityToggles.count(), 0);
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.sync();
     QCOMPARE(settings.value("video/codec").toString(), QStringLiteral("vp9"));
     QCOMPARE(settings.value("stream/roomModeLqEnabled").toBool(), true);
@@ -938,7 +939,7 @@ void TestMainWindow::testRoomQualityFalsePreferenceRemainsFalse() {
     QVERIFY(!roomQuality->isChecked());
     QCOMPARE(roomQualityToggles.count(), 0);
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.sync();
     QCOMPARE(settings.value("stream/roomModeLqEnabled").toBool(), false);
 }
@@ -991,7 +992,7 @@ void TestMainWindow::testRoomQualityStartUsesLatentPreference() {
     encoder->setCurrentIndex(encoder->findData(QStringLiteral("software")));
     QCoreApplication::processEvents();
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.sync();
     QCOMPARE(settings.value("stream/roomModeLqEnabled").toBool(), requested);
 
@@ -1124,7 +1125,7 @@ void TestMainWindow::testRoomQualityUnavailableStartupPersistence() {
 
     delete window_;
     window_ = nullptr;
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.clear();
     settings.setValue("video/codec", codecValue);
     settings.setValue("video/encoderMode", QStringLiteral("software"));
@@ -1295,7 +1296,7 @@ void TestMainWindow::testRoomQualityCodecSyncPreservesAlphaAndEncoder() {
     const bool unavailableBeforeRestart =
         !roomQuality->isEnabled() && !roomQuality->isChecked();
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.sync();
     QCOMPARE(settings.value("video/codec").toString(), codecValue);
     QCOMPARE(settings.value("video/encoderMode").toString(), QStringLiteral("software"));
@@ -1461,11 +1462,11 @@ void TestMainWindow::testRoomQualityH265LatentAlphaEffectiveUi() {
     auto *listWidget = windowList->findChild<QListWidget *>();
     QVERIFY(listWidget != nullptr);
     QCOMPARE(listWidget->count(), 1);
-    emit listWidget->itemClicked(listWidget->item(0));
+    listWidget->setCurrentRow(0);
     QCoreApplication::processEvents();
     const QString previewText = preview->text();
 
-    QSettings settings("VDO.Ninja", "Game Capture");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
     settings.sync();
     QCOMPARE(settings.value("video/codec").toString(), QStringLiteral("h265"));
     QCOMPARE(settings.value("video/encoderMode").toString(), QStringLiteral("software"));
@@ -1890,6 +1891,24 @@ void TestMainWindow::testDisabledSpinBoxesPassWheelToPage() {
 
 void TestMainWindow::testParseStreamTargetInput() {
     {
+        const auto parsed = versus::ui::MainWindow::parseStreamTargetInput(
+            "https://vdo.ninja/?push=alpha%2526&room=room%2Bname&password=a%26b%2Bc%2520");
+        QVERIFY(parsed.valid);
+        QCOMPARE(parsed.streamId, QString("alpha%26"));
+        QCOMPARE(parsed.room, QString("room+name"));
+        QCOMPARE(parsed.password, QString("a&b+c%20"));
+    }
+    {
+        const auto parsed = versus::ui::MainWindow::parseStreamTargetInput(
+            "https://vdo.ninja/?view=alpha%2Bbeta&password=a+b%2Bc");
+        QCOMPARE(parsed.streamId, QString("alpha+beta"));
+        QCOMPARE(parsed.password, QString("a b+c"));
+        const auto alias = versus::ui::MainWindow::parseStreamTargetInput(
+            "https://vdo.ninja/?streamid=alpha%25beta&password=false");
+        QCOMPARE(alias.streamId, QString("alpha%beta"));
+        QCOMPARE(alias.password, QString("false"));
+    }
+    {
         const auto parsed = versus::ui::MainWindow::parseStreamTargetInput("my_stream_123");
         QVERIFY(parsed.valid);
         QCOMPARE(parsed.streamId, QString("my_stream_123"));
@@ -2138,6 +2157,8 @@ void TestMainWindow::testCodecControls() {
     const int qsvIndex = encoderCombo->findData("qsv");
     QVERIFY(qsvIndex >= 0);
     encoderCombo->setCurrentIndex(qsvIndex);
+    // H.264 Quick Sync also needs the external encoder and a usable path field.
+    QVERIFY(ffmpegPathInput->isEnabled());
 
     const int av1Index = codecCombo->findData("av1");
     QVERIFY(av1Index >= 0);

@@ -88,7 +88,7 @@ struct SpoutCapture::Impl {
     unsigned int senderWidth = 0;
     unsigned int senderHeight = 0;
     DWORD senderFormat = 0;
-    int targetFps = 60;
+    std::atomic<int> targetFps{60};
     bool initDone = false;
     bool initSucceeded = false;
 #endif
@@ -207,12 +207,9 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                      impl_->senderHeight,
                      impl_->senderFormat);
 
-        const auto frameInterval = std::chrono::milliseconds(
-            std::max(1, 1000 / std::max(1, impl_->targetFps)));
         int receiveFailureCount = 0;
         int senderInfoPollCount = 0;
-        const int reconnectThreshold = std::max(10, impl_->targetFps / 2);
-        const int staleFrameThreshold = std::max(30, impl_->targetFps * 2);
+        int previousFps = 0;
         long lastSenderFrame = -1;
         int staleFrameCount = 0;
         const std::string requestedSenderName = impl_->activeSenderName;
@@ -309,6 +306,17 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
         };
 
         while (capturing_.load(std::memory_order_acquire)) {
+            const int targetFps = impl_->targetFps.load(std::memory_order_relaxed);
+            const auto frameInterval = std::chrono::milliseconds(std::max(1, 1000 / targetFps));
+            const int reconnectThreshold = std::max(10, targetFps / 2);
+            const int staleFrameThreshold = std::max(30, targetFps * 2);
+            if (targetFps != previousFps) {
+                // Restart frame-count based timeouts at the new cadence.
+                receiveFailureCount = 0;
+                senderInfoPollCount = 0;
+                staleFrameCount = 0;
+                previousFps = targetFps;
+            }
             senderInfoPollCount++;
             if (senderInfoPollCount >= reconnectThreshold) {
                 senderInfoPollCount = 0;
@@ -395,7 +403,7 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                 frameCallback_(std::move(frame));
             }
 
-            receiver->HoldFps(impl_->targetFps);
+            receiver->HoldFps(targetFps);
         }
 
         receiver->ReleaseReceiver();
@@ -449,6 +457,15 @@ void SpoutCapture::stopCapture() {
 
 bool SpoutCapture::isCapturing() const {
     return capturing_.load(std::memory_order_acquire);
+}
+
+void SpoutCapture::setFrameRate(int fps) {
+#if defined(_WIN32) && defined(VERSUS_USE_SPOUT)
+    // Only the capture thread calls the Spout SDK; control threads update the target.
+    impl_->targetFps.store(std::clamp(fps, 1, 120), std::memory_order_relaxed);
+#else
+    (void)fps;
+#endif
 }
 
 void SpoutCapture::setFrameCallback(FrameCallback cb) {

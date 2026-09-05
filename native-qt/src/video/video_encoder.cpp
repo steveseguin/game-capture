@@ -1512,8 +1512,11 @@ class VideoEncoder::Impl {
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
 
+        // Use the bundled QSV pipeline for explicit Intel selection: the Intel
+        // asynchronous MFT can fail warmup in this synchronous MF pipeline.
         const bool requireExternalFfmpeg =
-            config_.forceFfmpegNvenc || config_.codec != VideoCodec::H264;
+            config_.forceFfmpegNvenc || config_.codec != VideoCodec::H264 ||
+            (config_.explicitEncoderSelection && config_.preferredHardware == HardwareEncoder::QuickSync);
         if (requireExternalFfmpeg && initializeExternalFfmpegNvenc()) {
             initialized_ = true;
             usingHardware_ = externalUsingHardware_;
@@ -2353,6 +2356,13 @@ class VideoEncoder::Impl {
                 args.push_back("-aud");
                 args.push_back("1");
             }
+        } else if (encoderName.find("_qsv") != std::string::npos) {
+            // Raw elementary output is correlated with input PTS in FIFO order.
+            // QSV permits B frames by default; reordering breaks that mapping.
+            args.insert(args.end(), {"-bf", "0", "-async_depth", "1"});
+            if (config_.codec == VideoCodec::H264 || config_.codec == VideoCodec::H265) {
+                args.insert(args.end(), {"-forced_idr", "1"});
+            }
         } else if (encoderName == "libx264") {
             args.push_back("-preset");
             args.push_back("veryfast");
@@ -2425,20 +2435,19 @@ class VideoEncoder::Impl {
                 // FFmpeg expects the CLI token "pc" here rather than "full".
                 args.push_back("-color_range");
                 args.push_back("pc");
-            } else {
-                // Primary encoder: standard broadcast colorspace metadata.
-                args.push_back("-colorspace");
-                args.push_back("bt709");
-                args.push_back("-color_primaries");
-                args.push_back("bt709");
-                args.push_back("-color_trc");
-                args.push_back("bt709");
-                args.push_back("-color_range");
-                args.push_back("tv");
             }
         } else {
             args.push_back("-pix_fmt");
             args.push_back("nv12");
+        }
+
+        if (externalInputIsNv12_) {
+            // convertBGRAtoNV12 produces limited-range BT.601 from SDR sRGB.
+            // Untagged HD streams may be decoded as BT.709, shifting colors.
+            args.insert(args.end(), {"-colorspace", "smpte170m",
+                                     "-color_primaries", "bt709",
+                                     "-color_trc", "iec61966-2-1",
+                                     "-color_range", "tv"});
         }
 
         const auto extraArgs = splitCommandArgs(config_.ffmpegOptions);
@@ -3901,11 +3910,22 @@ class VideoEncoder::Impl {
 
         EncodedPacket probePacket;
         constexpr int kMaxProbeFrames = 18;
-        for (int i = 0; i < kMaxProbeFrames; ++i) {
+        const bool externalProbe = usingExternalFfmpeg_;
+        // External startup is asynchronous. A full input queue can consume an
+        // attempt immediately, so a frame count is not a startup deadline.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        for (int i = 0; externalProbe ? std::chrono::steady_clock::now() < deadline
+                                    : i < kMaxProbeFrames; ++i) {
             if (encode(probeFrame, probePacket, probeFrame.timestamp) &&
                 !probePacket.data.empty()) {
                 spdlog::info("[VideoEncoder] Warm-up probe produced encoded data on frame {}", i + 1);
                 return true;
+            }
+            if (externalProbe) {
+                if (!usingExternalFfmpeg_) {
+                    break;  // A failed process was already retired by encode().
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
         }
         spdlog::warn("[VideoEncoder] Warm-up probe produced no encoded output");

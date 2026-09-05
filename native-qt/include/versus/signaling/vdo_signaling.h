@@ -84,7 +84,9 @@ class VdoSignaling {
     VdoSignaling();
     ~VdoSignaling();
 
-    bool connect(const std::string &server = "wss://wss.vdo.ninja");
+    // Cancellation is polled while waiting; it must be safe on the caller thread.
+    bool connect(const std::string &server = "wss://wss.vdo.ninja",
+                 const std::function<bool()> &shouldCancel = {});
     void disconnect();
     bool isConnected() const;
 

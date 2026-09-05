@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QPainter>
 #include <QLinearGradient>
+#include <QSignalBlocker>
 
 #include "versus/video/window_capture.h"
 
@@ -39,7 +40,7 @@ WindowListWidget::WindowListWidget(QWidget *parent)
     autoRefreshTimer_->setInterval(3000);
 
     // Connections
-    connect(listWidget_, &QListWidget::itemClicked, this, &WindowListWidget::onItemClicked);
+    connect(listWidget_, &QListWidget::itemSelectionChanged, this, &WindowListWidget::onSelectionChanged);
     connect(refreshButton_, &QPushButton::clicked, this, &WindowListWidget::onRefreshClicked);
     connect(autoRefreshTimer_, &QTimer::timeout, this, &WindowListWidget::onAutoRefresh);
 
@@ -174,6 +175,7 @@ QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &win
     textLayout->setSpacing(2);
 
     auto *titleLabel = new QLabel(QString::fromStdString(window.name));
+    titleLabel->setTextFormat(Qt::PlainText);
     titleLabel->setObjectName("title");
     QFont titleFont = titleLabel->font();
     titleFont.setPointSize(10);
@@ -181,6 +183,7 @@ QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &win
     titleLabel->setWordWrap(true);
 
     auto *exeLabel = new QLabel(secondaryTextFor(window));
+    exeLabel->setTextFormat(Qt::PlainText);
     exeLabel->setObjectName("exe");
     QFont exeFont = exeLabel->font();
     exeFont.setPointSize(8);
@@ -223,6 +226,9 @@ void WindowListWidget::updateItemWidget(QWidget *widget,
 }
 
 void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo> &windows) {
+    // Removing a selected row can briefly select its neighbor. Refresh must
+    // preserve the user's source or clear it, never silently choose another.
+    const QSignalBlocker selectionBlocker(listWidget_);
     const bool forceThumbnailRefresh = forceThumbnailRefreshOnNextSet_;
     forceThumbnailRefreshOnNextSet_ = false;
     if (forceThumbnailRefresh) {
@@ -282,6 +288,8 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
 
     if (!selectedWindowId_.isEmpty() && !incomingIds.contains(selectedWindowId_)) {
         selectedWindowId_.clear();
+        listWidget_->setCurrentItem(nullptr);
+        listWidget_->clearSelection();
         emit windowSelected(selectedWindowId_);
     }
 
@@ -311,7 +319,7 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
 
     // Restore selection if it still exists
     if (!selectedWindowId_.isEmpty() && windowItems_.contains(selectedWindowId_)) {
-        windowItems_[selectedWindowId_]->setSelected(true);
+        listWidget_->setCurrentItem(windowItems_[selectedWindowId_]);
     }
 }
 
@@ -381,12 +389,14 @@ void WindowListWidget::setCameraModeEnabled(bool enabled) {
     requestThumbnailRefresh();
 }
 
-void WindowListWidget::onItemClicked(QListWidgetItem *item) {
-    if (!item || !(item->flags() & Qt::ItemIsSelectable)) {
+void WindowListWidget::onSelectionChanged() {
+    const auto selected = listWidget_->selectedItems();
+    const QString id = selected.isEmpty() ? QString() : selected.first()->data(Qt::UserRole).toString();
+    if (id == selectedWindowId_) {
         return;
     }
 
-    selectedWindowId_ = item->data(Qt::UserRole).toString();
+    selectedWindowId_ = id;
     emit windowSelected(selectedWindowId_);
 }
 

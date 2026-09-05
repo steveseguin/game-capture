@@ -25,6 +25,9 @@ $env:GAME_CAPTURE_LOCAL_CONTROL_DISCOVERY = "C:\Temp\game-capture-control.json"
 
 If no token is supplied, the app generates one. If no port is supplied, the OS chooses a free loopback port.
 
+A valid `--local-control-port` overrides `GAME_CAPTURE_LOCAL_CONTROL_PORT`,
+including `--local-control-port=0`, which explicitly requests an OS-assigned port.
+
 Default discovery path:
 
 ```text
@@ -46,6 +49,16 @@ Crash reports:
 Crash reports are best-effort Windows artifacts written after hard crashes. They include a small `.json` summary and a `.dmp` minidump when dump writing succeeds.
 
 ## Discovery
+
+If instances share a discovery path, the latest successful writer is discoverable.
+Closing an older instance preserves the newer instance's discovery file. Use a
+different `--local-control-discovery` path for each instance when automating
+multiple publishers. Closing the latest instance does not restore an older entry.
+
+Each concurrently running publisher has its own log. The first publisher uses
+`game-capture-debug.log`; additional publishers use a UUID suffix. Read the `path`
+returned by `/logs/recent` to locate that instance's log. Its issue reports and
+crash reports reference the same log.
 
 Read the discovery file to find the current port, base URL, token, and supported endpoints:
 
@@ -73,6 +86,10 @@ Authenticated:
 - `GET /logs/recent?lines=250`
 - `POST /commands`
 
+`/logs/recent` defaults to the latest 250 lines. Only the `lines` query parameter
+changes that limit; unrelated query parameters are ignored. Numeric limits are
+clamped to 1–2000.
+
 Audio-input source objects include `sampleRate`, `channels`, `bitsPerSample`,
 `validBitsPerSample`, `floatingPoint`, and `isDefault` alongside the device
 `id` and `name`.
@@ -84,6 +101,11 @@ Authorization: Bearer <token>
 ```
 
 `X-Game-Capture-Token: <token>` is also accepted for simple local clients.
+
+Requests must use fixed-length bodies (`Content-Length`); transfer encoding is
+not supported. Invalid or duplicate lengths and requests exceeding 1 MiB including
+headers receive HTTP 400. Diagnostics exports return success only after the file
+has been committed; failed replacements preserve the previous report.
 
 ## Diagnostics Source Health
 
@@ -130,6 +152,10 @@ Invoke-RestMethod "$($control.base_url)/commands" -Headers $headers -Method Post
 ```
 
 Create an issue report with current diagnostics and recent log lines:
+
+Automatically named diagnostics exports and issue reports include a timestamp
+and UUID so rapid requests retain separate files. Use the returned `path` to
+locate each report. An explicit diagnostics export path still replaces that file.
 
 ```powershell
 Invoke-RestMethod "$($control.base_url)/commands" -Headers $headers -Method Post `

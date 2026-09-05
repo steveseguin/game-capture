@@ -195,10 +195,10 @@ int main(int argc, char **argv) {
     resizeAfterMs = std::clamp(resizeAfterMs, 0, durationMs);
     resizeWidth = resizeWidth > 0 ? std::clamp(resizeWidth, 64, 3840) : width;
     resizeHeight = resizeHeight > 0 ? std::clamp(resizeHeight, 64, 2160) : height;
-    if (pattern != "animated" && pattern != "static" && pattern != "alpha-checker" &&
+    if (pattern != "animated" && pattern != "color-bars" && pattern != "static" && pattern != "alpha-checker" &&
         pattern != "alpha-moving-edge" && pattern != "alpha-opaque" && pattern != "alpha-half") {
         std::cerr << "Unknown --pattern value '" << pattern
-                  << "'; expected animated, static, alpha-checker, alpha-moving-edge, alpha-opaque, or alpha-half\n";
+                  << "'; expected animated, color-bars, static, alpha-checker, alpha-moving-edge, alpha-opaque, or alpha-half\n";
         return 4;
     }
 
@@ -286,6 +286,17 @@ int main(int argc, char **argv) {
             ++frame;
         } else {
             drawFrame(pixels, width, height, frame++);
+            if (pattern == "color-bars") {
+                const uint8_t colors[8][3] = {{180,60,60},{60,180,60},{60,60,180},{180,180,60},
+                                             {60,180,180},{180,60,180},{128,128,128},{240,240,240}};
+                for (int y = 0; y < height / 8; ++y) {
+                    for (int x = 0; x < width; ++x) {
+                        const auto &rgb = colors[std::min(7, x * 8 / width)];
+                        const size_t i = (static_cast<size_t>(y) * width + x) * 4;
+                        pixels[i] = rgb[2]; pixels[i + 1] = rgb[1]; pixels[i + 2] = rgb[0]; pixels[i + 3] = 255;
+                    }
+                }
+            }
         }
         sender->SendImage(pixels.data(), static_cast<unsigned int>(width), static_cast<unsigned int>(height), GL_BGRA, false);
         nextFrameTime += std::chrono::duration_cast<std::chrono::steady_clock::duration>(frameInterval);

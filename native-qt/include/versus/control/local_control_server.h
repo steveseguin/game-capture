@@ -89,6 +89,7 @@ class LocalControlServer : public QObject {
     RefreshPeerTransportsCallback refreshPeerTransportsCallback_;
     QHash<QTcpSocket*, QByteArray> buffers_;
     bool discoveryFileWritten_ = false;
+    QByteArray discoveryFileContents_;
 };
 
 }  // namespace versus::control

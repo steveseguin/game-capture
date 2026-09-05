@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <cstdint>
@@ -28,6 +29,7 @@
 #include "versus/video/window_capture.h"
 #include "versus/audio/opus_encoder.h"
 #include "versus/audio/window_audio_capture_core.h"
+#include "versus/audio/audio_format_converter.h"
 
 namespace versus::app {
 
@@ -434,7 +436,7 @@ class VersusApp {
     bool isControlMessageAuthorized(const std::shared_ptr<PeerSession> &peer, const std::string &token) const;
     bool encodeAndSendVideoFrame(const versus::video::CapturedFrame &frame, bool forceKeyframe);
     bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
-    std::shared_ptr<const versus::video::CapturedFrame> getCachedVideoFrame();
+    std::shared_ptr<const versus::video::CapturedFrame> getCachedVideoFrame(bool forReplay = false);
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
     std::shared_ptr<PeerSession> findPeerSessionForSignalLocked(const std::string &uuid,
                                                                 const std::string &session) const;
@@ -818,6 +820,7 @@ class VersusApp {
     std::mutex latestVideoFrameMutex_;
     std::shared_ptr<const versus::video::CapturedFrame> pendingVideoFrame_;
     std::shared_ptr<const versus::video::CapturedFrame> cachedVideoFrame_;
+    std::chrono::steady_clock::time_point cachedVideoFrameReceivedAt_{};
     int activeHqWidth_ = 0;
     int activeHqHeight_ = 0;
     int lastCaptureWidth_ = 0;
@@ -861,6 +864,8 @@ class VersusApp {
     versus::video::VideoEncoder videoEncoderAlpha_;
     std::vector<uint8_t> alphaGrayBuffer_;
     versus::audio::WindowAudioCaptureCore audioCapture_;
+    versus::audio::AudioResamplerState primaryAudioResampler_;
+    versus::audio::AudioResamplerState additionalAudioResampler_;
     versus::audio::WindowAudioCaptureCore microphoneAudioCapture_;
     versus::audio::OpusEncoder opusEncoder_;
     versus::signaling::VdoSignaling signaling_;
