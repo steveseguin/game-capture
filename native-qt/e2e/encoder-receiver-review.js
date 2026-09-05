@@ -8,12 +8,14 @@ const {spawn, execFile} = require('child_process');
 const {promisify} = require('util');
 const execFileAsync = promisify(execFile);
 const {chromium} = require('playwright');
+const frameIdentity = require('./frame-identity');
 const opts = Object.fromEntries(process.argv.slice(2).map(s => { const i=s.indexOf('='); return [s.slice(2,i),s.slice(i+1)]; }));
 const captureCadenceMin=Number(opts['capture-cadence-min']||0.8);
 if(!(captureCadenceMin>0&&captureCadenceMin<=1))throw Error('Capture cadence minimum must be in (0,1]');
 const publisher = path.resolve(opts.publisher);
 const senderExe = opts.sender ? path.resolve(opts.sender) : null;
 const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : null;
+if(opts['frame-identity']==='1'&&!windowVideo)throw Error('Frame identity requires --window-video');
 if (!senderExe && !windowVideo) throw Error('--sender or --window-video is required');
 if (windowVideo && ['resize','color-check','control-source-restart','shutdown-source-loss'].some(k=>opts[k]==='1'))
   throw Error('Spout fixture options cannot be used with --window-video');
@@ -60,6 +62,24 @@ async function waitVideo(page,timeout=45000) {
   }
   throw Error('No advancing decoded video: '+JSON.stringify(last));
 }
+async function refreshTransport(control,page) {
+  const before=await api(control,'/diagnostics'),started=Date.now();
+  const response=await api(control,'/commands',{command:'refresh_peer_transports'});
+  let after;
+  while(Date.now()-started<45000) {
+    after=await api(control,'/diagnostics');
+    // A rebuild intentionally rotates the wire session. Match the logical peer
+    // by UUID and creation time, then require its transport generation to grow.
+    if(after.peers.some(peer=>before.peers.some(old=>old.uuid===peer.uuid&&old.created_steady_ms===peer.created_steady_ms&&
+      peer.signaling.client_transport_generation>old.signaling.client_transport_generation)&&
+      peer.last_connection_state==='connected'&&peer.media.last_observed_video_track_active)) {
+      await waitVideo(page);
+      return {response,before,after,recoveredMs:Date.now()-started};
+    }
+    await sleep(300);
+  }
+  throw Error('Transport refresh did not reconnect a new transport generation');
+}
 async function measure(page,ms) {
   const before=await stats(page); await sleep(ms); const after=await stats(page);
   return after.map(b=>{
@@ -76,6 +96,21 @@ async function measure(page,ms) {
       audioRms:Math.sqrt(Math.max(0,delta('totalAudioEnergy'))/Math.max(.001,delta('totalSamplesDuration'))),
       concealedSamples:delta('concealedSamples'),totalSamples:delta('totalSamplesReceived')};
   });
+}
+async function identityProbe(page,source,ms) {
+  const before=await stats(page),sourceBefore=await source.evaluate(()=>window.reviewIdentity);
+  const result=await frameIdentity.probe(page,ms);
+  const after=await stats(page);result.sourceBefore=sourceBefore;result.sourceAfter=await source.evaluate(()=>window.reviewIdentity);
+  result.receiver=after.filter(b=>b.kind==='video').map(b=>{
+    const a=before.find(x=>x.id===b.id);if(!a)return {changedStream:true};
+    return {seconds:(b.timestamp-a.timestamp)/1000,framesDecoded:b.framesDecoded-a.framesDecoded,
+      framesDropped:(b.framesDropped||0)-(a.framesDropped||0),freezeCount:(b.freezeCount||0)-(a.freezeCount||0)};
+  });
+  return result;
+}
+function requireReadableIdentity(result) {
+  if(result.error||!(result.callbacks>0&&result.unique>0)||result.invalid/result.callbacks>.01)
+    throw Error('Source frame identity was unavailable or unreliable');
 }
 async function motionProbe(page) {
   return page.evaluate(async(generic)=>{
@@ -148,12 +183,20 @@ async function main() {
   const senderName='ReceiverReview_'+crypto.randomUUID().replaceAll('-','');
   const senderArgs=[`--name=${senderName}`,`--width=${width}`,`--height=${height}`,`--fps=${Number(opts['source-fps']||fps)}`,`--pattern=${opts['color-check']==='1'?'color-bars':'animated'}`,'--duration-ms=1800000'];
   if(opts.resize==='1')senderArgs.push('--resize-after-ms=20000','--resize-width=1280','--resize-height=960');
-  let sourceBrowser,sourcePage;
+  let sourceBrowser,sourcePage,sourceFixture;
   let sender=windowVideo?null:launch(senderExe,senderArgs,'source');
   if(windowVideo) {
     const {pathToFileURL}=require('url');
+    let playbackVideo=windowVideo;
+    if(opts['frame-identity']==='1') {
+      playbackVideo=path.join(run,'source-frame-ids.webm');
+      await frameIdentity.makeClip(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'),windowVideo,playbackVideo,Number(opts['source-fps']||fps));
+      sourceFixture={video:playbackVideo,sha256:crypto.createHash('sha256').update(fs.readFileSync(playbackVideo)).digest('hex'),
+        frameIds:'embedded-12-bit-with-complement',fps:Number(opts['source-fps']||fps),seconds:20};
+    }
     const html=path.join(run,'browser-source.html');
-    fs.writeFileSync(html,`<!doctype html><title>${senderName}</title><style>html,body{margin:0;background:black;overflow:hidden}video{width:100vw;height:100vh;object-fit:contain}</style><video autoplay loop muted src="${pathToFileURL(windowVideo).href}"></video>`);
+    fs.writeFileSync(html,`<!doctype html><title>${senderName}</title><style>html,body{margin:0;background:black;overflow:hidden}video{width:100vw;height:100vh;object-fit:contain}</style><video autoplay loop muted src="${pathToFileURL(playbackVideo).href}"></video>`);
+    if(opts['frame-identity']==='1')fs.appendFileSync(html,frameIdentity.sourceScript);
     sourceBrowser=await chromium.launch({headless:false,args:['--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
     browsers.add(sourceBrowser);
     const sourceContext=await sourceBrowser.newContext({viewport:{width,height}});
@@ -218,15 +261,16 @@ async function main() {
       const [encoder,codec]=entry.split(':');const name=encoder+'-'+codec;
       const controlPath=path.join(run,name+'-control.json');
       const stream='review'+crypto.randomBytes(10).toString('hex');
-      const result={name,requested:{encoder,codec,width,height,fps},source:windowVideo?{
+      const result={name,startedAt:new Date().toISOString(),requested:{encoder,codec,width,height,fps},source:windowVideo?{
         type:'browser-window',video:windowVideo,browser:sourceBrowser.version(),
+        ...(sourceFixture?{fixture:sourceFixture}:{}),
         sha256:crypto.createHash('sha256').update(fs.readFileSync(windowVideo)).digest('hex')
       }:{type:'spout'},stages:[]};results.push(result);
       console.log('Starting',name);
       const proc=launch(publisher,['--headless',`--stream=${stream}`,'--password=false',
         ...(windowVideo?['--source=window',`--window=${senderName}`]:['--source=spout',`--spout-sender=${senderName}`]),
         '--audio-source=default-output',`--width=${width}`,`--height=${height}`,`--fps=${fps}`,
-        '--bitrate-kbps=4000',`--video-encoder=${encoder}`,`--video-codec=${codec}`,'--duration-ms=240000',
+        '--bitrate-kbps=4000',`--video-encoder=${encoder}`,`--video-codec=${codec}`,`--duration-ms=${600000+Number(opts['soak-ms']||0)*2+Number(opts['control-cycles']||1)*60000}`,
         ...(opts['video-controls']==='1'?['--remote-control']:[]),
         ...(opts['ffmpeg-options']?[`--ffmpeg-options=${opts['ffmpeg-options']}`]:[]),
         ...(proxyPort?[`--server=ws://127.0.0.1:${proxyPort}`]:[]),
@@ -269,6 +313,11 @@ async function main() {
         console.log(name,'initial fresh capture FPS',result.initialCapture.fps);
         if(opts['capture-cadence']==='1'&&!(result.initialCapture.fps>=fps*captureCadenceMin))throw Error('Initial fresh capture cadence below requested minimum');
         result.audio=await audioProbe(page);result.motion=await motionProbe(page);
+        if(opts['frame-identity']==='1') {
+          result.initialIdentity=await identityProbe(page,sourcePage,10000);
+          console.log(name,'initial unique observed FPS',result.initialIdentity.uniqueObservedFps,'invalid',result.initialIdentity.invalid);
+          requireReadableIdentity(result.initialIdentity);
+        }
         if(opts['color-check']==='1') {
           result.colors=await colorProbe(page);
           result.colorMaxError=Math.max(...result.colors.map(c=>c.maxError));
@@ -278,12 +327,13 @@ async function main() {
         await saveFrame(page,name+'-steady');
         if(sourcePage) {
           await sourcePage.evaluate(()=>document.querySelector('video').pause());await sleep(2500);
-          result.browserPause={motion:await motionProbe(page)};
+          result.browserPause={motion:await motionProbe(page),metrics:await measure(page,4000)};
           await saveFrame(page,name+'-browser-paused');
           await sourcePage.evaluate(async()=>{const v=document.querySelector('video');v.currentTime=7;await v.play();});
           await sleep(2500);result.browserResume={motion:await motionProbe(page),metrics:await measure(page,8000)};
           await sourcePage.screenshot({path:path.join(run,name+'-source-browser.png')});
-          if(result.browserPause.motion.moving||!result.browserResume.motion.moving)throw Error('Browser playback controls did not reach the receiver');
+          if(result.browserPause.motion.moving||!result.browserResume.motion.moving||
+            !result.browserPause.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.95))throw Error('Browser playback controls did not preserve the paused stream or resume motion');
           console.log(name,'browser pause, seek and resume verified');
           if(opts['window-resize']==='1') {
             const session=await sourcePage.context().newCDPSession(sourcePage);
@@ -307,12 +357,15 @@ async function main() {
         await page.reload({waitUntil:'domcontentloaded'});
         result.reloadRecoveryMs=await waitVideo(page);
         result.stages.push({name:'viewer-reload',metrics:await measure(page,8000)});
-        result.refreshResponse=await api(control,'/commands',{command:'refresh_peer_transports'});
-        await sleep(3000);await waitVideo(page);
+        result.transportRefresh=await refreshTransport(control,page);
+        result.refreshResponse=result.transportRefresh.response;
+        await sleep(2000);
         result.stages.push({name:'transport-refresh',metrics:await measure(page,8000)});
         if(opts['video-controls']==='1') {
           result.videoControls=[];
-          for(const target of [{w:1280,h:720,f:Number(opts['control-fps']||30),bitrate:1000},{w:width,h:height,f:fps,bitrate:8000}]) {
+          const targets=Array.from({length:Number(opts['control-cycles']||1)},()=>[{w:Number(opts['control-width']||1280),h:Number(opts['control-height']||720),f:Number(opts['control-fps']||30),bitrate:1000},{w:width,h:height,f:fps,bitrate:8000}]).flat();
+          for(const target of targets) {
+            const transitionBefore=await stats(page);
             await page.evaluate(({target,remote})=>{
               const channel=window.reviewChannels.find(c=>c.readyState==='open');
               if(!channel)throw Error('No open receiver data channel');
@@ -321,7 +374,8 @@ async function main() {
             const deadline=Date.now()+30000;let ready=false;
             while(Date.now()<deadline) {
               const current=await stats(page);
-              ready=current.some(m=>m.kind==='video'&&m.frameWidth===target.w&&m.frameHeight===target.h&&m.framesPerSecond>=target.f*.8);
+              ready=current.some(m=>m.kind==='video'&&m.frameWidth===target.w&&m.frameHeight===target.h&&
+                m.framesPerSecond>=target.f*.8&&m.framesPerSecond<=target.f*1.15);
               if(ready)break;await sleep(300);
             }
             if(!ready) {
@@ -338,7 +392,7 @@ async function main() {
               return {at:performance.now(),total:q.totalVideoFrames,dropped:q.droppedVideoFrames};
             }):null;
             const metrics=await measure(page,8000),motion=await motionProbe(page);
-            const entry={target,metrics,motion,diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
+            const entry={target,metrics,motion,transitionBefore,transitionAfter:await stats(page),diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
             entry.captureBefore=captureBefore;
             if(sourcePage) {
               const after=await sourcePage.evaluate(()=>{
@@ -357,6 +411,11 @@ async function main() {
             if(!motion.moving||!metrics.some(m=>m.kind==='video'&&m.width===target.w&&m.height===target.h&&m.fps>=target.f*.8&&m.fps<=target.f*1.15))
               throw Error('Runtime video controls did not preserve moving video at the requested format');
             if(!metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))throw Error('Audio stopped during runtime video controls');
+            if(opts['frame-identity']==='1') {
+              entry.identity=await identityProbe(page,sourcePage,10000);
+              console.log(name,'target',target.f,'unique observed FPS',entry.identity.uniqueObservedFps,'missed callbacks',entry.identity.missedCallbacks);
+              requireReadableIdentity(entry.identity);
+            }
             if(opts['control-source-restart']==='1'&&result.videoControls.length===1) {
               sender.kill();await sleep(6000);
               sender=launch(senderExe,senderArgs,'source-during-controls');
@@ -444,6 +503,30 @@ async function main() {
           result.extendedMotion=await motionProbe(page);
           if(!result.extendedMotion.moving)throw Error('Extended recovery returned a frozen image');
         }
+        if(Number(opts['soak-ms']||0)>0) {
+          result.soak=[];
+          for(let elapsed=0;elapsed<Number(opts['soak-ms']);elapsed+=30000) {
+            let reconnect;
+            if(opts['soak-reconnect']==='1') {
+              const started=Date.now();
+              if(result.soak.length%2===0) {
+                await page.reload({waitUntil:'domcontentloaded'});
+                reconnect={kind:'viewer-reload'};
+              } else {
+                reconnect={kind:'transport-refresh',transport:await refreshTransport(control,page)};
+              }
+              await waitVideo(page);reconnect.recoveredMs=Date.now()-started;
+              await sleep(2000);
+            }
+            const sample={elapsed,metrics:await measure(page,Math.min(30000,Number(opts['soak-ms'])-elapsed)),motion:await motionProbe(page)};
+            if(reconnect)sample.reconnect=reconnect;
+            if(opts['frame-identity']==='1')sample.identity=await identityProbe(page,sourcePage,10000);
+            result.soak.push(sample);console.log(name,'soak',elapsed,'video FPS',sample.metrics.filter(m=>m.kind==='video').map(m=>m.fps));
+            if(!sample.motion.moving||!sample.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.95))throw Error('Soak lost moving full-rate video');
+            if(!sample.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))throw Error('Soak lost audio');
+            if(sample.identity)requireReadableIdentity(sample.identity);
+          }
+        }
         result.final=await api(control,'/diagnostics');
         if(opts['color-check']==='1') {
           result.finalColors=await colorProbe(page);
@@ -506,6 +589,7 @@ async function main() {
         } catch(e) {result.shutdown.inspectionError=String(e);}
         if(result.shutdown.remainingEncoders!==0)result.ok=false;
         console.log(name,'shutdown',result.shutdown,'overall',result.ok);
+        result.finishedAt=new Date().toISOString();
         const exitPath=path.join(run,name+'-exit.json');
         if(fs.existsSync(exitPath))try{result.exitDiagnostics=JSON.parse(fs.readFileSync(exitPath));}catch{}
         fs.writeFileSync(path.join(run,'results.json'),JSON.stringify({publisher,sha256:crypto.createHash('sha256').update(fs.readFileSync(publisher)).digest('hex'),browser:browser.version(),results},null,2));

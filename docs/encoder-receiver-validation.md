@@ -36,6 +36,31 @@ Measurement windows after recovery verify continued delivery; zero freezes withi
 those windows does not mean disruptions themselves were seamless. Run cases
 sequentially to avoid encoding contention.
 
+For browser sources, `--frame-identity=1` generates a 20-second lossless VP9
+fixture from `--window-video`, with a binary frame ID baked into each image.
+The marker has complementary bits and a black border to reject corrupt readings
+and prevent its locator colors from merging with the scene. Fixture generation
+finishes before the publisher starts. Source and receiver callback gaps are
+recorded separately from unreadable markers and repeated IDs. The receiver's
+`uniqueObservedFps` is an observation count, not a guarantee of physical display
+rate: [`requestVideoFrameCallback`](https://wicg.github.io/video-rvfc/) is best
+effort and can skip callbacks. Compare its rows and `missedCallbacks` with the
+separately sampled WebRTC decoded/drop counters.
+
+Use `--control-cycles=3` to repeat the lower-rate/restore controls; optional
+`--control-width=640 --control-height=360` also changes output dimensions.
+Each control records receiver counters before the request and after recovery,
+including the disruption itself. [`framesDropped`](https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-framesdropped)
+includes frames dropped before decode and frames missing their display deadline;
+it is not exclusively an encoder-error counter. `--soak-ms=180000` adds that
+much receiver measurement time in 30-second windows, with additional motion and
+optional identity probes. `--soak-reconnect=1` alternates viewer reloads and
+transport refreshes before those windows. The soak requires continuing motion,
+at least 95% decoded FPS, audio energy, and reliable marker readings when enabled.
+Drop/loss/freeze counts remain visible in the report even when delivery passes.
+See the [paced-output follow-up](paced-output-validation-2026-09-05.md) for
+packaged results, measured repeated content, and unresolved post-control drops.
+
 This is short-duration delivery/recovery testing with a simple animated pattern,
 not a high-motion game quality benchmark, A/V synchronization measurement, WAN
 loss simulation, or long-duration reliability guarantee. Record codec fallback

@@ -483,7 +483,6 @@ class VersusApp {
     std::atomic<bool> videoTrackActive_{false};
     std::atomic<bool> pendingGlobalKeyframe_{false};
     std::atomic<bool> captureBackendFailureNotified_{false};
-    std::atomic<int64_t> lastVideoSendMs_{0};
     std::atomic<int64_t> lastKeyframeSendMs_{0};
     std::atomic<int64_t> lastPrimaryAudioChunkMs_{0};
     GenerationTaggedPeerOperationExecutor peerOperationExecutor_;

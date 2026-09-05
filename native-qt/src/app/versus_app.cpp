@@ -49,7 +49,6 @@ namespace {
 #define APP_VERSION "dev"
 #endif
 
-constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kPrimaryAudioActiveWindowMs = 250;
@@ -882,7 +881,6 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
     captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
-    lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
@@ -1181,7 +1179,6 @@ void VersusApp::stopCapture() {
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
     captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
-    lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
     resetMetricsWindow(steadyNowMs());
     capturing_ = false;
@@ -1263,7 +1260,6 @@ bool VersusApp::goLive(const StartOptions &options) {
     reconnecting_.store(false);
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(true);
-    lastVideoSendMs_.store(0);
     lastKeyframeSendMs_.store(0);
     lastPacketLossWarningMs_.store(0, std::memory_order_relaxed);
     lastAlphaWarningMs_.store(0, std::memory_order_relaxed);
@@ -6899,7 +6895,6 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
             lastSentWidth_.store(sentWidth, std::memory_order_relaxed);
             lastSentHeight_.store(sentHeight, std::memory_order_relaxed);
         }
-        lastVideoSendMs_.store(nowMs, std::memory_order_relaxed);
         if (sentKeyframe) {
             lastKeyframeSendMs_.store(nowMs, std::memory_order_relaxed);
         }
@@ -7193,22 +7188,16 @@ void VersusApp::startVideoMaintenanceThread() {
                 lastInfoBroadcastMs = nowMs;
             }
 
-            const int64_t lastSendMs = lastVideoSendMs_.load(std::memory_order_relaxed);
-            const bool staleSend = (lastSendMs == 0) || ((nowMs - lastSendMs) >= kStaleResendMs);
             const int64_t lastKeyframeMs = lastKeyframeSendMs_.load(std::memory_order_relaxed);
             const bool periodicKeyframeDue =
                 (lastKeyframeMs == 0) || ((nowMs - lastKeyframeMs) >= kPeriodicKeyframeMs);
 
-            if (staleSend || periodicKeyframeDue) {
-                const auto cachedFrame = getCachedVideoFrame();
-                if (cachedFrame && !cachedFrame->data.empty()) {
-                    // Replays share the paced output clock, including for
-                    // camera sources whose capture timestamps have another epoch.
-                    encodeAndSendVideoFrame(*cachedFrame, periodicKeyframeDue,
-                        outputFrameTimestamp100ns(std::chrono::steady_clock::now()));
-                } else if (periodicKeyframeDue) {
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                }
+            if (periodicKeyframeDue) {
+                // The encode worker already replays cached images at the
+                // requested cadence, including while capture is idle. Request
+                // its next keyframe instead of inserting an unpaced frame from
+                // a second thread with a competing output timestamp.
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -7581,6 +7570,10 @@ void VersusApp::startEncodeThread() {
                     spdlog::warn("[EncodeThread] encodeAndSendVideoFrame failed (count={})", sendFailCount);
                 }
             }
+            // Allow one late slot for normal encode jitter. A longer stall
+            // must not be followed by a backlog of stale scheduled frames.
+            nextFrameDue = outputFrameDeadlineAfterEncode(
+                scheduledFrameDue, Clock::now(), frameInterval);
         }
         spdlog::info("[EncodeThread] Stopped");
     });

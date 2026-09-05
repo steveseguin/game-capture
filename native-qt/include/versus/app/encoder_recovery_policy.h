@@ -58,4 +58,16 @@ inline int64_t outputFrameTimestamp100ns(
         100;
 }
 
+// A frame taking slightly longer than its interval should not halve throughput
+// by discarding the next slot. Permit one late slot, but discard the backlog
+// after a long encode or reconfiguration stall.
+inline std::chrono::steady_clock::time_point outputFrameDeadlineAfterEncode(
+    std::chrono::steady_clock::time_point scheduledDeadline,
+    std::chrono::steady_clock::time_point now,
+    std::chrono::nanoseconds interval) {
+    const auto next = scheduledDeadline + interval;
+    return now < next + interval ? next
+                                : advanceOutputFrameDeadline(scheduledDeadline, now, interval);
+}
+
 }  // namespace versus::app

@@ -350,7 +350,7 @@ Thread/callback sources:
 - Audio capture callbacks feed audio encode/send path.
 - Signaling WebSocket callback receives listing, offer requests, answers, candidates, alerts, and disconnects.
 - WebRtcClient callbacks report peer state, ICE candidates, keyframe requests, datachannel messages, and datachannel open/close.
-- Maintenance thread prunes stale peers, sends periodic info/stats, and retries cached video frames.
+- Maintenance thread prunes stale peers, sends periodic info/stats, and requests keyframes from the paced encode worker.
 
 Lock ordering rule:
 - Prefer short snapshots over nested locks.
@@ -684,7 +684,7 @@ Guards:
 
 Side effects:
 - Encoder failure can trigger hardware reset/fallback.
-- Periodic maintenance may send a cached frame when sends become stale.
+- The paced encode worker repeats the latest cached image when capture is idle; maintenance requests periodic keyframes without inserting extra frames.
 
 ### 9. Audio Capture, Mix, Encode, Send
 

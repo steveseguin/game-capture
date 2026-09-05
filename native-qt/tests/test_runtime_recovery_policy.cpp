@@ -11,6 +11,7 @@ class TestRuntimeRecoveryPolicy : public QObject {
     void testBoundedOutputStallFallsBackImmediately();
     void testHardSoftwareEncoderFailuresUseCountedRecovery();
     void testOutputPacerTargetsSixtyFpsWithoutCatchupBursts();
+    void testOutputPacerToleratesEncodeJitterButSkipsLongStalls();
     void testAnonymousViewerResolutionHintIsSilent();
     void testExplicitResolutionControlGetsAuthorizationFeedback();
 };
@@ -70,6 +71,31 @@ void TestRuntimeRecoveryPolicy::testOutputPacerTargetsSixtyFpsWithoutCatchupBurs
     const auto afterDelay = advanceOutputFrameDeadline(second, delayedNow, interval);
     QVERIFY(afterDelay > delayedNow);
     QVERIFY(afterDelay <= delayedNow + interval);
+}
+
+void TestRuntimeRecoveryPolicy::testOutputPacerToleratesEncodeJitterButSkipsLongStalls() {
+    using Clock = std::chrono::steady_clock;
+    using versus::app::outputFrameDeadlineAfterEncode;
+    const auto interval = versus::app::outputFrameInterval(60);
+    const Clock::time_point start{};
+
+    QCOMPARE(outputFrameDeadlineAfterEncode(start, start + std::chrono::milliseconds(17), interval),
+             start + interval);
+    const auto stalled = start + std::chrono::milliseconds(800);
+    const auto recovered = outputFrameDeadlineAfterEncode(start, stalled, interval);
+    QVERIFY(recovered > stalled);
+    QVERIFY(recovered <= stalled + interval);
+
+    auto due = start;
+    auto now = start;
+    for (int i = 0; i < 600; ++i) {
+        now = std::max(now, due) + std::chrono::milliseconds(17);
+        due = outputFrameDeadlineAfterEncode(due, now, interval);
+    }
+    // 17-ms work cannot reach 60 FPS, but skipping every overrun would reduce
+    // it to 30 FPS. Bounded recovery should stay close to its actual capacity.
+    QVERIFY(now - start < std::chrono::seconds(11));
+    QVERIFY(now - start >= std::chrono::milliseconds(10200));
 }
 
 void TestRuntimeRecoveryPolicy::testAnonymousViewerResolutionHintIsSilent() {
