@@ -8,10 +8,14 @@ async function main() {
   const ffmpeg=path.resolve(opts.ffmpeg),encoder=opts.encoder||'h264_qsv',frames=Number(opts.frames||18000);
   if(!['h264_qsv','h264_nvenc','libvpx-vp9'].includes(encoder)||!Number.isSafeInteger(frames)||frames<1)
     throw Error('Supported encoder and positive frame count required');
+  const runtimePath=opts['runtime-path']?path.resolve(opts['runtime-path']):undefined;
+  if(runtimePath&&(encoder!=='h264_qsv'||!fs.statSync(runtimePath).isDirectory()||
+    !fs.readdirSync(runtimePath).some(name=>/^(libmfx64-gen|libmfxhw64|libvpl.*)\.dll$/i.test(name))))
+    throw Error('Runtime priority requires QSV and a directory containing a VPL runtime DLL');
   const upload=opts['hw-upload']==='1';
   if((upload||opts['low-power']!==undefined)&&encoder!=='h264_qsv')throw Error('QSV options require h264_qsv');
   const output=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(output,{recursive:true});
-  const args=['-hide_banner','-loglevel','error','-nostats','-progress','pipe:2',
+  const args=['-hide_banner','-loglevel',opts['log-level']||'error','-nostats','-progress','pipe:2',
     ...(upload?['-init_hw_device','d3d11va=reviewIntel:,vendor_id=0x8086',
       '-init_hw_device','qsv=review@reviewIntel','-filter_hw_device','review']:[]),'-f','lavfi',
     '-i','testsrc2=size=1280x720:rate=60,format=nv12','-an','-frames:v',String(frames),'-c:v',encoder,
@@ -30,7 +34,11 @@ async function main() {
   const result={ffmpeg,sha256:crypto.createHash('sha256').update(fs.readFileSync(ffmpeg)).digest('hex'),
     args,startedMs:Date.now(),requestedFrames:frames,samples:[]};
   const log=fs.createWriteStream(path.join(output,'ffmpeg.log'));
-  const child=spawn(ffmpeg,args,{windowsHide:true,stdio:['ignore','ignore','pipe']});
+  result.runtimePriorityPath=runtimePath;
+  const child=spawn(ffmpeg,args,{windowsHide:true,stdio:['ignore','ignore','pipe'],
+    env:{...process.env,...(runtimePath?{ONEVPL_PRIORITY_PATH:runtimePath}:{}),
+      ...(opts['dispatcher-log']==='1'?{ONEVPL_DISPATCHER_LOG:'ON',
+        ONEVPL_DISPATCHER_LOG_FILE:path.join(output,'dispatcher.log')}:{})}});
   result.pid=child.pid;let pending='',currentFrame=0,spawnError;
   child.on('error',e=>{spawnError=e;});
   child.stderr.on('data',data=>{
@@ -49,6 +57,11 @@ async function main() {
         const {stdout}=await exec('powershell.exe',['-NoProfile','-Command',
           `Get-Process -Id ${child.pid} -ErrorAction Stop | Select-Object PrivateMemorySize64,WorkingSet64,HandleCount | ConvertTo-Json -Compress`],{windowsHide:true,timeout:5000});
         result.samples.push({ms:Date.now()-result.startedMs,frame:currentFrame,...JSON.parse(stdout)});
+        if(!result.runtimeModules) {
+          const modules=await exec('powershell.exe',['-NoProfile','-Command',
+            `(Get-Process -Id ${child.pid}).Modules | Where-Object ModuleName -Match 'mfx|vpl' | Select-Object ModuleName,FileName,@{Name='Version';Expression={$_.FileVersionInfo.FileVersion}} | ConvertTo-Json -Compress`],{windowsHide:true,timeout:5000});
+          result.runtimeModules=JSON.parse(modules.stdout||'[]');
+        }
       } catch(e){if(child.exitCode===null)throw e;}
     }
     await closed;result.exitCode=child.exitCode;result.frames=currentFrame;

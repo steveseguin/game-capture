@@ -1,5 +1,7 @@
 # Sustained streaming, recovery, and memory review
 
+Follow-up: [QSV runtime isolation and native OBS loss/opacity validation](qsv-runtime-native-loss-validation-2026-09-06.md).
+
 The completed browser workload comprises three sequential 20-minute sessions: QSV H.264,
 NVENC H.264, and VP9. Each uses a real browser playing the numbered animation
 fixture, the packaged publisher, and two persistent VDO.Ninja viewers. This

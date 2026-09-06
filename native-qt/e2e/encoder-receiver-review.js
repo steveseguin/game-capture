@@ -25,6 +25,11 @@ if(opts.sustained==='1'&&(!windowVideo||opts['frame-identity']!=='1'||opts.fault
   !(Number(opts['packet-loss'])>0)||!(Number(opts['soak-ms'])>=60000)))
   throw Error('Sustained review requires browser frame identities, faults, packet loss and at least 60 seconds');
 if(opts['obs-cadence']==='1'&&(!opts['obs-plugin-repo']||opts['video-controls']!=='1'))throw Error('OBS cadence requires the OBS runtime and --video-controls=1');
+if((opts['native-loss']||opts['obs-half-opacity']==='1')&&(!opts['obs-plugin-repo']||opts.faults!=='1'))
+  throw Error('Native loss/half-opacity review requires OBS and faults');
+if(opts['native-loss']&&!(Number.isInteger(Number(opts['native-loss']))&&Number(opts['native-loss'])>0&&Number(opts['native-loss'])<=100))
+  throw Error('Native loss percent must be an integer from 1 to 100');
+if(opts['obs-half-opacity']==='1'&&opts['obs-alpha']==='0')throw Error('Half-opacity review requires OBS alpha');
 if(opts['obs-plugin-repo']&&(!senderExe||opts['color-check']==='1'))throw Error('OBS alpha runtime requires the moving Spout fixture');
 if (!senderExe && !windowVideo) throw Error('--sender or --window-video is required');
 if (windowVideo && ['resize','color-check','control-source-restart','shutdown-source-loss'].some(k=>opts[k]==='1'))
@@ -233,6 +238,8 @@ async function main() {
   const browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
   browsers.add(browser);
   let proxy, proxyPort, blockedUntil=0, proxyConnections=0;
+  const udpRelay=opts['native-loss']?require('./udp-loss-relay').create():null;
+  let relayError;
   let handshakeProxy, stallHandshake=false, stalledHandshakes=0;
   const handshakeSockets=new Set();
   const upstreams=new Set();
@@ -244,9 +251,17 @@ async function main() {
       if(Date.now()<blockedUntil){client.close(1013,'Review outage');return;}
       proxyConnections++;
       const remote=new WebSocket('wss://wss.vdo.ninja:443');upstreams.add(remote);const queued=[];
-      client.on('message',(data,binary)=>{if(remote.readyState===1)remote.send(data,{binary});else queued.push([data,binary]);});
+      let outgoing=Promise.resolve(),incoming=Promise.resolve();
+      const failed=e=>{relayError=String(e);client.terminate();remote.terminate();};
+      client.on('message',(data,binary)=>{outgoing=outgoing.then(async()=>{
+        if(udpRelay){data=await udpRelay.transform(data,true);binary=false;if(data===null)return;}
+        if(remote.readyState===1)remote.send(data,{binary});else queued.push([data,binary]);
+      }).catch(failed);});
       remote.on('open',()=>{for(const [data,binary] of queued)remote.send(data,{binary});});
-      remote.on('message',(data,binary)=>{if(client.readyState===1)client.send(data,{binary});});
+      remote.on('message',(data,binary)=>{incoming=incoming.then(async()=>{
+        if(udpRelay){data=await udpRelay.transform(data,false);binary=false;if(data===null)return;}
+        if(client.readyState===1)client.send(data,{binary});
+      }).catch(failed);});
       remote.on('close',()=>{upstreams.delete(remote);client.close();});
       remote.on('error',()=>client.close());client.on('error',()=>remote.terminate());
       client.on('close',()=>remote.terminate());
@@ -426,11 +441,16 @@ async function main() {
         await sleep(2000);
         result.stages.push({name:'transport-refresh',metrics:await measure(page,8000)});
         if(opts['obs-plugin-repo']) {
+          const previousRelayPeers=new Set(udpRelay?.snapshot().map(r=>r.uuid));
           obsAlpha=await require('./obs-alpha-runtime').start({repo:opts['obs-plugin-repo'],stream,output:path.join(run,name+'-obs'),
             expectedPluginHash:opts['expected-plugin-sha256'],width,height,fps:opts['obs-cadence']==='1'?fps:undefined,
             alpha:opts['obs-alpha']!=='0',cadenceMinimum:Number(opts['obs-cadence-min']||.95)});
           result.obsAlpha=obsAlpha.evidence;
           await obsAlpha.sample('initial');
+          if(udpRelay) {
+            result.nativeRelayPeers=[...new Set(udpRelay.snapshot().filter(r=>!previousRelayPeers.has(r.uuid)&&r.rtp>0).map(r=>r.uuid))];
+            if(!result.nativeRelayPeers.length)throw Error('Native OBS media did not traverse the UDP relay');
+          }
           result.obsObserverBeforeReload=await page.evaluate(()=>({visibility:document.visibilityState,
             videos:[...document.querySelectorAll('video')].map(v=>({width:v.videoWidth,readyState:v.readyState,paused:v.paused}))}));
           // Exercise browser reattachment with the native alpha viewer present.
@@ -538,6 +558,33 @@ async function main() {
             if(!(await motionProbe(page)).moving)throw Error('Browser lost moving video after OBS transport refresh');
             if(opts['obs-cadence']==='1')await obsAlpha.recordCadence(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'));
           }
+        }
+        if(opts['obs-half-opacity']==='1') {
+          sender.kill();await sleep(2000);
+          sender=launch(senderExe,senderArgs.map(a=>a.startsWith('--pattern=')?'--pattern=alpha-half':a),'source-half');
+          await sleep(4000);await obsAlpha.sample('half-opacity','alpha-half');
+          await refreshTransport(control,page);await obsAlpha.sample('half-opacity-refresh','alpha-half');
+          sender.kill();await sleep(2000);sender=launch(senderExe,senderArgs,'source-moving-restored');
+          await sleep(4000);await waitVideo(page);await obsAlpha.sample('moving-restored');
+          if(!(await motionProbe(page)).moving)throw Error('Moving source did not recover after half-opacity review');
+        }
+        if(udpRelay) {
+          if(relayError)throw Error(relayError);
+          const before=udpRelay.snapshot();udpRelay.setLoss(Number(opts['native-loss']));
+          result.nativePacketLoss={percent:Number(opts['native-loss']),before};
+          try {result.nativePacketLoss.browserMetrics=await measure(page,12000);}
+          finally {udpRelay.setLoss(0);result.nativePacketLoss.after=udpRelay.snapshot();}
+          if(relayError||result.nativePacketLoss.after.some(r=>r.errors.length))throw Error('UDP relay failed: '+
+            (relayError||JSON.stringify(result.nativePacketLoss.after.filter(r=>r.errors.length))));
+          const native=result.nativePacketLoss.after.filter(r=>result.nativeRelayPeers.includes(r.uuid));
+          result.nativePacketLoss.nativeDropped=native.reduce((n,r)=>n+r.dropped-(before.find(b=>b.uuid===r.uuid&&b.session===r.session&&b.relayPort===r.relayPort)?.dropped||0),0);
+          if(!result.nativePacketLoss.nativeDropped)throw Error('No native OBS RTP packets were dropped');
+          await sleep(6000);await obsAlpha.sample('native-packet-loss-recovery');
+          if(opts['obs-cadence']==='1')await obsAlpha.recordCadence(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'));
+          result.nativePacketLoss.recovery=await measure(page,8000);
+          if(!result.nativePacketLoss.recovery.some(m=>m.kind==='video'&&m.fps>=fps*.95)||
+            !result.nativePacketLoss.recovery.some(m=>m.kind==='audio'&&m.audioRms>.001))throw Error('Native-loss workflow did not recover video/audio');
+          console.log(name,'native OBS RTP drops',result.nativePacketLoss.nativeDropped,'recovered');
         }
         if(opts['audio-controls']==='1') {
           result.audioControls=[];
@@ -888,7 +935,7 @@ async function main() {
         fs.writeFileSync(path.join(run,'results.json'),JSON.stringify({publisher,sha256:crypto.createHash('sha256').update(fs.readFileSync(publisher)).digest('hex'),browser:browser.version(),results},null,2));
       }
     }
-  } finally {await browser.close();if(sourceBrowser)await sourceBrowser.close();for(const child of children)child.kill();
+  } finally {if(udpRelay)udpRelay.close();await browser.close();if(sourceBrowser)await sourceBrowser.close();for(const child of children)child.kill();
     for(const server of fixtureServers)server.close();
     for(const socket of handshakeSockets)socket.destroy();if(handshakeProxy)handshakeProxy.close();
     if(proxy){for(const client of proxy.clients)client.terminate();for(const upstream of upstreams)upstream.terminate();proxy.close();}}

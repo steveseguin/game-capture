@@ -162,7 +162,7 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
         evidence.cadence.edgeChangesPerSecond<fps*cadenceMinimum)
         throw Error('OBS recording did not preserve moving-frame cadence');
       return evidence.cadence;
-    },async sample(label) {
+    },async sample(label,pattern='alpha-moving-edge') {
       if(!alpha) {
         const samples=[],deadline=Date.now()+20000;
         while(Date.now()<deadline&&(samples.length<10||new Set(samples.map(s=>s.sha256)).size<5)) {
@@ -178,15 +178,15 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
         await sleep(Math.max(0,previousStart+80-Date.now()));previousStart=Date.now();
         const shot=await screenshot(`obs-${label}-${samples.length+1}`);
         const analysis=analyzeAlphaComposite(backdrop.outputPath,shot.outputPath,{
-          pattern:'alpha-moving-edge',expectedVisualEpoch:'pre',sampleStep:2,throwOnFailure:false});
+          pattern,expectedVisualEpoch:'pre',sampleStep:2,throwOnFailure:false});
         samples.push({...analysis,sample:samples.length+1,checkpoint:label,connectionEpoch:'pre',screenshot:shot});
         if(analysis.classification!=='waiting-background')useful++;
       }
-      const sequence=analyzeAlphaCompositeSequence(samples,{pattern:'alpha-moving-edge',expectedVisualEpoch:'pre',
+      const sequence=analyzeAlphaCompositeSequence(samples,{pattern,expectedVisualEpoch:'pre',
         requiredUsefulSampleCount:10,requireEvidenceFiles:true});
       const result={label,sequence,samples};evidence.samples.push(result);
       fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
-      if(!sequence.ok)throw Error('OBS moving alpha failed: '+sequence.failureReasons.join('; '));
+      if(!sequence.ok)throw Error('OBS '+pattern+' alpha failed: '+sequence.failureReasons.join('; '));
       return result;
     }};
   } catch(error) {await close();throw error;}
