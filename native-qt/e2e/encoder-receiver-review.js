@@ -20,6 +20,7 @@ const senderExe = opts.sender ? path.resolve(opts.sender) : null;
 const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : null;
 if(opts['frame-identity']==='1'&&!windowVideo)throw Error('Frame identity requires --window-video');
 if(opts['handover-identity']==='1'&&opts['frame-identity']!=='1')throw Error('Handover identity requires --frame-identity=1');
+if(opts['identity-recording']==='1'&&opts['frame-identity']!=='1')throw Error('Identity recording requires --frame-identity=1');
 if(opts['obs-cadence']==='1'&&(!opts['obs-plugin-repo']||opts['video-controls']!=='1'))throw Error('OBS cadence requires the OBS runtime and --video-controls=1');
 if(opts['obs-plugin-repo']&&(!senderExe||opts['color-check']==='1'))throw Error('OBS alpha runtime requires the moving Spout fixture');
 if (!senderExe && !windowVideo) throw Error('--sender or --window-video is required');
@@ -31,6 +32,7 @@ if (!fs.existsSync(path.join(path.dirname(publisher),'platforms/qwindows.dll')))
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 const children = new Set();
 const browsers = new Set();
+const fixtureServers = new Set();
 function launch(exe,args,name,env={}) {
   const child=spawn(exe,args,{windowsHide:true,env:{...process.env,...env},stdio:['ignore','pipe','pipe']});
   children.add(child);
@@ -199,7 +201,6 @@ async function main() {
   let sourceBrowser,sourcePage,sourceFixture;
   let sender=windowVideo?null:launch(senderExe,senderArgs,'source');
   if(windowVideo) {
-    const {pathToFileURL}=require('url');
     let playbackVideo=windowVideo;
     if(opts['frame-identity']==='1') {
       playbackVideo=path.join(run,'source-frame-ids.webm');
@@ -208,12 +209,17 @@ async function main() {
         frameIds:'embedded-12-bit-with-complement',fps:Number(opts['source-fps']||fps),seconds:20};
     }
     const html=path.join(run,'browser-source.html');
-    fs.writeFileSync(html,`<!doctype html><title>${senderName}</title><style>html,body{margin:0;background:black;overflow:hidden}video{width:100vw;height:100vh;object-fit:contain}</style><video autoplay loop muted src="${pathToFileURL(playbackVideo).href}"></video>`);
+    fs.writeFileSync(html,`<!doctype html><title>${senderName}</title><style>html,body{margin:0;background:black;overflow:hidden}video{width:100vw;height:100vh;object-fit:contain}</style><video autoplay loop muted src="/video"></video>`);
     if(opts['frame-identity']==='1')fs.appendFileSync(html,frameIdentity.sourceScript);
-    sourceBrowser=await chromium.launch({headless:false,args:['--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
+    const fixtureServer=await require('./browser-fixture-server').start(html,playbackVideo);
+    fixtureServers.add(fixtureServer);
+    sourceBrowser=await chromium.launch({headless:false,args:[`--window-size=${width},${height+120}`,'--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
     browsers.add(sourceBrowser);
-    const sourceContext=await sourceBrowser.newContext({viewport:{width,height}});
-    sourcePage=await sourceContext.newPage();await sourcePage.goto(pathToFileURL(html).href);
+    // WGC captures the physical window, not Playwright's emulated viewport.
+    // Let responsive layout follow the real client area when Windows constrains
+    // the requested size to the current desktop; otherwise the marker is clipped.
+    const sourceContext=await sourceBrowser.newContext({viewport:null});
+    sourcePage=await sourceContext.newPage();await sourcePage.goto(fixtureServer.url);
     await sourcePage.waitForFunction(()=>document.querySelector('video').currentTime>1);
   }
   const toneArgs=['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'audio-test-tone.ps1'),'-DurationMs','1800000','-Amplitude','0.08'];
@@ -280,6 +286,10 @@ async function main() {
         sha256:crypto.createHash('sha256').update(fs.readFileSync(windowVideo)).digest('hex')
       }:{type:'spout',sender:senderExe,sha256:crypto.createHash('sha256').update(fs.readFileSync(senderExe)).digest('hex'),
         requestedFps:Number(opts['source-fps']||fps),precisePacing:opts['source-precise-pacing']!=='0'},stages:[]};results.push(result);
+      if(sourcePage)result.source.geometry=await sourcePage.evaluate(()=>({
+        innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio,
+        screenWidth:screen.width,screenHeight:screen.height,
+        video:document.querySelector('video').getBoundingClientRect().toJSON()}));
       console.log('Starting',name);
       const proc=launch(publisher,['--headless',`--stream=${stream}`,'--password=false',
         ...(windowVideo?['--source=window',`--window=${senderName}`]:['--source=spout',`--spout-sender=${senderName}`]),
@@ -344,6 +354,28 @@ async function main() {
           result.initialIdentity=await identityProbe(page,sourcePage,10000);
           console.log(name,'initial unique observed FPS',result.initialIdentity.uniqueObservedFps,'invalid',result.initialIdentity.invalid);
           requireReadableIdentity(result.initialIdentity);
+        }
+        if(opts['identity-recording']==='1') {
+          const recording=require('./identity-recording');
+          const clips=await Promise.all([
+            recording.record(sourcePage,path.join(run,name+'-source.webm'),10000,true),
+            recording.record(page,path.join(run,name+'-receiver.webm'),10000)]);
+          result.identityRecording={before:clips[1].before,after:clips[1].after,source:clips[0],receiver:clips[1]};
+          // Decode sequentially, after recording, to avoid measurement load.
+          for(let i=0;i<clips.length;i++) {
+            const evidence=await recording.analyze(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'),clips[i]);
+            result.identityRecording[i?'receiver':'source']=evidence;
+            if(evidence.invalid||!evidence.frames)throw Error('Recording identities could not be decoded');
+            console.log(name,i?'receiver recording':'source recording',evidence.framesPerSecond,'FPS',evidence.changesPerSecond,'distinct changes/sec');
+          }
+          const decoded=clips[1].after.reduce((sum,r)=>{
+            const before=clips[1].before.find(b=>b.id===r.id);
+            if(!before)throw Error('Receiver changed during identity recording');
+            return sum+r.framesDecoded-before.framesDecoded;
+          },0);
+          result.identityRecording.coverage=result.identityRecording.receiver.frames/decoded;
+          if(!decoded||result.identityRecording.coverage<.98||result.identityRecording.coverage>1.02)
+            throw Error('Recording frame count does not cover the receiver decoding window');
         }
         if(opts['color-check']==='1') {
           result.colors=await colorProbe(page);
@@ -831,9 +863,11 @@ async function main() {
       }
     }
   } finally {await browser.close();if(sourceBrowser)await sourceBrowser.close();for(const child of children)child.kill();
+    for(const server of fixtureServers)server.close();
     for(const socket of handshakeSockets)socket.destroy();if(handshakeProxy)handshakeProxy.close();
     if(proxy){for(const client of proxy.clients)client.terminate();for(const upstream of upstreams)upstream.terminate();proxy.close();}}
   if(results.some(r=>!r.ok))process.exitCode=1;
 }
 main().catch(async e=>{console.error(e);for(const child of children)child.kill();
+  for(const server of fixtureServers)server.close();
   await Promise.allSettled([...browsers].map(browser=>browser.close()));process.exitCode=1;});

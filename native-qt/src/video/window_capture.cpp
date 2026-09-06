@@ -1,5 +1,6 @@
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
+#include "versus/app/frame_trace.h"
 
 #include <algorithm>
 #include <atomic>
@@ -1220,8 +1221,13 @@ class WindowCapture::Impl {
                 std::chrono::duration_cast<std::chrono::steady_clock::duration>(
                     std::chrono::duration<int64_t, std::ratio<1, 10000000>>(timestamp)))
             : std::chrono::steady_clock::now();
+        // Opt-in, timestamp-only QA evidence before admission. This separates
+        // compositor delivery gaps from frames rejected by our own limiter,
+        // without performing GPU readback for rejected frames.
+        app::detail::FrameTrace::instance().record("capture-arrival", nullptr, timestamp);
         if (!detail::frameAdmissionAllowed(frameAdmissionCallback_) ||
             !framePacer_.shouldAdmit(frameTime)) {
+            app::detail::FrameTrace::instance().record("capture-rejected", nullptr, timestamp);
             framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
