@@ -246,6 +246,22 @@ GenerationTaggedPeerOperationExecutor::enqueue(
             }
         }
 
+        // Do not move a desired-state update across another ordinary operation,
+        // peer, or generation. Only the adjacent queued snapshot is replaceable.
+        if (priority == Priority::Ordinary && !coalesceKey.empty() && !ordinaryQueue_.empty()) {
+            auto &existing = ordinaryQueue_.back();
+            if (existing.peerKey == peerKey && existing.generation == generation &&
+                existing.coalesceKey == coalesceKey) {
+                auto superseded = std::move(existing.completion);
+                existing.generationIsCurrent = std::move(generationIsCurrent);
+                existing.operation = std::move(operation);
+                existing.completion = std::move(completion);
+                ++stats_.coalescedOrdinary;
+                lock.unlock();
+                invokeCompletion(superseded, generation, CompletionDisposition::Superseded);
+                return EnqueueResult::CoalescedOrdinary;
+            }
+        }
         const std::size_t queued = criticalQueue_.size() + ordinaryQueue_.size();
         if (priority == Priority::Ordinary) {
             const auto peerCount = ordinaryQueuedByPeer_.find(peerKey);
@@ -356,6 +372,7 @@ void GenerationTaggedPeerOperationExecutor::invokeCompletion(
 bool GenerationTaggedPeerOperationExecutor::accepted(EnqueueResult result) {
     return result == EnqueueResult::Queued ||
         result == EnqueueResult::CoalescedCritical ||
+        result == EnqueueResult::CoalescedOrdinary ||
         result == EnqueueResult::QueuedAfterEvictingOrdinary ||
         result == EnqueueResult::QueuedAfterEvictingCritical;
 }

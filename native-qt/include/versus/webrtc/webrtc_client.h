@@ -42,6 +42,8 @@ struct PeerConfig {
     bool initialVideo = false;
     bool initialAudio = false;
     bool initialAlpha = false;
+    // Keep an inactive alpha m-line before data until the receiver opts in.
+    bool reserveAlphaTrack = false;
     int videoWidth = 1920;
     int videoHeight = 1080;
     int videoFps = 60;

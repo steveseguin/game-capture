@@ -60,6 +60,7 @@ class GenerationTaggedPeerOperationExecutor {
     enum class EnqueueResult {
         Queued,
         CoalescedCritical,
+        CoalescedOrdinary,
         QueuedAfterEvictingOrdinary,
         QueuedAfterEvictingCritical,
         RejectedInvalid,
@@ -75,6 +76,7 @@ class GenerationTaggedPeerOperationExecutor {
         uint64_t acceptedCritical = 0;
         uint64_t acceptedOrdinary = 0;
         uint64_t coalescedCritical = 0;
+        uint64_t coalescedOrdinary = 0;
         uint64_t droppedOrdinaryCapacity = 0;
         uint64_t evictedOrdinaryForCritical = 0;
         uint64_t evictedCriticalForCritical = 0;

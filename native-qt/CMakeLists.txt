@@ -422,6 +422,13 @@ if(VERSUS_BUILD_TESTS)
         target_compile_definitions(versus-lib PUBLIC VERSUS_USE_GRAPHICS_CAPTURE)
     endif()
 
+    add_executable(test_video_control_snapshot
+        tests/test_video_control_snapshot.cpp src/app/peer_operation_executor.cpp)
+    target_include_directories(test_video_control_snapshot PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include ${libdatachannel_SOURCE_DIR}/deps/json/include)
+    target_link_libraries(test_video_control_snapshot PRIVATE spdlog::spdlog Threads::Threads)
+    add_test(NAME VideoControlSnapshotTest COMMAND test_video_control_snapshot)
+
     # Test: WindowListWidget
     add_executable(test_window_list_widget tests/test_window_list_widget.cpp)
     set_target_properties(test_window_list_widget PROPERTIES AUTOMOC ON)

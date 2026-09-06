@@ -272,6 +272,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     IceMode iceMode = IceMode::All;
     PeerConfig::VideoCodec configuredVideoCodec = PeerConfig::VideoCodec::H264;
     bool enableAlphaTrack = false;
+    bool reserveAlphaTrack = false;
     bool enableDataChannel = true;
     bool videoSectionNegotiated = false;
     bool audioSectionNegotiated = false;
@@ -741,7 +742,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         return true;
     }
 
-    bool ensureAlphaVideoTrack(const std::shared_ptr<TransportState> &target) {
+    bool ensureAlphaVideoTrack(const std::shared_ptr<TransportState> &target, bool active = true) {
         if (!target || !target->pc || !isCurrentOrUnpublished(target)) return false;
         {
             std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
@@ -749,7 +750,8 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             if (target->alphaVideoTrack) return true;
         }
 
-        rtc::Description::Video alpha("video-alpha", rtc::Description::Direction::SendOnly);
+        rtc::Description::Video alpha("video-alpha", active
+            ? rtc::Description::Direction::SendOnly : rtc::Description::Direction::Inactive);
         alpha.addVP9Codec(kAlphaVideoPayloadType);
         alpha.addSSRC(target->alphaVideoSsrc, "gamecapture-alpha");
         auto track = target->pc->addTrack(alpha);
@@ -926,7 +928,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
 
         const bool buildVideo = initialVideo || videoSectionNegotiated;
         const bool buildAudio = initialAudio || audioSectionNegotiated;
-        const bool buildAlpha = initialAlpha || alphaSectionNegotiated;
+        const bool buildAlpha = initialAlpha || reserveAlphaTrack || alphaSectionNegotiated;
         target->alphaTrackEnabled = enableAlphaTrack || buildAlpha;
 
         try {
@@ -936,7 +938,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             // last. This order is therefore an invariant across generations.
             if (buildVideo && !ensureVideoTrack(target)) return {};
             if (buildAudio && !ensureAudioTrack(target)) return {};
-            if (buildVideo && buildAlpha && !ensureAlphaVideoTrack(target)) return {};
+            if (buildVideo && buildAlpha && !ensureAlphaVideoTrack(target, initialAlpha)) return {};
             if (target->dataChannelEnabled && !setupBootstrapTransport(target)) return {};
             return target;
         } catch (const std::exception &e) {
@@ -998,6 +1000,7 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         impl_->shutdownRequested = false;
         impl_->configuredVideoCodec = config.videoCodec;
         impl_->enableAlphaTrack = config.enableAlphaTrack;
+        impl_->reserveAlphaTrack = config.reserveAlphaTrack;
         impl_->enableDataChannel = config.enableDataChannel;
         impl_->videoSectionNegotiated = false;
         impl_->audioSectionNegotiated = false;
@@ -1411,6 +1414,19 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo,
             change.changed = true;
             change.alphaAdded = true;
             impl_->alphaSectionNegotiated = true;
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
+        if (target->alphaVideoTrack) {
+            const auto direction = enableVideo && enableAlpha && impl_->enableAlphaTrack
+                ? rtc::Description::Direction::SendOnly : rtc::Description::Direction::Inactive;
+            auto description = target->alphaVideoTrack->description();
+            if (description.direction() != direction) {
+                description.setDirection(direction);
+                target->alphaVideoTrack->setDescription(std::move(description));
+                change.changed = true;
+            }
         }
     }
     return change;

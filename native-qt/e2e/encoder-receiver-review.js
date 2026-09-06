@@ -19,6 +19,7 @@ const publisher = path.resolve(opts.publisher);
 const senderExe = opts.sender ? path.resolve(opts.sender) : null;
 const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : null;
 if(opts['frame-identity']==='1'&&!windowVideo)throw Error('Frame identity requires --window-video');
+if(opts['obs-plugin-repo']&&(!senderExe||opts['color-check']==='1'))throw Error('OBS alpha runtime requires the moving Spout fixture');
 if (!senderExe && !windowVideo) throw Error('--sender or --window-video is required');
 if (windowVideo && ['resize','color-check','control-source-restart','shutdown-source-loss'].some(k=>opts[k]==='1'))
   throw Error('Spout fixture options cannot be used with --window-video');
@@ -60,10 +61,12 @@ async function waitVideo(page,timeout=45000) {
   const start=Date.now(); let last=[];
   while(Date.now()-start<timeout) {
     last=await stats(page);
-    if(last.some(s=>s.kind==='video'&&s.framesDecoded>15&&s.framesPerSecond>0)) return Date.now()-start;
+    if(last.some(s=>s.kind==='video'&&s.framesDecoded>15&&s.framesPerSecond>0)&&
+      await page.evaluate(()=>[...document.querySelectorAll('video')].some(v=>v.videoWidth>0&&!v.paused&&v.readyState>=2)))
+      return Date.now()-start;
     await sleep(300);
   }
-  throw Error('No advancing decoded video: '+JSON.stringify(last));
+  throw Error('No playing video element with advancing decoded video: '+JSON.stringify(last));
 }
 async function refreshTransport(control,page) {
   const before=await api(control,'/diagnostics'),started=Date.now();
@@ -187,7 +190,7 @@ async function audioProbe(page) {
 async function main() {
   const fps=Number(opts.fps||30), width=Number(opts.width||1280),height=Number(opts.height||720);
   const senderName='ReceiverReview_'+crypto.randomUUID().replaceAll('-','');
-  const senderArgs=[`--name=${senderName}`,`--width=${width}`,`--height=${height}`,`--fps=${Number(opts['source-fps']||fps)}`,`--pattern=${opts['color-check']==='1'?'color-bars':'animated'}`,'--duration-ms=1800000'];
+  const senderArgs=[`--name=${senderName}`,`--width=${width}`,`--height=${height}`,`--fps=${Number(opts['source-fps']||fps)}`,`--pattern=${opts['obs-plugin-repo']?'alpha-moving-edge':opts['color-check']==='1'?'color-bars':'animated'}`,'--duration-ms=1800000'];
   if(opts.resize==='1')senderArgs.push('--resize-after-ms=20000','--resize-width=1280','--resize-height=960');
   let sourceBrowser,sourcePage,sourceFixture;
   let sender=windowVideo?null:launch(senderExe,senderArgs,'source');
@@ -277,14 +280,15 @@ async function main() {
         ...(windowVideo?['--source=window',`--window=${senderName}`]:['--source=spout',`--spout-sender=${senderName}`]),
         '--audio-source=default-output',`--width=${width}`,`--height=${height}`,`--fps=${fps}`,
         '--bitrate-kbps=4000',`--video-encoder=${encoder}`,`--video-codec=${codec}`,`--duration-ms=${600000+Number(opts['soak-ms']||0)*2+Number(opts['control-cycles']||1)*60000}`,
-        ...((opts['video-controls']==='1'||opts['replacement-failure']==='1')?['--remote-control']:[]),
+        ...(['video-controls','replacement-failure','rapid-controls','shutdown-preparation','session-pressure'].some(k=>opts[k]==='1')?['--remote-control']:[]),
+        ...(opts['obs-plugin-repo']?['--alpha-workflow']:[]),
         ...(opts['ffmpeg-options']?[`--ffmpeg-options=${opts['ffmpeg-options']}`]:[]),
         ...(proxyPort?[`--server=ws://127.0.0.1:${proxyPort}`]:[]),
         '--local-control','--local-control-port=0',`--local-control-discovery=${controlPath}`,
         `--diagnostics-out=${path.join(run,name+'-exit.json')}`],name,
         {LOCALAPPDATA:run,QT_PLUGIN_PATH:path.dirname(publisher),QT_QPA_PLATFORM_PLUGIN_PATH:path.join(path.dirname(publisher),'platforms'),
           ...(opts['frame-trace']==='1'?{VERSUS_FRAME_TRACE:path.join(run,name+'-frames.csv')}:{})});
-      let control,context,page,lossCdp;
+      let control,context,page,lossCdp,obsAlpha;
       try {
         const deadline=Date.now()+25000;
         while(Date.now()<deadline) {
@@ -299,7 +303,8 @@ async function main() {
         if(!result.startup)throw Error('Publisher never became live');
         context=await browser.newContext({viewport:{width:1280,height:800}});
         await context.addInitScript(()=>{
-          window.reviewPCs=[];window.reviewChannels=[];const Original=window.RTCPeerConnection;
+          window.reviewPCs=[];window.reviewChannels=[];
+          const Original=window.RTCPeerConnection;
           window.RTCPeerConnection=new Proxy(Original,{construct(target,args){
             const pc=new target(...args);window.reviewPCs.push(pc);
             pc.addEventListener('datachannel',e=>window.reviewChannels.push(e.channel));
@@ -377,6 +382,17 @@ async function main() {
         result.refreshResponse=result.transportRefresh.response;
         await sleep(2000);
         result.stages.push({name:'transport-refresh',metrics:await measure(page,8000)});
+        if(opts['obs-plugin-repo']) {
+          obsAlpha=await require('./obs-alpha-runtime').start({repo:opts['obs-plugin-repo'],stream,output:path.join(run,name+'-obs'),
+            expectedPluginHash:opts['expected-plugin-sha256'],width,height});
+          result.obsAlpha=obsAlpha.evidence;
+          await obsAlpha.sample('initial');
+          result.obsObserverBeforeReload=await page.evaluate(()=>({visibility:document.visibilityState,
+            videos:[...document.querySelectorAll('video')].map(v=>({width:v.videoWidth,readyState:v.readyState,paused:v.paused}))}));
+          // Exercise browser reattachment with the native alpha viewer present.
+          await page.reload({waitUntil:'domcontentloaded'});await waitVideo(page);
+          result.obsObserverAudio=await audioProbe(page);
+        }
         if(opts['video-controls']==='1') {
           result.videoControls=[];
           const targets=Array.from({length:Number(opts['control-cycles']||1)},()=>[{w:Number(opts['control-width']||1280),h:Number(opts['control-height']||720),f:Number(opts['control-fps']||30),bitrate:1000},{w:width,h:height,f:fps,bitrate:8000}]).flat();
@@ -436,6 +452,7 @@ async function main() {
             entry.captureFullRate=entry.captureFps>=target.f*.95;
             if(opts['capture-cadence']==='1'&&!(entry.captureFps>=target.f*captureCadenceMin))throw Error('Fresh capture cadence did not follow runtime FPS');
             if(entry.diagnostics.video.configured_bitrate_kbps!==target.bitrate)throw Error('Runtime bitrate change was not applied');
+            if(obsAlpha)await obsAlpha.sample('control-'+result.videoControls.length);
             if(!motion.moving||!metrics.some(m=>m.kind==='video'&&m.width===target.w&&m.height===target.h&&m.fps>=target.f*.8&&m.fps<=target.f*1.15))
               throw Error('Runtime video controls did not preserve moving video at the requested format');
             if(!metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))throw Error('Audio stopped during runtime video controls');
@@ -457,6 +474,12 @@ async function main() {
             }
           }
           result.stages.push({name:'after-video-controls',metrics:await measure(page,8000)});
+          if(obsAlpha) {
+            result.obsTransportRefresh=await refreshTransport(control,page);
+            await obsAlpha.sample('transport-refresh');
+            result.stages.push({name:'obs-transport-refresh',metrics:await measure(page,8000)});
+            if(!(await motionProbe(page)).moving)throw Error('Browser lost moving video after OBS transport refresh');
+          }
         }
         if(opts['audio-controls']==='1') {
           result.audioControls=[];
@@ -510,6 +533,72 @@ async function main() {
             !result.packetLoss.recovery.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))
             throw Error('Full-rate moving video and audio did not recover after packet loss');
           console.log(name,'packet loss observed; moving full-rate video and audio recovered');
+        }
+        if(opts['rapid-controls']==='1') {
+          const burstStarted=Date.now();
+          const targets=Array.from({length:3},()=>[
+            {w:640,h:360,f:30,targetBitrate:1000},
+            {w:960,h:540,f:45,targetBitrate:2500},
+            {w:640,h:360,f:30,targetBitrate:1200},
+            {w:width,h:height,f:fps,targetBitrate:8000}]).flat();
+          const during=measure(page,8000);
+          for(const target of targets) {
+            await page.evaluate(({remote,target})=>{
+              window.reviewChannels.find(c=>c.readyState==='open').send(JSON.stringify({
+                action:'requestResolution',remote,value:{w:target.w,h:target.h,f:target.f},targetBitrate:target.targetBitrate}));
+            },{remote:stream,target});
+            await sleep(60);
+          }
+          result.rapidControls={targets,during:await during};
+          let ready=false;const deadline=Date.now()+30000;
+          while(Date.now()<deadline) {
+            const d=await api(control,'/diagnostics'),s=await stats(page);
+            ready=d.peer_operation_executor.queued_ordinary===0&&d.peer_operation_executor.in_flight===0&&
+              d.video.configured_bitrate_kbps===8000&&d.video.configured_fps===fps&&
+              s.some(m=>m.kind==='video'&&m.frameWidth===width&&m.frameHeight===height&&m.framesPerSecond>=fps*.8);
+            if(ready)break;await sleep(300);
+          }
+          if(!ready)throw Error('Rapid controls did not settle on the last requested format and bitrate');
+          result.rapidControls.settledMs=Date.now()-burstStarted;
+          result.rapidControls.settledDiagnostics=await api(control,'/diagnostics');
+          result.rapidControls.motion=await motionProbe(page);
+          if(!result.rapidControls.motion.moving)throw Error('Rapid controls left a frozen image');
+          result.stages.push({name:'after-rapid-controls',metrics:await measure(page,8000)});
+        }
+        if(opts['session-pressure']==='1') {
+          if(encoder!=='nvenc'||codec!=='h264')throw Error('Session pressure currently requires explicit NVENC H.264');
+          const before=await api(control,'/diagnostics');
+          const pressure=await require('./encoder-session-pressure').start({
+            ffmpeg:path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'),launch,name});
+          result.sessionPressure=pressure.evidence;
+          try {
+            if(!pressure.evidence.exhausted)throw Error('No session exhaustion observed within the 12-helper bound');
+            const logPath=path.join(run,name+'.log'),offset=fs.statSync(logPath).size;
+            await page.evaluate(({remote})=>window.reviewChannels.find(c=>c.readyState==='open').send(
+              JSON.stringify({action:'bitrate',remote,value:1000})),{remote:stream});
+            let rejected=false;const deadline=Date.now()+15000;
+            while(Date.now()<deadline) {
+              if(fs.readFileSync(logPath).subarray(offset).toString().includes('replacement failed preparation')){rejected=true;break;}
+              await sleep(100);
+            }
+            const after=await api(control,'/diagnostics');
+            if(!rejected||after.video.configured_bitrate_kbps!==before.video.configured_bitrate_kbps)
+              throw Error('Session exhaustion did not retain the original configuration');
+            result.sessionPressure.motion=await motionProbe(page);
+            if(!result.sessionPressure.motion.moving)throw Error('Session pressure stopped moving video');
+            result.stages.push({name:'during-session-pressure',metrics:await measure(page,8000)});
+          } finally {await pressure.close();}
+          const recoveryBitrate=before.video.configured_bitrate_kbps===8000?4000:8000;
+          await page.evaluate(({remote,bitrate})=>window.reviewChannels.find(c=>c.readyState==='open').send(
+            JSON.stringify({action:'bitrate',remote,value:bitrate})),{remote:stream,bitrate:recoveryBitrate});
+          const deadline=Date.now()+15000;let recovered=false;
+          while(Date.now()<deadline) {
+            if((await api(control,'/diagnostics')).video.configured_bitrate_kbps===recoveryBitrate){recovered=true;break;}
+            await sleep(200);
+          }
+          if(!recovered)throw Error('Runtime control did not recover after releasing encoder sessions');
+          result.sessionPressure.recovered=true;
+          result.stages.push({name:'after-session-pressure',metrics:await measure(page,8000)});
         }
         if(opts['replacement-failure']==='1') {
           const before=await api(control,'/diagnostics');
@@ -648,8 +737,15 @@ async function main() {
           'FPS',result.stages.map(s=>[s.name,s.metrics.find(m=>m.kind==='video')?.fps]));
       } catch(e) {result.error=String(e);result.ok=false;console.log(name,result.error);
         if(control)try{result.final=await api(control,'/diagnostics');}catch{}
-        if(page)try{await page.screenshot({path:path.join(run,name+'-failure.png')});}catch{}
+        if(page)try{
+          result.failureDom=await page.evaluate(()=>({visibility:document.visibilityState,
+              html:document.body.innerHTML.slice(0,6000),videos:[...document.querySelectorAll('video')].map(v=>({
+                element:v.outerHTML,tracks:v.srcObject?.getTracks().map(t=>({kind:t.kind,id:t.id,enabled:t.enabled,muted:t.muted,state:t.readyState})),
+                width:v.videoWidth,height:v.videoHeight,paused:v.paused,readyState:v.readyState,error:v.error?.message}))}));
+          await page.screenshot({path:path.join(run,name+'-failure.png')});
+        }catch{}
       } finally {
+        if(obsAlpha)try{await obsAlpha.close();}catch(e){result.obsCloseError=String(e);result.ok=false;}
         if(sourcePage&&opts['shutdown-window-paused']==='1') {
           try {
             await sourcePage.evaluate(()=>document.querySelector('video').pause());
@@ -670,6 +766,25 @@ async function main() {
           blockedUntil=Date.now()+60000;
           for(const upstream of upstreams)upstream.terminate();
           await sleep(300);
+        }
+        if(opts['shutdown-preparation']==='1'&&proc.exitCode===null&&page&&control) {
+          try {
+            const logPath=path.join(run,name+'.log'),offset=fs.statSync(logPath).size;
+            const d=await api(control,'/diagnostics');
+            await page.evaluate(({remote,bitrate})=>{
+              window.reviewChannels.find(c=>c.readyState==='open').send(JSON.stringify({action:'bitrate',remote,value:bitrate}));
+            },{remote:stream,bitrate:d.video.configured_bitrate_kbps===1000?8000:1000});
+            const deadline=Date.now()+10000;let observed=false;
+            while(Date.now()<deadline) {
+              const text=fs.readFileSync(logPath).subarray(offset).toString();
+              if(text.includes('Preparing runtime encoder replacement')) {
+                observed=!text.includes('Runtime encoder replacement committed');break;
+              }
+              await sleep(10);
+            }
+            result.shutdownDuringPreparation=observed;
+            if(!observed)throw Error('Could not observe an uncommitted encoder preparation before shutdown');
+          } catch(e){result.shutdownPreparationError=String(e);result.ok=false;}
         }
         const shutdownStarted=Date.now();
         if(proc.exitCode===null&&control)try{await api(control,'/commands',{command:'quit'});}catch(e){result.quitRequestError=String(e);}

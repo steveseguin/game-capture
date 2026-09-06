@@ -1,4 +1,5 @@
 #include "versus/app/versus_app.h"
+#include "versus/app/video_control_snapshot.h"
 #include "versus/app/encoder_recovery_policy.h"
 #include "versus/app/frame_trace.h"
 #include "versus/app/keyframe_request_policy.h"
@@ -121,7 +122,7 @@ PeerCallbackSchedule schedulePeerDataMessage(const std::string &message) {
         // ordinary, bounded per peer, and ordered within that peer's queue.
         return {Priority::Critical, Criticality::Replaceable, "signal-description"};
     }
-    return {};
+    return {Priority::Ordinary, Criticality::State, videoControlSnapshotKey(msg)};
 }
 
 const char *peerOperationEnqueueResultName(
@@ -132,6 +133,8 @@ const char *peerOperationEnqueueResultName(
             return "queued";
         case Result::CoalescedCritical:
             return "coalesced-critical";
+        case Result::CoalescedOrdinary:
+            return "coalesced-ordinary";
         case Result::QueuedAfterEvictingOrdinary:
             return "queued-after-ordinary-eviction";
         case Result::QueuedAfterEvictingCritical:
@@ -2050,6 +2053,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"accepted_critical", peerOperationStats.acceptedCritical},
         {"accepted_ordinary", peerOperationStats.acceptedOrdinary},
         {"coalesced_critical", peerOperationStats.coalescedCritical},
+        {"coalesced_ordinary", peerOperationStats.coalescedOrdinary},
         {"dropped_ordinary_capacity", peerOperationStats.droppedOrdinaryCapacity},
         {"evicted_ordinary_for_critical", peerOperationStats.evictedOrdinaryForCritical},
         {"evicted_critical_for_critical", peerOperationStats.evictedCriticalForCritical},
@@ -3380,8 +3384,10 @@ void VersusApp::setupSignalingCallbacks() {
         // Reserve the optional alpha transceiver in the first offer. Adding it
         // behind an already-negotiated data m-line and then rebuilding a fresh
         // libdatachannel transport would reorder the m-lines on ICE recovery.
-        // Alpha packets remain gated per peer until the native receiver opts in.
-        peerConfig.initialAlpha = peerConfig.enableAlphaTrack;
+        // Keep it inactive until opt-in: a silent sendonly track can replace
+        // the color track in an ordinary browser viewer's media element.
+        peerConfig.reserveAlphaTrack = peerConfig.enableAlphaTrack;
+        peerConfig.initialAlpha = false;
         peerConfig.videoWidth = std::max(1, videoState.config.width);
         peerConfig.videoHeight = std::max(1, videoState.config.height);
         peerConfig.videoFps = std::max(1, videoState.config.frameRate);
@@ -5089,7 +5095,14 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                              alphaAllowed,
                              alphaAllowed ? alphaReceiveMode : "none");
                 if (peer->initReceived.load(std::memory_order_relaxed)) {
-                    applyPeerMediaPlan(peer, "peer-alpha-capability");
+                    // The native receiver may reject the inactive section in
+                    // its first answer. Start a fresh transport on capability
+                    // changes so both ends install the active track together.
+                    if (usesVp9AlphaTrack(videoStateSnapshot().config)) {
+                        sendPeerOffer(peer, "peer-alpha-capability", true);
+                    } else {
+                        applyPeerMediaPlan(peer, "peer-alpha-capability");
+                    }
                     sendPeerDataInfo(peer, true);
                 }
             }
@@ -8984,10 +8997,10 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
             const bool wantAudio = peer->audioEnabled.load(std::memory_order_relaxed);
             const VideoStateSnapshot videoState = videoStateSnapshot();
             // Preserve the reserved alpha transceiver on every transport
-            // generation. Receiver capability gates alpha packets, not the
-            // SDP shape; otherwise a restart before capability would move or
-            // remove the alpha m-line relative to the data channel.
-            const bool wantAlpha = wantVideo && usesVp9AlphaTrack(videoState.config);
+            // generation, but only activate it for an opted-in receiver.
+            // WebRtcClient retains the reserved section's position before data.
+            const bool wantAlpha = wantVideo && usesVp9AlphaTrack(videoState.config) &&
+                peer->alphaAllowed.load(std::memory_order_relaxed);
 
             spdlog::info("[App] Rebuilding peer connection {}:{} reason={} media video={} audio={} alpha={}",
                          peer->uuid,

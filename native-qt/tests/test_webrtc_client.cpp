@@ -910,6 +910,7 @@ class TestWebRtcClient : public QObject {
     void testInitialOfferCompletesPromptlyAfterBootstrapTracks();
     void testVp9AlphaOfferUsesPluginDualTrackContract();
     void testAlphaMlineOrderSurvivesResetAndCodecFallback();
+    void testReservedAlphaIsInactiveUntilCapability();
     void testAlphaCapabilityRequiresExactPluginField_data();
     void testAlphaCapabilityRequiresExactPluginField();
     void testTransportGenerationTokensAdvanceAcrossReset();
@@ -1256,6 +1257,36 @@ void TestWebRtcClient::testAlphaMlineOrderSurvivesResetAndCodecFallback() {
     QVERIFY2(fallbackOffer.find("a=mid:video-alpha") != std::string::npos,
              "Codec fallback removed the negotiated alpha section");
 
+    client.shutdown();
+}
+
+void TestWebRtcClient::testReservedAlphaIsInactiveUntilCapability() {
+    versus::webrtc::WebRtcClient client;
+    auto config = alphaPeerConfig();
+    config.initialAlpha = false;
+    config.reserveAlphaTrack = true;
+    QVERIFY(client.initialize(config));
+    const auto alphaSection = [](const std::string &sdp) {
+        const auto mid = sdp.find("a=mid:video-alpha");
+        if (mid == std::string::npos) return std::string{};
+        const auto start = sdp.rfind("m=video", mid);
+        return sdp.substr(start, sdp.find("\nm=", mid) - start);
+    };
+    const auto initial = client.createOffer();
+    verifyCanonicalAlphaSections(initial, "reserved");
+    QVERIFY(alphaSection(initial).find("a=inactive") != std::string::npos);
+    QVERIFY(!client.ensureMediaTracks(true, true, false).changed);
+    QVERIFY(client.ensureMediaTracks(true, true, true).changed);
+    QVERIFY(!client.ensureMediaTracks(true, true, true).changed);
+    QVERIFY(client.resetPeerConnection(true, true, true));
+    const auto active = client.createOffer();
+    verifyCanonicalAlphaSections(active, "active reset");
+    QVERIFY(alphaSection(active).find("a=sendonly") != std::string::npos);
+    QVERIFY(client.ensureMediaTracks(true, true, false).changed);
+    QVERIFY(client.resetPeerConnection(true, true, false));
+    const auto reset = client.createOffer();
+    verifyCanonicalAlphaSections(reset, "inactive reset");
+    QVERIFY(alphaSection(reset).find("a=inactive") != std::string::npos);
     client.shutdown();
 }
 
