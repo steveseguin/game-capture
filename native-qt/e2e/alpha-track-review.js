@@ -3,17 +3,39 @@
 // Never attach a receiver track to a diagnostic video: validate the page's own output.
 const fs=require('fs'),path=require('path'),crypto=require('crypto');
 const {spawn}=require('child_process');
-const {chromium}=require('playwright');
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
-const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return [a.slice(2,i),a.slice(i+1)];}));
+function parseOptions(args) {
+  const opts={};
+  const allowed=new Set(['publisher','sender','reports','obs-plugin-repo','expected-publisher-sha256',
+    'expected-plugin-sha256','codec','encoder']);
+  for(const arg of args) {
+    const match=/^--([^=]+)=(.*)$/.exec(arg);
+    if(!match||!allowed.has(match[1]))throw Error(`Unknown or malformed option: ${arg}; use --name=value`);
+    if(Object.hasOwn(opts,match[1]))throw Error(`Duplicate option: --${match[1]}`);
+    opts[match[1]]=match[2];
+  }
+  return opts;
+}
 
 async function main() {
+  const opts=parseOptions(process.argv.slice(2));
+  for(const name of ['publisher','sender','reports','obs-plugin-repo']) {
+    if(!opts[name]?.trim())throw Error(`Explicit --${name}=PATH is required`);
+  }
+  for(const name of ['expected-publisher-sha256','expected-plugin-sha256']) {
+    if(!/^[a-f0-9]{64}$/i.test(opts[name]||''))throw Error(`--${name} must be an explicit SHA-256 (64 hexadecimal characters)`);
+  }
   const publisher=path.resolve(opts.publisher),sender=path.resolve(opts.sender);
+  const publisherSha256=hash(publisher),expectedPublisherSha256=opts['expected-publisher-sha256'].toLowerCase();
+  if(publisherSha256!==expectedPublisherSha256) {
+    throw Error(`Publisher SHA-256 mismatch for ${publisher}: expected ${expectedPublisherSha256}, actual ${publisherSha256}`);
+  }
+  const {chromium}=require('playwright');
   const output=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(output,{recursive:true});
   const stream='alphatrack'+crypto.randomBytes(6).toString('hex');
   const controlFile=path.join(output,'control.json'),children=[],logs=[];
-  const result={publisher,publisherSha256:hash(publisher),senderSha256:hash(sender),stream,
+  const result={publisher,publisherSha256,expectedPublisherSha256,senderSha256:hash(sender),stream,
     codec:opts.codec||'vp9',audioSource:'none',phases:[],startedAt:new Date().toISOString()};
   const save=()=>fs.writeFileSync(path.join(output,'results.json'),JSON.stringify(result,null,2));
   let control,browser,obs,page;
@@ -46,8 +68,8 @@ async function main() {
     const before=await snapshot();await sleep(1800);const after=await snapshot();
     const playing=after.videos.filter(v=>v.ready>=2&&v.width===1280&&v.height===720&&!v.paused&&
       v.time>(before.videos.find(b=>b.id===v.id)?.time??Infinity)+.5);
-    const pixelMotion=await page.evaluate(async()=>{
-      const v=[...document.querySelectorAll('video')].find(v=>v.videoWidth>0);if(!v)return [];
+    const pixelMotion=await page.evaluate(async videoId=>{
+      const v=[...document.querySelectorAll('video')].find(v=>v.id===videoId);if(!v)return [];
       const canvas=document.createElement('canvas');canvas.width=160;canvas.height=90;
       const ctx=canvas.getContext('2d'),centers=[];
       for(let n=0;n<5;n++) {
@@ -56,7 +78,7 @@ async function main() {
         if(count>10)centers.push(sum/count);await new Promise(r=>setTimeout(r,300));
       }
       return centers;
-    });
+    },playing[0]?.id??null);
     const ok=playing.length>0&&playing.every(v=>v.tracks.some(t=>t.kind==='video'&&t.mid==='video'&&!t.muted))&&
       after.videos.every(v=>v.tracks.every(t=>t.mid!=='video-alpha'))&&
       after.pcs.every(p=>p.transceivers.filter(t=>t.mid==='video-alpha').every(t=>t.direction==='inactive'))&&
@@ -76,16 +98,16 @@ async function main() {
       '--fps=30','--bitrate-kbps=6000','--audio-source=none','--duration-ms=230000',
       '--local-control','--local-control-port=0',`--local-control-discovery=${controlFile}`],'publisher',
       {LOCALAPPDATA:output,QT_PLUGIN_PATH:path.dirname(publisher),QT_QPA_PLATFORM_PLUGIN_PATH:path.join(path.dirname(publisher),'platforms')});
-    const deadline=Date.now()+30000;
+    const deadline=Date.now()+30000;let publisherReady=false;
     while(Date.now()<deadline) {
-      if(capture.exitCode!==null)throw Error('Publisher exited during startup');
+      if(capture.exitCode!==null||capture.signalCode!==null)throw Error('Publisher exited during startup');
       if(fs.existsSync(controlFile)) {
         control=JSON.parse(fs.readFileSync(controlFile,'utf8'));
-        const d=await api('/diagnostics');if(d.app.live&&d.source.has_frame)break;
+        const d=await api('/diagnostics');if(d.app.live&&d.source.has_frame){publisherReady=true;break;}
       }
       await sleep(300);
     }
-    if(!control)throw Error('Publisher control unavailable');
+    if(!publisherReady)throw Error('Publisher did not become live with a captured frame within 30 seconds');
     browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required']});
     const context=await browser.newContext();
     await context.addInitScript(()=>{
@@ -106,13 +128,14 @@ async function main() {
   } catch(e) {result.ok=false;result.error=String(e);console.error(result.error);process.exitCode=1;}
   finally {
     if(obs)try{await obs.close();}catch(e){result.obsCloseError=String(e);result.ok=false;process.exitCode=1;}
-    if(browser)await browser.close();
-    if(capture&&capture.exitCode===null&&control)try{await api('/commands',{command:'quit'});}catch{}
+    if(browser)try{await browser.close();}catch(e){result.browserCloseError=String(e);result.ok=false;process.exitCode=1;}
+    if(capture&&capture.exitCode===null&&capture.signalCode===null&&control)try{await api('/commands',{command:'quit'});}catch{}
     const deadline=Date.now()+10000;
-    while(capture&&capture.exitCode===null&&Date.now()<deadline)await sleep(100);
+    while(capture&&capture.exitCode===null&&capture.signalCode===null&&Date.now()<deadline)await sleep(100);
     result.publisherExitCode=capture?.exitCode;
+    result.publisherSignalCode=capture?.signalCode;
     if(capture&&capture.exitCode!==0){result.ok=false;process.exitCode=1;}
-    for(const child of children)if(child.exitCode===null)child.kill();
+    for(const child of children)if(child.exitCode===null&&child.signalCode===null)child.kill();
     for(const log of logs)log.end();result.completedAt=new Date().toISOString();save();
   }
 }
