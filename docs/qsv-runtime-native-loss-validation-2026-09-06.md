@@ -1,5 +1,9 @@
 # QSV runtime isolation and native OBS loss/opacity validation
 
+Follow-up: the [pooled hardware upload review](qsv-dynamic-upload-validation-2026-09-06.md)
+validates an application fix with the installed runtime, avoiding the older-runtime
+override described here.
+
 This follows the [sustained streaming review](sustained-stream-validation-2026-09-06.md).
 The package under review is `native-qt/dist/browser-cadence-trace/game-capture.exe`,
 SHA256 `d06a09b0fb99075283aa7fb754b176e212b6ea6690ec116ea57297628cdafe2f`.

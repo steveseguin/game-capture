@@ -13,26 +13,41 @@ async function main() {
     !fs.readdirSync(runtimePath).some(name=>/^(libmfx64-gen|libmfxhw64|libvpl.*)\.dll$/i.test(name))))
     throw Error('Runtime priority requires QSV and a directory containing a VPL runtime DLL');
   const upload=opts['hw-upload']==='1';
+  const uploadPool=opts['hw-pool']===undefined?undefined:Number(opts['hw-pool']);
+  if(uploadPool!==undefined&&(!upload||!Number.isSafeInteger(uploadPool)||uploadPool<0))
+    throw Error('Hardware upload pool requires --hw-upload=1 and a nonnegative integer');
   if((upload||opts['low-power']!==undefined)&&encoder!=='h264_qsv')throw Error('QSV options require h264_qsv');
+  if(opts['copy-input']==='1'&&!upload)throw Error('Copy-input comparison requires --hw-upload=1');
+  const rawInput=opts['raw-input']?path.resolve(opts['raw-input']):undefined;
+  const rawStat=rawInput?fs.statSync(rawInput):undefined;
+  if(rawStat&&(!rawStat.isFile()||rawStat.size%(1280*720*3/2)!==0||!rawStat.size))
+    throw Error('Raw input requires complete 1280x720 NV12 frames');
   const output=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(output,{recursive:true});
   const args=['-hide_banner','-loglevel',opts['log-level']||'error','-nostats','-progress','pipe:2',
     ...(upload?['-init_hw_device','d3d11va=reviewIntel:,vendor_id=0x8086',
-      '-init_hw_device','qsv=review@reviewIntel','-filter_hw_device','review']:[]),'-f','lavfi',
-    '-i','testsrc2=size=1280x720:rate=60,format=nv12','-an','-frames:v',String(frames),'-c:v',encoder,
+      '-init_hw_device','qsv=review@reviewIntel','-filter_hw_device','review']:[]),
+    ...(opts.realtime==='1'?['-re']:[]),
+    ...(rawInput?['-stream_loop','-1','-f','rawvideo','-pix_fmt','nv12','-video_size','1280x720',
+      '-framerate','60','-i',rawInput]:['-f','lavfi','-i','testsrc2=size=1280x720:rate=60,format=nv12']),
+    '-an','-frames:v',String(frames),'-c:v',encoder,
     '-b:v','4000k','-maxrate','8000k','-bufsize','16000k','-g','60'];
   if(encoder==='h264_qsv')args.push('-bf','0','-async_depth','1','-forced_idr','1');
   if(encoder==='h264_nvenc')args.push('-bf','0','-delay','0','-forced-idr','1');
   if(encoder==='libvpx-vp9')args.push('-deadline','realtime','-cpu-used','8','-row-mt','1','-threads','4','-lag-in-frames','0');
   if(opts['low-power']!==undefined)args.push('-low_power',opts['low-power']);
-  if(upload)args.push('-vf','setparams=range=limited:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=smpte170m,hwupload=extra_hw_frames=8');
+  if(upload)args.push('-vf',(opts['copy-input']==='1'?'copy,':'')+'setparams=range=limited:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=smpte170m,hwupload'+
+    (uploadPool===undefined?'':`=extra_hw_frames=${uploadPool}`));
   if(encoder!=='libvpx-vp9') {
     args.push('-force_key_frames','expr:gte(t,n_forced*2.5)','-pix_fmt',upload?'qsv':'nv12');
-    if(!upload)args.push('-colorspace','smpte170m','-color_primaries','bt709','-color_trc','iec61966-2-1','-color_range','tv');
+    if(!upload||opts['output-color']==='1')args.push('-colorspace','smpte170m','-color_primaries','bt709','-color_trc','iec61966-2-1','-color_range','tv');
     if(opts.bsf!=='none')args.push('-bsf:v','h264_metadata=aud=insert,dump_extra=freq=keyframe');
   }
   args.push('-f',encoder==='libvpx-vp9'?'ivf':'h264','-y','NUL');
   const result={ffmpeg,sha256:crypto.createHash('sha256').update(fs.readFileSync(ffmpeg)).digest('hex'),
     args,startedMs:Date.now(),requestedFrames:frames,samples:[]};
+  if(rawInput)result.rawInput={file:rawInput,bytes:rawStat.size,
+    sha256:crypto.createHash('sha256').update(fs.readFileSync(rawInput)).digest('hex')};
+  const timeoutMs=opts.realtime==='1'?Math.max(300000,Math.ceil(frames/60*1000)+60000):300000;
   const log=fs.createWriteStream(path.join(output,'ffmpeg.log'));
   result.runtimePriorityPath=runtimePath;
   const child=spawn(ffmpeg,args,{windowsHide:true,stdio:['ignore','ignore','pipe'],
@@ -50,7 +65,7 @@ async function main() {
   try {
     while(child.exitCode===null&&child.signalCode===null) {
       if(spawnError)throw spawnError;
-      if(Date.now()-result.startedMs>300000)throw Error('Encoder experiment exceeded five minutes');
+      if(Date.now()-result.startedMs>timeoutMs)throw Error('Encoder experiment exceeded '+timeoutMs+' ms');
       await Promise.race([closed,new Promise(r=>setTimeout(r,2000))]);
       if(child.exitCode!==null||child.signalCode!==null)break;
       try {

@@ -2,6 +2,12 @@
 const fs=require('fs');
 const file=process.argv[2];
 if(!file)throw Error('Usage: analyze-sustained-review.js case-sustained.json');
+const extra=process.argv.slice(3);
+if(extra.some(arg=>!arg.startsWith('--max-encoder-growth='))||extra.length>1)
+  throw Error('Optional argument: --max-encoder-growth=<MiB per minute>');
+const maxEncoderGrowth=extra.length?Number(extra[0].slice('--max-encoder-growth='.length)):undefined;
+if(maxEncoderGrowth!==undefined&&(!Number.isFinite(maxEncoderGrowth)||maxEncoderGrowth<0||extra[0].endsWith('=')))
+  throw Error('Maximum encoder growth must be a nonnegative finite number');
 const r=JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''));
 const percentile=(values,f)=>{const a=values.filter(Number.isFinite).sort((a,b)=>a-b);return a[Math.min(a.length-1,Math.floor(a.length*f))];};
 const summary=values=>({min:percentile(values,0),median:percentile(values,.5),p95:percentile(values,.95),max:percentile(values,1)});
@@ -14,6 +20,8 @@ const memory=r.samples.filter(s=>s.processes).map(s=>{
     encoderCount:s.processes.filter(p=>p.ProcessName==='ffmpeg').length};
 });
 const steady=memory.filter(s=>s.minute>=2);
+const encoderPids=[...new Set(r.samples.flatMap(s=>(s.processes||[])
+  .filter(p=>p.ProcessName==='ffmpeg').map(p=>p.Id)))].sort((a,b)=>a-b);
 function trend(key) {
   const points=steady.length?steady:memory;
   if(!points.length)return null;
@@ -55,8 +63,15 @@ const result={ok:r.ok,error:r.error,requestedMinutes:r.requestedMs/60000,
     s.diagnostics.app.live&&!s.diagnostics.app.reconnecting),
   memory:{publisherPrivateMiB:trend('publisherPrivateMiB'),publisherWorkingMiB:trend('publisherWorkingMiB'),
     encoderPrivateMiB:trend('encoderPrivateMiB'),handles:trend('handles'),threads:trend('threads'),
-    encoderCounts:[...new Set(memory.map(m=>m.encoderCount))]},checkpoints};
+    encoderCounts:[...new Set(memory.map(m=>m.encoderCount))],encoderPids},checkpoints};
+if(maxEncoderGrowth!==undefined) {
+  result.memory.maxEncoderGrowthMiBPerMinute=maxEncoderGrowth;
+  result.memory.encoderProcessesStable=result.memory.encoderCounts.length===1&&
+    result.memory.encoderCounts[0]>0&&encoderPids.length===result.memory.encoderCounts[0];
+  result.memory.encoderGrowthWithinLimit=steady.length>=2&&result.memory.encoderProcessesStable&&
+    result.memory.encoderPrivateMiB?.slopePerMinute<=maxEncoderGrowth;
+}
 console.log(JSON.stringify(result,null,2));
 if(!r.ok||r.completedMs-r.startedMs<r.requestedMs||checkpoints.length!==5||
-  !result.signalingRecoveredInMeasuredWindows||
+  !result.signalingRecoveredInMeasuredWindows||result.memory.encoderGrowthWithinLimit===false||
   checkpoints.some(c=>!c.recording?.frames||c.recording.invalid||!(c.coverage>=.98&&c.coverage<=1.02)))process.exitCode=1;

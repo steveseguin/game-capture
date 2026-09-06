@@ -2364,6 +2364,16 @@ class VideoEncoder::Impl {
             externalInputIsGray_ = true;
         }
         const char *inputPixelFormat = externalInputIsGray_ ? "gray" : (externalInputIsNv12_ ? "nv12" : "bgra");
+        const auto extraArgs = splitCommandArgs(config_.ffmpegOptions);
+        const bool customVideoPipeline = std::any_of(extraArgs.begin(), extraArgs.end(), [](const std::string &arg) {
+            const auto option = detail::normalizeFfmpegOption(arg);
+            return option.valid && (option.name == "vf" || option.name == "filter" ||
+                option.name == "filter_complex" || option.name == "filter_complex_script" ||
+                option.name == "filter_script" || option.name == "init_hw_device" ||
+                option.name == "filter_hw_device" || option.name == "pix_fmt" ||
+                option.name == "c" || option.name == "codec" || option.name == "vcodec");
+        });
+        const bool qsvHardwareUpload = encoderName == "h264_qsv" && !customVideoPipeline;
 
         std::vector<std::string> args = {
             "-hide_banner",
@@ -2383,6 +2393,19 @@ class VideoEncoder::Impl {
             "-maxrate", std::to_string(maxBitrate) + "k",
             "-bufsize", std::to_string(bufferSize) + "k",
         };
+        if (qsvHardwareUpload) {
+            // Pool raw decoder input before hardware upload. Direct raw-frame
+            // upload still grows driver memory on affected Intel drivers; a
+            // software copy alone does not replace hardware surface allocation.
+            // A dynamic upload pool uses individual textures: fixed render-target
+            // texture arrays fail creation on these same devices (E_INVALIDARG).
+            args.insert(args.begin(), {"-init_hw_device", "d3d11va=gcIntel:,vendor_id=0x8086",
+                                      "-init_hw_device", "qsv=gcQsv@gcIntel",
+                                      "-filter_hw_device", "gcQsv"});
+            args.insert(args.end(), {"-vf",
+                "copy,setparams=range=limited:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=smpte170m,hwupload"});
+            spdlog::info("[FFmpegEncoder] QSV H.264 uses dynamic D3D11 hardware upload");
+        }
         // VP9 uses -g 1 (all-keyframes) for sync-safe streaming; other codecs use GOP-based keyframes.
         if (config_.codec != VideoCodec::VP9) {
             args.push_back("-g");
@@ -2509,7 +2532,7 @@ class VideoEncoder::Impl {
             }
         } else {
             args.push_back("-pix_fmt");
-            args.push_back("nv12");
+            args.push_back(qsvHardwareUpload ? "qsv" : "nv12");
         }
 
         if (externalInputIsNv12_) {
@@ -2521,7 +2544,6 @@ class VideoEncoder::Impl {
                                      "-color_range", "tv"});
         }
 
-        const auto extraArgs = splitCommandArgs(config_.ffmpegOptions);
         if (config_.codec == VideoCodec::VP9 && config_.requireEveryFrameKeyframe) {
             auto protectedOptions = detail::appendProtectedVp9Options(
                 std::move(args),
