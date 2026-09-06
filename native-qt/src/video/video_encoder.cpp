@@ -2424,6 +2424,11 @@ class VideoEncoder::Impl {
             }
             args.push_back("-minrate");
             args.push_back(std::to_string(bitrate) + "k");
+            // Every default VP9 frame is intra. libvpx's keyframe boost must
+            // not repeatedly exceed the average per-frame CBR budget. This
+            // limits the frame target, not the exact encoded packet size.
+            args.push_back("-max-intra-rate");
+            args.push_back("100");
         }
 
         if (config_.codec == VideoCodec::AV1) {

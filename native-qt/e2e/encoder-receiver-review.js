@@ -12,6 +12,9 @@ const frameIdentity = require('./frame-identity');
 const opts = Object.fromEntries(process.argv.slice(2).map(s => { const i=s.indexOf('='); return [s.slice(2,i),s.slice(i+1)]; }));
 const captureCadenceMin=Number(opts['capture-cadence-min']||0.8);
 if(!(captureCadenceMin>0&&captureCadenceMin<=1))throw Error('Capture cadence minimum must be in (0,1]');
+const bitrateCeilingRatio=Number(opts['bitrate-ceiling-ratio']||0);
+if(!Number.isFinite(bitrateCeilingRatio)||bitrateCeilingRatio<0||
+  (bitrateCeilingRatio>0&&bitrateCeilingRatio<1))throw Error('Bitrate ceiling ratio must be zero (disabled) or at least one');
 const publisher = path.resolve(opts.publisher);
 const senderExe = opts.sender ? path.resolve(opts.sender) : null;
 const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : null;
@@ -581,6 +584,15 @@ async function main() {
         if(opts['require-codec']==='1'&&!result.codecPreserved)
           throw Error('Requested codec was not preserved: '+result.receivedCodecs.join(', '));
         result.fullRate=result.stages.every(s=>s.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.95));
+        if(bitrateCeilingRatio>0) {
+          const windows=[{name:'steady',targetKbps:4000,metrics:result.stages[0].metrics},
+            ...(result.browserPause?[{name:'paused',targetKbps:4000,metrics:result.browserPause.metrics}]:[]),
+            ...(result.videoControls||[]).map((c,i)=>({name:'control-'+(i+1),targetKbps:c.target.bitrate,metrics:c.metrics}))];
+          result.bitrateCeiling={ratio:bitrateCeilingRatio,windows:windows.map(w=>({
+            name:w.name,targetKbps:w.targetKbps,kbps:w.metrics.find(m=>m.kind==='video')?.kbps}))};
+          if(result.bitrateCeiling.windows.some(w=>!Number.isFinite(w.kbps)||w.kbps>w.targetKbps*bitrateCeilingRatio))
+            throw Error('Measured receiver bitrate exceeded the requested ceiling: '+JSON.stringify(result.bitrateCeiling));
+        }
         if(opts.resize==='1'&&(result.final.source.width!==1280||result.final.source.height!==960||result.final.source.resize_count<1)) {
           throw Error('Publisher did not observe the live source resize');
         }
