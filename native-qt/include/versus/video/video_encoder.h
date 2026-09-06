@@ -73,6 +73,7 @@ struct EncoderConfig {
     int gopSize = 60;
     int bFrames = 0;
     bool lowLatency = true;
+    bool operator==(const EncoderConfig &) const = default;
 };
 
 struct EncodedPacket {
@@ -184,6 +185,10 @@ class VideoEncoder {
 
     bool initialize(const EncoderConfig &config);
     void shutdown();
+    // Caller must exclude encode/configuration calls on both instances.
+    // Callbacks remain attached to their public encoder object.
+    void swapPipeline(VideoEncoder &other);
+    uint64_t configurationRevision() const { return configurationRevision_; }
 
     bool encode(const CapturedFrame &frame, EncodedPacket &packet);
     // Encodes using the frame's normal timing while attaching an explicit,
@@ -217,6 +222,7 @@ class VideoEncoder {
     EncoderConfig requestedConfig_;
     PacketCallback packetCallback_;
     bool initialized_ = false;
+    uint64_t configurationRevision_ = 0;
     std::string fallbackReason_;
     std::atomic<bool> protectedPacketContractHealthy_{false};
 };

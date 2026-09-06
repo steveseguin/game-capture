@@ -4733,6 +4733,7 @@ VideoEncoder::VideoEncoder() : impl_(std::make_unique<Impl>()) {}
 VideoEncoder::~VideoEncoder() { shutdown(); }
 
 bool VideoEncoder::initialize(const EncoderConfig &config) {
+    ++configurationRevision_;
     config_ = config;
     requestedConfig_ = config;
     fallbackReason_.clear();
@@ -4853,6 +4854,7 @@ bool VideoEncoder::initialize(const EncoderConfig &config) {
 }
 
 void VideoEncoder::shutdown() {
+    ++configurationRevision_;
     impl_->shutdown();
     initialized_ = false;
     fallbackReason_.clear();
@@ -4885,8 +4887,25 @@ bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
 }
 
 void VideoEncoder::setBitrate(int kbps) {
+    ++configurationRevision_;
     impl_->setBitrate(kbps);
     config_.bitrate = kbps;
+}
+
+void VideoEncoder::swapPipeline(VideoEncoder &other) {
+    using std::swap;
+    swap(impl_, other.impl_);
+    swap(config_, other.config_);
+    swap(requestedConfig_, other.requestedConfig_);
+    swap(initialized_, other.initialized_);
+    swap(fallbackReason_, other.fallbackReason_);
+    const bool healthy = protectedPacketContractHealthy_.load(std::memory_order_relaxed);
+    protectedPacketContractHealthy_.store(
+        other.protectedPacketContractHealthy_.load(std::memory_order_relaxed),
+        std::memory_order_relaxed);
+    other.protectedPacketContractHealthy_.store(healthy, std::memory_order_relaxed);
+    ++configurationRevision_;
+    ++other.configurationRevision_;
 }
 
 void VideoEncoder::requestKeyframe() {

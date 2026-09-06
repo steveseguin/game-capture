@@ -4,6 +4,28 @@ const crypto = require('crypto');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const zlib = require('zlib');
+
+function encodePng(image) {
+  function chunk(type, data) {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    let crc = 0xffffffff;
+    for (const byte of body) {
+      crc ^= byte;
+      for (let bit = 0; bit < 8; ++bit) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    }
+    const size = Buffer.alloc(4), checksum = Buffer.alloc(4);
+    size.writeUInt32BE(data.length); checksum.writeUInt32BE((crc ^ 0xffffffff) >>> 0);
+    return Buffer.concat([size, body, checksum]);
+  }
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(image.width); header.writeUInt32BE(image.height, 4);
+  header[8] = 8; header[9] = 6;
+  const stride = image.width * 4, rows = Buffer.alloc((stride + 1) * image.height);
+  for (let y = 0; y < image.height; ++y) image.rgba.copy(rows, y * (stride + 1) + 1, y * stride, (y + 1) * stride);
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]), chunk('IHDR', header),
+    chunk('IDAT', zlib.deflateSync(rows)), chunk('IEND', Buffer.alloc(0))]);
+}
 
 function parsePluginRepo() {
   const prefix = '--plugin-repo=';
@@ -605,6 +627,31 @@ function main() {
 
   const evidenceDir = fs.mkdtempSync(path.join(os.tmpdir(), 'alpha-evidence-gate-'));
   try {
+    const staticOptions = { pattern: 'alpha-opaque', expectedVisualEpoch: 'pre',
+      requiredUsefulSampleCount: 4, requireEvidenceFiles: true };
+    function staticSequence(images, label) {
+      return images.map((image, index) => {
+        const analysis = analyzeAlphaCompositeImages(background, image, { ...baseOptions, ...staticOptions });
+        const bytes = encodePng(image), outputPath = path.join(evidenceDir, `${label}-${index}.png`);
+        fs.writeFileSync(outputPath, bytes);
+        return { ...sample(image, analysis, index + 1, 'pre', label), screenshot: {
+          outputPath, sha256: crypto.createHash('sha256').update(bytes).digest('hex') } };
+      });
+    }
+    const uniform = delta => makeImage(100, 100, { ...preColor, r: preColor.r + delta });
+    const subtle = staticSequence([0, 1, 2, 3].map(uniform), 'lossy-static');
+    const subtleResult = analyzeAlphaCompositeSequence(subtle, staticOptions);
+    if (!subtleResult.ok) throw new Error(`Lossy static positive control failed: ${subtleResult.failureReasons}`);
+    assertRejected('static-gradual-color-drift', analyzeAlphaCompositeSequence(
+      staticSequence([0, 2, 4, 6].map(uniform), 'drift'), staticOptions), controls);
+    const spot = uniform(0);
+    fillRect(spot, 1, 1, 1, 1, { ...preColor, r: preColor.r + 20 });
+    assertRejected('static-local-change', analyzeAlphaCompositeSequence(
+      staticSequence([uniform(0), spot, uniform(0), uniform(0)], 'spot'), staticOptions), controls);
+    const staleStatic = subtle.map(s => ({ ...s, connectionEpoch: 'post' }));
+    assertRejected('static-stale-connection', analyzeAlphaCompositeSequence(staleStatic, staticOptions), controls);
+    const wrongPixels = subtle.map(s => ({ ...s, compositePixelSha256: '0'.repeat(64) }));
+    assertRejected('static-pixel-evidence-mismatch', analyzeAlphaCompositeSequence(wrongPixels, staticOptions), controls);
     const fileBound = preMoving.map((entry, index) => {
       const outputPath = path.join(evidenceDir, `sample-${index}.bin`);
       const bytes = Buffer.from(`alpha-evidence-${index}`);

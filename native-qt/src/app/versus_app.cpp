@@ -3679,7 +3679,10 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         return true;
     }
 
-    std::lock_guard<std::mutex> lock(videoSendMutex_);
+    std::lock_guard<std::mutex> controlLock(runtimeVideoControlMutex_);
+    // Declare before lock so the retired pipeline is destroyed after unlocking.
+    std::unique_ptr<video::VideoEncoder> replacement;
+    std::unique_lock<std::mutex> lock(videoSendMutex_);
     auto nextConfig = videoConfig_;
     const int requestedWidth = width;
     const int requestedHeight = height;
@@ -3788,7 +3791,37 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     }
 
     const auto previousConfig = videoConfig_;
-    if (requiresReinit) {
+    const auto activeEncoder = videoEncoder_.activeEncoderName();
+    const bool prepareReplacement =
+        !usesVp9AlphaTrack(previousConfig) &&
+        previousConfig.codec == video::VideoCodec::H264 &&
+        (activeEncoder == "FFmpeg h264_qsv" || activeEncoder == "FFmpeg h264_nvenc");
+    if (prepareReplacement) {
+        const auto revision = videoEncoder_.configurationRevision();
+        const auto nextPrimaryConfig = primaryVideoEncoderConfig(nextConfig);
+        replacement = std::make_unique<video::VideoEncoder>();
+        spdlog::info("[App] Preparing runtime encoder replacement while streaming: {}x{} @{}fps {}kbps",
+                     nextConfig.width, nextConfig.height, nextConfig.frameRate, nextConfig.bitrate);
+        lock.unlock();
+        const bool ready = replacement->initialize(nextPrimaryConfig);
+        lock.lock();
+        if (!ready || !capturing_ || videoConfig_ != previousConfig ||
+            videoEncoder_.configurationRevision() != revision) {
+            spdlog::warn("[App] Runtime encoder replacement {}. Keeping current pipeline",
+                         ready ? "became stale during preparation" : "failed preparation");
+            return false;
+        }
+        // Only a successfully checked, clean pipeline may take over. Its old
+        // counterpart is retired after releasing videoSendMutex_, so process
+        // drain/termination cannot pause the new output worker.
+        videoEncoder_.swapPipeline(*replacement);
+        activeHqWidth_ = std::max(2, nextConfig.width & ~1);
+        activeHqHeight_ = std::max(2, nextConfig.height & ~1);
+        lastHqReconfigureMs_ = steadyNowMs();
+        hqAspectLocked_ = false;
+        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        spdlog::info("[App] Runtime encoder replacement committed");
+    } else if (requiresReinit) {
         spdlog::info("[App] Applying runtime video reconfigure: {}x{} @{}fps {}kbps",
                      nextConfig.width,
                      nextConfig.height,

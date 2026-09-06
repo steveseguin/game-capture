@@ -277,7 +277,7 @@ async function main() {
         ...(windowVideo?['--source=window',`--window=${senderName}`]:['--source=spout',`--spout-sender=${senderName}`]),
         '--audio-source=default-output',`--width=${width}`,`--height=${height}`,`--fps=${fps}`,
         '--bitrate-kbps=4000',`--video-encoder=${encoder}`,`--video-codec=${codec}`,`--duration-ms=${600000+Number(opts['soak-ms']||0)*2+Number(opts['control-cycles']||1)*60000}`,
-        ...(opts['video-controls']==='1'?['--remote-control']:[]),
+        ...((opts['video-controls']==='1'||opts['replacement-failure']==='1')?['--remote-control']:[]),
         ...(opts['ffmpeg-options']?[`--ffmpeg-options=${opts['ffmpeg-options']}`]:[]),
         ...(proxyPort?[`--server=ws://127.0.0.1:${proxyPort}`]:[]),
         '--local-control','--local-control-port=0',`--local-control-discovery=${controlPath}`,
@@ -510,6 +510,39 @@ async function main() {
             !result.packetLoss.recovery.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))
             throw Error('Full-rate moving video and audio did not recover after packet loss');
           console.log(name,'packet loss observed; moving full-rate video and audio recovered');
+        }
+        if(opts['replacement-failure']==='1') {
+          const before=await api(control,'/diagnostics');
+          if(!Number.isInteger(proc.pid)||proc.exitCode!==null)throw Error('Publisher is not running');
+          // Kill only newly created children of this publisher. Preserve its
+          // current encoder to verify failed preparation leaves live output intact.
+          const command=`$ErrorActionPreference='Stop'; $activeEncoder=@(Get-CimInstance Win32_Process -Filter "ParentProcessId = ${proc.pid} AND Name = 'ffmpeg.exe'"); if($activeEncoder.Count -ne 1){throw 'Expected one active encoder'}; $activeId=$activeEncoder[0].ProcessId; Write-Output "READY:$activeId"; $deadline=(Get-Date).AddSeconds(6); while((Get-Date) -lt $deadline){Get-CimInstance Win32_Process -Filter "ParentProcessId = ${proc.pid} AND Name = 'ffmpeg.exe'" | Where-Object ProcessId -ne $activeId | ForEach-Object {Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output "KILLED:$($_.ProcessId)"}; Start-Sleep -Milliseconds 40}`;
+          const fault=launch('powershell.exe',['-NoProfile','-Command',command],name+'-replacement-fault');
+          let output='';
+          const finished=new Promise(resolve=>fault.once('exit',code=>resolve(code)));
+          try {
+            const activePid=await new Promise((resolve,reject)=>{
+              const timeout=setTimeout(()=>reject(Error('Replacement fault helper was not ready')),10000);
+              fault.stdout.on('data',data=>{
+                output+=data.toString();const match=output.match(/READY:(\d+)/);
+                if(match){clearTimeout(timeout);resolve(Number(match[1]));}
+              });
+            });
+            await page.evaluate(({remote,bitrate})=>{
+              window.reviewChannels.find(c=>c.readyState==='open').send(JSON.stringify({action:'bitrate',remote,value:bitrate}));
+            },{remote:stream,bitrate:before.video.configured_bitrate_kbps===1000?8000:1000});
+            if(await finished!==0)throw Error('Replacement fault helper failed');
+            const killed=[...output.matchAll(/KILLED:(\d+)/g)].map(m=>Number(m[1]));
+            if(!killed.length)throw Error('No preparing encoder was faulted');
+            await sleep(2000);
+            const after=await api(control,'/diagnostics'),motion=await motionProbe(page);
+            const current=await execFileAsync('powershell.exe',['-NoProfile','-Command',
+              `Get-CimInstance Win32_Process -Filter "ParentProcessId = ${proc.pid} AND Name = 'ffmpeg.exe'" | ForEach-Object {$_.ProcessId}`],{windowsHide:true});
+            if(current.stdout.trim()!==String(activePid)||after.video.configured_bitrate_kbps!==before.video.configured_bitrate_kbps||!motion.moving)
+              throw Error('Failed preparation replaced or stopped the original encoder');
+            result.replacementFailure={activePid,killed,motion,bitrateKbps:after.video.configured_bitrate_kbps};
+            result.stages.push({name:'after-failed-replacement',metrics:await measure(page,8000)});
+          } finally {if(fault.exitCode===null)fault.kill();}
         }
         if(opts.stress==='1') {
           const second=await context.newPage();
