@@ -91,8 +91,11 @@ async function measure(page,ms) {
       fps:delta('framesDecoded')/seconds,kbps:delta('bytesReceived')*8/seconds/1000,
       framesDecoded:delta('framesDecoded'),framesDropped:delta('framesDropped'),
       packetsReceived:delta('packetsReceived'),packetsLost:delta('packetsLost'),
+      nackCount:delta('nackCount'),pliCount:delta('pliCount'),keyFramesDecoded:delta('keyFramesDecoded'),
       freezeCount:delta('freezeCount'),freezeSeconds:delta('totalFreezesDuration'),
       jitter:b.jitter,decodeMs:delta('totalDecodeTime')*1000/Math.max(1,delta('framesDecoded')),
+      jitterBufferMs:delta('jitterBufferDelay')*1000/Math.max(1,delta('jitterBufferEmittedCount')),
+      processingMs:b.kind==='video'?delta('totalProcessingDelay')*1000/Math.max(1,delta('framesDecoded')):null,
       audioRms:Math.sqrt(Math.max(0,delta('totalAudioEnergy'))/Math.max(.001,delta('totalSamplesDuration'))),
       concealedSamples:delta('concealedSamples'),totalSamples:delta('totalSamplesReceived')};
   });
@@ -276,8 +279,9 @@ async function main() {
         ...(proxyPort?[`--server=ws://127.0.0.1:${proxyPort}`]:[]),
         '--local-control','--local-control-port=0',`--local-control-discovery=${controlPath}`,
         `--diagnostics-out=${path.join(run,name+'-exit.json')}`],name,
-        {LOCALAPPDATA:run,QT_PLUGIN_PATH:path.dirname(publisher),QT_QPA_PLATFORM_PLUGIN_PATH:path.join(path.dirname(publisher),'platforms')});
-      let control,context,page;
+        {LOCALAPPDATA:run,QT_PLUGIN_PATH:path.dirname(publisher),QT_QPA_PLATFORM_PLUGIN_PATH:path.join(path.dirname(publisher),'platforms'),
+          ...(opts['frame-trace']==='1'?{VERSUS_FRAME_TRACE:path.join(run,name+'-frames.csv')}:{})});
+      let control,context,page,lossCdp;
       try {
         const deadline=Date.now()+25000;
         while(Date.now()<deadline) {
@@ -302,6 +306,15 @@ async function main() {
           }});
         });
         page=await context.newPage();
+        if(Number(opts['packet-loss']||0)>0) {
+          lossCdp=await context.newCDPSession(page);
+          await lossCdp.send('Network.enable');
+          // Chromium binds the P2P interceptor when a socket is created.
+          // Install its zero-loss profile before the viewer creates WebRTC.
+          await lossCdp.send('Network.emulateNetworkConditionsByRule',{offline:false,
+            matchedNetworkConditions:[{urlPattern:'',latency:1,downloadThroughput:-1,
+              uploadThroughput:-1,packetLoss:0}]});
+        }
         await page.goto(`https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput`,{waitUntil:'domcontentloaded',timeout:45000});
         result.initialConnectMs=await waitVideo(page);
         await sleep(2000);
@@ -456,6 +469,33 @@ async function main() {
           result.stages.push({name:'after-audio-source-restart',metrics:await measure(page,8000)});
           tone.kill();tone=launch('powershell.exe',toneArgs,'tone-restored');await sleep(2000);
         }
+        if(Number(opts['packet-loss']||0)>0) {
+          const percent=Number(opts['packet-loss']);
+          if(!Number.isFinite(percent)||percent>100)throw Error('packet-loss must be in (0,100]');
+          const cdp=lossCdp;
+          result.packetLoss={percent,baselineEmulatedLatencyMs:1};
+          try {
+            await cdp.send('Network.enable');
+            // The empty URL pattern applies CDP's documented WebRTC packet
+            // loss emulation to this receiver's P2P connections as well.
+            await cdp.send('Network.emulateNetworkConditionsByRule',{offline:false,
+              matchedNetworkConditions:[{urlPattern:'',latency:0,downloadThroughput:-1,
+                uploadThroughput:-1,packetLoss:percent}]});
+            result.packetLoss.metrics=await measure(page,12000);
+          } finally {
+            try {await cdp.send('Network.emulateNetworkConditionsByRule',{
+              offline:false,matchedNetworkConditions:[]});} finally {await cdp.detach();lossCdp=null;}
+          }
+          result.packetLoss.observed=result.packetLoss.metrics.some(m=>m.kind==='video'&&m.packetsLost>0);
+          if(!result.packetLoss.observed)throw Error('Requested WebRTC packet loss was not observed');
+          await sleep(4000);
+          result.packetLoss.recovery={metrics:await measure(page,8000),motion:await motionProbe(page)};
+          if(!result.packetLoss.recovery.motion.moving||
+            !result.packetLoss.recovery.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.95)||
+            !result.packetLoss.recovery.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))
+            throw Error('Full-rate moving video and audio did not recover after packet loss');
+          console.log(name,'packet loss observed; moving full-rate video and audio recovered');
+        }
         if(opts.stress==='1') {
           const second=await context.newPage();
           await second.goto(page.url(),{waitUntil:'domcontentloaded',timeout:45000});
@@ -538,6 +578,8 @@ async function main() {
           .filter(m=>m.kind==='video').map(m=>m.codec))];
         const expectedCodec={h264:'video/H264',h265:'video/H265',vp9:'video/VP9',av1:'video/AV1'}[codec];
         result.codecPreserved=result.receivedCodecs.every(c=>c===expectedCodec);
+        if(opts['require-codec']==='1'&&!result.codecPreserved)
+          throw Error('Requested codec was not preserved: '+result.receivedCodecs.join(', '));
         result.fullRate=result.stages.every(s=>s.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.95));
         if(opts.resize==='1'&&(result.final.source.width!==1280||result.final.source.height!==960||result.final.source.resize_count<1)) {
           throw Error('Publisher did not observe the live source resize');

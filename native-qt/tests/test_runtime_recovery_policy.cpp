@@ -12,6 +12,7 @@ class TestRuntimeRecoveryPolicy : public QObject {
     void testHardSoftwareEncoderFailuresUseCountedRecovery();
     void testOutputPacerTargetsSixtyFpsWithoutCatchupBursts();
     void testOutputPacerToleratesEncodeJitterButSkipsLongStalls();
+    void testExpiredOutputSlotIsSkippedAfterReconfiguration();
     void testAnonymousViewerResolutionHintIsSilent();
     void testExplicitResolutionControlGetsAuthorizationFeedback();
 };
@@ -96,6 +97,17 @@ void TestRuntimeRecoveryPolicy::testOutputPacerToleratesEncodeJitterButSkipsLong
     // it to 30 FPS. Bounded recovery should stay close to its actual capacity.
     QVERIFY(now - start < std::chrono::seconds(11));
     QVERIFY(now - start >= std::chrono::milliseconds(10200));
+}
+
+void TestRuntimeRecoveryPolicy::testExpiredOutputSlotIsSkippedAfterReconfiguration() {
+    using namespace versus::app;
+    const std::chrono::steady_clock::time_point due(std::chrono::seconds(1234));
+    const auto pts = outputFrameTimestamp100ns(due);
+    const auto interval = outputFrameInterval(60);
+    QVERIFY(!outputFrameSlotExpired(pts, due + std::chrono::milliseconds(17), interval));
+    QVERIFY(outputFrameSlotExpired(pts, due + std::chrono::milliseconds(700), interval));
+    QVERIFY(!outputFrameSlotExpired(pts, due + interval, interval));
+    QVERIFY(outputFrameSlotExpired(pts, due + 2 * interval, interval));
 }
 
 void TestRuntimeRecoveryPolicy::testAnonymousViewerResolutionHintIsSilent() {

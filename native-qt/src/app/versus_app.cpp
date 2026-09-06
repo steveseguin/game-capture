@@ -1,5 +1,6 @@
 #include "versus/app/versus_app.h"
 #include "versus/app/encoder_recovery_policy.h"
+#include "versus/app/frame_trace.h"
 #include "versus/app/keyframe_request_policy.h"
 #include "versus/app/remote_control_policy.h"
 
@@ -6034,6 +6035,17 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     if (!live_) {
         return false;
     }
+    // A reconfiguration can hold this lock for hundreds of milliseconds.
+    // Discard a scheduled slot that expired while waiting, before consuming
+    // keyframe requests or admitting an alpha pair. The worker will select the
+    // latest image for its next slot. Unscheduled callers use source timestamps
+    // that need not share the output clock's epoch.
+    if (outputTimestamp != std::numeric_limits<int64_t>::min() &&
+        outputFrameSlotExpired(outputTimestamp, std::chrono::steady_clock::now(),
+                               outputFrameInterval(videoConfig_.frameRate))) {
+        detail::FrameTrace::instance().record("expired", &frame, outputTimestamp);
+        return true;
+    }
     bool renegotiateH264CodecFallback = false;
     std::unique_lock<std::mutex> decisionLock(roomQualityDecisionMutex_);
     const RoomQualityDecision roomQuality = roomQualityState_.decision;
@@ -6214,6 +6226,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
         const int64_t encoderSourceTimestamp = alphaFrameAdmission.valid()
             ? alphaFrameAdmission.sourceTimestamp
             : frameOutputTimestamp;
+        detail::FrameTrace::instance().record("submit", &frame, encoderSourceTimestamp);
         const bool encodeOk = videoEncoder_.encodeWithSourceTimestamp(
             frame,
             hqPacket,
@@ -6595,6 +6608,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     const auto sendStart = std::chrono::steady_clock::now();
 
     if (haveHqPacket) {
+        detail::FrameTrace::instance().record("packet", nullptr, hqPacket.sourceTimestamp);
         webrtc::EncodedVideoPacket packet;
         packet.data = hqPacket.data;
         packet.pts = hqPacket.sourceTimestamp;
@@ -6961,6 +6975,8 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
 
     const video::EncoderConfig config = videoStateSnapshot().config;
     compositeAlphaBackground(frame, config);
+
+    detail::FrameTrace::instance().record("capture", &frame, 0);
 
     const auto sharedFrame = std::make_shared<const video::CapturedFrame>(std::move(frame));
     {
@@ -7512,13 +7528,31 @@ void VersusApp::startEncodeThread() {
             const VideoStateSnapshot videoState = videoStateSnapshot();
             const auto frameInterval = outputFrameInterval(
                 std::max(1, videoState.config.frameRate));
-            const auto scheduledFrameDue = nextFrameDue;
+            auto scheduledFrameDue = nextFrameDue;
             {
                 std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
                 encodeFrameCV_.wait_until(
                     lock,
                     scheduledFrameDue,
                     [this] { return !encodeThreadRunning_.load(); });
+                // Independent capture/output clocks can straddle a compositor
+                // update. Briefly wait for that fresh image before replaying the
+                // cached one; static sources still keep the output cadence.
+                if (!encodeFrameReady_ && encodeThreadRunning_.load()) {
+                    const auto grace = std::min(frameInterval / 4,
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            std::chrono::milliseconds(4)));
+                    const bool fresh = encodeFrameCV_.wait_until(lock, scheduledFrameDue + grace, [this] {
+                        return !encodeThreadRunning_.load() || encodeFrameReady_;
+                    });
+                    // Follow the capture phase after a successful fresh-frame
+                    // wait. Otherwise every slot can keep landing just before
+                    // capture arrives. A timeout must not shift the clock:
+                    // paused sources still need full-rate cached output.
+                    if (fresh && encodeThreadRunning_.load()) {
+                        scheduledFrameDue = Clock::now();
+                    }
+                }
                 if (!encodeThreadRunning_.load()) {
                     break;
                 }

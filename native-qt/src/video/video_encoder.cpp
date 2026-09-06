@@ -2252,7 +2252,10 @@ class VideoEncoder::Impl {
         const int height = std::max(1, config_.height);
         const int frameRate = std::max(1, config_.frameRate);
         const int bitrate = std::max(250, config_.bitrate);
-        const int maxBitrate = std::max(bitrate, std::max(250, config_.maxBitrate));
+        // libvpx selects CBR only when minrate == maxrate == bitrate. Using
+        // the general ceiling here silently selected VBR even at lower targets.
+        const int maxBitrate = config_.codec == VideoCodec::VP9
+            ? bitrate : std::max(bitrate, std::max(250, config_.maxBitrate));
         const int gop = config_.lowLatency
             ? std::max(1, std::min(std::max(1, config_.gopSize), frameRate))
             : std::max(1, config_.gopSize);
@@ -2390,7 +2393,7 @@ class VideoEncoder::Impl {
         } else if (encoderName == "libvpx-vp9") {
             // Real-time low-latency VP9 settings.
             // Use all-keyframes so viewers can recover without relying on RTCP PLI handling.
-            // -minrate = bitrate: force CBR (VP9 VBR by default).
+            // Match minrate to bitrate and maxrate to select libvpx CBR.
             const int vp9Threads = recommendedRealtimeVp9Threads(width, height);
             spdlog::info("[FFmpegEncoder] libvpx-vp9 realtime threads={} row-mt=1 tile-columns=2 tile-rows=1 frame-parallel=1",
                          vp9Threads);

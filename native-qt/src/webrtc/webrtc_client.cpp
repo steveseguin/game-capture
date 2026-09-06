@@ -723,6 +723,11 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             packetizer->addToChain(nack);
             packetizer->addToChain(pli);
             track->setMediaHandler(packetizer);
+        } else if (codec == PeerConfig::VideoCodec::VP9) {
+            // Manual VP9 already supplies complete RTP packets. Cache those
+            // packets directly so receiver NACKs can recover a missing fragment
+            // without discarding the entire independently decodable frame.
+            track->setMediaHandler(std::make_shared<rtc::RtcpNackResponder>());
         }
         const bool open = track->isOpen();
         {
@@ -766,6 +771,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         });
         auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
             target->alphaVideoSsrc, "gamecapture-alpha", kAlphaVideoPayloadType, kVideoClockRate);
+        track->setMediaHandler(std::make_shared<rtc::RtcpNackResponder>());
         const bool open = track->isOpen();
         {
             std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);

@@ -70,4 +70,16 @@ inline std::chrono::steady_clock::time_point outputFrameDeadlineAfterEncode(
                                 : advanceOutputFrameDeadline(scheduledDeadline, now, interval);
 }
 
+// Match the pacer's one-late-slot allowance when an output task blocks before
+// encoding (for example on the encoder reconfiguration mutex).
+inline bool outputFrameSlotExpired(
+    int64_t scheduledTimestamp100ns,
+    std::chrono::steady_clock::time_point now,
+    std::chrono::nanoseconds interval) {
+    const auto deadline = std::chrono::steady_clock::time_point(
+        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::nanoseconds(scheduledTimestamp100ns * 100)));
+    return now >= deadline + 2 * interval;
+}
+
 }  // namespace versus::app
