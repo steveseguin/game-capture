@@ -21,6 +21,9 @@ const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : 
 if(opts['frame-identity']==='1'&&!windowVideo)throw Error('Frame identity requires --window-video');
 if(opts['handover-identity']==='1'&&opts['frame-identity']!=='1')throw Error('Handover identity requires --frame-identity=1');
 if(opts['identity-recording']==='1'&&opts['frame-identity']!=='1')throw Error('Identity recording requires --frame-identity=1');
+if(opts.sustained==='1'&&(!windowVideo||opts['frame-identity']!=='1'||opts.faults!=='1'||
+  !(Number(opts['packet-loss'])>0)||!(Number(opts['soak-ms'])>=60000)))
+  throw Error('Sustained review requires browser frame identities, faults, packet loss and at least 60 seconds');
 if(opts['obs-cadence']==='1'&&(!opts['obs-plugin-repo']||opts['video-controls']!=='1'))throw Error('OBS cadence requires the OBS runtime and --video-controls=1');
 if(opts['obs-plugin-repo']&&(!senderExe||opts['color-check']==='1'))throw Error('OBS alpha runtime requires the moving Spout fixture');
 if (!senderExe && !windowVideo) throw Error('--sender or --window-video is required');
@@ -193,8 +196,10 @@ async function audioProbe(page) {
 }
 async function main() {
   const fps=Number(opts.fps||30), width=Number(opts.width||1280),height=Number(opts.height||720);
+  const fixtureDuration=Math.max(1800000,(600000+Number(opts['soak-ms']||0)*2+Number(opts['control-cycles']||1)*60000)*
+    (opts.cases||'auto:h264,software:h264,nvenc:h264,ffmpeg_nvenc:h264,qsv:h264,amf:h264,auto:vp9,auto:av1,auto:h265').split(',').length);
   const senderName='ReceiverReview_'+crypto.randomUUID().replaceAll('-','');
-  const senderArgs=[`--name=${senderName}`,`--width=${width}`,`--height=${height}`,`--fps=${Number(opts['source-fps']||fps)}`,`--pattern=${opts['obs-plugin-repo']?'alpha-moving-edge':opts['color-check']==='1'?'color-bars':'animated'}`,'--duration-ms=1800000'];
+  const senderArgs=[`--name=${senderName}`,`--width=${width}`,`--height=${height}`,`--fps=${Number(opts['source-fps']||fps)}`,`--pattern=${opts['obs-plugin-repo']?'alpha-moving-edge':opts['color-check']==='1'?'color-bars':'animated'}`,`--duration-ms=${fixtureDuration}`];
   if(opts.resize==='1')senderArgs.push('--resize-after-ms=20000','--resize-width=1280','--resize-height=960');
   if(opts['frame-trace']==='1')senderArgs.push(`--frame-trace=${path.join(run,'source-frames.csv')}`);
   if(opts['source-precise-pacing']==='0')senderArgs.push('--precise-pacing=0');
@@ -222,7 +227,7 @@ async function main() {
     sourcePage=await sourceContext.newPage();await sourcePage.goto(fixtureServer.url);
     await sourcePage.waitForFunction(()=>document.querySelector('video').currentTime>1);
   }
-  const toneArgs=['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'audio-test-tone.ps1'),'-DurationMs','1800000','-Amplitude','0.08'];
+  const toneArgs=['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'audio-test-tone.ps1'),'-DurationMs',String(fixtureDuration),'-Amplitude','0.08'];
   let tone=launch('powershell.exe',toneArgs,'tone');
   await sleep(2500);
   const browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
@@ -575,9 +580,14 @@ async function main() {
             result.packetLoss.metrics=await measure(page,12000);
           } finally {
             try {await cdp.send('Network.emulateNetworkConditionsByRule',{
-              offline:false,matchedNetworkConditions:[]});} finally {await cdp.detach();lossCdp=null;}
+              offline:false,matchedNetworkConditions:opts.sustained==='1'?
+                [{urlPattern:'',latency:1,downloadThroughput:-1,uploadThroughput:-1,packetLoss:0}]:[]});}
+            finally {if(opts.sustained!=='1'){await cdp.detach();lossCdp=null;}}
           }
-          result.packetLoss.observed=result.packetLoss.metrics.some(m=>m.kind==='video'&&m.packetsLost>0);
+          // packetsLost is a net estimate: successful retransmission can bring
+          // it back to zero. Receiver NACKs also prove missing video packets.
+          result.packetLoss.observed=result.packetLoss.metrics.some(m=>
+            m.kind==='video'&&(m.packetsLost>0||m.nackCount>0));
           if(!result.packetLoss.observed)throw Error('Requested WebRTC packet loss was not observed');
           await sleep(4000);
           result.packetLoss.recovery={metrics:await measure(page,8000),motion:await motionProbe(page)};
@@ -586,6 +596,7 @@ async function main() {
             !result.packetLoss.recovery.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))
             throw Error('Full-rate moving video and audio did not recover after packet loss');
           console.log(name,'packet loss observed; moving full-rate video and audio recovered');
+          if(obsAlpha)await obsAlpha.sample('browser-packet-loss-recovery');
         }
         if(opts['rapid-controls']==='1') {
           const burstStarted=Date.now();
@@ -719,6 +730,7 @@ async function main() {
           if(!result.signalingReconnected)throw Error('Publisher did not reconnect signaling');
           await page.reload({waitUntil:'domcontentloaded'});await waitVideo(page);
           result.stages.push({name:'after-signaling-outage',metrics:await measure(page,8000)});
+          if(obsAlpha)await obsAlpha.sample('signaling-outage-recovery');
           if(sender) {
             sender.kill();result.sourceOutage={metrics:await measure(page,6000)};
             sender=launch(senderExe,senderArgs,'source-restarted');
@@ -726,6 +738,9 @@ async function main() {
             result.stages.push({name:'after-source-restart',metrics:await measure(page,8000)});
             result.restartedMotion=await motionProbe(page);
             await saveFrame(page,name+'-source-restarted');
+            if(obsAlpha)await obsAlpha.sample('source-restart-recovery');
+            if(obsAlpha&&opts['obs-cadence']==='1')
+              await obsAlpha.recordCadence(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'));
           }
         }
         if(opts.observe==='1') {
@@ -733,7 +748,17 @@ async function main() {
           result.extendedMotion=await motionProbe(page);
           if(!result.extendedMotion.moving)throw Error('Extended recovery returned a frozen image');
         }
-        if(Number(opts['soak-ms']||0)>0) {
+        if(opts.sustained==='1') {
+          result.sustained=await require('./sustained-review').run({page,context,sourcePage,control,proc,name,
+            output:run,publisher,fps,duration:Number(opts['soak-ms']),measure,stats,motionProbe,audioProbe,api,
+            waitVideo,refreshTransport,sleep,lossCdp,interruptSignaling:async()=>{
+              const before=proxyConnections,startedMs=Date.now();blockedUntil=Date.now()+5000;
+              for(const upstream of upstreams)upstream.terminate();
+              while(proxyConnections<=before&&Date.now()-startedMs<45000)await sleep(300);
+              if(proxyConnections<=before)throw Error('Signaling failed to reconnect during sustained review');
+              return {before,after:proxyConnections,recoveredMs:Date.now()-startedMs};
+            }});
+        } else if(Number(opts['soak-ms']||0)>0) {
           result.soak=[];
           for(let elapsed=0;elapsed<Number(opts['soak-ms']);elapsed+=30000) {
             let reconnect;
@@ -755,6 +780,7 @@ async function main() {
             if(!sample.motion.moving||!sample.metrics.some(m=>m.kind==='video'&&m.fps>=fps*.95))throw Error('Soak lost moving full-rate video');
             if(!sample.metrics.some(m=>m.kind==='audio'&&m.audioRms>.001))throw Error('Soak lost audio');
             if(sample.identity)requireReadableIdentity(sample.identity);
+            if(obsAlpha)sample.obsAlpha=await obsAlpha.sample('soak-'+result.soak.length);
           }
         }
         result.final=await api(control,'/diagnostics');

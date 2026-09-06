@@ -156,6 +156,7 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
         frames,changedFrames:changed,changedFramesPerSecond:changed/(frames/recordedFps),
         maxHeldMs:maxHeld*1000/recordedFps,meanPixelChanges:changes,leftEdges,edgeChangesPerSecond:edgeChanges/recordedSeconds};
       evidence.cadence.minimumChangedFps=fps*cadenceMinimum;
+      (evidence.cadenceRecordings||=[]).push(evidence.cadence);
       fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
       if(frames<recordedFps*ms/1000*.9||evidence.cadence.changedFramesPerSecond<fps*cadenceMinimum||
         evidence.cadence.edgeChangesPerSecond<fps*cadenceMinimum)
