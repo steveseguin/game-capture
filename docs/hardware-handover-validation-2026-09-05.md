@@ -99,7 +99,7 @@ but no dedicated E2E race injection in this run.
 
 The checker resides in the companion `ninja-plugin` repository at
 `scripts/obs-websocket-vdoninja-source-check.cjs`
-([companion change 0cafee7](https://github.com/steveseguin/ninja-obs-plugin/commit/0cafee7)). A static source need not have
+([companion change e499cf6](https://github.com/steveseguin/ninja-obs-plugin/commit/e499cf6)). A static source need not have
 bit-identical decoded images after lossy VP9 encoding. Different decoded hashes
 now trigger comparison against the first useful frame, with limits of 3/255
 mean absolute error in every channel and 16/255 for any individual channel.
@@ -147,6 +147,17 @@ The plugin DLL remained SHA256
 `396cf33a6ee31de7cecb82d3e343b10dd741d3fe367c43b51a3086cfd0210f47`;
 only its JavaScript checker changed. Moving alpha and alpha reconfiguration
 were not part of these static OBS workflows.
+
+The companion remote advanced before push. The checker-only change was
+cherry-picked onto current remote main in an isolated checkout, preserving
+the original checkout's unrelated package edits. Upstream had also changed
+the checker's OBS authentication/audio-wait paths. The integrated checker
+(SHA256 `36f533d820967a2ea97f938e5254419beabbbf13851badbc82206f995551cde3`)
+passed the same 53-negative-control gate and both real OBS workflows again.
+Final integration artifacts:
+`native-qt/qa/reports/hardware-handover-alpha-integrated-gate.json` and
+`native-qt/qa/reports/prepared-hardware-alpha-integrated/manifest.json`.
+The packaged publisher and plugin DLL hashes remained unchanged.
 
 ## Final gates
 
