@@ -72,6 +72,7 @@ class TestAlphaFramePairer : public QObject {
     void testAdmissionTrackerMapsDelayedAndDuplicateTimestamps();
     void testAdmissionTrackerZeroSentinelAndGenerationReset();
     void testKeyframeAndMonotonicAdmission();
+    void testH264MissingPairRequiresNewPredictionChain();
     void testWireTimestampPolicyAdvancesDuplicateBackwardAndDelayedFrames();
     void testLatePreResetSourceRejectedEvenWithNewTransportPts();
     void testPausedPreTransitionAdmissionCannotReachNewTransport();
@@ -92,6 +93,22 @@ class TestAlphaFramePairer : public QObject {
     void testAlphaFailureSuppressesPrimary();
     void testDispatchIsAlphaFirstAndAtomicAgainstReset();
 };
+
+void TestAlphaFramePairer::testH264MissingPairRequiresNewPredictionChain() {
+    versus::app::ExactAlphaFramePair pair;
+    pair.primary = makePacket(100, 1, 1, false);
+    pair.primary.packet.codec = versus::video::VideoCodec::H264;
+    pair.primary.encodedSequence = 12;
+    QVERIFY(versus::app::preservesAlphaPrimaryPredictionChain(pair, 11));
+    QVERIFY(!versus::app::preservesAlphaPrimaryPredictionChain(pair, 10));
+    QVERIFY(!versus::app::preservesAlphaPrimaryPredictionChain(pair, 12));
+    QVERIFY(!versus::app::preservesAlphaPrimaryPredictionChain(pair, 0));
+    pair.primary.packet.isKeyframe = true;
+    QVERIFY(versus::app::preservesAlphaPrimaryPredictionChain(pair, 10));
+    QVERIFY(versus::app::preservesAlphaPrimaryPredictionChain(pair, 0));
+    pair.primary.packet.codec = versus::video::VideoCodec::VP9;
+    QVERIFY(versus::app::preservesAlphaPrimaryPredictionChain(pair, 10));
+}
 
 void TestAlphaFramePairer::testExactSourcePtsPairsWithoutRetimestamping() {
     versus::app::ExactAlphaFramePairer pairer;

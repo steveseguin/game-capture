@@ -1,4 +1,5 @@
 #include "versus/video/spout_capture.h"
+#include "versus/video/frame_waiter.h"
 
 #include <algorithm>
 #include <cctype>
@@ -208,10 +209,12 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                      impl_->senderFormat);
 
         int receiveFailureCount = 0;
-        int senderInfoPollCount = 0;
         int previousFps = 0;
         long lastSenderFrame = -1;
-        int staleFrameCount = 0;
+        auto nextCaptureDue = std::chrono::steady_clock::now();
+        auto nextSenderInfoPoll = nextCaptureDue;
+        auto lastFreshFrame = nextCaptureDue;
+        detail::FrameWaiter frameWaiter;
         const std::string requestedSenderName = impl_->activeSenderName;
         struct SenderMetadata {
             std::string name;
@@ -308,21 +311,21 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
         while (capturing_.load(std::memory_order_acquire)) {
             const int targetFps = impl_->targetFps.load(std::memory_order_relaxed);
             const auto frameInterval = std::chrono::milliseconds(std::max(1, 1000 / targetFps));
+            const auto capturePeriod = std::chrono::nanoseconds(1000000000LL / targetFps);
             const int reconnectThreshold = std::max(10, targetFps / 2);
-            const int staleFrameThreshold = std::max(30, targetFps * 2);
             if (targetFps != previousFps) {
-                // Restart frame-count based timeouts at the new cadence.
                 receiveFailureCount = 0;
-                senderInfoPollCount = 0;
-                staleFrameCount = 0;
+                nextCaptureDue = std::chrono::steady_clock::now();
+                lastFreshFrame = nextCaptureDue;
                 previousFps = targetFps;
             }
-            senderInfoPollCount++;
-            if (senderInfoPollCount >= reconnectThreshold) {
-                senderInfoPollCount = 0;
+            frameWaiter.waitUntil(nextCaptureDue);
+            if (!capturing_.load(std::memory_order_acquire)) break;
+            if (std::chrono::steady_clock::now() >= nextSenderInfoPoll) {
+                nextSenderInfoPoll = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
                 if (reconnectToActiveSender("Detected sender metadata change", false)) {
                     receiveFailureCount = 0;
-                    staleFrameCount = 0;
+                    lastFreshFrame = std::chrono::steady_clock::now();
                     lastSenderFrame = -1;
                     std::this_thread::sleep_for(frameInterval);
                     continue;
@@ -350,7 +353,7 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                              impl_->senderHeight,
                              impl_->senderFormat);
                 receiveFailureCount = 0;
-                staleFrameCount = 0;
+                lastFreshFrame = std::chrono::steady_clock::now();
                 lastSenderFrame = -1;
                 std::this_thread::sleep_for(frameInterval);
                 continue;
@@ -368,7 +371,7 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                 if (receiveFailureCount >= reconnectThreshold) {
                     reconnectToActiveSender("Reconnected", true);
                     receiveFailureCount = 0;
-                    staleFrameCount = 0;
+                    lastFreshFrame = std::chrono::steady_clock::now();
                     lastSenderFrame = -1;
                 }
                 std::this_thread::sleep_for(frameInterval);
@@ -378,18 +381,19 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
 
             const long senderFrame = receiver->GetSenderFrame();
             if (senderFrame > 0 && senderFrame == lastSenderFrame) {
-                staleFrameCount++;
-            } else {
-                staleFrameCount = 0;
-                lastSenderFrame = senderFrame;
-            }
-            if (staleFrameCount >= staleFrameThreshold) {
-                reconnectToActiveSender("Reconnected stale sender", true);
-                staleFrameCount = 0;
-                lastSenderFrame = -1;
-                std::this_thread::sleep_for(frameInterval);
+                // ReceiveImage reports connection success even when no new
+                // sender frame was copied. Retry promptly instead of stamping
+                // old pixels as fresh and sleeping another whole frame period.
+                if (std::chrono::steady_clock::now() - lastFreshFrame >= std::chrono::seconds(2)) {
+                    reconnectToActiveSender("Reconnected stale sender", true);
+                    lastFreshFrame = std::chrono::steady_clock::now();
+                    lastSenderFrame = -1;
+                }
+                frameWaiter.waitUntil(std::chrono::steady_clock::now() + std::chrono::milliseconds(1));
                 continue;
             }
+            lastSenderFrame = senderFrame;
+            lastFreshFrame = std::chrono::steady_clock::now();
 
             CapturedFrame frame;
             frame.width = static_cast<int>(impl_->senderWidth);
@@ -403,7 +407,11 @@ bool SpoutCapture::startCapture(const std::string &senderName, int, int, int fps
                 frameCallback_(std::move(frame));
             }
 
-            receiver->HoldFps(targetFps);
+            // Use an absolute clock: HoldFps rounds each sleep to milliseconds
+            // and reanchors every iteration, allowing source/receiver drift.
+            // Do not catch up with a burst after a stopped or slow sender.
+            nextCaptureDue = std::max(nextCaptureDue + capturePeriod,
+                                      std::chrono::steady_clock::now());
         }
 
         receiver->ReleaseReceiver();

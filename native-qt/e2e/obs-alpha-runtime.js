@@ -6,7 +6,8 @@ const {promisify}=require('util');
 const exec=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 
-exports.start=async function({repo,stream,output,expectedPluginHash,width,height,fps}) {
+exports.start=async function({repo,stream,output,expectedPluginHash,width,height,fps,alpha=true,cadenceMinimum=.95}) {
+  if(!(cadenceMinimum>0&&cadenceMinimum<=1))throw Error('OBS cadence minimum must be in (0,1]');
   repo=path.resolve(repo);
   fs.mkdirSync(output,{recursive:true});
   if(!/^[a-f0-9]{64}$/i.test(expectedPluginHash||''))throw Error('Expected OBS plugin SHA256 is required');
@@ -34,7 +35,7 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
   fs.writeFileSync(configPath,JSON.stringify({...config,server_enabled:true,auth_required:false,server_port:port}));
   let proc,client,previousScene,previousVideo,previousRecordDirectory,recording=false;
   const stamp=Date.now(),scene=`Capture runtime ${stamp}`,input=`Capture receiver ${stamp}`,background=`Capture background ${stamp}`;
-  const evidence={checkerSha256:hash(fs.readFileSync(checker)),samples:[]};
+  const evidence={alpha,checkerSha256:hash(fs.readFileSync(checker)),samples:[]};
   const log=fs.createWriteStream(path.join(output,'obs-runtime.log'));
   async function waitRecording(active) {
     const deadline=Date.now()+15000;
@@ -130,17 +131,47 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
       const recordedSeconds=times.length?Number(times.at(-1)[1])/1000000:0;
       if(!(recordedSeconds>0&&frames>0)||bytes.length%frameBytes)throw Error('OBS recording could not be decoded completely');
       const recordedFps=frames/recordedSeconds;
-      evidence.cadence={file,sha256:hash(fs.readFileSync(file)),recordedSeconds,recordedFps,seconds,before,after,
+      // Read the fixture's moving blue left edge at full output resolution.
+      // This independently checks identity changes instead of counting tiny
+      // codec noise as new images in the reduced-resolution difference metric.
+      const scan=await exec(ffmpeg,['-v','error','-i',file,'-an','-vf','format=rgb24,crop=iw:1:0:ih/2',
+        '-fps_mode','passthrough','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],
+        {windowsHide:true,encoding:null,maxBuffer:16*1024*1024});
+      const leftEdges=[];
+      for(let offset=0;offset<scan.stdout.length;offset+=width*3) {
+        let left=-1;
+        for(let x=0;x<width;x++) {
+          const p=offset+x*3;
+          if(scan.stdout[p]<100&&scan.stdout[p+1]>35&&scan.stdout[p+1]<160&&scan.stdout[p+2]>160){left=x;break;}
+        }
+        leftEdges.push(left);
+      }
+      if(leftEdges.length!==frames||leftEdges.some(x=>x<0))throw Error('OBS recording has unreadable moving-edge identities');
+      const edgeChanges=leftEdges.slice(1).filter((x,i)=>Math.abs(x-leftEdges[i])>2).length;
+      evidence.cadence={file,sha256:hash(fs.readFileSync(file)),recordingStartMs:start,recordingEndMs:start+seconds*1000,
+        recordedSeconds,recordedFps,seconds,before,after,
         renderFps:(after.renderTotalFrames-before.renderTotalFrames)/seconds,
         renderSkipped:after.renderSkippedFrames-before.renderSkippedFrames,
         outputSkipped:after.outputSkippedFrames-before.outputSkippedFrames,
         frames,changedFrames:changed,changedFramesPerSecond:changed/(frames/recordedFps),
-        maxHeldMs:maxHeld*1000/recordedFps,meanPixelChanges:changes};
+        maxHeldMs:maxHeld*1000/recordedFps,meanPixelChanges:changes,leftEdges,edgeChangesPerSecond:edgeChanges/recordedSeconds};
+      evidence.cadence.minimumChangedFps=fps*cadenceMinimum;
       fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
-      if(frames<recordedFps*ms/1000*.9||evidence.cadence.changedFramesPerSecond<fps*.8)
+      if(frames<recordedFps*ms/1000*.9||evidence.cadence.changedFramesPerSecond<fps*cadenceMinimum||
+        evidence.cadence.edgeChangesPerSecond<fps*cadenceMinimum)
         throw Error('OBS recording did not preserve moving-frame cadence');
       return evidence.cadence;
     },async sample(label) {
+      if(!alpha) {
+        const samples=[],deadline=Date.now()+20000;
+        while(Date.now()<deadline&&(samples.length<10||new Set(samples.map(s=>s.sha256)).size<5)) {
+          await sleep(80);samples.push(await screenshot(`obs-${label}-${samples.length+1}`));
+        }
+        const result={label,alpha:false,samples};evidence.samples.push(result);
+        fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
+        if(new Set(samples.map(s=>s.sha256)).size<5)throw Error('OBS opaque video did not move');
+        return result;
+      }
       const samples=[],deadline=Date.now()+20000;let useful=0,previousStart=0;
       while(useful<10&&Date.now()<deadline) {
         await sleep(Math.max(0,previousStart+80-Date.now()));previousStart=Date.now();

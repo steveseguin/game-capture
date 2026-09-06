@@ -599,7 +599,7 @@ if(VERSUS_BUILD_TESTS)
 
         add_executable(spout_test_sender tests/spout_test_sender.cpp)
         target_link_libraries(spout_test_sender PRIVATE SpoutLibrary_static)
-        target_include_directories(spout_test_sender PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary)
+        target_include_directories(spout_test_sender PRIVATE ${spout2_SOURCE_DIR}/SPOUTSDK/SpoutLibrary ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
         add_executable(ffmpeg_probe_hang_helper tests/ffmpeg_probe_hang_helper.cpp)
         add_executable(ffmpeg_encoder_stall_helper tests/ffmpeg_encoder_stall_helper.cpp)

@@ -2,6 +2,7 @@
 #include "versus/app/video_control_snapshot.h"
 #include "versus/app/encoder_recovery_policy.h"
 #include "versus/app/frame_trace.h"
+#include "versus/video/frame_waiter.h"
 #include "versus/app/keyframe_request_policy.h"
 #include "versus/app/remote_control_policy.h"
 
@@ -6638,7 +6639,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     std::vector<ExactAlphaFramePair> completedAlphaPairs;
     if (alphaWorkflowForFrame) {
         ExactAlphaFramePacket completedAlpha;
-        if (takeLatestAlphaPacket(completedAlpha)) {
+        while (takeNextAlphaPacket(completedAlpha)) {
             if (auto pair = alphaFramePairer_.submitAlpha(std::move(completedAlpha))) {
                 completedAlphaPairs.push_back(std::move(*pair));
             }
@@ -6659,7 +6660,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     const auto sendStart = std::chrono::steady_clock::now();
 
     if (haveHqPacket) {
+        ++primaryPacketSequence_;
         detail::FrameTrace::instance().record("packet", nullptr, hqPacket.sourceTimestamp);
+        if (hqPacket.isKeyframe) detail::FrameTrace::instance().record("keyframe", nullptr, hqPacket.sourceTimestamp);
         webrtc::EncodedVideoPacket packet;
         packet.data = hqPacket.data;
         packet.pts = hqPacket.sourceTimestamp;
@@ -6716,6 +6719,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 completedPrimary.packet = std::move(hqPacket);
                 completedPrimary.pipelineGeneration = admission->pipelineGeneration;
                 completedPrimary.sourceAdmissionSequence = admission->sequence;
+                completedPrimary.encodedSequence = primaryPacketSequence_;
                 completedPrimary.encodedWidth = primaryFrameWidth;
                 completedPrimary.encodedHeight = primaryFrameHeight;
                 if (auto pair = alphaFramePairer_.submitPrimary(std::move(completedPrimary))) {
@@ -6729,6 +6733,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     // Queue alpha first, then the exact matching primary, while holding the
     // peer operation lock so a transport reset cannot split the pair.
     for (const auto &pair : completedAlphaPairs) {
+        detail::FrameTrace::instance().record("alpha-pair", nullptr, pair.primary.packet.sourceTimestamp);
         if (pair.primary.pipelineGeneration !=
                 alphaPipelineGeneration_.load(std::memory_order_acquire)) {
             continue;
@@ -6823,6 +6828,17 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                         !canStartAlphaTransportWithPair(pair)) {
                         return false;
                     }
+                    if (!preservesAlphaPrimaryPredictionChain(pair,
+                            peer->lastAlphaPrimaryEncodedSequence.load(std::memory_order_relaxed))) {
+                        // Missing an alpha half must not let the next H.264 P
+                        // frame reference a primary packet this peer never got.
+                        peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+                        reservePeerAlphaAdmissionCutoff(peer);
+                        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                        lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                        detail::FrameTrace::instance().record("alpha-chain-gap", nullptr, pair.primary.packet.sourceTimestamp);
+                        return false;
+                    }
                     const uint64_t clientGeneration = peer->client->transportGeneration();
                     {
                         std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
@@ -6884,6 +6900,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
 
+            detail::FrameTrace::instance().record("alpha-sent", nullptr, pair.primary.packet.sourceTimestamp);
+            peer->lastAlphaPrimaryEncodedSequence.store(pair.primary.encodedSequence, std::memory_order_relaxed);
             sentAny = true;
             videoBytesSentThisCall += primaryPacket.data.size();
             primaryPtsSentThisCall.push_back(primaryPacket.pts);
@@ -7031,10 +7049,16 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
     detail::FrameTrace::instance().record("capture", &frame, 0);
 
     const auto sharedFrame = std::make_shared<const video::CapturedFrame>(std::move(frame));
+    // Publish to the paced encode worker without encoding on the capture thread.
     {
+        std::lock_guard<std::mutex> notifyLock(encodeNotifyMutex_);
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        if (encodeFrameReady_) {
+            videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+        }
         pendingVideoFrame_ = sharedFrame;
         cachedVideoFrame_ = sharedFrame;
+        encodeFrameReady_ = true;
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -7044,17 +7068,6 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
         lastLog = now;
     }
 
-    // Notify the encode thread instead of encoding inline.
-    // This decouples capture from encoding so the frame producer can deliver
-    // the next frame immediately without waiting for encode to finish.
-    {
-        std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
-        if (encodeFrameReady_) {
-            videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
-        }
-        encodeFrameReady_ = true;
-    }
-    encodeFrameCV_.notify_one();
 }
 
 void VersusApp::startSignalingRecovery() {
@@ -7329,8 +7342,7 @@ void VersusApp::startAlphaEncodeThread() {
                 }
                 {
                     std::lock_guard<std::mutex> packetLock(alphaPacketMutex_);
-                    latestAlphaPacket_ = ExactAlphaFramePacket{};
-                    latestAlphaPacketReady_ = false;
+                    completedAlphaPackets_.clear();
                 }
                 if (initialized) {
                     spdlog::info("[AlphaEncodeThread] Reconfigured VP9 alpha encoder: {}x{} {}kbps",
@@ -7416,15 +7428,21 @@ void VersusApp::startAlphaEncodeThread() {
                     }
                 }
                 std::lock_guard<std::mutex> packetLock(alphaPacketMutex_);
-                if (latestAlphaPacketReady_) {
+                // Keep completed masks until the primary worker can match
+                // them. A single latest slot loses valid pairs when two
+                // completions straddle a consumer tick, breaking H.264's
+                // prediction chain as well as dropping visible VP9 frames.
+                if (completedAlphaPackets_.size() >= 16) {
+                    completedAlphaPackets_.pop_front();
                     alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
                 }
-                latestAlphaPacket_.packet = std::move(alphaPacket);
-                latestAlphaPacket_.pipelineGeneration = admission->pipelineGeneration;
-                latestAlphaPacket_.sourceAdmissionSequence = admission->sequence;
-                latestAlphaPacket_.encodedWidth = job.width;
-                latestAlphaPacket_.encodedHeight = job.height;
-                latestAlphaPacketReady_ = true;
+                ExactAlphaFramePacket completed;
+                completed.packet = std::move(alphaPacket);
+                completed.pipelineGeneration = admission->pipelineGeneration;
+                completed.sourceAdmissionSequence = admission->sequence;
+                completed.encodedWidth = job.width;
+                completed.encodedHeight = job.height;
+                completedAlphaPackets_.push_back(std::move(completed));
                 continue;
             }
 
@@ -7472,8 +7490,7 @@ void VersusApp::clearAlphaEncodeQueues() {
     }
     {
         std::lock_guard<std::mutex> lock(alphaPacketMutex_);
-        latestAlphaPacket_ = ExactAlphaFramePacket{};
-        latestAlphaPacketReady_ = false;
+        completedAlphaPackets_.clear();
     }
     alphaFramePairer_.clear();
 }
@@ -7532,24 +7549,20 @@ void VersusApp::queueAlphaEncoderReconfigure(video::EncoderConfig config) {
     }
     {
         std::lock_guard<std::mutex> lock(alphaPacketMutex_);
-        if (latestAlphaPacketReady_) {
-            alphaFramesDropped_.fetch_add(1, std::memory_order_relaxed);
-        }
-        latestAlphaPacket_ = ExactAlphaFramePacket{};
-        latestAlphaPacketReady_ = false;
+        alphaFramesDropped_.fetch_add(completedAlphaPackets_.size(), std::memory_order_relaxed);
+        completedAlphaPackets_.clear();
     }
     alphaFramePairer_.clear();
     alphaEncodeCV_.notify_one();
 }
 
-bool VersusApp::takeLatestAlphaPacket(ExactAlphaFramePacket &packet) {
+bool VersusApp::takeNextAlphaPacket(ExactAlphaFramePacket &packet) {
     std::lock_guard<std::mutex> lock(alphaPacketMutex_);
-    if (!latestAlphaPacketReady_ || latestAlphaPacket_.packet.data.empty()) {
+    if (completedAlphaPackets_.empty()) {
         return false;
     }
-    packet = std::move(latestAlphaPacket_);
-    latestAlphaPacket_ = ExactAlphaFramePacket{};
-    latestAlphaPacketReady_ = false;
+    packet = std::move(completedAlphaPackets_.front());
+    completedAlphaPackets_.pop_front();
     return true;
 }
 
@@ -7575,18 +7588,17 @@ void VersusApp::startEncodeThread() {
     encodeThread_ = std::thread([this]() {
         spdlog::info("[EncodeThread] Started");
         using Clock = std::chrono::steady_clock;
+        video::detail::FrameWaiter frameWaiter;
         auto nextFrameDue = Clock::now();
         while (encodeThreadRunning_.load()) {
             const VideoStateSnapshot videoState = videoStateSnapshot();
             const auto frameInterval = outputFrameInterval(
                 std::max(1, videoState.config.frameRate));
             auto scheduledFrameDue = nextFrameDue;
+            std::shared_ptr<const video::CapturedFrame> frame;
+            frameWaiter.waitUntil(scheduledFrameDue);
             {
                 std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
-                encodeFrameCV_.wait_until(
-                    lock,
-                    scheduledFrameDue,
-                    [this] { return !encodeThreadRunning_.load(); });
                 // Independent capture/output clocks can straddle a compositor
                 // update. Briefly wait for that fresh image before replaying the
                 // cached one; static sources still keep the output cadence.
@@ -7594,14 +7606,17 @@ void VersusApp::startEncodeThread() {
                     const auto grace = std::min(frameInterval / 4,
                         std::chrono::duration_cast<std::chrono::nanoseconds>(
                             std::chrono::milliseconds(4)));
-                    const bool fresh = encodeFrameCV_.wait_until(lock, scheduledFrameDue + grace, [this] {
-                        return !encodeThreadRunning_.load() || encodeFrameReady_;
-                    });
+                    const auto graceDeadline = scheduledFrameDue + grace;
+                    while (!encodeFrameReady_ && encodeThreadRunning_.load() && Clock::now() < graceDeadline) {
+                        lock.unlock();
+                        frameWaiter.waitUntil(std::min(graceDeadline, Clock::now() + std::chrono::milliseconds(1)));
+                        lock.lock();
+                    }
                     // Follow the capture phase after a successful fresh-frame
                     // wait. Otherwise every slot can keep landing just before
                     // capture arrives. A timeout must not shift the clock:
                     // paused sources still need full-rate cached output.
-                    if (fresh && encodeThreadRunning_.load()) {
+                    if (encodeFrameReady_ && encodeThreadRunning_.load()) {
                         scheduledFrameDue = Clock::now();
                     }
                 }
@@ -7609,6 +7624,11 @@ void VersusApp::startEncodeThread() {
                     break;
                 }
                 encodeFrameReady_ = false;
+                // Consume the frame and its readiness flag atomically with
+                // capture publication. A late notification for an already
+                // consumed image must not suppress the next fresh-frame wait.
+                std::lock_guard<std::mutex> frameLock(latestVideoFrameMutex_);
+                frame = pendingVideoFrame_ ? std::move(pendingVideoFrame_) : cachedVideoFrame_;
             }
 
             nextFrameDue = advanceOutputFrameDeadline(
@@ -7629,16 +7649,6 @@ void VersusApp::startEncodeThread() {
             if (!wasTrackActive) {
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 spdlog::info("[EncodeThread] Video track became active; forcing keyframe on next frame");
-            }
-
-            std::shared_ptr<const video::CapturedFrame> frame;
-            {
-                std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-                if (pendingVideoFrame_) {
-                    frame = std::move(pendingVideoFrame_);
-                } else {
-                    frame = cachedVideoFrame_;
-                }
             }
 
             if (!frame || frame->data.empty()) {
@@ -7667,7 +7677,6 @@ void VersusApp::startEncodeThread() {
 
 void VersusApp::stopEncodeThread() {
     encodeThreadRunning_.store(false);
-    encodeFrameCV_.notify_one();
     if (encodeThread_.joinable()) {
         if (encodeThread_.get_id() == std::this_thread::get_id()) {
             encodeThread_.detach();

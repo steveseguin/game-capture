@@ -332,7 +332,7 @@ class VersusApp {
                                               int64_t timestamp,
                                               std::vector<uint8_t> gray);
     void queueAlphaEncoderReconfigure(versus::video::EncoderConfig config);
-    bool takeLatestAlphaPacket(ExactAlphaFramePacket &packet);
+    bool takeNextAlphaPacket(ExactAlphaFramePacket &packet);
     void reservePeerAlphaAdmissionCutoff(const std::shared_ptr<PeerSession> &peer);
     void refreshPeerTrackObservations(bool observeVideo, bool observeAudio) const;
     bool hasAnyActiveVideoTrack() const;
@@ -554,7 +554,6 @@ class VersusApp {
     std::thread encodeThread_;
     std::atomic<bool> encodeThreadRunning_{false};
     std::mutex encodeNotifyMutex_;
-    std::condition_variable encodeFrameCV_;
     bool encodeFrameReady_ = false;
     struct AlphaEncodeJob {
         std::vector<uint8_t> gray;
@@ -572,8 +571,8 @@ class VersusApp {
     bool pendingAlphaEncoderReconfigure_ = false;
     std::mutex alphaEncoderMutex_;
     std::mutex alphaPacketMutex_;
-    ExactAlphaFramePacket latestAlphaPacket_;
-    bool latestAlphaPacketReady_ = false;
+    std::deque<ExactAlphaFramePacket> completedAlphaPackets_;
+    uint64_t primaryPacketSequence_ = 0; // Guarded by videoSendMutex_.
     std::atomic<uint64_t> alphaPipelineGeneration_{1};
     AlphaFrameAdmissionTracker alphaFrameAdmissionTracker_{256};
     ExactAlphaFramePairer alphaFramePairer_{16};
@@ -668,6 +667,7 @@ class VersusApp {
         // Wire/RTP clock watermark. This must never be compared with a source
         // capture timestamp because late exact pairs receive a newer wire PTS.
         std::atomic<int64_t> lastPrimaryPtsSent{std::numeric_limits<int64_t>::min()};
+        std::atomic<uint64_t> lastAlphaPrimaryEncodedSequence{0};
         // Reserved before any wire send, including failed alpha-first pairs,
         // so a later frame can never reuse a timestamp already exposed to the
         // receiver on either track.

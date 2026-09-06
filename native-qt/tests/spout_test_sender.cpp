@@ -1,4 +1,5 @@
 #include <SpoutLibrary.h>
+#include "versus/video/frame_waiter.h"
 
 #include <algorithm>
 #include <chrono>
@@ -162,6 +163,8 @@ int main(int argc, char **argv) {
     int resizeHeight = 0;
     std::string pattern = "animated";
     std::string epochFile;
+    std::string frameTracePath;
+    bool precisePacing = true;
 
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -185,9 +188,19 @@ int main(int argc, char **argv) {
             pattern = lowerCopy(arg.substr(10));
         } else if (arg.rfind("--epoch-file=", 0) == 0) {
             epochFile = arg.substr(13);
+        } else if (arg.rfind("--frame-trace=", 0) == 0) {
+            frameTracePath = arg.substr(14);
+        } else if (arg == "--precise-pacing=0") {
+            precisePacing = false;
         }
     }
 
+    versus::video::detail::FrameWaiter frameWaiter;
+    std::ofstream frameTrace;
+    if (!frameTracePath.empty()) {
+        frameTrace.open(frameTracePath, std::ios::app);
+        frameTrace << "now100ns,wallMs,frame,ok\n";
+    }
     width = std::clamp(width, 64, 3840);
     height = std::clamp(height, 64, 2160);
     fps = std::clamp(fps, 1, 120);
@@ -298,9 +311,16 @@ int main(int argc, char **argv) {
                 }
             }
         }
-        sender->SendImage(pixels.data(), static_cast<unsigned int>(width), static_cast<unsigned int>(height), GL_BGRA, false);
+        const bool sent = sender->SendImage(pixels.data(), static_cast<unsigned int>(width), static_cast<unsigned int>(height), GL_BGRA, false);
+        if (frameTrace.is_open() && frame <= 100000) {
+            frameTrace << std::chrono::duration_cast<std::chrono::nanoseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count() / 100 << ','
+                << std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count() << ',' << frame - 1 << ',' << sent << '\n';
+        }
         nextFrameTime += std::chrono::duration_cast<std::chrono::steady_clock::duration>(frameInterval);
-        std::this_thread::sleep_until(nextFrameTime);
+        if (precisePacing) frameWaiter.waitUntil(nextFrameTime);
+        else std::this_thread::sleep_until(nextFrameTime);
     }
 
     sender->ReleaseSender();

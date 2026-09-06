@@ -194,6 +194,8 @@ async function main() {
   const senderName='ReceiverReview_'+crypto.randomUUID().replaceAll('-','');
   const senderArgs=[`--name=${senderName}`,`--width=${width}`,`--height=${height}`,`--fps=${Number(opts['source-fps']||fps)}`,`--pattern=${opts['obs-plugin-repo']?'alpha-moving-edge':opts['color-check']==='1'?'color-bars':'animated'}`,'--duration-ms=1800000'];
   if(opts.resize==='1')senderArgs.push('--resize-after-ms=20000','--resize-width=1280','--resize-height=960');
+  if(opts['frame-trace']==='1')senderArgs.push(`--frame-trace=${path.join(run,'source-frames.csv')}`);
+  if(opts['source-precise-pacing']==='0')senderArgs.push('--precise-pacing=0');
   let sourceBrowser,sourcePage,sourceFixture;
   let sender=windowVideo?null:launch(senderExe,senderArgs,'source');
   if(windowVideo) {
@@ -276,20 +278,22 @@ async function main() {
         type:'browser-window',video:windowVideo,browser:sourceBrowser.version(),
         ...(sourceFixture?{fixture:sourceFixture}:{}),
         sha256:crypto.createHash('sha256').update(fs.readFileSync(windowVideo)).digest('hex')
-      }:{type:'spout'},stages:[]};results.push(result);
+      }:{type:'spout',sender:senderExe,sha256:crypto.createHash('sha256').update(fs.readFileSync(senderExe)).digest('hex'),
+        requestedFps:Number(opts['source-fps']||fps),precisePacing:opts['source-precise-pacing']!=='0'},stages:[]};results.push(result);
       console.log('Starting',name);
       const proc=launch(publisher,['--headless',`--stream=${stream}`,'--password=false',
         ...(windowVideo?['--source=window',`--window=${senderName}`]:['--source=spout',`--spout-sender=${senderName}`]),
         '--audio-source=default-output',`--width=${width}`,`--height=${height}`,`--fps=${fps}`,
         '--bitrate-kbps=4000',`--video-encoder=${encoder}`,`--video-codec=${codec}`,`--duration-ms=${600000+Number(opts['soak-ms']||0)*2+Number(opts['control-cycles']||1)*60000}`,
         ...(['video-controls','replacement-failure','rapid-controls','shutdown-preparation','session-pressure'].some(k=>opts[k]==='1')?['--remote-control']:[]),
-        ...(opts['obs-plugin-repo']?['--alpha-workflow']:[]),
+        ...(opts['obs-plugin-repo']&&opts['obs-alpha']!=='0'?['--alpha-workflow']:[]),
         ...(opts['ffmpeg-options']?[`--ffmpeg-options=${opts['ffmpeg-options']}`]:[]),
         ...(proxyPort?[`--server=ws://127.0.0.1:${proxyPort}`]:[]),
         '--local-control','--local-control-port=0',`--local-control-discovery=${controlPath}`,
         `--diagnostics-out=${path.join(run,name+'-exit.json')}`],name,
         {LOCALAPPDATA:run,QT_PLUGIN_PATH:path.dirname(publisher),QT_QPA_PLATFORM_PLUGIN_PATH:path.join(path.dirname(publisher),'platforms'),
-          ...(opts['frame-trace']==='1'?{VERSUS_FRAME_TRACE:path.join(run,name+'-frames.csv')}:{})});
+          ...(opts['frame-trace']==='1'?{VERSUS_FRAME_TRACE:path.join(run,name+'-frames.csv'),
+            ...(opts['obs-plugin-repo']?{VERSUS_FRAME_TRACE_PATTERN:'alpha-moving-edge'}:{})}:{})});
       let control,context,page,lossCdp,obsAlpha;
       try {
         const deadline=Date.now()+25000;
@@ -386,7 +390,8 @@ async function main() {
         result.stages.push({name:'transport-refresh',metrics:await measure(page,8000)});
         if(opts['obs-plugin-repo']) {
           obsAlpha=await require('./obs-alpha-runtime').start({repo:opts['obs-plugin-repo'],stream,output:path.join(run,name+'-obs'),
-            expectedPluginHash:opts['expected-plugin-sha256'],width,height,fps:opts['obs-cadence']==='1'?fps:undefined});
+            expectedPluginHash:opts['expected-plugin-sha256'],width,height,fps:opts['obs-cadence']==='1'?fps:undefined,
+            alpha:opts['obs-alpha']!=='0',cadenceMinimum:Number(opts['obs-cadence-min']||.95)});
           result.obsAlpha=obsAlpha.evidence;
           await obsAlpha.sample('initial');
           result.obsObserverBeforeReload=await page.evaluate(()=>({visibility:document.visibilityState,

@@ -124,6 +124,12 @@ bool isExactAlphaFramePair(const ExactAlphaFramePair &pair) {
         pair.alpha.encodedHeight > 0;
 }
 
+bool preservesAlphaPrimaryPredictionChain(const ExactAlphaFramePair &pair, uint64_t lastEncodedSequence) {
+    if (pair.primary.packet.codec != versus::video::VideoCodec::H264 || pair.primary.packet.isKeyframe) return true;
+    return lastEncodedSequence != 0 && lastEncodedSequence != std::numeric_limits<uint64_t>::max() &&
+        pair.primary.encodedSequence == lastEncodedSequence + 1;
+}
+
 bool canStartAlphaTransportWithPair(const ExactAlphaFramePair &pair) {
     return isExactAlphaFramePair(pair) &&
         pair.primary.packet.isKeyframe &&

@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
 
@@ -154,6 +155,7 @@ class TestSpoutCapture : public QObject {
     void testProtectedVp9RuntimeContractUsesLivePackets();
     void testExternalFfmpegStallRestartsOnceAndDropsPreRestartIdentity();
     void testReceivesBgraAlphaFrames();
+    void testSlowSenderDoesNotProduceFalseFreshFrames();
     void testMovingAlphaGeometryPreserved();
     void testContinuesAfterSenderResize();
     void testContinuesAfterSenderRestartWithSameName();
@@ -444,6 +446,30 @@ void TestSpoutCapture::testExternalFfmpegStallRestartsOnceAndDropsPreRestartIden
             recoveredPacket.sourceTimestamp >= kPostRestartIdentity);
     QCOMPARE(readLaunchCount(statePath), 4);
     encoder.shutdown();
+}
+
+void TestSpoutCapture::testSlowSenderDoesNotProduceFalseFreshFrames() {
+    const QSettings settings("HKEY_CURRENT_USER\\Software\\Leading Edge\\Spout", QSettings::NativeFormat);
+    if (settings.value("Framecount", 0).toInt() != 1) {
+        QSKIP("Spout frame counting is disabled; sources without counts intentionally retain paced callbacks");
+    }
+    const std::string name = "SpoutSlowSender-" +
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    // Identical pixels still represent fresh frames when the sender advances.
+    SenderProcess sender(name, {"--fps=10", "--pattern=static"});
+    QVERIFY2(sender.start(), sender.output().constData());
+    versus::video::SpoutCapture capture;
+    QTRY_VERIFY_WITH_TIMEOUT(hasSender(capture, name), 3000);
+    std::atomic<int> count{0};
+    capture.setFrameCallback([&](const versus::video::CapturedFrame &) { ++count; });
+    QVERIFY(capture.startCapture(name, kWidth, kHeight, 60));
+    QTRY_VERIFY_WITH_TIMEOUT(count.load() >= 3, 5000);
+    count.store(0);
+    QTest::qWait(2100);
+    const int delivered = count.load();
+    capture.stopCapture();
+    // Old behavior emitted about 126 callbacks for just 21 source updates.
+    QVERIFY2(delivered >= 12 && delivered <= 30, qPrintable(QString::number(delivered)));
 }
 
 void TestSpoutCapture::testReceivesBgraAlphaFrames() {

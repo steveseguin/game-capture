@@ -25,21 +25,34 @@ class FrameTrace {
         const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count() / 100;
         file_ << stage << ',' << now << ',' << (frame ? frame->timestamp : 0)
-              << ',' << pts << ',' << (frame ? marker(*frame) : -1) << '\n';
+              << ',' << pts << ',' << (frame ? marker(*frame) : -1) << ','
+              << std::chrono::duration_cast<std::chrono::milliseconds>(
+                     std::chrono::system_clock::now().time_since_epoch()).count() << '\n';
     }
   private:
     FrameTrace() {
+        movingEdge_ = qEnvironmentVariable("VERSUS_FRAME_TRACE_PATTERN") == "alpha-moving-edge";
         const auto path = qEnvironmentVariable("VERSUS_FRAME_TRACE");
         if (!path.isEmpty()) {
             file_.open(std::filesystem::path(path.toStdWString()));
             enabled_ = file_.is_open();
-            file_ << "stage,now100ns,capture100ns,output100ns,id\n";
+            file_ << "stage,now100ns,capture100ns,output100ns,id,wallMs\n";
         }
     }
     int marker(const video::CapturedFrame &f) {
         if (f.format != video::CapturedFrame::Format::BGRA || f.width < 1 ||
             f.height < 1 || f.stride < f.width * 4 ||
             f.data.size() < static_cast<size_t>(f.stride) * f.height) return -1;
+        if (movingEdge_) {
+            // Fixture identity is its blue rectangle's left edge (9 px/step).
+            // Sample one row; avoid the browser-marker search on this fixture.
+            const auto *row = f.data.data() + static_cast<size_t>(f.height / 2) * f.stride;
+            for (int x = 0; x < f.width; ++x) {
+                const auto *p = row + x * 4;
+                if (p[0] > 160 && p[1] < 100 && p[2] < 100) return x;
+            }
+            return -1;
+        }
         const int h = std::max(1L, std::lround(640.0 * f.height / f.width));
         auto pixel = [&](double x, double y) {
             const int sx = std::clamp<int>(std::lround(x * f.width / 640.0), 0, f.width - 1);
@@ -94,6 +107,7 @@ class FrameTrace {
         return -1;
     }
     bool enabled_ = false;
+    bool movingEdge_ = false;
     std::ofstream file_;
     std::mutex mutex_;
     unsigned rows_ = 0;

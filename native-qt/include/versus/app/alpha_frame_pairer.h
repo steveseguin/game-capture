@@ -71,6 +71,8 @@ struct ExactAlphaFramePacket {
     uint64_t sourceAdmissionSequence = 0;
     int encodedWidth = 0;
     int encodedHeight = 0;
+    // Actual primary packet order, independent of skipped encoder inputs.
+    uint64_t encodedSequence = 0;
 };
 
 struct ExactAlphaFramePair {
@@ -106,9 +108,11 @@ ProtectedAlphaContractValidation validateProtectedAlphaKeyframeContract(
     const ExactAlphaFramePair &pair);
 // The VP9 alpha track is independently decodable on every frame. A VP9 color
 // track has the same protected contract; H.264 color may use inter frames once
-// the transport has started from an exact dual-keyframe pair.
+// the transport has started from an exact dual-keyframe pair and every primary
+// dependency has been delivered (checked separately by encoded sequence).
 bool satisfiesProtectedAlphaKeyframeContract(const ExactAlphaFramePair &pair);
 bool canStartAlphaTransportWithPair(const ExactAlphaFramePair &pair);
+bool preservesAlphaPrimaryPredictionChain(const ExactAlphaFramePair &pair, uint64_t lastEncodedSequence);
 bool isAlphaPairNewerThan(const ExactAlphaFramePair &pair,
                           int64_t lastPrimaryTransportPts,
                           uint64_t minimumAdmissionSequenceExclusive);
