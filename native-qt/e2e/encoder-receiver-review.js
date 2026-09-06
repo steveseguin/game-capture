@@ -382,11 +382,14 @@ async function main() {
           const targets=Array.from({length:Number(opts['control-cycles']||1)},()=>[{w:Number(opts['control-width']||1280),h:Number(opts['control-height']||720),f:Number(opts['control-fps']||30),bitrate:1000},{w:width,h:height,f:fps,bitrate:8000}]).flat();
           for(const target of targets) {
             const transitionBefore=await stats(page);
-            await page.evaluate(({target,remote})=>{
+            const combined=opts['combined-video-controls']==='1'||
+              (opts['combined-video-controls']==='alternate'&&Math.floor(result.videoControls.length/2)%2===1);
+            await page.evaluate(({target,remote,combined})=>{
               const channel=window.reviewChannels.find(c=>c.readyState==='open');
               if(!channel)throw Error('No open receiver data channel');
-              channel.send(JSON.stringify({action:'requestResolution',remote,value:{w:target.w,h:target.h,f:target.f}}));
-            },{target,remote:stream});
+              channel.send(JSON.stringify({action:'requestResolution',remote,value:{w:target.w,h:target.h,f:target.f},
+                ...(combined?{targetBitrate:target.bitrate}:{})}));
+            },{target,remote:stream,combined});
             const deadline=Date.now()+30000;let ready=false;
             while(Date.now()<deadline) {
               const current=await stats(page);
@@ -398,7 +401,7 @@ async function main() {
               result.failedVideoControl={target,metrics:await measure(page,4000),diagnostics:await api(control,'/diagnostics')};
               throw Error('Runtime resolution/FPS change was not received: '+JSON.stringify(target));
             }
-            await page.evaluate(({bitrate,remote})=>{
+            if(!combined)await page.evaluate(({bitrate,remote})=>{
               window.reviewChannels.find(c=>c.readyState==='open').send(JSON.stringify({action:'bitrate',remote,value:bitrate}));
             },{bitrate:target.bitrate,remote:stream});
             await sleep(4000);
@@ -408,7 +411,16 @@ async function main() {
               return {at:performance.now(),total:q.totalVideoFrames,dropped:q.droppedVideoFrames};
             }):null;
             const metrics=await measure(page,8000),motion=await motionProbe(page);
-            const entry={target,metrics,motion,transitionBefore,transitionAfter:await stats(page),diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
+            const entry={target,combined,metrics,motion,transitionBefore,transitionAfter:await stats(page),diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
+            entry.transition=entry.transitionAfter.map(after=>{
+              const before=transitionBefore.find(x=>x.id===after.id);
+              if(!before)return {kind:after.kind,changedStream:true};
+              const delta=k=>Number.isFinite(after[k])&&Number.isFinite(before[k])?after[k]-before[k]:null;
+              return {kind:after.kind,seconds:(after.timestamp-before.timestamp)/1000,
+                framesDropped:delta('framesDropped'),freezeCount:delta('freezeCount'),
+                freezeSeconds:delta('totalFreezesDuration'),concealedSamples:delta('concealedSamples'),
+                samplesReceived:delta('totalSamplesReceived'),packetsLost:delta('packetsLost')};
+            });
             entry.captureBefore=captureBefore;
             if(sourcePage) {
               const after=await sourcePage.evaluate(()=>{

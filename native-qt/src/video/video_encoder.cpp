@@ -2324,7 +2324,9 @@ class VideoEncoder::Impl {
             "-hide_banner",
             "-loglevel", "error",
             "-nostats",
-            "-fflags", "+nobuffer",
+            // Keep the frame consumed by rawvideo stream analysis. nobuffer
+            // discards it, delaying startup until a second input arrives and
+            // shifting the FIFO input-PTS/output-packet association by a frame.
             "-f", "rawvideo",
             "-pix_fmt", inputPixelFormat,
             "-video_size", std::to_string(width) + "x" + std::to_string(height),
