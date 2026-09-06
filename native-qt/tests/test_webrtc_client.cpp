@@ -310,6 +310,13 @@ class VersusAppTestAccess {
         app.remoteControlToken_.clear();
     }
 
+    static void setWaitingForKeyframe(const OpaquePeer &opaque, bool value) {
+        cast(opaque)->waitingForKeyframe.store(value, std::memory_order_relaxed);
+    }
+    static bool waitingForKeyframe(const OpaquePeer &opaque) {
+        return cast(opaque)->waitingForKeyframe.load(std::memory_order_relaxed);
+    }
+
     static video::EncoderConfig configuredVideo(VersusApp &app) {
         std::lock_guard<std::mutex> lock(app.videoSendMutex_);
         return app.videoConfig_;
@@ -911,6 +918,7 @@ class TestWebRtcClient : public QObject {
     void testVp9AlphaOfferUsesPluginDualTrackContract();
     void testAlphaMlineOrderSurvivesResetAndCodecFallback();
     void testReservedAlphaIsInactiveUntilCapability();
+    void testSharedBitrateDoesNotSuspendCurrentRoute();
     void testAlphaCapabilityRequiresExactPluginField_data();
     void testAlphaCapabilityRequiresExactPluginField();
     void testTransportGenerationTokensAdvanceAcrossReset();
@@ -1258,6 +1266,23 @@ void TestWebRtcClient::testAlphaMlineOrderSurvivesResetAndCodecFallback() {
              "Codec fallback removed the negotiated alpha section");
 
     client.shutdown();
+}
+
+void TestWebRtcClient::testSharedBitrateDoesNotSuspendCurrentRoute() {
+    using Access = versus::app::VersusAppTestAccess;
+    auto app = std::make_shared<versus::app::VersusApp>();
+    const auto peer = Access::createPeer(*app, "-shared-bitrate-route");
+    QVERIFY(peer);
+    Access::enableTokenlessRemoteControl(*app);
+    for (bool alreadyWaiting : {false, true}) {
+        Access::setWaitingForKeyframe(peer, alreadyWaiting);
+        versus::webrtc::WebRtcClientTestAccess::invokeDataMessageCallback(
+            *Access::client(peer), R"({"targetBitrate":4000})", Access::generation(peer));
+        QVERIFY(Access::waitUntilIdle(*app, std::chrono::seconds(3)));
+        QCOMPARE(Access::configuredVideo(*app).bitrate, 4000);
+        QCOMPARE(Access::waitingForKeyframe(peer), alreadyWaiting);
+    }
+    app->shutdown();
 }
 
 void TestWebRtcClient::testReservedAlphaIsInactiveUntilCapability() {

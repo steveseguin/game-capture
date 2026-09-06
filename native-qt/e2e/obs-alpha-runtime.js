@@ -6,7 +6,7 @@ const {promisify}=require('util');
 const exec=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 
-exports.start=async function({repo,stream,output,expectedPluginHash,width,height}) {
+exports.start=async function({repo,stream,output,expectedPluginHash,width,height,fps}) {
   repo=path.resolve(repo);
   fs.mkdirSync(output,{recursive:true});
   if(!/^[a-f0-9]{64}$/i.test(expectedPluginHash||''))throw Error('Expected OBS plugin SHA256 is required');
@@ -32,15 +32,26 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
     server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port));});
   });
   fs.writeFileSync(configPath,JSON.stringify({...config,server_enabled:true,auth_required:false,server_port:port}));
-  let proc,client,previousScene;
+  let proc,client,previousScene,previousVideo,previousRecordDirectory,recording=false;
   const stamp=Date.now(),scene=`Capture runtime ${stamp}`,input=`Capture receiver ${stamp}`,background=`Capture background ${stamp}`;
   const evidence={checkerSha256:hash(fs.readFileSync(checker)),samples:[]};
   const log=fs.createWriteStream(path.join(output,'obs-runtime.log'));
+  async function waitRecording(active) {
+    const deadline=Date.now()+15000;
+    do {
+      if((await client.request('GetRecordStatus')).outputActive===active)return;
+      await sleep(100);
+    } while(Date.now()<deadline);
+    throw Error(`OBS recording did not become ${active?'active':'fully stopped'}`);
+  }
   async function close() {
     if(client) {
+      if(recording)try{await client.request('StopRecord');await waitRecording(false);recording=false;}catch{}
       for(const name of [input,background])try{await client.request('RemoveInput',{inputName:name});}catch{}
       if(previousScene)try{await client.request('SetCurrentProgramScene',{sceneName:previousScene});}catch{}
       try{await client.request('RemoveScene',{sceneName:scene});}catch{}
+      if(previousRecordDirectory)try{await client.request('SetRecordDirectory',{recordDirectory:previousRecordDirectory});}catch{}
+      if(previousVideo)try{await client.request('SetVideoSettings',previousVideo);}catch{}
       try{await client.close();}catch{}
     }
     if(proc&&proc.exitCode===null) {
@@ -72,7 +83,12 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
       throw Error('Loaded OBS plugin does not match the expected artifact');
     evidence.plugin={path:loaded,sha256:hash(fs.readFileSync(loaded)),obsPid:proc.pid};
     previousScene=(await client.request('GetCurrentProgramScene')).currentProgramSceneName;
-    const canvas=await client.request('GetVideoSettings');
+    if(fps) {
+      if((await client.request('GetRecordStatus')).outputActive)throw Error('Isolated OBS is already recording');
+      previousVideo=await client.request('GetVideoSettings');
+      await client.request('SetVideoSettings',{baseWidth:width,baseHeight:height,outputWidth:width,outputHeight:height,fpsNumerator:fps,fpsDenominator:1});
+    }
+    const canvas=await client.request('GetVideoSettings');evidence.videoSettings=canvas;
     await client.request('CreateScene',{sceneName:scene});
     await client.request('SetCurrentProgramScene',{sceneName:scene});
     const kinds=(await client.request('GetInputKindList')).inputKinds;
@@ -88,7 +104,43 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
     const backdrop=await screenshot('obs-background');
     await add(input,'vdoninja_source',{stream_id:stream,password:'false',room_id:'',use_native_receiver:true,
       enable_data_channel:true,auto_reconnect:true,width,height});
-    return {evidence,close,async sample(label) {
+    return {evidence,close,async recordCadence(ffmpeg,ms=8000) {
+      previousRecordDirectory=(await client.request('GetRecordDirectory')).recordDirectory;
+      await client.request('SetRecordDirectory',{recordDirectory:path.resolve(output)});
+      await client.request('StartRecord');recording=true;
+      await waitRecording(true);
+      const start=Date.now(),before=await client.request('GetStats');
+      await sleep(ms);
+      const after=await client.request('GetStats'),seconds=(Date.now()-start)/1000;
+      const recordingResult=await client.request('StopRecord');
+      // StopRecord acknowledges the request before the encoder/muxer drains.
+      // Reading immediately sees only complete MP4 fragments and truncates evidence.
+      await waitRecording(false);recording=false;
+      const file=recordingResult.outputPath;
+      const decoded=await exec(ffmpeg,['-v','error','-nostats','-progress','pipe:2','-i',file,'-an','-vf','scale=160:100',
+        '-fps_mode','passthrough','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],{windowsHide:true,encoding:null,maxBuffer:64*1024*1024});
+      const bytes=decoded.stdout,frameBytes=160*100*3,frames=Math.floor(bytes.length/frameBytes);
+      let changed=0,held=0,maxHeld=0;const changes=[];
+      for(let f=1;f<frames;f++) {
+        let sum=0;for(let p=0;p<frameBytes;p++)sum+=Math.abs(bytes[f*frameBytes+p]-bytes[(f-1)*frameBytes+p]);
+        const mean=sum/frameBytes;changes.push(mean);
+        if(mean>.25){changed++;held=0;}else{held++;maxHeld=Math.max(maxHeld,held);}
+      }
+      const times=[...decoded.stderr.toString().matchAll(/out_time_us=(\d+)/g)];
+      const recordedSeconds=times.length?Number(times.at(-1)[1])/1000000:0;
+      if(!(recordedSeconds>0&&frames>0)||bytes.length%frameBytes)throw Error('OBS recording could not be decoded completely');
+      const recordedFps=frames/recordedSeconds;
+      evidence.cadence={file,sha256:hash(fs.readFileSync(file)),recordedSeconds,recordedFps,seconds,before,after,
+        renderFps:(after.renderTotalFrames-before.renderTotalFrames)/seconds,
+        renderSkipped:after.renderSkippedFrames-before.renderSkippedFrames,
+        outputSkipped:after.outputSkippedFrames-before.outputSkippedFrames,
+        frames,changedFrames:changed,changedFramesPerSecond:changed/(frames/recordedFps),
+        maxHeldMs:maxHeld*1000/recordedFps,meanPixelChanges:changes};
+      fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
+      if(frames<recordedFps*ms/1000*.9||evidence.cadence.changedFramesPerSecond<fps*.8)
+        throw Error('OBS recording did not preserve moving-frame cadence');
+      return evidence.cadence;
+    },async sample(label) {
       const samples=[],deadline=Date.now()+20000;let useful=0,previousStart=0;
       while(useful<10&&Date.now()<deadline) {
         await sleep(Math.max(0,previousStart+80-Date.now()));previousStart=Date.now();

@@ -19,6 +19,8 @@ const publisher = path.resolve(opts.publisher);
 const senderExe = opts.sender ? path.resolve(opts.sender) : null;
 const windowVideo = opts['window-video'] ? path.resolve(opts['window-video']) : null;
 if(opts['frame-identity']==='1'&&!windowVideo)throw Error('Frame identity requires --window-video');
+if(opts['handover-identity']==='1'&&opts['frame-identity']!=='1')throw Error('Handover identity requires --frame-identity=1');
+if(opts['obs-cadence']==='1'&&(!opts['obs-plugin-repo']||opts['video-controls']!=='1'))throw Error('OBS cadence requires the OBS runtime and --video-controls=1');
 if(opts['obs-plugin-repo']&&(!senderExe||opts['color-check']==='1'))throw Error('OBS alpha runtime requires the moving Spout fixture');
 if (!senderExe && !windowVideo) throw Error('--sender or --window-video is required');
 if (windowVideo && ['resize','color-check','control-source-restart','shutdown-source-loss'].some(k=>opts[k]==='1'))
@@ -384,7 +386,7 @@ async function main() {
         result.stages.push({name:'transport-refresh',metrics:await measure(page,8000)});
         if(opts['obs-plugin-repo']) {
           obsAlpha=await require('./obs-alpha-runtime').start({repo:opts['obs-plugin-repo'],stream,output:path.join(run,name+'-obs'),
-            expectedPluginHash:opts['expected-plugin-sha256'],width,height});
+            expectedPluginHash:opts['expected-plugin-sha256'],width,height,fps:opts['obs-cadence']==='1'?fps:undefined});
           result.obsAlpha=obsAlpha.evidence;
           await obsAlpha.sample('initial');
           result.obsObserverBeforeReload=await page.evaluate(()=>({visibility:document.visibilityState,
@@ -397,6 +399,8 @@ async function main() {
           result.videoControls=[];
           const targets=Array.from({length:Number(opts['control-cycles']||1)},()=>[{w:Number(opts['control-width']||1280),h:Number(opts['control-height']||720),f:Number(opts['control-fps']||30),bitrate:1000},{w:width,h:height,f:fps,bitrate:8000}]).flat();
           for(const target of targets) {
+            if(opts['presentation-trace']==='1')await require('./presentation-trace').start(page);
+            const transitionIdentity=opts['handover-identity']==='1'?frameIdentity.probe(page,18000):null;
             const transitionBefore=await stats(page);
             const combined=opts['combined-video-controls']==='1'||
               (opts['combined-video-controls']==='alternate'&&Math.floor(result.videoControls.length/2)%2===1);
@@ -428,6 +432,17 @@ async function main() {
             }):null;
             const metrics=await measure(page,8000),motion=await motionProbe(page);
             const entry={target,combined,metrics,motion,transitionBefore,transitionAfter:await stats(page),diagnostics:await api(control,'/diagnostics')};result.videoControls.push(entry);
+            if(opts['presentation-trace']==='1')entry.presentation=await require('./presentation-trace').stop(page);
+            if(transitionIdentity) {
+              entry.transitionIdentity=await transitionIdentity;requireReadableIdentity(entry.transitionIdentity);
+              let previous=null;entry.transitionIdentity.backwardIds=[];
+              for(const row of entry.transitionIdentity.rows)if(row.id!==null) {
+                if(previous!==null&&(row.id-previous+fps*20)%(fps*20)>fps*5)
+                  entry.transitionIdentity.backwardIds.push({previous,current:row.id,at:row.at});
+                previous=row.id;
+              }
+              if(entry.transitionIdentity.backwardIds.length)throw Error('Source frame identity moved backward during handover');
+            }
             entry.transition=entry.transitionAfter.map(after=>{
               const before=transitionBefore.find(x=>x.id===after.id);
               if(!before)return {kind:after.kind,changedStream:true};
@@ -479,6 +494,7 @@ async function main() {
             await obsAlpha.sample('transport-refresh');
             result.stages.push({name:'obs-transport-refresh',metrics:await measure(page,8000)});
             if(!(await motionProbe(page)).moving)throw Error('Browser lost moving video after OBS transport refresh');
+            if(opts['obs-cadence']==='1')await obsAlpha.recordCadence(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'));
           }
         }
         if(opts['audio-controls']==='1') {

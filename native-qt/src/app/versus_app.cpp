@@ -3809,7 +3809,11 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         spdlog::info("[App] Preparing runtime encoder replacement while streaming: {}x{} @{}fps {}kbps",
                      nextConfig.width, nextConfig.height, nextConfig.frameRate, nextConfig.bitrate);
         lock.unlock();
-        const bool ready = replacement->initialize(nextPrimaryConfig);
+        const auto preparationFrame = getCachedVideoFrame();
+        const bool prime = preparationFrame && nextPrimaryConfig.bFrames == 0 && nextPrimaryConfig.ffmpegOptions.empty();
+        detail::FrameTrace::instance().record("prepare-start", nullptr, 0);
+        const bool ready = replacement->initialize(nextPrimaryConfig, prime ? preparationFrame.get() : nullptr);
+        detail::FrameTrace::instance().record("prepare-ready", nullptr, ready ? 1 : 0);
         lock.lock();
         if (!ready || !capturing_ || videoConfig_ != previousConfig ||
             videoEncoder_.configurationRevision() != revision) {
@@ -3817,10 +3821,11 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
                          ready ? "became stale during preparation" : "failed preparation");
             return false;
         }
-        // Only a successfully checked, clean pipeline may take over. Its old
+        // Only a successfully checked pipeline with isolated preparation may take over. Its old
         // counterpart is retired after releasing videoSendMutex_, so process
         // drain/termination cannot pause the new output worker.
         videoEncoder_.swapPipeline(*replacement);
+        detail::FrameTrace::instance().record("handover", nullptr, 0);
         activeHqWidth_ = std::max(2, nextConfig.width & ~1);
         activeHqHeight_ = std::max(2, nextConfig.height & ~1);
         lastHqReconfigureMs_ = steadyNowMs();
@@ -5722,10 +5727,10 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                 } else {
                     requestedBitrate = configuredVideoBitrateKbps_.load(std::memory_order_relaxed);
                 }
-                peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
-                reservePeerAlphaAdmissionCutoff(peer);
-                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+                // This changes the shared encoder, not this peer's route.
+                // Keep delivering its current prediction chain while a
+                // replacement prepares; applyRuntimeVideoControl requests a
+                // keyframe when the new configuration is committed.
             }
         }
     }
@@ -6683,6 +6688,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
             }
             advanceMonotonic(peer->lastVideoWirePtsReserved, packet.pts);
             if (peer->client->sendVideo(packet)) {
+                detail::FrameTrace::instance().record("sent", nullptr, hqPacket.sourceTimestamp);
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
                 primaryPtsSentThisCall.push_back(packet.pts);

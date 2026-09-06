@@ -1504,8 +1504,50 @@ class VideoEncoder::Impl {
         return lastEncodeFailureKind_.load(std::memory_order_relaxed);
     }
 
-    bool initialize(const EncoderConfig &config) {
+    bool primeHandover(const CapturedFrame &frame) {
+        if (handoverPrimingFrames_ != 8 || !usingExternalFfmpeg_ ||
+            externalFramesSubmitted_ != 0 || config_.codec != VideoCodec::H264) return false;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+        handoverFirstLivePacket_ = true;
+        for (int i = 0; i < handoverPrimingFrames_; ++i) {
+            for (;;) {
+                if (std::chrono::steady_clock::now() >= deadline ||
+                    WaitForSingleObject(externalProcess_, 0) == WAIT_OBJECT_0 ||
+                    !prepareExternalInputFrame(frame)) return false;
+                const auto result = enqueueExternalInputFrame(std::move(externalInputBuffer_),
+                    std::numeric_limits<int64_t>::min());
+                if (result == ExternalEnqueueResult::Queued) {
+                    ++externalFramesSubmitted_;
+                    break;
+                }
+                if (result != ExternalEnqueueResult::Backpressure) return false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+        // Annex-B framing retains the last access unit until the next AUD.
+        // All eight identities are marked discard, including that final unit.
+        while (std::chrono::steady_clock::now() < deadline) {
+            {
+                std::lock_guard<std::mutex> lock(externalIoMutex_);
+                EncodedPacket discarded;
+                (void)popExternalPacket(discarded);
+                if (externalWriterFailed_ || externalReaderFailed_) return false;
+                if (externalFramesWritten_ == 8 && externalPacketCount_ > 0 && handoverPrefixKeyframeSeen_) {
+                    spdlog::info("[FFmpegEncoder] Prepared handover prefix consumed; all 8 preparation frames excluded from live output");
+                    return true;
+                }
+            }
+            if (WaitForSingleObject(externalProcess_, 0) == WAIT_OBJECT_0) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        }
+        return false;
+    }
+
+    bool initialize(const EncoderConfig &config, bool prepareHandover = false) {
         config_ = config;
+        handoverPrimingFrames_ = prepareHandover ? 8 : 0;
+        handoverPrefixKeyframeSeen_ = false;
+        handoverFirstLivePacket_ = false;
         spdlog::info("[VideoEncoder] Initializing MF encoder {}x{} @{}kbps", config.width, config.height, config.bitrate);
         frameCount_ = 0;
         lastInputTimestamp_ = 0;
@@ -1523,7 +1565,10 @@ class VideoEncoder::Impl {
             usingHardware_ = externalUsingHardware_;
             setActiveEncoderName(externalEncoderName_);
             activeCodec_.store(config_.codec, std::memory_order_relaxed);
-            if (!runWarmupProbeAndPrepareLivePipeline()) {
+            // Handover initialization validates a discarded real-frame prefix
+            // before returning publicly. Other starts retain the probe/clean
+            // process isolation contract.
+            if (!prepareHandover && !runWarmupProbeAndPrepareLivePipeline()) {
                 spdlog::warn("[VideoEncoder] FFmpeg warm-up probe failed");
                 shutdownExternalFfmpegNvenc();
                 initialized_ = false;
@@ -2343,7 +2388,11 @@ class VideoEncoder::Impl {
             args.push_back("-g");
             args.push_back(std::to_string(gop));
             args.push_back("-force_key_frames");
-            args.push_back("expr:gte(t,n_forced*2.5)");
+            // The first post-preparation input must start a new prediction
+            // chain. Preparation frames are never sent to a receiver.
+            args.push_back(handoverPrimingFrames_ > 0
+                ? "expr:eq(n,8)+gte(t,n_forced*2.5)"
+                : "expr:gte(t,n_forced*2.5)");
         }
         if (encoderName.find("_nvenc") != std::string::npos) {
             args.push_back("-preset");
@@ -2354,6 +2403,11 @@ class VideoEncoder::Impl {
             args.push_back("ll");
             args.push_back("-zerolatency");
             args.push_back("1");
+            // zeroReorderDelay does not disable FFmpeg's separate asynchronous
+            // output queue. Avoid holding extra frames in low-latency H.264.
+            if (config_.codec == VideoCodec::H264 && config_.lowLatency && bFrames == 0) {
+                args.insert(args.end(), {"-delay", "0"});
+            }
             args.push_back("-rc");
             args.push_back("cbr");
             args.push_back("-strict_gop");
@@ -3336,6 +3390,26 @@ class VideoEncoder::Impl {
     }
 
     bool popExternalPacket(EncodedPacket &output) {
+        if (handoverPrimingFrames_ > 0 && !externalWarmupInProgress_) {
+            while (popExternalAnnexBPacket(output)) {
+                if (output.sourceTimestamp == std::numeric_limits<int64_t>::min()) {
+                    handoverPrefixKeyframeSeen_ = handoverPrefixKeyframeSeen_ || output.isKeyframe;
+                    output = {};
+                    continue;
+                }
+                if (handoverFirstLivePacket_) {
+                    if (!output.isKeyframe) {
+                        spdlog::error("[FFmpegEncoder] Refusing non-keyframe at prepared handover boundary");
+                        output = {};
+                        continue;
+                    }
+                    handoverFirstLivePacket_ = false;
+                    spdlog::info("[FFmpegEncoder] Prepared handover first live keyframe source={}", output.sourceTimestamp);
+                }
+                return true;
+            }
+            return false;
+        }
         if (externalOutputFormat_ == ExternalOutputFormat::Ivf) {
             return popExternalIvfPacket(output);
         }
@@ -3413,6 +3487,10 @@ class VideoEncoder::Impl {
         externalFramesSubmitted_++;
 
         int waitBudgetMs = std::max(10, (3000 / std::max(1, config_.frameRate)));
+        // The first live access unit needs the following frame's AUD to close
+        // it. Preparation has already proved this process healthy: waiting
+        // here only delays admission of that next fresh input.
+        if (handoverFirstLivePacket_) waitBudgetMs = 0;
         if (config_.codec == VideoCodec::VP9) {
             waitBudgetMs = std::max(waitBudgetMs, std::max(100, (6000 / std::max(1, config_.frameRate))));
             if (!externalFirstPacketLogged_) {
@@ -3421,6 +3499,7 @@ class VideoEncoder::Impl {
         }
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(waitBudgetMs);
         while (std::chrono::steady_clock::now() < deadline) {
+            size_t observedOutputBytes = 0;
             {
                 std::lock_guard<std::mutex> lock(externalIoMutex_);
                 if (popExternalPacket(output)) {
@@ -3429,6 +3508,7 @@ class VideoEncoder::Impl {
                 if (externalWriterFailed_ || externalReaderFailed_) {
                     break;
                 }
+                observedOutputBytes = externalOutputBuffer_.size();
             }
 
             if (WaitForSingleObject(externalProcess_, 0) == WAIT_OBJECT_0) {
@@ -3436,8 +3516,8 @@ class VideoEncoder::Impl {
             }
 
             std::unique_lock<std::mutex> lock(externalIoMutex_);
-            externalIoCv_.wait_for(lock, std::chrono::milliseconds(2), [this]() {
-                return !externalOutputBuffer_.empty() || externalWriterFailed_ || externalReaderFailed_;
+            externalIoCv_.wait_for(lock, std::chrono::milliseconds(2), [this, observedOutputBytes]() {
+                return externalOutputBuffer_.size() != observedOutputBytes || externalWriterFailed_ || externalReaderFailed_;
             });
         }
 
@@ -4664,6 +4744,9 @@ class VideoEncoder::Impl {
     bool streamStarted_ = false;
     bool usingExternalFfmpeg_ = false;
     bool externalWarmupInProgress_ = false;
+    int handoverPrimingFrames_ = 0;
+    bool handoverFirstLivePacket_ = false;
+    bool handoverPrefixKeyframeSeen_ = false;
     bool externalForceKeyframeRequested_ = false;
     bool externalFirstPacketLogged_ = false;
     bool externalIvfHeaderParsed_ = false;
@@ -4713,7 +4796,8 @@ class VideoEncoder::Impl {
 // Non-Windows stub
 class VideoEncoder::Impl {
   public:
-    bool initialize(const EncoderConfig &) { return false; }
+    bool initialize(const EncoderConfig &, bool = false) { return false; }
+    bool primeHandover(const CapturedFrame &) { return false; }
     void shutdown() {}
     bool encode(const CapturedFrame &, EncodedPacket &, int64_t) { return false; }
     void setBitrate(int) {}
@@ -4732,11 +4816,17 @@ class VideoEncoder::Impl {
 VideoEncoder::VideoEncoder() : impl_(std::make_unique<Impl>()) {}
 VideoEncoder::~VideoEncoder() { shutdown(); }
 
-bool VideoEncoder::initialize(const EncoderConfig &config) {
+bool VideoEncoder::initialize(const EncoderConfig &config, const CapturedFrame *handoverFrame) {
+    const bool prepareHandover = handoverFrame != nullptr;
     ++configurationRevision_;
     config_ = config;
     requestedConfig_ = config;
     fallbackReason_.clear();
+    if (prepareHandover && (config.codec != VideoCodec::H264 || config.bFrames != 0 || !config.ffmpegOptions.empty() ||
+        (config.preferredHardware != HardwareEncoder::NVENC && config.preferredHardware != HardwareEncoder::QuickSync))) {
+        initialized_ = false;
+        return false;
+    }
     if (config_.codec == VideoCodec::VP9 && config_.requireEveryFrameKeyframe) {
         config_.gopSize = 1;
         config_.bFrames = 0;
@@ -4752,9 +4842,11 @@ bool VideoEncoder::initialize(const EncoderConfig &config) {
         return false;
     }
 
-    auto initializeCandidate = [this](const EncoderConfig &candidate) {
+    auto initializeCandidate = [this, prepareHandover](const EncoderConfig &input) {
+        EncoderConfig candidate = input;
+        if (prepareHandover) candidate.forceFfmpegNvenc = true;
         impl_->shutdown();
-        if (!impl_->initialize(candidate)) {
+        if (!impl_->initialize(candidate, prepareHandover)) {
             return false;
         }
         config_ = candidate;
@@ -4847,6 +4939,11 @@ bool VideoEncoder::initialize(const EncoderConfig &config) {
             "[VideoEncoder] Protected VP9 initialization resolved to an incompatible live encoder codec={} encoder='{}'",
             impl_->activeCodecName(),
             impl_->activeEncoderName());
+        impl_->shutdown();
+        initialized_ = false;
+    }
+    if (initialized_ && prepareHandover && !impl_->primeHandover(*handoverFrame)) {
+        spdlog::warn("[VideoEncoder] Real-frame handover preparation failed; discarding replacement");
         impl_->shutdown();
         initialized_ = false;
     }

@@ -183,7 +183,9 @@ class VideoEncoder {
     VideoEncoder();
     ~VideoEncoder();
 
-    bool initialize(const EncoderConfig &config);
+    // Optional handover input primes a bounded, discarded prefix. Initialization
+    // succeeds only after verifying it; the next fresh input starts live output.
+    bool initialize(const EncoderConfig &config, const CapturedFrame *handoverFrame = nullptr);
     void shutdown();
     // Caller must exclude encode/configuration calls on both instances.
     // Callbacks remain attached to their public encoder object.
