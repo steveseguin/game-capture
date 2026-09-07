@@ -10,4 +10,6 @@ Windows validation with OBS plugin v1.1.68 covered H.264 and VP9, transparency, 
 
 The intermittent local RTC fixture timeout remains unexplained; additional repetitions passed with diagnostics enabled. Hour-scale stability, cellular switching, and installer GUI upgrades are not claimed by these results.
 
+Final-package Windows release readiness passed, including browser and native OBS alpha workflows, a 30-minute room run with 309 join/leave cycles, and a 30-minute browser run with 100 viewer iterations. Both sustained runs passed without retries and used multiple publisher sessions.
+
 Assets include the Windows installer, portable executable, ZIP package, and FFmpeg source/build information. Stable-name assets are identical to their versioned counterparts.
