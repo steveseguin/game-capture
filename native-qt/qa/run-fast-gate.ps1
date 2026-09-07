@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.56",
+    [string]$Version = "0.2.57",
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [string]$FirefoxPath,
