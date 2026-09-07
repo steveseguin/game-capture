@@ -118,7 +118,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate
 Release readiness:
 
 ```powershell
-$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.55-win64).Path
+$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.56-win64).Path
 $publisher = Join-Path $package "game-capture.exe"
 $manifest = Join-Path $package "release-artifact-manifest.json"
 $manifestSha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
