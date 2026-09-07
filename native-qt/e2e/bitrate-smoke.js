@@ -4,6 +4,44 @@
 const fs = require('fs');
 const path = require('path');
 const { spawn, execFile } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+async function observeNvidiaSession(cfg, streamId, publisherPid) {
+  let browser;
+  try {
+    const { chromium } = require('playwright');
+    browser = await chromium.launch({ channel: 'msedge', headless: true });
+    const page = await browser.newPage();
+    const url = new URL('https://vdo.ninja/');
+    url.searchParams.set('view', streamId);
+    if (cfg.password) url.searchParams.set('password', cfg.password);
+    url.searchParams.set('autostart', '');
+    url.searchParams.set('muted', '');
+    if (cfg.room) url.searchParams.set('room', cfg.room);
+    await page.goto(url.href, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForFunction(() => Array.from(document.querySelectorAll('video')).some((video) =>
+      video.videoWidth > 0 && video.getVideoPlaybackQuality().totalVideoFrames > 10
+    ), null, { timeout: 20000 });
+    const children = await execFileAsync('powershell.exe', ['-NoProfile', '-Command',
+      `Get-CimInstance Win32_Process -Filter 'ParentProcessId=${publisherPid}' | Select-Object -ExpandProperty ProcessId`
+    ], { windowsHide: true, timeout: 5000 });
+    const ownedPids = new Set([publisherPid, ...children.stdout.trim().split(/\s+/).map(Number)]);
+    const sample = await execFileAsync('nvidia-smi.exe', ['pmon', '-c', '1'], {
+      windowsHide: true, timeout: 5000, maxBuffer: 1024 * 1024
+    });
+    const probeOutput = `${sample.stdout || ''}\n${sample.stderr || ''}`.trim();
+    const found = probeOutput.split(/\r?\n/).some((line) => {
+      const fields = line.trim().split(/\s+/);
+      return /^\d+$/.test(fields[0]) && ownedPids.has(Number(fields[1]));
+    });
+    return { checked: true, found, decodedVideo: true, ownedPids: [...ownedPids], output: probeOutput };
+  } catch (error) {
+    return { checked: true, found: false, output: '', error: error.message };
+  } finally {
+    if (browser) await browser.close();
+  }
+}
 
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -123,7 +161,7 @@ function spawnCase(cfg, bitrate, streamId) {
     `--stream=${streamId}`,
     `--password=${cfg.password}`,
     `--room=${cfg.room}`,
-    `--duration-ms=${cfg.durationMs}`,
+    `--duration-ms=${cfg.requireNvidiaSession ? Math.max(60000, cfg.durationMs) : cfg.durationMs}`,
     '--fps=30',
     '--resolution=1280x720',
     `--bitrate-kbps=${bitrate}`
@@ -164,27 +202,13 @@ function spawnCase(cfg, bitrate, streamId) {
         return;
       }
       nvidiaSessionProbeStarted = true;
-      nvidiaSessionProbe = new Promise((probeResolve) => {
-        // The warm-up creates a real NVENC session for only a short window.
-        // Sample pmon after frames have begun entering that pipeline.
-        setTimeout(() => {
-          execFile('nvidia-smi.exe', ['pmon', '-c', '1'], {
-            windowsHide: true,
-            timeout: 3000,
-            maxBuffer: 1024 * 1024
-          }, (error, stdout, stderr) => {
-            const probeOutput = `${stdout || ''}\n${stderr || ''}`.trim();
-            const found = /(?:game-capture|ffmpeg)(?:\.exe)?/i.test(probeOutput);
-            probeResolve({ checked: true, found, output: probeOutput, error: error ? error.message : '' });
-          });
-        }, 200);
-      });
+      nvidiaSessionProbe = observeNvidiaSession(cfg, streamId, proc.pid);
     };
     proc.stdout.on('data', (chunk) => {
       const text = chunk.toString();
       output += text;
       process.stdout.write(text);
-      if (/\[FFmpegEncoder\]\s+Started FFmpeg pipeline|\[App\]\s+Video encoder selected/i.test(text)) {
+      if (/\[Headless\]\s+Stream started/i.test(text)) {
         probeNvidiaSession();
       }
     });
@@ -192,12 +216,11 @@ function spawnCase(cfg, bitrate, streamId) {
       const text = chunk.toString();
       output += text;
       process.stderr.write(text);
-      if (/\[FFmpegEncoder\]\s+Started FFmpeg pipeline|\[App\]\s+Video encoder selected/i.test(text)) {
+      if (/\[Headless\]\s+Stream started/i.test(text)) {
         probeNvidiaSession();
       }
     });
     proc.on('exit', (code) => {
-      probeNvidiaSession();
       nvidiaSessionProbe.then((session) => {
         resolve({ code: code ?? 1, output, args, nvidiaSession: session });
       });

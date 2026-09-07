@@ -1431,12 +1431,29 @@ async function runRoomQualityContractCase(input, expected) {
   openedPages.push(viewer.page);
 
   if (expected.alphaActive) {
+    // Alpha activation replaces the wire transport. Observe the replacement
+    // channel before issuing controls or we would listen on the retired channel.
+    await viewer.page.evaluate((uuid) => {
+      const rpc = window.session.rpcs[uuid];
+      window.__preAlphaChannels = [rpc.receiveChannel, rpc.sendChannel];
+    }, viewer.peerUuid);
     const alphaCapability = await sendWithRetry(
       viewer.page,
       { info: { alpha_receive: 'vp9-dualtrack-v1' } },
       Math.max(8000, Math.floor(config.timeoutMs / 2))
     );
     assertOk(alphaCapability && alphaCapability.ok, `${tag}: alpha capability request failed`, alphaCapability);
+    await viewer.page.waitForFunction((uuid) => {
+      const rpc = window.session && window.session.rpcs && window.session.rpcs[uuid];
+      return rpc && [rpc.receiveChannel, rpc.sendChannel].some((channel) =>
+        channel && channel.readyState === 'open' && !window.__preAlphaChannels.includes(channel));
+    }, viewer.peerUuid, { timeout: Math.max(8000, Math.floor(config.timeoutMs / 2)) });
+    const replacementProbe = await waitForInfoProbe(viewer.page, viewer.peerUuid, 8000);
+    assertOk(replacementProbe && replacementProbe.ok, `${tag}: replacement info probe unavailable`, replacementProbe);
+    const replacementInit = await sendInitMessage(
+      viewer.page, room, 'guest', true, true, `${tag}-guest`, 8000
+    );
+    assertOk(replacementInit && replacementInit.ok, `${tag}: replacement init send failed`, replacementInit);
   }
 
   let observedInfo = viewer.info;

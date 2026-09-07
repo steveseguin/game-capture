@@ -3315,11 +3315,10 @@ async function enableAlphaAndVerifyMedia({
   let candidateAfterIndex = Math.max(afterIndex, searchStart);
   if (lateOffer) {
     if (!initialOffer || !initialOffer.message || !initialOffer.message.session ||
-        !lateOffer.message.session ||
-        lateOffer.message.session !== initialOffer.message.session) {
+        !lateOffer.message.session) {
       return {
         ok: false,
-        reason: 'alpha-renegotiation-rotated-or-omitted-wire-session',
+        reason: 'alpha-renegotiation-omitted-wire-session',
         offer: lateOffer,
         lateOffer,
         state: transition.state,
@@ -3328,7 +3327,8 @@ async function enableAlphaAndVerifyMedia({
         usedLateAlphaOffer: true
       };
     }
-    const answer = await answerOffer(page, peerName, lateOffer.message, true, rtcConfig);
+    const answer = await answerOffer(page, peerName, lateOffer.message,
+      lateOffer.message.session === initialOffer.message.session, rtcConfig);
     sendBrowserCandidates(signal, uuid, lateOffer.message.session, answer.candidates);
     sendAnswer(
       signal,
@@ -5932,9 +5932,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
       diagnosticsPath,
       alphaUuid,
       (snapshot) => snapshot.peerCount === 1 &&
-        snapshot.activeWireSession === (alphaTransition.offer
-          ? alphaTransition.offer.message.session : activeAlphaBaseOffer.message.session) &&
-        snapshot.logicalSession === alphaNegativeSnapshot.logicalSession &&
+        snapshot.activeWireSession === activeAlphaBaseOffer.message.session &&
         snapshot.alphaAllowed === false &&
         snapshot.alphaReceiveMode === '',
       0,
@@ -6105,7 +6103,9 @@ async function runNegotiationScenario(config, executable, browser, report, media
       diagnosticsPath,
       alphaUuid,
       (snapshot) => snapshot.peerCount === 1 &&
-        snapshot.activeWireSession === activeAlphaBaseOffer.message.session &&
+        snapshot.activeWireSession === (alphaTransition.offer
+          ? alphaTransition.offer.message.session : activeAlphaBaseOffer.message.session) &&
+        snapshot.logicalSession === alphaNegativeSnapshot.logicalSession &&
         snapshot.alphaAllowed === true &&
         snapshot.alphaReceiveMode === 'vp9-dualtrack-v1',
       alphaNegativeSnapshot.generatedSteadyMs,
@@ -6133,7 +6133,8 @@ async function runNegotiationScenario(config, executable, browser, report, media
     );
     if (alphaOffer) {
       const alphaAnswer = await answerOffer(
-        page, 'alpha-peer', alphaOffer.message, true, DIRECT_BROWSER_RTC_CONFIG
+        page, 'alpha-peer', alphaOffer.message,
+        alphaOffer.message.session === activeAlphaBaseOffer.message.session, DIRECT_BROWSER_RTC_CONFIG
       );
       sendBrowserCandidates(signal, alphaUuid, alphaOffer.message.session, alphaAnswer.candidates);
       sendAnswer(signal, alphaUuid, streamId, alphaOffer.message.session, alphaAnswer.sdp);
@@ -7137,8 +7138,12 @@ async function runActiveMediaLifecycleScenario(
     );
     addCheck(
       report,
-      'active-media-alpha-capability-needs-no-second-offer',
-      primaryAlpha.initialAlphaReserved && !primaryAlpha.usedLateAlphaOffer,
+      'active-media-alpha-capability-activates-reserved-inactive-track',
+      primaryAlpha.initialAlphaReserved && primaryAlpha.usedLateAlphaOffer &&
+        primaryAlpha.initialMediaLayout.find(section => section.mid === 'video-alpha')?.direction === 'inactive' &&
+        canonicalAlphaMediaOrder(primaryAlpha.offer?.message?.description?.sdp).ok &&
+        sdpMediaLayout(primaryAlpha.offer?.message?.description?.sdp)
+          .find(section => section.mid === 'video-alpha')?.direction === 'sendonly',
       {
         layout: primaryAlpha.initialMediaLayout,
         lateOfferSession: primaryAlpha.lateOffer
@@ -7148,7 +7153,7 @@ async function runActiveMediaLifecycleScenario(
     );
     addEvidence(report, 'active-media-alpha-compatibility-path', {
       path: primaryAlpha.usedLateAlphaOffer
-        ? 'legacy-late-alpha-offer'
+        ? 'reserved-alpha-activation-offer'
         : 'initial-alpha-reservation',
       mediaOk: primaryAlpha.ok
     });
@@ -7201,6 +7206,7 @@ async function runActiveMediaLifecycleScenario(
       return;
     }
 
+    primary.session = primaryAlpha.offer.message.session;
     let activePrimary = primary;
     let activeCandidateIndex = primaryAlpha.offer.index + 1;
 
@@ -7307,6 +7313,7 @@ async function runActiveMediaLifecycleScenario(
       if (!replacementConnection.ok || !replacementAlpha.workflowOk) {
         return;
       }
+      activePrimary.session = replacementAlpha.offer.message.session;
       activeCandidateIndex = replacementAlpha.offer.index + 1;
     } else {
       activeCandidateIndex = reset.offer.index + 1;
@@ -7356,6 +7363,7 @@ async function runActiveMediaLifecycleScenario(
       return;
     }
 
+    secondary.session = secondaryAlpha.offer.message.session;
     const cleanupRetiredSession = secondary.session;
     const cleanupSetupBaseline = await waitForDiagnosticsPeerSnapshot(
       lifecycleDiagnosticsPath,
@@ -7461,6 +7469,7 @@ async function runActiveMediaLifecycleScenario(
     if (!secondaryAlpha.workflowOk) {
       return;
     }
+    secondary.session = secondaryAlpha.offer.message.session;
 
     const cleanupHintBrowserState = await page.evaluate(
       (name) => window.__gameCapturePeerState(name),
@@ -7620,11 +7629,13 @@ async function runActiveMediaLifecycleScenario(
       reason: readdedConnection.reason,
       state: readdedConnection.state
     };
+    if (readdedAlpha.workflowOk) secondary.session = readdedAlpha.offer.message.session;
     const postReaddSnapshot = readdedConnection.offer
       ? await waitForDiagnosticsPeerSnapshot(
         lifecycleDiagnosticsPath,
         secondary.uuid,
         (snapshot) => snapshot.peerCount > 0 &&
+          snapshot.activeWireSession === secondary.session &&
           snapshot.fileMtimeMs >= readdedConnection.offer.at,
         postCleanupSnapshot
           ? postCleanupSnapshot.generatedSteadyMs
@@ -7635,11 +7646,11 @@ async function runActiveMediaLifecycleScenario(
     const postReaddSingleOwner = !!postReaddSnapshot &&
       postReaddSnapshot.peerCount === 1 &&
       postReaddSnapshot.ambiguous === false &&
-      postReaddSnapshot.activeWireSession === readdedConnection.activeSession;
+      postReaddSnapshot.activeWireSession === secondary.session;
     addCheck(report, 'readd-creates-one-native-owner-for-new-active-wire-session',
       postReaddSingleOwner,
       {
-        expectedActiveWireSession: readdedConnection.activeSession,
+        expectedActiveWireSession: secondary.session,
         snapshot: postReaddSnapshot,
         diagnosticsPath: lifecycleDiagnosticsPath
       });
