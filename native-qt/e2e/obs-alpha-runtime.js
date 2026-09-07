@@ -6,7 +6,7 @@ const {promisify}=require('util');
 const exec=promisify(execFile),sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const hash=bytes=>crypto.createHash('sha256').update(bytes).digest('hex');
 
-exports.start=async function({repo,stream,output,expectedPluginHash,width,height,fps,alpha=true,cadenceMinimum=.95}) {
+exports.start=async function({repo,stream,room='',output,expectedPluginHash,width,height,fps,alpha=true,cadenceMinimum=.95}) {
   if(!(cadenceMinimum>0&&cadenceMinimum<=1))throw Error('OBS cadence minimum must be in (0,1]');
   repo=path.resolve(repo);
   fs.mkdirSync(output,{recursive:true});
@@ -15,6 +15,8 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
   const {ObsWebSocketClient,analyzeAlphaComposite,analyzeAlphaCompositeSequence}=require(checker);
   const portable=path.join(repo,'_obs-portable'),exe=path.join(portable,'bin/64bit/obs64.exe');
   if(!fs.existsSync(exe))throw Error('Portable OBS executable is missing');
+  const applicationLogs=path.join(portable,'config/obs-studio/logs');
+  const priorLogs=new Set(fs.existsSync(applicationLogs)?fs.readdirSync(applicationLogs):[]);
   const running=await exec('powershell.exe',['-NoProfile','-Command',
     "@(Get-CimInstance Win32_Process -Filter \"Name='obs64.exe'\" | Select-Object ExecutablePath) | ConvertTo-Json -Compress"],{windowsHide:true});
   const processes=running.stdout.trim()?JSON.parse(running.stdout):[];
@@ -33,9 +35,9 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
     server.listen(0,'127.0.0.1',()=>{const port=server.address().port;server.close(()=>resolve(port));});
   });
   fs.writeFileSync(configPath,JSON.stringify({...config,server_enabled:true,auth_required:false,server_port:port}));
-  let proc,client,previousScene,previousVideo,previousRecordDirectory,recording=false;
+  let proc,procClosed,client,previousScene,previousVideo,previousRecordDirectory,recording=false;
   const stamp=Date.now(),scene=`Capture runtime ${stamp}`,input=`Capture receiver ${stamp}`,background=`Capture background ${stamp}`;
-  const evidence={alpha,checkerSha256:hash(fs.readFileSync(checker)),samples:[]};
+  const evidence={alpha,room,obs:{path:exe,sha256:hash(fs.readFileSync(exe))},checkerSha256:hash(fs.readFileSync(checker)),samples:[]};
   const log=fs.createWriteStream(path.join(output,'obs-runtime.log'));
   async function waitRecording(active) {
     const deadline=Date.now()+15000;
@@ -51,7 +53,10 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
       for(const name of [input,background])try{await client.request('RemoveInput',{inputName:name});}catch{}
       if(previousScene)try{await client.request('SetCurrentProgramScene',{sceneName:previousScene});}catch{}
       try{await client.request('RemoveScene',{sceneName:scene});}catch{}
-      if(previousRecordDirectory)try{await client.request('SetRecordDirectory',{recordDirectory:previousRecordDirectory});}catch{}
+      if(previousRecordDirectory)try {
+        await client.request('SetRecordDirectory',{recordDirectory:previousRecordDirectory});
+        evidence.recordDirectoryRestored=(await client.request('GetRecordDirectory')).recordDirectory===previousRecordDirectory;
+      }catch(e){evidence.recordDirectoryRestoreError=String(e);}
       if(previousVideo)try{await client.request('SetVideoSettings',previousVideo);}catch{}
       try{await client.close();}catch{}
     }
@@ -59,7 +64,19 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
       proc.kill();const deadline=Date.now()+5000;
       while(proc.exitCode===null&&proc.signalCode===null&&Date.now()<deadline)await sleep(50);
     }
+    if(procClosed)await Promise.race([procClosed,sleep(5000)]);
+    if(proc){proc.stdout.unpipe(log);proc.stderr.unpipe(log);}
     fs.writeFileSync(configPath,originalConfig);log.end();
+    evidence.applicationLogs=[];
+    if(fs.existsSync(applicationLogs))for(const name of fs.readdirSync(applicationLogs)) {
+      if(priorLogs.has(name)||!name.endsWith('.txt'))continue;
+      const file=path.join(output,'obs-application-'+name);
+      fs.copyFileSync(path.join(applicationLogs,name),file);
+      evidence.applicationLogs.push({path:file,sha256:hash(fs.readFileSync(file))});
+    }
+    fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
+    if(evidence.recordDirectoryRestored===false||evidence.recordDirectoryRestoreError)
+      throw Error('OBS recording directory restoration failed');
   }
   async function screenshot(label) {
     const startedAt=Date.now();
@@ -71,6 +88,7 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
   try {
     proc=spawn(exe,['--portable'],{cwd:path.dirname(exe),windowsHide:true,stdio:['ignore','pipe','pipe'],
       env:{...process.env,OBS_PLUGINS_DATA_PATH:path.join(repo,'install/data/obs-plugins')}});
+    procClosed=new Promise(resolve=>proc.once('close',resolve));
     let spawnError;proc.on('error',error=>{spawnError=error;});
     proc.stdout.pipe(log,{end:false});proc.stderr.pipe(log,{end:false});
     await sleep(8000);
@@ -103,10 +121,13 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
     await add(background,colorKind,{width:canvas.baseWidth,height:canvas.baseHeight,color:0xffff00ff});
     await sleep(150);
     const backdrop=await screenshot('obs-background');
-    await add(input,'vdoninja_source',{stream_id:stream,password:'false',room_id:'',use_native_receiver:true,
+    await add(input,'vdoninja_source',{stream_id:stream,password:'false',room_id:room,use_native_receiver:true,
       enable_data_channel:true,auto_reconnect:true,width,height});
     return {evidence,close,async recordCadence(ffmpeg,ms=8000) {
-      previousRecordDirectory=(await client.request('GetRecordDirectory')).recordDirectory;
+      if(previousRecordDirectory===undefined) {
+        previousRecordDirectory=(await client.request('GetRecordDirectory')).recordDirectory;
+        evidence.originalRecordDirectory=previousRecordDirectory;
+      }
       await client.request('SetRecordDirectory',{recordDirectory:path.resolve(output)});
       await client.request('StartRecord');recording=true;
       await waitRecording(true);
@@ -121,11 +142,15 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
       const decoded=await exec(ffmpeg,['-v','error','-nostats','-progress','pipe:2','-i',file,'-an','-vf','scale=160:100',
         '-fps_mode','passthrough','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],{windowsHide:true,encoding:null,maxBuffer:64*1024*1024});
       const bytes=decoded.stdout,frameBytes=160*100*3,frames=Math.floor(bytes.length/frameBytes);
+      // The fixture moves nine source pixels per frame. Downscaling a wider
+      // canvas reduces its image difference even when every frame is fresh.
+      // Keep the independent full-resolution edge cadence requirement below.
+      const minimumMeanChange=.25*Math.min(1,1280/width);
       let changed=0,held=0,maxHeld=0;const changes=[];
       for(let f=1;f<frames;f++) {
         let sum=0;for(let p=0;p<frameBytes;p++)sum+=Math.abs(bytes[f*frameBytes+p]-bytes[(f-1)*frameBytes+p]);
         const mean=sum/frameBytes;changes.push(mean);
-        if(mean>.25){changed++;held=0;}else{held++;maxHeld=Math.max(maxHeld,held);}
+        if(mean>minimumMeanChange){changed++;held=0;}else{held++;maxHeld=Math.max(maxHeld,held);}
       }
       const times=[...decoded.stderr.toString().matchAll(/out_time_us=(\d+)/g)];
       const recordedSeconds=times.length?Number(times.at(-1)[1])/1000000:0;
@@ -153,7 +178,7 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
         renderFps:(after.renderTotalFrames-before.renderTotalFrames)/seconds,
         renderSkipped:after.renderSkippedFrames-before.renderSkippedFrames,
         outputSkipped:after.outputSkippedFrames-before.outputSkippedFrames,
-        frames,changedFrames:changed,changedFramesPerSecond:changed/(frames/recordedFps),
+        frames,minimumMeanChange,changedFrames:changed,changedFramesPerSecond:changed/(frames/recordedFps),
         maxHeldMs:maxHeld*1000/recordedFps,meanPixelChanges:changes,leftEdges,edgeChangesPerSecond:edgeChanges/recordedSeconds};
       evidence.cadence.minimumChangedFps=fps*cadenceMinimum;
       (evidence.cadenceRecordings||=[]).push(evidence.cadence);
@@ -173,14 +198,20 @@ exports.start=async function({repo,stream,output,expectedPluginHash,width,height
         if(new Set(samples.map(s=>s.sha256)).size<5)throw Error('OBS opaque video did not move');
         return result;
       }
-      const samples=[],deadline=Date.now()+20000;let useful=0,previousStart=0;
-      while(useful<10&&Date.now()<deadline) {
+      const samples=[],deadline=Date.now()+20000,decodedHashes=new Set(),pngHashes=new Set();let useful=0,previousStart=0;
+      // During startup OBS can display its first valid frame twice. Collect
+      // the ten distinct images the analyzer requires within the same deadline.
+      // Keep repeats and invalid composites in the evidence for final analysis.
+      while((useful<10||(pattern==='alpha-moving-edge'&&(decodedHashes.size<10||pngHashes.size<10)))&&Date.now()<deadline) {
         await sleep(Math.max(0,previousStart+80-Date.now()));previousStart=Date.now();
         const shot=await screenshot(`obs-${label}-${samples.length+1}`);
         const analysis=analyzeAlphaComposite(backdrop.outputPath,shot.outputPath,{
           pattern,expectedVisualEpoch:'pre',sampleStep:2,throwOnFailure:false});
         samples.push({...analysis,sample:samples.length+1,checkpoint:label,connectionEpoch:'pre',screenshot:shot});
         if(analysis.classification!=='waiting-background')useful++;
+        if(analysis.classification==='valid-composite') {
+          decodedHashes.add(analysis.compositePixelSha256);pngHashes.add(shot.sha256);
+        }
       }
       const sequence=analyzeAlphaCompositeSequence(samples,{pattern,expectedVisualEpoch:'pre',
         requiredUsefulSampleCount:10,requireEvidenceFiles:true});
