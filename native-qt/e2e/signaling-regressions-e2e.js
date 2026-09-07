@@ -844,7 +844,10 @@ async function ensureBrowserRtcReadiness(browser, report) {
       const settleWouldExceedDeadline = preProbeSettleStartedAt +
         BROWSER_RTC_READINESS_PRE_PROBE_SETTLE_MS > absoluteDeadlineAtMs;
       if (!settleWouldExceedDeadline) {
-        await wait(BROWSER_RTC_READINESS_PRE_PROBE_SETTLE_MS);
+        const settleUntil = preProbeSettleStartedAt + BROWSER_RTC_READINESS_PRE_PROBE_SETTLE_MS;
+        while (Date.now() < settleUntil) {
+          await wait(settleUntil - Date.now());
+        }
       }
       const preProbeSettleElapsedMs = Date.now() - preProbeSettleStartedAt;
       preProbeSettle.elapsedMs = preProbeSettleElapsedMs;
@@ -2246,6 +2249,8 @@ function sdpMediaLayout(sdp) {
       layout.push(current);
     } else if (current && line.startsWith('a=mid:')) {
       current.mid = line.slice('a=mid:'.length);
+    } else if (current && /^a=(inactive|sendonly|recvonly|sendrecv)$/.test(line)) {
+      current.direction = line.slice(2);
     } else if (current && line.startsWith('a=rtpmap:')) {
       const match = line.match(/^a=rtpmap:(\d+)\s+([^/\s]+)/i);
       if (match) {
@@ -5927,7 +5932,9 @@ async function runNegotiationScenario(config, executable, browser, report, media
       diagnosticsPath,
       alphaUuid,
       (snapshot) => snapshot.peerCount === 1 &&
-        snapshot.activeWireSession === activeAlphaBaseOffer.message.session &&
+        snapshot.activeWireSession === (alphaTransition.offer
+          ? alphaTransition.offer.message.session : activeAlphaBaseOffer.message.session) &&
+        snapshot.logicalSession === alphaNegativeSnapshot.logicalSession &&
         snapshot.alphaAllowed === false &&
         snapshot.alphaReceiveMode === '',
       0,
@@ -6116,7 +6123,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
     );
     const alphaOffer = alphaTransition.offer;
     addEvidence(report, 'plugin-alpha-compatibility-path', {
-      path: alphaOffer ? 'legacy-late-alpha-offer' : 'initial-alpha-reservation',
+      path: alphaOffer ? 'reserved-alpha-activation-offer' : 'initial-alpha-reservation',
       transition: alphaTransition.kind
     });
 
@@ -6144,10 +6151,13 @@ async function runNegotiationScenario(config, executable, browser, report, media
         session: alphaOffer
           ? alphaOffer.message.session
           : activeAlphaBaseOffer.message.session,
-        source: alphaOffer ? 'legacy-late-alpha-offer' : 'initial-offer'
+        source: alphaOffer ? 'reserved-alpha-activation-offer' : 'initial-offer'
       });
-    addCheck(report, 'alpha-capability-keeps-current-wire-session',
-      !alphaOffer || alphaOffer.message.session === activeAlphaBaseOffer.message.session,
+    addCheck(report, 'alpha-capability-preserves-logical-peer-and-binds-current-wire-session',
+      !!exactAlphaCapabilitySnapshot &&
+        exactAlphaCapabilitySnapshot.logicalSession === alphaNegativeSnapshot.logicalSession &&
+        exactAlphaCapabilitySnapshot.activeWireSession ===
+          (alphaOffer ? alphaOffer.message.session : activeAlphaBaseOffer.message.session),
       {
         initialSession: initialAlphaPeerOffer.message.session,
         restartSession: activeAlphaBaseOffer.message.session,
@@ -6204,7 +6214,7 @@ async function runNegotiationScenario(config, executable, browser, report, media
       0,
       noOfferObservationMs - (Date.now() - alphaCapabilityAt)
     );
-    if (alphaTransition.kind === 'activated-without-offer' && remainingNoOfferObservationMs > 0) {
+    if (remainingNoOfferObservationMs > 0) {
       await wait(remainingNoOfferObservationMs);
     }
     const capabilityOffers = signal.events
@@ -6219,9 +6229,14 @@ async function runNegotiationScenario(config, executable, browser, report, media
       }));
     addCheck(
       report,
-      'plugin-alpha-capability-activates-without-second-offer',
-      initialAlphaLayout.ok && alphaTransition.kind === 'activated-without-offer' &&
-        capabilityOffers.length === 0,
+      'plugin-alpha-capability-negotiates-reserved-track-once',
+      initialAlphaLayout.ok && alphaTransition.kind === 'offer' &&
+        capabilityOffers.length === 1 &&
+        initialAlphaLayout.layout.find(section => section.mid === 'video-alpha')?.direction === 'inactive' &&
+        sdpMediaLayout(activeAlphaBaseOffer.message.description.sdp)
+          .find(section => section.mid === 'video-alpha')?.direction === 'inactive' &&
+        vp9Contract.videoSections.find(section => section.mid === 'video-alpha')?.direction === 'sendonly' &&
+        canonicalAlphaMediaOrder(alphaSdp).ok,
       {
         transition: alphaTransition.kind,
         elapsedMs: Date.now() - alphaCapabilityAt,

@@ -1,0 +1,14 @@
+'use strict';
+const {test} = require('node:test');
+const assert = require('node:assert/strict');
+const {hasCommittedBitrateUpdate: check} = require('./runtime-video-update-evidence');
+const prepare = n => `[App] Preparing runtime encoder replacement while streaming: 1920x720 @30fps ${n}kbps`;
+const commit = '[App] Runtime encoder replacement committed';
+test('recognizes an applied bitrate update', () => assert.equal(check('[App] Applying runtime bitrate update: 12000 kbps', 12000), true));
+test('recognizes a committed replacement', () => assert.equal(check(prepare(12000)+'\n'+commit, 12000), true));
+test('rejects preparation without commit', () => assert.equal(check(prepare(12000), 12000), false));
+test('rejects an unrelated committed bitrate', () => assert.equal(check(prepare(4500)+'\n'+commit, 12000), false));
+test('rejects a superseded preparation', () => assert.equal(check(prepare(12000)+'\n'+prepare(4500)+'\n'+commit, 12000), false));
+test('rejects a failed preparation', () => assert.equal(check(prepare(12000)+'\n[App] Runtime encoder replacement failed preparation. Keeping current pipeline\n'+commit, 12000), false));
+test('rejects a stale preparation', () => assert.equal(check(prepare(12000)+'\n[App] Runtime encoder replacement became stale during preparation. Keeping current pipeline\n'+commit, 12000), false));
+test('rejects commit without matching preparation', () => assert.equal(check(commit, 12000), false));

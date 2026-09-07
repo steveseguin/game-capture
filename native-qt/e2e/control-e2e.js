@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright');
+const { hasCommittedBitrateUpdate } = require('./runtime-video-update-evidence');
 
 function nowStamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -2100,6 +2101,7 @@ async function main() {
     console.log(`[CONTROL] VDO requestAs targetBitrate restore info PASS (${JSON.stringify(targetRestoreInfo.state.success.message.info)})`);
 
     probeMessageCount = await getProbeMessageCount(page);
+    const targetUnlockPublisherOffset = publisher.stdout.join('').length;
     const targetUnlockSend = await sendControlMessage(page, {
       targetBitrate: false,
       keyframe: true,
@@ -2358,7 +2360,7 @@ async function main() {
       return;
     }
     console.log('[CONTROL] Publisher runtime audio target unlock log observed');
-    if (!stdoutText.includes(`[App] Applying runtime bitrate update: ${config.publisherDefaultBitrateKbps} kbps`)) {
+    if (!hasCommittedBitrateUpdate(stdoutText.slice(targetUnlockPublisherOffset), config.publisherDefaultBitrateKbps)) {
       failure = { stage: 'publisher-video-target-unlock-log', state: { publisherDefaultBitrateKbps: config.publisherDefaultBitrateKbps } };
       return;
     }
