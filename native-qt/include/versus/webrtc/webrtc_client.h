@@ -70,6 +70,7 @@ struct MediaPlanChange {
     bool changed = false;
     bool videoAdded = false;
     bool alphaAdded = false;
+    bool alphaDirectionChanged = false;
     bool audioAdded = false;
 };
 

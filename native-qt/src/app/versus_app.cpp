@@ -9617,11 +9617,18 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
         }
     }
 
+    // A native receiver can reject the reserved inactive alpha section. This
+    // also applies when capability arrived before init, so all media-plan
+    // activation paths must install the active track on a fresh transport.
+    const bool rebuildForAlpha = change.alphaAdded || change.alphaDirectionChanged;
     bool queuedTransition = false;
     {
         std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
         peer->mediaPlanApplicationInProgress = false;
         queuedTransition = peer->queuedOfferTransition;
+        if (queuedTransition && rebuildForAlpha) {
+            peer->queuedOfferRebuild = true;
+        }
     }
 
     if (dataChannelOpen && change.videoAdded) {
@@ -9636,7 +9643,7 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
         return;
     }
     if (dataChannelOpen && change.changed) {
-        sendPeerOffer(peer, requestedReason.c_str());
+        sendPeerOffer(peer, requestedReason.c_str(), rebuildForAlpha);
     }
 }
 

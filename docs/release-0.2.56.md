@@ -1,6 +1,7 @@
 ## Game Capture 0.2.56
 
 - Fix ordinary browser playback when alpha is enabled: keep the optional alpha track inactive until the receiver requests it.
+- Fix native OBS alpha activation when room viewer capabilities arrive before initialization.
 - Improve QSV memory stability with pooled hardware uploads.
 - Improve capture cadence, encoder handovers, and recovery after transport or source changes.
 - Strengthen release validation with explicit publisher hashes, ordinary-page color-track checks, and failure cleanup diagnostics.

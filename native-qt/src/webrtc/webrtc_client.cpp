@@ -1426,6 +1426,7 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo,
                 description.setDirection(direction);
                 target->alphaVideoTrack->setDescription(std::move(description));
                 change.changed = true;
+                change.alphaDirectionChanged = true;
             }
         }
     }
