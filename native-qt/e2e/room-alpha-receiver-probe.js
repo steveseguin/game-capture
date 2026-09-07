@@ -107,7 +107,9 @@ async function installInfoProbe(page, uuid) {
       }
       return true;
     };
-    return { ok: attach(rpc.receiveChannel, 'receiveChannel') || attach(rpc.sendChannel, 'sendChannel') };
+    const receiveAttached = attach(rpc.receiveChannel, 'receiveChannel');
+    const sendAttached = attach(rpc.sendChannel, 'sendChannel');
+    return { ok: receiveAttached || sendAttached };
   }, uuid);
 }
 
@@ -365,10 +367,15 @@ async function main() {
     let capabilityRetryCount = 0;
     result.signaling.capabilityRetries = [];
     while (Date.now() < deadline) {
+      // Alpha activation may replace the RPC's data channels. Keep observing
+      // current-channel info rather than retaining the pre-activation reply.
+      await installInfoProbe(page, rpc.uuid);
       candidate = await readSnapshot(page, rpc.uuid);
       if (!candidate.ok) throw new Error(`WebRTC stats unavailable: ${candidate.reason || 'unknown'}`);
       const tracks = classifyTracks(candidate);
-      if (tracks.primary && tracks.alpha && tracks.primary.framesDecoded > 0 && tracks.alpha.framesDecoded > 0) break;
+      const info = latestInfo(candidate);
+      if (tracks.primary && tracks.alpha && tracks.primary.framesDecoded > 0 && tracks.alpha.framesDecoded > 0 &&
+          info && info.alpha_active === true && info.alpha_send === 'vp9-dualtrack-v1') break;
       if (Date.now() >= nextCapabilityRetryAt && capabilityRetryCount < 2) {
         const retry = await sendAlphaViewerRequest(page, rpc.uuid, !!config.room);
         result.signaling.capabilityRetries.push({ ts: Date.now(), ...retry });
