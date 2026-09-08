@@ -16,17 +16,23 @@ Versioned files can change per release, but these stable aliases must always be 
 From repo root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\release-and-publish.ps1 -Version <version> -BuildDir build-review2
+$firefox = (Resolve-Path (Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.exe")).Path
+$pluginRepo = (Resolve-Path ..\ninja-plugin).Path
+$spoutSender = (Resolve-Path .\native-qt\build-review2\bin\spout_test_sender.exe).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\release-and-publish.ps1 `
+  -Version <version> -BuildDir build-review2 -FirefoxPath $firefox `
+  -RoomAlphaPluginRepo $pluginRepo -RoomAlphaSpoutSenderPath $spoutSender
 ```
 
-This runs:
-- build/package
-- FFmpeg bundle validation/source-info packaging
-- signing step
-- VirusTotal submission step
-- release create/update
+Use a prepared ninja-plugin checkout with the required OBS runtime and plugin payload; adjust the paths to match your validation environment. Start from a configured Release build and commit the intended source/version changes before packaging.
 
-If you need to avoid long tests, add `-SkipFastGate`.
+This runs:
+
+- A fresh build, packaging, FFmpeg bundle validation/source-info packaging, and signing.
+- Exact packaged-application readiness, including browser/OBS workflows and two 30-minute soaks.
+- Versioned/stable asset identity checks, optional VirusTotal submission, and GitHub publication.
+
+There is no `-SkipFastGate` option in this publishing command. Required readiness must pass before upload. Builds, CTest, static contracts, and installer construction are gates; actual application playback and recovery workflows provide end-to-end testing.
 
 ## 0) Preflight (avoid stale build-dir source mixups)
 
@@ -75,10 +81,11 @@ Expected outputs in `native-qt/dist`:
 - `game-capture-win64.zip`
 - `game-capture-ffmpeg-source-info.zip`
 
-## 2) Run fast gate before upload
+## 2) Run the fast gate during preparation
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release
+$firefox = (Resolve-Path (Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.exe")).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release -FirefoxPath $firefox
 ```
 
 ## 2.5) Configure VirusTotal key (optional but recommended)
@@ -111,7 +118,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\submit-virust
 
 ## 3) Upload assets to the release
 
-Replace `<tag>` and `<version>`.
+The preferred command above handles upload after readiness passes. For a manual upload, first complete the packaged release-readiness workflow in the [README](../README.md#testing). Replace `<tag>` and `<version>`.
 
 ```powershell
 gh release upload <tag> `
@@ -156,3 +163,14 @@ gh release edit <tag> --draft=false --repo steveseguin/game-capture
     ```powershell
     powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\submit-virustotal.ps1 -DistDir .\native-qt\dist -Version <version> -FailOnError
     ```
+
+## Website and documentation follow-up
+
+- Update release notes and link the packaged Windows validation report. Keep historical measurements tied to the version that produced them.
+- Verify every uploaded asset's SHA-256 and size against the local artifact, including stable aliases. Publish `SHA256SUMS.txt` with the release.
+- Keep website download links on stable aliases so they do not need a version edit each release.
+- The GitHub Pages site is served from `main:/docs`; `gamecapture.html` is the canonical landing page and `index.html` redirects to it.
+- Keep `sitemap.xml` limited to canonical public pages. This project is hosted under `/game-capture/`; a robots.txt file here would not control crawling at the host root.
+- After a website change, verify the deployed desktop/mobile layout, keyboard navigation, setup links, and download destinations.
+
+SEO references: [Google's software-app structured data guidance](https://developers.google.com/search/docs/appearance/structured-data/software-app) and [sitemap guidance](https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap). Keep metadata factual; do not invent ratings or promise search placement.

@@ -1,6 +1,8 @@
 # Game Capture (Windows)
 
-Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with low friction and production-friendly defaults.
+Game Capture is a free, open-source Windows app for streaming games, app windows, webcams, and Spout2 video to VDO.Ninja and OBS. It supports hardware encoding, window audio capture, and optional transparency through the OBS native receiver.
+
+[Download for Windows](https://github.com/steveseguin/game-capture/releases/latest) | [Website](https://steveseguin.github.io/game-capture/gamecapture.html) | [Setup guide](https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja) | [Report an issue](https://github.com/steveseguin/game-capture/issues)
 
 ## Why Teams Use It
 
@@ -9,16 +11,16 @@ Game Capture is a native Windows app for publishing gameplay to VDO.Ninja with l
 - Hardware-accelerated encoding and bitrate presets for game feeds.
 - Dual-stream routing (HQ/LQ) for room roles and monitor paths.
 - Multiple viewers from a single HD encode workflow.
-- Native app (no Electron), lower memory footprint.
+- Native Qt app without an Electron runtime.
 - Simple OBS alternative for guest-side feed publishing.
 - VDO.Ninja-compatible links and room workflows.
 
 ## Quick Start
 
-1. Download the installer from the latest release.
+1. [Download the Windows installer](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe), or choose the portable version from the release page.
 2. Launch Game Capture and pick a game window, camera/webcam, or Spout2 sender.
 3. Enter a stream ID (or paste a full VDO.Ninja URL) and go live.
-4. Use the generated view links in OBS.
+4. Open a generated viewer link in a browser or OBS. For transparent playback, follow the [alpha workflow](#alpha-workflow).
 
 While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
 Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
@@ -46,7 +48,7 @@ See the [Game Capture and Spout2 setup guide](https://docs.vdo.ninja/guides/usin
 
 ## Local Control
 
-For same-user automation and local issue collection, the compiled app can expose an opt-in loopback JSON API with `--local-control`. It provides diagnostics, recent logs, source discovery, issue-report export, stop, and quit commands. See `docs/local-control-api.md`.
+For same-user automation and local issue collection, the compiled app can expose an opt-in loopback JSON API with `--local-control`. It provides diagnostics, recent logs, source discovery, issue-report export, stop, and quit commands. See the [local control API reference](docs/local-control-api.md).
 
 ## Logs and Crash Reports
 
@@ -65,14 +67,13 @@ For same-user automation and local issue collection, the compiled app can expose
 - If you need the broadest viewer compatibility, leave alpha disabled.
 - AV1 alpha-preserving encode remains experimental and is not the current OBS transparency path.
 
-### NVIDIA AV1 Compatibility
+### Codec compatibility and performance
 
-On the tested machine, the installed NVIDIA driver exposes NVENC API 12.2, while the bundled FFmpeg AV1 encoder requires NVENC API 13.0 and reports NVIDIA driver 570.0 or newer as the minimum. Game Capture therefore falls back to software AV1 encoding on this configuration. H.264 hardware encoding works reliably; select H.264 or update the NVIDIA driver if AV1 falls back to software.
+The OBS plugin v1.1.68 native receiver supports H.264 and VP9. HEVC/AV1 encoding availability does not imply that this receiver can play them. Hardware codec support depends on the GPU and driver; check the selected encoder and runtime log instead of assuming a hardware path is active.
+
+Explicit NVENC/QSV can fall below 30 FPS at 4K on the reviewed host. Auto/H.264 passed 4K30 there, but that result is not a guarantee for other hardware. See the [encoder/settings review](docs/obs-encoder-settings-validation-0.2.56-2026-09-07.md) for measured results and the [v0.2.57 packaged validation](docs/release-0.2.57-windows-validation.md) for the latest release coverage.
 
 VP9 alpha is CPU-encoded and software-heavy because Game Capture encodes both the color video and a second alpha video track. The default VP9 settings already use libvpx realtime mode with the fastest `-cpu-used 8` setting. If the encoder overloads, lower output resolution/FPS first; `1080p30` or `720p60` are safer starting points than `1080p60`. Advanced users can use `FFmpeg Options` to override output options; for example, `-g 30 -keyint_min 30` can reduce all-keyframe cost, but recovery after packet loss or late joins may be slower.
-
-Web landing/download page:
-- `docs/gamecapture.html`
 
 ## Downloads
 
@@ -147,7 +148,7 @@ VP9 alpha reservation and capability activation, and failed-peer ICE restart rec
 VDO.Ninja director page. The ninja-plugin alpha workflow uses packaged Game Capture, a synthetic
 Spout RGBA sender, portable OBS, and pixel-level transparency validation.
 The signaling and Control Center commands resolve the package matching the version in `CMakeLists.txt`, verify its
-release manifest, and binds `spout_test_sender.exe` from the build directory recorded in that
+release manifest, and bind `spout_test_sender.exe` from the build directory recorded in that
 manifest. Pass `-- --build-dir=<directory>` only to override that binding explicitly.
 The named Edge negotiation and lifecycle commands are host-contained subsets that pin the scenario
 in the npm script; use them when external TURN-registry coverage is not intended.
@@ -156,11 +157,11 @@ Playwright's Firefox runtime does not expose platform H.264; the Edge workflow c
 
 ## Releases
 
-Use `docs/RELEASES.md` for the exact release checklist, including fixed asset names, signing commands, VirusTotal commands, and troubleshooting.
+Use the [release playbook](docs/RELEASES.md) for the exact release checklist, including fixed asset names, signing commands, VirusTotal commands, and troubleshooting.
 
 ## Contributing
 
-Read `CONTRIBUTING.md` before opening PRs. Contributor terms include CLA/license grant requirements for this repository.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening PRs. Contributor terms include CLA/license grant requirements for this repository.
 
 ## Repository Scope
 
@@ -168,4 +169,4 @@ This repo is focused on the native Windows app (`native-qt`) and supporting rele
 
 ## License
 
-Free and open source (AGPL-3.0). See `LICENSE`.
+Free and open source (AGPL-3.0). See [LICENSE](LICENSE).

@@ -3,14 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game Capture for VDO.Ninja | Spout2 &amp; Alpha Video</title>
+    <title>Game Capture for VDO.Ninja | Windows, OBS &amp; Spout2</title>
     <meta
       name="description"
-      content="Publish games, app windows, or Spout2 VTuber avatars from Windows to VDO.Ninja and OBS, with low-latency video and optional alpha transparency."
-    />
-    <meta
-      name="keywords"
-      content="game capture, spout2 capture, vdo.ninja, vtuber streaming, transparent avatar, alpha video, windows game streaming, webrtc game capture, obs guest capture"
+      content="Free Windows app to stream games, webcams, and Spout2 avatars to VDO.Ninja and OBS. Download Game Capture with hardware encoding and optional transparency."
     />
     <meta name="author" content="Steve Seguin" />
     <meta name="robots" content="index,follow,max-image-preview:large" />
@@ -19,23 +15,27 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Game Capture" />
-    <meta property="og:title" content="Game Capture for VDO.Ninja | Spout2 &amp; Alpha Video" />
+    <meta property="og:title" content="Game Capture for VDO.Ninja | Windows, OBS &amp; Spout2" />
     <meta
       property="og:description"
       content="Publish games, app windows, or Spout2 VTuber avatars from Windows to VDO.Ninja and OBS, with optional alpha transparency."
     />
     <meta property="og:url" content="https://steveseguin.github.io/game-capture/gamecapture.html" />
     <meta property="og:image" content="https://steveseguin.github.io/game-capture/app-screenshot.png" />
+    <meta property="og:image:width" content="983" />
+    <meta property="og:image:height" content="755" />
     <meta property="og:image:alt" content="Game Capture app window with stream controls" />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:creator" content="@SteveSeguin" />
-    <meta name="twitter:title" content="Game Capture for VDO.Ninja | Spout2 &amp; Alpha Video" />
+    <meta name="twitter:title" content="Game Capture for VDO.Ninja | Windows, OBS &amp; Spout2" />
     <meta
       name="twitter:description"
       content="Windows-native game, window, and Spout2 publishing for low-latency VDO.Ninja and transparent OBS workflows."
     />
     <meta name="twitter:image" content="https://steveseguin.github.io/game-capture/app-screenshot.png" />
+    <meta name="twitter:image:alt" content="Game Capture Windows app with source selection and streaming controls" />
+    <link rel="sitemap" type="application/xml" href="./sitemap.xml" />
     <link rel="icon" href="https://vdo.ninja/media/favicon.ico" />
     <script type="application/ld+json">
       {
@@ -44,7 +44,11 @@
         "name": "Game Capture",
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "Windows",
-        "description": "Game Capture is a native Windows app for publishing games, app windows, and Spout2 VTuber avatars to VDO.Ninja and OBS, with optional alpha transparency.",
+        "isAccessibleForFree": true,
+        "license": "https://github.com/steveseguin/game-capture/blob/main/LICENSE",
+        "screenshot": "https://steveseguin.github.io/game-capture/app-screenshot.png",
+        "offers": { "@type": "Offer", "price": 0, "priceCurrency": "USD" },
+        "description": "Game Capture is a native Windows app for publishing games, app windows, webcams, and Spout2 VTuber avatars to VDO.Ninja and OBS, with optional alpha transparency.",
         "url": "https://steveseguin.github.io/game-capture/gamecapture.html",
         "downloadUrl": "https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe",
         "publisher": {
@@ -92,6 +96,19 @@
           linear-gradient(160deg, var(--bg), var(--bg-2));
         line-height: 1.45;
       }
+
+      a { color: #9ef6ff; text-underline-offset: 3px; }
+      a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent-2); outline-offset: 4px; }
+      [id] { scroll-margin-top: 1rem; }
+      .skip-link { position: absolute; left: 1rem; top: -5rem; padding: 0.75rem; background: var(--bg); z-index: 1; }
+      .skip-link:focus { top: 0.5rem; }
+      .page-nav { display: flex; flex-wrap: wrap; gap: 0.65rem 1.25rem; margin-bottom: 1rem; }
+      .faq { margin-top: 1rem; }
+      .faq details { padding: 0.8rem 0; }
+      .faq details + details { border-top: 1px solid var(--panel-border); }
+      .faq summary { cursor: pointer; font-weight: 700; }
+      @media (prefers-reduced-motion: reduce) { .btn { transition: none; } .btn:hover { transform: none; } }
+      @media (max-width: 420px) { .preview { margin-inline: 0; } }
 
       .wrap {
         width: min(1080px, 92vw);
@@ -218,9 +235,12 @@
       .grid {
         margin-top: 1rem;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(235px, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.8rem;
       }
+
+      .grid > .card:last-child { grid-column: 1 / -1; }
+      @media (max-width: 640px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 
       .card {
         background: var(--panel);
@@ -269,13 +289,22 @@
     </style>
   </head>
   <body>
+    <a class="skip-link" href="#downloads">Skip to downloads</a>
     <main class="wrap">
-      <section class="hero">
-        <span class="kicker">Windows Native App</span>
-        <h1>Game Capture for VDO.Ninja</h1>
+      <nav class="page-nav" aria-label="Page sections">
+        <a href="#downloads">Downloads</a>
+        <a href="#setup">Quick start</a>
+        <a href="#spout">Spout2</a>
+        <a href="#alpha">Transparency</a>
+        <a href="#faq">FAQ &amp; help</a>
+      </nav>
+      <section class="hero" id="downloads" aria-labelledby="page-title">
+
+        <span class="kicker">Free &amp; open source &middot; Windows 64-bit</span>
+        <h1 id="page-title">Game Capture for VDO.Ninja</h1>
         <p class="sub">
-          Publish games, app windows, or Spout2 VTuber avatars from Windows. Keep control simple:
-          stream ID, room workflow, and OBS-ready view links, including transparent alpha video.
+          Stream games, app windows, webcams, or Spout2 avatars from Windows to VDO.Ninja and OBS.
+          Share a viewer link, join a production room, or send transparent video to the OBS native receiver.
         </p>
 
         <div class="download-grid">
@@ -297,9 +326,9 @@
         </div>
 
         <p class="meta">
-          Latest release page:
+          Release notes and all downloads:
           <a href="https://github.com/steveseguin/game-capture/releases/latest"
-            >github.com/steveseguin/game-capture/releases/latest</a
+            >View the latest release</a
           >
         </p>
 
@@ -307,21 +336,23 @@
           <img
             src="./app-screenshot.png"
             alt="Game Capture app window showing window selection and go live controls"
-            loading="lazy"
+            width="983" height="755"
+            fetchpriority="high"
+            decoding="async"
           />
-          <figcaption>Current Windows app interface (native Qt build)</figcaption>
+          <figcaption>Game Capture: choose a source, set your stream details, and go live.</figcaption>
         </figure>
       </section>
 
       <section class="grid" aria-label="Intro">
         <article class="card">
-          <h2>How It Works</h2>
-          <ul class="list">
-            <li>Creator sets stream ID and shares a link with the guest.</li>
-            <li>Guest opens Game Capture and selects a game, app window, or Spout2 sender.</li>
-            <li>OBS uses view/scene links to pull the feed.</li>
-            <li>Room workflows support role-based quality control.</li>
-          </ul>
+          <h2 id="setup">Quick Start</h2>
+          <ol class="list">
+            <li>Download and open Game Capture on Windows.</li>
+            <li>Select a game window, webcam, or Spout2 sender, then choose audio if needed.</li>
+            <li>Enter a stream ID or paste a VDO.Ninja link, then click Go Live.</li>
+            <li>Open the generated viewer link in a browser or OBS. For transparency, follow the alpha setup below.</li>
+          </ol>
         </article>
         <article class="card">
           <h2>Why This App</h2>
@@ -330,7 +361,7 @@
             <li>Hardware-accelerated encoding for smoother performance.</li>
             <li>Dual-stream quality model: HQ + LQ routing when needed.</li>
             <li>Multiple viewers from one HD encode workflow.</li>
-            <li>No Electron runtime, low memory usage, native Qt app.</li>
+            <li>Native Qt app without an Electron runtime.</li>
             <li>Simple alternative to OBS for guest-side game feed publishing.</li>
             <li>Optional camera/webcam publishing with a selectable microphone and local publisher preview.</li>
             <li>Direct Spout2 input for VTuber avatars and transparent graphics.</li>
@@ -338,7 +369,7 @@
           </ul>
         </article>
         <article class="card">
-          <h2>Spout2 &amp; VTuber Sources</h2>
+          <h2 id="spout">Spout2 &amp; VTuber Sources</h2>
           <ul class="list">
             <li>Receive local Spout2 video from VTube Studio, Warudo, VSeeFace, VNyan, and similar Windows apps.</li>
             <li>Enable Spout output in the avatar app, choose <strong>Spout2 (avatar apps)</strong>, and select its sender.</li>
@@ -353,7 +384,7 @@
           </p>
         </article>
         <article class="card">
-          <h2>Alpha Workflow</h2>
+          <h2 id="alpha">Transparency in OBS</h2>
           <ul class="list">
             <li>Use <strong>VP9 (OBS Alpha Preview)</strong> with alpha enabled for transparent OBS playback.</li>
             <li>VP9 alpha requires the bundled LGPL FFmpeg/libvpx VP9 encoder and is CPU-encoded.</li>
@@ -366,10 +397,12 @@
           </ul>
         </article>
         <article class="card">
-          <h2>Current Scope</h2>
+          <h2>Compatibility &amp; Performance</h2>
           <ul class="list">
             <li><span class="warn">Windows only</span> right now.</li>
-            <li>No auth guard for role claims (production tool model).</li>
+            <li>The OBS plugin v1.1.68 native receiver accepts H.264 and VP9; HEVC/AV1 are not supported by that receiver.</li>
+            <li>Explicit NVENC/QSV can fall below 30 FPS at 4K. Lower resolution or frame rate if playback falls behind.</li>
+            <li>Room roles are not an access-control boundary; share production links with trusted participants.</li>
             <li>Limit max connections to protect publisher performance.</li>
             <li>
               Public roadmap and test plans live in the
@@ -379,11 +412,31 @@
         </article>
       </section>
 
-      <p class="footer">
+      <section class="card faq" id="faq" aria-labelledby="faq-title">
+        <h2 id="faq-title">Frequently Asked Questions</h2>
+        <details>
+          <summary>Do I need OBS on the sending computer?</summary>
+          <p>No. Game Capture publishes directly to VDO.Ninja. A remote producer can receive the stream in OBS, while ordinary viewers can use a browser.</p>
+        </details>
+        <details>
+          <summary>Will a transparent Spout2 feed work in an OBS Browser Source?</summary>
+          <p>Browser Sources show the color video, without compositing the alpha track. For true transparency, use VP9 alpha and the VDO.Ninja OBS plugin's native receiver. Alternatively, select a chroma background and add a chroma-key filter in OBS.</p>
+        </details>
+        <details>
+          <summary>Why does my Spout2 feed have no sound?</summary>
+          <p>Spout2 carries video only. Choose a microphone or output mix separately in Game Capture when you need audio.</p>
+        </details>
+        <details>
+          <summary>Where can I get setup help or report a problem?</summary>
+          <p>Start with the <a href="https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja">setup guide</a> or <a href="https://github.com/steveseguin/game-capture#readme">README</a>. For a reproducible problem, <a href="https://github.com/steveseguin/game-capture/issues">open a GitHub issue</a> with your source, encoder, receiver, and logs from Help &rarr; Open Log Folder.</p>
+        </details>
+      </section>
+
+      <footer class="footer">
         Project repo: <a href="https://github.com/steveseguin/game-capture">steveseguin/game-capture</a>
         <br />
-        License: Free and Open Source
-      </p>
+        License: <a href="https://github.com/steveseguin/game-capture/blob/main/LICENSE">AGPL-3.0</a> &middot; Free and open source
+      </footer>
     </main>
   </body>
 </html>
