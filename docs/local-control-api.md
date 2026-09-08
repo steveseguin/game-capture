@@ -162,6 +162,15 @@ Invoke-RestMethod "$($control.base_url)/commands" -Headers $headers -Method Post
   -ContentType "application/json" -Body '{"command":"issue_report","notes":"Spout sender disappeared after resize"}'
 ```
 
+Request a transport rebuild for active peers while retaining their logical sessions:
+
+```powershell
+Invoke-RestMethod "$($control.base_url)/commands" -Headers $headers -Method Post `
+  -ContentType "application/json" -Body '{"command":"refresh_peer_transports"}'
+```
+
+This command returns `accepted_peer_count`. Recovery is asynchronous; inspect subsequent diagnostics and receiver playback. HTTP 409 means no active peers were accepted for refresh.
+
 ## Local LLM Usage
 
 A local agent should:
@@ -173,4 +182,4 @@ A local agent should:
 5. Use `issue_report` when asking a user or developer for help, because it captures app state and recent logs in one file.
 6. Use `stop` or `quit` only when the user explicitly asks or the workflow clearly owns the app process.
 
-This API intentionally does not yet start or reconfigure a live stream. Starting a stream changes UI state, capture state, signaling state, and user-visible settings together, so that needs a separate workflow contract before being exposed safely.
+This HTTP API intentionally does not start or reconfigure a live stream. The optional [MCP bridge](ai-control.md) supplies structured launch settings through the existing command-line startup workflow, plus status, monitoring, source discovery, reports, and lifecycle controls. To change launch settings, quit the bridge-owned instance and launch again.

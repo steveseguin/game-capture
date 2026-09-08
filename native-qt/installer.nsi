@@ -48,11 +48,13 @@ VIAddVersionKey "LegalCopyright" "Copyright (c) 2026"
 Function EnsureGameCaptureClosed
     ; Avoid "Error opening file for writing" when Qt DLLs are still locked.
     nsExec::ExecToLog 'taskkill /F /T /IM game-capture.exe'
+    Pop $0
 FunctionEnd
 
 Function un.EnsureGameCaptureClosed
     ; Uninstaller needs its own function namespace in NSIS.
     nsExec::ExecToLog 'taskkill /F /T /IM game-capture.exe'
+    Pop $0
 FunctionEnd
 
 Function RemoveExistingInstall
@@ -66,12 +68,25 @@ Function AddFirewallRules
     DetailPrint "Adding Windows Firewall rule for Game Capture WebRTC..."
     ; Replace stale rules so upgrades keep the installed executable path current.
     nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE_UDP}"'
+    Pop $0
     nsExec::ExecToLog 'netsh advfirewall firewall add rule name="${FIREWALL_RULE_UDP}" dir=in action=allow program="$INSTDIR\game-capture.exe" protocol=UDP enable=yes profile=any'
+    Pop $0
+    StrCmp $0 "0" firewall_added
+    DetailPrint "WARNING: Windows Firewall rule could not be added (netsh result: $0)."
+    MessageBox MB_ICONEXCLAMATION|MB_OK "Game Capture was copied, but Windows Firewall could not be configured (result: $0). Direct viewer connections may be blocked. Allow inbound UDP for $INSTDIR\game-capture.exe in Windows Firewall, or ask your administrator if policy manages these rules." /SD IDOK
+    Goto firewall_done
+firewall_added:
+    DetailPrint "Windows Firewall rule added for $INSTDIR\game-capture.exe."
+firewall_done:
 FunctionEnd
 
 Function un.RemoveFirewallRules
     DetailPrint "Removing Windows Firewall rule for Game Capture WebRTC..."
-    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE_UDP}"'
+    nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="${FIREWALL_RULE_UDP}" program="$INSTDIR\game-capture.exe"'
+    Pop $0
+    StrCmp $0 "0" firewall_removed
+    DetailPrint "Windows Firewall rule was absent or could not be removed (netsh result: $0)."
+firewall_removed:
 FunctionEnd
 
 ; Installer Section

@@ -60,7 +60,13 @@ Release packaging fails if the FFmpeg bundle is missing, GPL/nonfree, or lacks `
 From repo root:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\build-release.ps1 -BuildDir build-review2 -Configuration Release -Version <version>
+. .\native-qt\qa\release-source-snapshot.ps1
+$snapshot = Get-ReleaseSourceSnapshot -SourceRoot (Resolve-Path .\native-qt).Path
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\build-release.ps1 `
+  -BuildDir build-review2 -Configuration Release -Version <version> `
+  -ExpectedSourceSnapshotSha256 $snapshot.sha256 `
+  -ExpectedSourceSnapshotFileCount $snapshot.fileCount `
+  -ExpectedSourceSnapshotAlgorithm $snapshot.algorithm
 ```
 
 VirusTotal behavior during this step:

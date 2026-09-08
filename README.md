@@ -50,6 +50,10 @@ See the [Game Capture and Spout2 setup guide](https://docs.vdo.ninja/guides/usin
 
 For same-user automation and local issue collection, the compiled app can expose an opt-in loopback JSON API with `--local-control`. It provides diagnostics, recent logs, source discovery, issue-report export, stop, and quit commands. See the [local control API reference](docs/local-control-api.md).
 
+An optional [MCP bridge for AI assistants](docs/ai-control.md) adds structured launch, status, monitoring, source discovery, recovery, and firewall inspection tools. It works with the packaged app and avoids screen scraping for routine control and diagnosis.
+
+The Windows installer adds an inbound UDP firewall rule for its installed executable. Portable copies do not add a rule; see [firewall verification](docs/ai-control.md#windows-firewall) when diagnosing direct-connection problems.
+
 ## Logs and Crash Reports
 
 - Runtime logs are written to `%LOCALAPPDATA%\GameCapture\logs\game-capture-debug.log`.

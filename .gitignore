@@ -16,6 +16,7 @@ native-qt/dist/
 archive/electron/node_modules/
 archive/electron/dist/
 native-qt/node_modules/
+native-qt/tools/mcp/node_modules/
 native-qt/.cache/
 native-qt/third_party/ffmpeg-win64/
 native-qt/third_party/cache/
