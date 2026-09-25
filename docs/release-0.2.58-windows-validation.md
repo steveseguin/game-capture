@@ -102,6 +102,8 @@ identified by those advisories. The complete 22-check desktop workflow passed
 again against the published executable, including H.264/VP9 playback, zero
 routine sound requests, responsiveness, tray behavior, and clean quit. Saved
 application preferences were restored.
+GitHub's dependency graph subsequently showed Pillow 12.3.0, and its advisory
+API reported zero open dependency alerts at 2026-09-25 04:32:31 UTC.
 
 Pillow and the Python validation environment are absent from the Windows
 package. This follow-up changes the validation tooling on `main`; the release
@@ -139,6 +141,7 @@ remain documented in the v0.2.56 encoder/settings review.
 - `native-qt/qa/reports/release-0.2.58/uploaded-asset-verification.json` and
   `stable-download-verification.json`.
 - `native-qt/qa/reports/release-0.2.58/desktop-pillow-12.3.0/9de41132-e23b-4928-8a1c-7dce591ccf7e/results.json`.
+- `native-qt/qa/reports/release-0.2.58/dependency-alert-verification.json`.
 - Earlier failed runs and isolated correction checks are retained under
   `native-qt/qa/reports/release-0.2.58/`.
 
