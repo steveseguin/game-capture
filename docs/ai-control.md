@@ -1,6 +1,6 @@
 # AI and automation control
 
-Game Capture supports structured local automation without screen scraping. Use its authenticated loopback HTTP API directly, or run the optional MCP bridge for an MCP-compatible assistant. The bridge works with the packaged v0.2.57 app; it is a separate Node.js tool, not a service installed by the Windows installer.
+Game Capture supports structured local automation without screen scraping. Use its authenticated loopback HTTP API directly, or run the optional MCP bridge for an MCP-compatible assistant. The bridge works with the packaged v0.2.58 app; it is a separate Node.js tool, not a service installed by the Windows installer.
 
 ## MCP setup
 
@@ -90,7 +90,7 @@ Publisher metrics cannot establish receiver image quality, alpha compositing, or
 
 ## Windows Firewall
 
-The Windows installer already creates **Game Capture WebRTC UDP**, an enabled inbound UDP allow rule bound to the installed `game-capture.exe`, across network profiles. Upgrades replace the named rule to update the executable path. Uninstall removes the rule for that installation path. The updated installer reports a warning if Windows rejects rule creation, instead of silently assuming success. These installer changes take effect in the next installer built from this source, not in previously published v0.2.57 downloads.
+The Windows installer creates **Game Capture WebRTC UDP**, an enabled inbound UDP allow rule bound to the installed `game-capture.exe`, across network profiles. Upgrades replace the named rule to update the executable path. Uninstall removes the rule for that installation path. Starting with v0.2.58, the installer reports a warning if Windows rejects rule creation. Previously published v0.2.57 installers do not include that warning.
 
 Portable copies do not install a firewall rule. To inspect the configured path:
 
@@ -106,7 +106,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\native-qt\tools\check-
 Run the real MCP-to-packaged-app workflow with:
 
 ```powershell
-$env:GAME_CAPTURE_MCP_EXECUTABLE = (Resolve-Path .\native-qt\dist\game-capture-0.2.57-win64\game-capture.exe).Path
+$env:GAME_CAPTURE_MCP_EXECUTABLE = (Resolve-Path .\native-qt\dist\game-capture-0.2.58-win64\game-capture.exe).Path
 $env:GAME_CAPTURE_MCP_SPOUT_FIXTURE = (Resolve-Path .\native-qt\build-review2\bin\spout_test_sender.exe).Path
 node .\native-qt\tools\mcp\packaged-e2e.mjs
 ```

@@ -1074,7 +1074,7 @@ async function collectBlockingUiState(page) {
   });
 }
 
-async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = true) {
+async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = true, expectedTextPattern = null) {
   const modal = page.locator('.alertModal:visible').last();
   try {
     await modal.waitFor({ state: 'visible', timeout: timeoutMs });
@@ -1088,7 +1088,7 @@ async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = tru
   // Keep accepting the legacy generic copy while hosted VDO deployments roll forward.
   const recognizedRejection =
     /not authorized|not supported|not publishing|not applicable|cannot be changed|only available to|request failed|did not recognize you as the director/i;
-  if (!recognizedRejection.test(text)) {
+  if (!recognizedRejection.test(text) || (expectedTextPattern && !expectedTextPattern.test(text))) {
     return { ok: false, stage: 'unexpected-alert', state: { text } };
   }
   const close = modal.locator('.modalClose, .close, button, [role="button"]').first();
@@ -1100,14 +1100,15 @@ async function waitForAndDismissUnsupportedAlert(page, timeoutMs, required = tru
   return { ok: true, state: { visible: true, text } };
 }
 
-async function settleUnsupportedAlerts(page, settleMs = 6000) {
+async function settleUnsupportedAlerts(page, settleMs = 6000, expectedTextPattern = null) {
   const deadline = Date.now() + settleMs;
   const dismissed = [];
   while (Date.now() < deadline) {
     const result = await waitForAndDismissUnsupportedAlert(
       page,
       Math.min(500, Math.max(1, deadline - Date.now())),
-      false
+      false,
+      expectedTextPattern
     );
     if (!result.ok) return result;
     if (result.state && result.state.visible) dismissed.push(result.state.text);
@@ -1118,6 +1119,16 @@ async function settleUnsupportedAlerts(page, settleMs = 6000) {
     ok: blockingUi.ok,
     state: { dismissedCount: dismissed.length, dismissed, blockingUi }
   };
+}
+
+async function dismissReappliedQualityAlerts(page, timeoutMs, required = true) {
+  const expectedText = /Per-peer Low\/High quality selection is not supported/i;
+  const first = await waitForAndDismissUnsupportedAlert(page, timeoutMs, required, expectedText);
+  if (!first.ok) return first;
+  // Closing one modal can expose another queued copy. Finish that user
+  // interaction before the next state/media check asserts no blocking UI.
+  const queued = await settleUnsupportedAlerts(page, 6000, expectedText);
+  return { ok: queued.ok, state: { first: first.state, queued: queued.state || queued } };
 }
 
 async function waitForDirectorPeer(page, config) {
@@ -2852,7 +2863,7 @@ async function run() {
       throw Object.assign(new Error('quality high button click failed'), { result: qualityHighClick });
     }
     await check('director-quality-high-shows-unsupported-alert', () =>
-      waitForAndDismissUnsupportedAlert(
+      dismissReappliedQualityAlerts(
         page,
         Math.max(5000, Math.floor(config.timeoutMs / 3)),
         true
@@ -2888,7 +2899,7 @@ async function run() {
       throw Object.assign(new Error('applyVdoPreviewRate failed'), { result: previewRateRequest });
     }
     await check('vdo-preview-rate-unsupported-alert-handled', () =>
-      waitForAndDismissUnsupportedAlert(page, 1500, false));
+      dismissReappliedQualityAlerts(page, 1500, false));
     await check('vdo-preview-rate-message-applies', () => waitForStatsInfo(
       page,
       uuid,
@@ -2912,9 +2923,6 @@ async function run() {
       beforePreviewRateMedia,
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
-    await check('unsupported-quality-alert-queue-settles', () =>
-      settleUnsupportedAlerts(page, 6000));
-
     const beforeAudioRateMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
     const audioRateRequest = await requestVdoAudioRate(page, uuid, config.audioRateLimitKbps);
     if (!audioRateRequest.ok) {
@@ -3028,17 +3036,24 @@ async function run() {
       settleUnsupportedAlerts(page, 6000));
 
     const beforeDirectorAudioMuteMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const directorAudioMuteProbeStart = await getDirectorProbeMessageCount(page);
     const directorAudioMuteClick = await clickDirectorQualityButton(page, uuid, 'mute-guest');
     if (!directorAudioMuteClick.ok) {
       throw Object.assign(new Error('director audio mute button click failed'), { result: directorAudioMuteClick });
     }
+    // Hosted VDO.Ninja can reapply per-peer quality when toggling audio too.
+    // Handle only that known rejection; retain the fresh mute-state and media
+    // assertions, and fail on any unrelated blocking UI.
+    await check('director-audio-mute-reapplied-quality-alerts-settle', () =>
+      settleUnsupportedAlerts(page, 6000, /Per-peer Low\/High quality selection is not supported/i));
     await check('director-audio-mute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
         const msg = entry && entry.message;
         return msg && msg.muteState === true;
       }`,
-      Math.max(10000, Math.floor(config.timeoutMs / 3))
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      directorAudioMuteProbeStart
     ));
     await check('post-director-audio-mute-video-is-fresh', () => waitForFreshDirectorMedia(
       page,
@@ -3048,17 +3063,21 @@ async function run() {
       Math.max(10000, Math.floor(config.timeoutMs / 3))
     ));
     const beforeDirectorAudioUnmuteMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
+    const directorAudioUnmuteProbeStart = await getDirectorProbeMessageCount(page);
     const directorAudioUnmuteClick = await clickDirectorQualityButton(page, uuid, 'mute-guest');
     if (!directorAudioUnmuteClick.ok) {
       throw Object.assign(new Error('director audio unmute button click failed'), { result: directorAudioUnmuteClick });
     }
+    await check('director-audio-unmute-reapplied-quality-alerts-settle', () =>
+      settleUnsupportedAlerts(page, 6000, /Per-peer Low\/High quality selection is not supported/i));
     await check('director-audio-unmute-button-state', () => waitForProbeMessage(
       page,
       `(entry) => {
         const msg = entry && entry.message;
         return msg && msg.muteState === false;
       }`,
-      Math.max(10000, Math.floor(config.timeoutMs / 3))
+      Math.max(10000, Math.floor(config.timeoutMs / 3)),
+      directorAudioUnmuteProbeStart
     ));
     await check('post-director-audio-unmute-video-is-fresh', () => waitForFreshDirectorMedia(
       page,
@@ -3087,7 +3106,7 @@ async function run() {
       throw Object.assign(new Error('director video unmute button click failed'), { result: directorVideoUnmuteClick });
     }
     await check('director-video-unmute-reapplied-quality-shows-unsupported-alert', () =>
-      waitForAndDismissUnsupportedAlert(
+      dismissReappliedQualityAlerts(
         page,
         Math.max(5000, Math.floor(config.timeoutMs / 3)),
         true
@@ -3171,7 +3190,7 @@ async function run() {
       throw Object.assign(new Error('video on sendRequest failed'), { result: videoOnRequest });
     }
     await check('director-video-on-reapplied-quality-shows-unsupported-alert', () =>
-      waitForAndDismissUnsupportedAlert(
+      dismissReappliedQualityAlerts(
         page,
         Math.max(5000, Math.floor(config.timeoutMs / 3)),
         true

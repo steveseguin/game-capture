@@ -9,6 +9,8 @@ refreshes while retaining accessibility announcements.
 - Streaming startup also checks FFmpeg in the background. Diagnostics read
   completed probe metadata without waiting for validation.
 - The close-to-tray reminder appears once per app session.
+- Includes the optional local MCP automation bridge and installer warnings when
+  Windows Firewall rule creation fails, which were added after v0.2.57.
 - Release readiness now requires packaged Windows desktop workflows that
   observe sound requests, exercise slow/failed FFmpeg validation, verify GUI
   streaming through a browser receiver, and check tray/quit behavior.
