@@ -113,6 +113,14 @@ ninja
 
 Primary QA plans and gates live in `native-qt/qa/`.
 
+Release readiness also runs the packaged Windows desktop workflow, checking
+unwanted sound requests, source selection/removal, FFmpeg failure responsiveness,
+local diagnostics, H.264/VP9 GUI streaming with browser playback, and tray reminders.
+It requires Node.js/Playwright (including Chromium), an interactive Windows desktop,
+and 64-bit Python 3 with Tk support. Its runner installs pinned observer dependencies
+into `native-qt/.cache/desktop-ui-python` on first use. Close existing Game Capture
+sessions before running it; the workflow restores application preferences afterward.
+
 Fast gate:
 
 ```powershell
@@ -123,7 +131,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate
 Release readiness:
 
 ```powershell
-$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.57-win64).Path
+$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.58-win64).Path
 $publisher = Join-Path $package "game-capture.exe"
 $manifest = Join-Path $package "release-artifact-manifest.json"
 $manifestSha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()

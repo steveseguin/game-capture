@@ -128,6 +128,11 @@ Local tools should show these as plain status, for example: transparency detecte
 - `alpha_packets_sent`, `alpha_encode_failures`, `alpha_encode_timeouts`, `alpha_send_failures`
 - `alpha_frames_queued`, `alpha_frames_dropped`
 
+FFmpeg metadata describes the last completed probe for the active configuration.
+Diagnostics never launch FFmpeg or wait for a running probe. If no completed
+result is available, `ffmpeg_probe_error` says so; capability flags in that
+state are unknown rather than evidence that an encoder is missing.
+
 ## Commands
 
 Stop capture and streaming without closing the app:

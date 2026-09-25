@@ -213,6 +213,8 @@ class VideoEncoder {
 
     static std::string resolveFfmpegPath(const std::string &configuredPath = {});
     static FfmpegProbeInfo probeFfmpeg(const std::string &configuredPath = {});
+    // Diagnostics must not launch a process or wait for an in-flight probe.
+    static FfmpegProbeInfo completedFfmpegProbe(const std::string &configuredPath = {});
 
     using PacketCallback = std::function<void(const EncodedPacket &)>;
     void setPacketCallback(PacketCallback cb) { packetCallback_ = std::move(cb); }

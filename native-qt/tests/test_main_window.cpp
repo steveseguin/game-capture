@@ -2306,6 +2306,7 @@ void TestMainWindow::testFfmpegAlphaStatusMessaging() {
     codecCombo->setCurrentIndex(vp9Index);
     alphaCheck->setChecked(true);
 
+    QTRY_VERIFY_WITH_TIMEOUT(!statusLabel->text().startsWith("Checking"), 8000);
     QVERIFY(statusLabel->text().contains("ffmpeg.exe", Qt::CaseInsensitive));
     QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive) ||
             statusLabel->text().contains("alpha mask", Qt::CaseInsensitive));
@@ -2316,7 +2317,7 @@ void TestMainWindow::testFfmpegAlphaStatusMessaging() {
     QVERIFY(h264Index >= 0);
     codecCombo->setCurrentIndex(h264Index);
     alphaCheck->setChecked(true);
-    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(!statusLabel->text().startsWith("Checking"), 8000);
 
     QVERIFY(!statusLabel->text().contains("Only needed", Qt::CaseInsensitive));
     QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive) ||
@@ -2327,7 +2328,7 @@ void TestMainWindow::testFfmpegAlphaStatusMessaging() {
     QVERIFY(av1Index >= 0);
     codecCombo->setCurrentIndex(av1Index);
     alphaCheck->setChecked(true);
-    QCoreApplication::processEvents();
+    QTRY_VERIFY_WITH_TIMEOUT(!statusLabel->text().startsWith("Checking"), 8000);
     QVERIFY(!statusLabel->text().contains("libvpx-vp9", Qt::CaseInsensitive));
     QVERIFY(!statusLabel->text().contains("alpha mask", Qt::CaseInsensitive));
 }

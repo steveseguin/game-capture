@@ -1960,7 +1960,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
     const RoomQualityDecision &roomQuality = roomQualitySnapshot.decision;
     const PeerCounts &counts = roomQualitySnapshot.counts;
     const auto peerOperationStats = peerOperationExecutor_.stats();
-    const video::FfmpegProbeInfo ffmpegInfo = video::VideoEncoder::probeFfmpeg(videoState.config.ffmpegPath);
+    const video::FfmpegProbeInfo ffmpegInfo = video::VideoEncoder::completedFfmpegProbe(videoState.config.ffmpegPath);
     std::string diagnosticsServer;
     std::string diagnosticsRoom;
     std::string diagnosticsStreamId;

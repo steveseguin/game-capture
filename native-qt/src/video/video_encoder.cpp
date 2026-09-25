@@ -940,6 +940,21 @@ CommandCaptureResult runCommandCapture(const std::filesystem::path &, const std:
 }
 #endif
 
+std::mutex completedProbeMutex;
+std::deque<std::pair<std::string, FfmpegProbeInfo>> completedProbes;
+
+FfmpegProbeInfo rememberCompletedProbe(const std::string &configuredPath, FfmpegProbeInfo info) {
+    const std::string key = trimCopyForPath(configuredPath);
+    std::lock_guard<std::mutex> lock(completedProbeMutex);
+    completedProbes.erase(std::remove_if(completedProbes.begin(), completedProbes.end(),
+        [&key](const auto &entry) { return entry.first == key; }), completedProbes.end());
+    completedProbes.emplace_front(key, info);
+    if (completedProbes.size() > 8) {
+        completedProbes.pop_back();
+    }
+    return info;
+}
+
 FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     FfmpegProbeInfo info;
     const std::filesystem::path resolved = resolveFfmpegPathImpl(configuredPath);
@@ -948,7 +963,7 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
         info.error = info.userOverride
             ? "Configured FFmpeg path was not found"
             : "FFmpeg was not found";
-        return info;
+        return rememberCompletedProbe(configuredPath, info);
     }
 
     info.resolved = true;
@@ -975,7 +990,7 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
         !modifiedError &&
         probeCache.modified == modified &&
         (probeNow - probeCache.probedAt) < std::chrono::seconds(60)) {
-        return probeCache.info;
+        return rememberCompletedProbe(configuredPath, probeCache.info);
     }
     const auto cacheAndReturn = [&](FfmpegProbeInfo completed) {
         probeCache.valid = !modifiedError;
@@ -983,7 +998,7 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
         probeCache.modified = modified;
         probeCache.probedAt = probeNow;
         probeCache.info = completed;
-        return completed;
+        return rememberCompletedProbe(configuredPath, completed);
     };
 
     const CommandCaptureResult versionProbe = runCommandCapture(resolved, {"-hide_banner", "-version"});
@@ -5082,6 +5097,24 @@ std::string VideoEncoder::resolveFfmpegPath(const std::string &configuredPath) {
 
 FfmpegProbeInfo VideoEncoder::probeFfmpeg(const std::string &configuredPath) {
     return probeFfmpegImpl(configuredPath);
+}
+
+FfmpegProbeInfo VideoEncoder::completedFfmpegProbe(const std::string &configuredPath) {
+    const std::string key = trimCopyForPath(configuredPath);
+    // Independent of the mutex held by the slow process probe. Return the last
+    // completed metadata for this configuration, never another path's result.
+    std::unique_lock<std::mutex> lock(completedProbeMutex, std::try_to_lock);
+    if (lock.owns_lock()) {
+        for (const auto &entry : completedProbes) {
+            if (entry.first == key) {
+                return entry.second;
+            }
+        }
+    }
+    FfmpegProbeInfo info;
+    info.userOverride = !key.empty();
+    info.error = "FFmpeg probe result not yet available for this configuration";
+    return info;
 }
 
 }  // namespace versus::video

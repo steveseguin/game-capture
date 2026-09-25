@@ -505,6 +505,20 @@ $lines += ""
 $lines += "- Result: " + ($(if ($ctestPass) { "PASS" } else { "FAIL" }))
 $lines += ""
 
+$desktopPass = & $script:runStepImplementation "Packaged Windows desktop behavior" {
+    $probeHelper = Join-Path (Split-Path -Parent $script:spoutSenderPathBinding) 'ffmpeg_probe_hang_helper.exe'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+        (Join-Path $script:repoRoot 'e2e/run-desktop-ui-e2e.ps1') `
+        -PublisherPath $script:publisherExe -ProbeHelperPath $probeHelper `
+        -ReportDir (Join-Path $script:repoRoot "qa/reports/desktop-ui-$timestamp")
+}
+$allPass = $allPass -and $desktopPass
+$lines += "## Packaged Windows desktop behavior"
+$lines += ""
+$lines += "- Result: " + ($(if ($desktopPass) { "PASS" } else { "FAIL" }))
+$lines += "- Sound requests, source selection/removal, FFmpeg timeout/startup responsiveness, stale results, H.264/VP9 GUI start/stop with browser decoding, and tray reminders."
+$lines += ""
+
 $e2ePass = & $script:runStepImplementation "E2E Matrix" {
     cmd /c "npm --prefix `"$repoRoot`" run e2e:matrix -- --publisher-path=`"$publisherExe`""
 }

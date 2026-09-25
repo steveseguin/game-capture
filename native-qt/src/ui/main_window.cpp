@@ -1771,6 +1771,7 @@ void MainWindow::setupUI() {
 
     ffmpegStatusLabel_ = new QLabel(this);
     ffmpegStatusLabel_->setObjectName("ffmpegStatusLabel");
+    ffmpegStatusLabel_->setTextFormat(Qt::PlainText);
     ffmpegStatusLabel_->setWordWrap(true);
     ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
     advancedForm->addRow("FFmpeg Status", ffmpegStatusLabel_);
@@ -1824,6 +1825,7 @@ void MainWindow::setupUI() {
 
     // Status label
     statusLabel_ = new QLabel("Select a window to capture", this);
+    statusLabel_->setTextFormat(Qt::PlainText);
     statusLabel_->setObjectName("statusLabel");
     statusLabel_->setAlignment(Qt::AlignCenter);
     statusLabel_->setWordWrap(true);
@@ -2690,38 +2692,6 @@ void MainWindow::onGoLiveClicked() {
         const bool requiresFfmpeg =
             codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
             (config.explicitEncoderSelection && config.preferredHardware == versus::video::HardwareEncoder::QuickSync);
-        const versus::video::FfmpegProbeInfo ffmpegInfo =
-            versus::video::VideoEncoder::probeFfmpeg(config.ffmpegPath);
-        if (requiresFfmpeg && !ffmpegInfo.resolved) {
-            updateStatus("ffmpeg.exe not found", "error");
-            QMessageBox::warning(
-                this,
-                "FFmpeg Required",
-                "VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, and the OBS alpha workflow require ffmpeg.exe. Use a bundled release, repair/reinstall Game Capture, or choose a custom FFmpeg path.");
-            refreshFfmpegStatus();
-            return;
-        }
-        if (requiresFfmpeg && ffmpegInfo.bundled && (ffmpegInfo.gplEnabled || ffmpegInfo.nonfreeEnabled)) {
-            updateStatus("Bundled FFmpeg rejected", "error");
-            QMessageBox::warning(
-                this,
-                "FFmpeg Rejected",
-                "The bundled FFmpeg reports GPL or nonfree configure flags. This release package should be rebuilt with the pinned LGPL bundle.");
-            refreshFfmpegStatus();
-            return;
-        }
-        const bool needsLibvpxVp9 =
-            config.codec == versus::video::VideoCodec::VP9 ||
-            (config.enableAlpha && config.codec == versus::video::VideoCodec::H264);
-        if (needsLibvpxVp9 && !ffmpegInfo.hasLibvpxVp9) {
-            updateStatus("FFmpeg lacks libvpx-vp9", "error");
-            QMessageBox::warning(
-                this,
-                "FFmpeg VP9 Encoder Missing",
-                "VP9 and the H.264 dual-track OBS alpha workflow require FFmpeg with libvpx-vp9. Use the bundled release FFmpeg or choose a compatible custom FFmpeg path.");
-            refreshFfmpegStatus();
-            return;
-        }
 
         const QString streamTargetRaw = streamIdInput_->text().trimmed();
         const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
@@ -2776,7 +2746,8 @@ void MainWindow::onGoLiveClicked() {
                                            microphoneDeviceId,
                                            primaryAudioGain,
                                            microphoneAudioGain,
-                                           audioLimiterEnabled]() {
+                                           audioLimiterEnabled,
+                                           requiresFfmpeg]() {
             bool started = false;
             QString failureStatus;
             const auto cleanupFailedStartup = [core]() {
@@ -2791,26 +2762,43 @@ void MainWindow::onGoLiveClicked() {
             };
 
             try {
-                const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
-                core->setSelectedWindow(selectedWindowId);
-                core->setVideoSourceMode(sourceMode);
-                core->setVideoConfig(config);
-                core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
-                core->setIncludeMicrophone(includeMicrophone);
-                core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
-                core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
+                // Preflight belongs on the startup worker too: a custom FFmpeg
+                // can time out, or wait behind an in-flight settings probe.
+                if (requiresFfmpeg) {
+                    const auto info = versus::video::VideoEncoder::probeFfmpeg(config.ffmpegPath);
+                    if (!info.resolved || !info.error.empty()) {
+                        failureStatus = QString("FFmpeg unavailable: %1. Choose a working FFmpeg path or repair the bundled installation.")
+                            .arg(QString::fromStdString(info.error));
+                    } else if (info.bundled && (info.gplEnabled || info.nonfreeEnabled)) {
+                        failureStatus = "Bundled FFmpeg rejected (GPL/nonfree flags). Repair the installation.";
+                    } else if ((config.codec == versus::video::VideoCodec::VP9 ||
+                                (config.enableAlpha && config.codec == versus::video::VideoCodec::H264)) &&
+                               !info.hasLibvpxVp9) {
+                        failureStatus = "FFmpeg lacks libvpx-vp9. Choose a compatible FFmpeg for the VP9/alpha workflow.";
+                    }
+                }
+                if (failureStatus.isEmpty()) {
+                    const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
+                    core->setSelectedWindow(selectedWindowId);
+                    core->setVideoSourceMode(sourceMode);
+                    core->setVideoConfig(config);
+                    core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
+                    core->setIncludeMicrophone(includeMicrophone);
+                    core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
+                    core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
-                if (!core->startCapture(sourceMode, selectedWindowId)) {
-                    const std::string detail = core->lastCaptureError();
-                    failureStatus = detail.empty()
-                        ? QStringLiteral("Failed to start capture")
-                        : QString::fromStdString(detail);
-                } else {
-                    if (!core->goLive(options)) {
-                        failureStatus = "Failed to connect";
-                        cleanupFailedStartup();
+                    if (!core->startCapture(sourceMode, selectedWindowId)) {
+                        const std::string detail = core->lastCaptureError();
+                        failureStatus = detail.empty()
+                            ? QStringLiteral("Failed to start capture")
+                            : QString::fromStdString(detail);
                     } else {
-                        started = true;
+                        if (!core->goLive(options)) {
+                            failureStatus = "Failed to connect";
+                            cleanupFailedStartup();
+                        } else {
+                            started = true;
+                        }
                     }
                 }
             } catch (const std::exception &e) {
@@ -3079,7 +3067,14 @@ void MainWindow::updateStatus(const QString &text, const QString &statusClass) {
     statusLabel_->setStyleSheet(QString("color: %1; font-weight: %2;")
         .arg(color, statusClass == "live" ? "bold" : "normal"));
     if (changed && statusLabel_->isVisible()) {
-        QAccessibleEvent event(statusLabel_, QAccessible::Alert);
+        // Alert plays the Windows system sound even without a screen reader.
+        // Announce status changes without turning routine UI/background updates
+        // into audible system alerts.
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        QAccessibleAnnouncementEvent event(statusLabel_, text);
+#else
+        QAccessibleEvent event(statusLabel_, QAccessible::NameChanged);
+#endif
         QAccessible::updateAccessibility(&event);
     }
 }
@@ -3286,9 +3281,11 @@ void MainWindow::refreshFfmpegStatus() {
     if (!ffmpegStatusLabel_) {
         return;
     }
-    const QString configuredPath = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString();
-    const versus::video::FfmpegProbeInfo info =
-        versus::video::VideoEncoder::probeFfmpeg(configuredPath.toStdString());
+    ++ffmpegProbeRevision_;
+    ffmpegProbeRequested_ = false;
+    if (ffmpegProbeTimer_) {
+        ffmpegProbeTimer_->stop();
+    }
     const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
     const auto selectedCodec = codecSelect_
         ? codecFromUiValue(codecSelect_->currentData().toString())
@@ -3302,6 +3299,66 @@ void MainWindow::refreshFfmpegStatus() {
     if (!needsFfmpeg) {
         ffmpegStatusLabel_->setText("Needed for VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, or OBS alpha.");
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+        return;
+    }
+    ffmpegStatusLabel_->setText("Checking ffmpeg.exe...");
+    ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+    ffmpegProbeRequested_ = true;
+    if (!ffmpegProbeTimer_) {
+        ffmpegProbeTimer_ = new QTimer(this);
+        ffmpegProbeTimer_->setSingleShot(true);
+        ffmpegProbeTimer_->setInterval(200);
+        connect(ffmpegProbeTimer_, &QTimer::timeout, this, &MainWindow::startFfmpegStatusProbe);
+    }
+    // Debounce typing and allow only one probe per window at a time.
+    ffmpegProbeTimer_->start();
+}
+
+void MainWindow::startFfmpegStatusProbe() {
+    if (!ffmpegProbeRequested_ || ffmpegProbeWatcher_) {
+        return;
+    }
+    ffmpegProbeRequested_ = false;
+    const quint64 revision = ffmpegProbeRevision_;
+    const std::string path = ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed().toStdString() : std::string();
+    auto *watcher = new QFutureWatcher<versus::video::FfmpegProbeInfo>(this);
+    ffmpegProbeWatcher_ = watcher;
+    connect(watcher, &QFutureWatcher<versus::video::FfmpegProbeInfo>::finished, this, [this, watcher, revision]() {
+        const auto info = watcher->result();
+        ffmpegProbeWatcher_ = nullptr;
+        watcher->deleteLater();
+        if (revision == ffmpegProbeRevision_) {
+            showFfmpegStatus(info);
+        }
+        if (ffmpegProbeRequested_ && !ffmpegProbeTimer_->isActive()) {
+            startFfmpegStatusProbe();
+        }
+    });
+    // No window is captured by the worker. Closing it safely discards delivery.
+    watcher->setFuture(QtConcurrent::run([path]() {
+        try {
+            return versus::video::VideoEncoder::probeFfmpeg(path);
+        } catch (const std::exception &error) {
+            versus::video::FfmpegProbeInfo info;
+            info.error = error.what();
+            return info;
+        } catch (...) {
+            versus::video::FfmpegProbeInfo info;
+            info.error = "Unexpected FFmpeg probe failure";
+            return info;
+        }
+    }));
+}
+
+void MainWindow::showFfmpegStatus(const versus::video::FfmpegProbeInfo &info) {
+    const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
+    const auto selectedCodec = codecSelect_
+        ? codecFromUiValue(codecSelect_->currentData().toString())
+        : versus::video::VideoCodec::H264;
+    if (!info.error.empty()) {
+        ffmpegStatusLabel_->setText(QString("FFmpeg unavailable: %1. Choose a working FFmpeg path or repair the bundled installation.")
+            .arg(QString::fromStdString(info.error)));
+        ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
         return;
     }
     if (!info.resolved) {
@@ -3845,7 +3902,8 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         if (showHideAction_) {
             showHideAction_->setText("Show");
         }
-        if (trayIcon_->supportsMessages()) {
+        if (!trayReminderShown_ && trayIcon_->supportsMessages()) {
+            trayReminderShown_ = true;
             trayIcon_->showMessage(
                 APP_BRAND,
                 "Still running in system tray (next to the clock)",

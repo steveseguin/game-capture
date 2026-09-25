@@ -13,6 +13,7 @@
 #include <QTimer>
 #include <QCloseEvent>
 #include <QFuture>
+#include <QFutureWatcher>
 #include <QIcon>
 #include <QColor>
 
@@ -85,6 +86,8 @@ class MainWindow : public QMainWindow {
     void updateAlphaBackgroundColorButton();
     void chooseAlphaBackgroundColor();
     void refreshFfmpegStatus();
+    void startFfmpegStatusProbe();
+    void showFfmpegStatus(const versus::video::FfmpegProbeInfo &info);
     bool hasPendingAsyncOperation() const;
     void loadPersistedSettings();
     bool resetPersistedSettingsToDefaults();
@@ -188,6 +191,10 @@ class MainWindow : public QMainWindow {
     QTimer *statsTimer_ = nullptr;
     QTimer *previewTimer_ = nullptr;
     QTimer *stopWatchdogTimer_ = nullptr;
+    QTimer *ffmpegProbeTimer_ = nullptr;
+    QFutureWatcher<versus::video::FfmpegProbeInfo> *ffmpegProbeWatcher_ = nullptr;
+    quint64 ffmpegProbeRevision_ = 0;
+    bool ffmpegProbeRequested_ = false;
 
     // State
     bool isLive_ = false;
@@ -200,6 +207,7 @@ class MainWindow : public QMainWindow {
     bool forceQuitEnabled_ = false;
     bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
+    bool trayReminderShown_ = false;
     bool loadingPersistedSettings_ = false;
     bool roomModeLqPreference_ = true;
     bool configControlsEnabled_ = true;

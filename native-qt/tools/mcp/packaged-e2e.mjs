@@ -45,7 +45,7 @@ try {
   const tools = await client.listTools(); assert.equal(tools.tools.length, 9);
   assert.equal((await call('firewall')).ok, true);
   const inspection = await call('launch'); assert.equal(inspection.mode, 'inspect');
-  const contract = await call('schema'); assert.equal(contract.health.version, '0.2.57');
+  const contract = await call('schema'); assert.equal(contract.health.version, '0.2.58');
   for (const kind of ['windows', 'cameras', 'spout', 'audio-inputs']) {
     const data = await call('sources', { kind }); assert(Array.isArray(data.sources));
     if (kind === 'spout') assert(data.sources.some(s => s.name.includes(source)));
