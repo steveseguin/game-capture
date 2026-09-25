@@ -93,6 +93,21 @@ local SHA-256 hashes after upload, before the draft was published. All four
 stable `releases/latest/download/` links returned HTTP 200 after publication.
 The release is public, is not a prerelease, and is GitHub's latest release.
 
+## Validation dependency follow-up
+
+After the initial push, GitHub reported 18 dependency advisories for the new
+desktop workflow's Pillow 11.3.0 pin. The validation requirements on `main` now
+use [Pillow 12.3.0](https://pypi.org/project/pillow/12.3.0/), the patched version
+identified by those advisories. The complete 22-check desktop workflow passed
+again against the published executable, including H.264/VP9 playback, zero
+routine sound requests, responsiveness, tray behavior, and clean quit. Saved
+application preferences were restored.
+
+Pillow and the Python validation environment are absent from the Windows
+package. This follow-up changes the validation tooling on `main`; the release
+tag and published application assets retain the identities recorded above.
+Use current `main` when setting up the desktop validation tools.
+
 ## Gates and limitations
 
 The fresh Release build, 20 CTest groups, QA contracts, artifact bindings,
@@ -123,6 +138,7 @@ remain documented in the v0.2.56 encoder/settings review.
 - `native-qt/qa/reports/release-0.2.58/runtime-process-samples.csv`.
 - `native-qt/qa/reports/release-0.2.58/uploaded-asset-verification.json` and
   `stable-download-verification.json`.
+- `native-qt/qa/reports/release-0.2.58/desktop-pillow-12.3.0/9de41132-e23b-4928-8a1c-7dce591ccf7e/results.json`.
 - Earlier failed runs and isolated correction checks are retained under
   `native-qt/qa/reports/release-0.2.58/`.
 
