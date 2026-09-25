@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import threading
@@ -262,7 +263,12 @@ def main():
         check("failed-probe-is-not-presented-as-usable", "Using" not in ffmpeg_status())
 
         phase = "ffmpeg-failed-start"
-        # The startup preflight must also remain responsive and report the error.
+        # Force a fresh probe, then start while settings validation owns the
+        # probe mutex. A cached timeout would not expose a blocking preflight.
+        startup_helper = run_dir / "slow-ffmpeg-startup.exe"
+        shutil.copy2(helper, startup_helper)
+        field.set_edit_text(str(startup_helper))
+        time.sleep(.5)
         named("goLiveButton").invoke()
         wait_for(lambda: "timed out" in status(), "startup failure status")
         wait_for(lambda: named("goLiveButton").is_enabled(), "start controls restored")
@@ -272,7 +278,6 @@ def main():
         field.set_edit_text("")
         wait_for(lambda: "Using" in ffmpeg_status(), "bundled FFmpeg restored")
         # A different executable path avoids the previous probe's cache entry.
-        import shutil
         second_helper = run_dir / "slow-ffmpeg.exe"
         shutil.copy2(helper, second_helper)
         field.set_edit_text(str(second_helper))
