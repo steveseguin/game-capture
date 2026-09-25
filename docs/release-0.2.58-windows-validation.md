@@ -1,8 +1,9 @@
 # Game Capture 0.2.58 Windows release validation
 
 The packaged v0.2.58 application passed the complete release-readiness run on
-September 25, 2026, including both 30-minute soaks. Publication verification is
-pending.
+September 25, 2026, including both 30-minute soaks.
+[v0.2.58 is published](https://github.com/steveseguin/game-capture/releases/tag/v0.2.58)
+and verified as the latest stable release.
 
 ## Changes and coverage gap
 
@@ -81,6 +82,17 @@ can reapply that setting during other controls and display its warning.
 | Dual-quality room soak | 1,825 seconds | 308 cycles across four publisher sessions | PASS; all attempt 1 |
 | Browser playback soak | 1,804 seconds | 101 playback iterations across five publisher sessions | PASS; all attempt 1 |
 
+## Publication verification
+
+The release tag identifies `da951d5ae832e294665cf3fd1ddd1c73ff66f2e2`, matching
+the package's source commit. The code and completed validation documentation
+were pushed to `main` before publication.
+
+All eight versioned/stable release assets and `SHA256SUMS.txt` matched their
+local SHA-256 hashes after upload, before the draft was published. All four
+stable `releases/latest/download/` links returned HTTP 200 after publication.
+The release is public, is not a prerelease, and is GitHub's latest release.
+
 ## Gates and limitations
 
 The fresh Release build, 20 CTest groups, QA contracts, artifact bindings,
@@ -109,6 +121,8 @@ remain documented in the v0.2.56 encoder/settings review.
 - `native-qt/qa/reports/dual-quality-soak-2026-09-25T03-54-07-407Z.md`.
 - `native-qt/qa/reports/soak-2026-09-25T04-24-12-150Z.md`.
 - `native-qt/qa/reports/release-0.2.58/runtime-process-samples.csv`.
+- `native-qt/qa/reports/release-0.2.58/uploaded-asset-verification.json` and
+  `stable-download-verification.json`.
 - Earlier failed runs and isolated correction checks are retained under
   `native-qt/qa/reports/release-0.2.58/`.
 
