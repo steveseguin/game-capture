@@ -20,7 +20,6 @@ New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
 $settingsPath = 'HKCU:\Software\VDO.Ninja\Game Capture\network'
 $valueName = 'iceMode'
-$logPath = Join-Path $env:LOCALAPPDATA 'GameCapture\logs\game-capture-debug.log'
 $originalKeyExists = Test-Path -LiteralPath $settingsPath
 $originalValueExists = $false
 $originalValue = $null
@@ -58,10 +57,18 @@ function Invoke-Case(
     [switch]$Missing
 ) {
     Set-IceSetting -Value $StoredValue -Missing:$Missing
-    $beforeLength = if (Test-Path -LiteralPath $logPath -PathType Leaf) {
-        (Get-Item -LiteralPath $logPath).Length
-    } else { 0L }
-    $process = Start-Process -FilePath $publisher -PassThru
+    # The logger truncates its file on startup. Comparing file lengths cannot
+    # distinguish a new log from an append when the new startup writes more.
+    # Give each actual application launch a fresh, exclusive log directory.
+    $caseRoot = Join-Path $ReportDir ($Name + '-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $caseRoot -Force | Out-Null
+    $logPath = Join-Path $caseRoot 'GameCapture\logs\game-capture-debug.log'
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $publisher
+    $startInfo.WorkingDirectory = $packageRoot
+    $startInfo.UseShellExecute = $false
+    $startInfo.EnvironmentVariables['LOCALAPPDATA'] = $caseRoot
+    $process = [System.Diagnostics.Process]::Start($startInfo)
     $matchedLine = ''
     try {
         $deadline = (Get-Date).AddSeconds(20)
@@ -70,10 +77,6 @@ function Invoke-Case(
             if (Test-Path -LiteralPath $logPath -PathType Leaf) {
                 $stream = [System.IO.File]::Open($logPath, 'Open', 'Read', 'ReadWrite')
                 try {
-                    # The packaged logger truncates its current file at startup.
-                    # Read from zero when that happened; otherwise read only the
-                    # bytes appended after this case began.
-                    $stream.Position = if ($stream.Length -lt $beforeLength) { 0L } else { $beforeLength }
                     $reader = New-Object System.IO.StreamReader($stream)
                     $newText = $reader.ReadToEnd()
                     $matchedLine = @($newText -split "`r?`n" | Where-Object {
@@ -110,6 +113,7 @@ function Invoke-Case(
         source = $match.Groups[1].Value
         active = $match.Groups[2].Value
         line = $matchedLine
+        logPath = $logPath
     }
 }
 
