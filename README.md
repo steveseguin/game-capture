@@ -75,7 +75,7 @@ The Windows installer adds an inbound UDP firewall rule for its installed execut
 
 The OBS plugin v1.1.68 native receiver supports H.264 and VP9. HEVC/AV1 encoding availability does not imply that this receiver can play them. Hardware codec support depends on the GPU and driver; check the selected encoder and runtime log instead of assuming a hardware path is active.
 
-Explicit NVENC/QSV can fall below 30 FPS at 4K on the reviewed host. Auto/H.264 passed 4K30 there, but that result is not a guarantee for other hardware. See the [encoder/settings review](docs/obs-encoder-settings-validation-0.2.56-2026-09-07.md) for measured results and the [v0.2.57 packaged validation](docs/release-0.2.57-windows-validation.md) for the latest release coverage.
+Explicit NVENC/QSV can fall below 30 FPS at 4K on the reviewed host. Auto/H.264 passed 4K30 there, but that result is not a guarantee for other hardware. See the [encoder/settings review](docs/obs-encoder-settings-validation-0.2.56-2026-09-07.md) for measured results and the [v0.2.58 packaged validation](docs/release-0.2.58-windows-validation.md) for the latest release coverage.
 
 VP9 alpha is CPU-encoded and software-heavy because Game Capture encodes both the color video and a second alpha video track. The default VP9 settings already use libvpx realtime mode with the fastest `-cpu-used 8` setting. If the encoder overloads, lower output resolution/FPS first; `1080p30` or `720p60` are safer starting points than `1080p60`. Advanced users can use `FFmpeg Options` to override output options; for example, `-g 30 -keyint_min 30` can reduce all-keyframe cost, but recovery after packet loss or late joins may be slower.
 

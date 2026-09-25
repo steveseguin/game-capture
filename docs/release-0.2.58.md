@@ -15,5 +15,10 @@ refreshes while retaining accessibility announcements.
   observe sound requests, exercise slow/failed FFmpeg validation, verify GUI
   streaming through a browser receiver, and check tray/quit behavior.
 
-See the [investigation](windows-alert-sound-investigation-2026-09-24.md) for the
+See the [investigation](https://github.com/steveseguin/game-capture/blob/main/docs/windows-alert-sound-investigation-2026-09-24.md) for the
 cause, historical reproduction, and gaps in earlier coverage.
+
+The packaged application passed desktop, browser, OBS, NVIDIA/Intel encoder,
+and recovery workflows, plus both 30-minute soaks (308 dual-quality cycles and
+101 browser playback iterations). See the [validation report](https://github.com/steveseguin/game-capture/blob/main/docs/release-0.2.58-windows-validation.md)
+for artifact identity, coverage, and limitations.
