@@ -1,8 +1,10 @@
 # Game Capture 0.2.59 Windows validation
 
-Packaged application validation is complete for the candidate below. Publication
-is pending GitHub CI. The original readiness report retains its desktop-harness
-failure; that workflow passed on rerun after the correction described below.
+The first candidate's completed validation is recorded below. Additional edge-case
+testing on October 7 found a UI stall when another process holds the update-cache
+lock. A correction and an expanded packaged workflow are being validated before
+publication. The original readiness report retains its desktop-harness failure;
+that workflow passed on rerun after the correction described below.
 
 ## Change
 
@@ -132,3 +134,23 @@ Earlier diagnostic attempts are retained. They exposed browser first-run overlay
 an off-screen footer, and a timestamp-unit error in the observer. The completed
 final update workflow includes the corrections; it does not rely on the earlier
 timeout assertions. Generated evidence and fixture certificates remain local.
+
+## Additional network and cache validation
+
+The expanded first-candidate run passed 473 assertions and all 4,921 UI
+responsiveness samples. It adds actual DNS failure, HTTP 401/403/404/407/503,
+redirect rejection, truncated and compressed oversized responses, a slow
+trickling response, shutdown during a body download, forced process termination,
+cached failed-refresh behavior, network recovery, clock correction, and a corrupt
+cache. Evidence: `native-qt/qa/reports/update-check-extended-baseline/results.json`.
+
+A separate busy-cache workflow reproduced an interface stall before the request
+started: 104 of 179 responsiveness samples failed while another process held
+Qt's INI lock. Evidence: `native-qt/qa/reports/update-check-busy-cache-baseline/results.json`.
+Cache serialization now uses a private temporary INI file and atomic replacement,
+preserving the cache format without waiting on the shared QSettings lock.
+The final candidate will repeat the expanded workflows, busy/unwritable-cache
+recovery, scheduled expiry, and immediate exit.
+
+A single-use Windows CI runner is being prepared with a unique dispatch label.
+The workflow also prepares the pinned FFmpeg bundle required by a fresh checkout.

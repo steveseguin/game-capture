@@ -3,6 +3,7 @@
 #include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLockFile>
 #include <QNetworkProxy>
 #include <QSettings>
 #include <QScopeGuard>
@@ -129,6 +130,31 @@ class UpdateCheckerTest : public QObject {
         checker.checkForUpdates();
         QCOMPARE(network.requests, 1);
         QCOMPARE(changes.count(), 0);
+    }
+    void busyAndOversizedCache() {
+        QTemporaryDir dir;
+        const auto path = dir.filePath("update.ini");
+        QLockFile lock(path + ".lock");
+        QVERIFY(lock.tryLock());
+        {
+            QFile oversized(path);
+            QVERIFY(oversized.open(QIODevice::WriteOnly));
+            oversized.write(QByteArray(1024 * 1024, 'x'));
+        }
+        FakeRequest network;
+        UpdateChecker checker("0.2.59", path, nullptr, &network);
+        QElapsedTimer elapsed;
+        elapsed.start();
+        checker.checkForUpdates();
+        QCOMPARE(network.requests, 1);
+        network.finish(200, release("v0.2.59"));
+        QVERIFY(elapsed.elapsed() < 1000);
+        QVERIFY(QFileInfo(path).size() < 16 * 1024);
+        QCOMPARE(checker.result().status, UpdateStatus::UpToDate);
+        UpdateChecker restarted("0.2.59", path, nullptr, &network);
+        QCOMPARE(restarted.result().status, UpdateStatus::UpToDate);
+        restarted.checkForUpdates();
+        QCOMPARE(network.requests, 1);
     }
     void schedulingAndClockCorrection() {
         QTemporaryDir dir;

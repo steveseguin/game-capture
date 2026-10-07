@@ -3,15 +3,18 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSettings>
 #include <QSslConfiguration>
 #include <QSslSocket>
+#include <QTemporaryDir>
 #include <array>
 #include <optional>
 
@@ -19,6 +22,7 @@ namespace versus::ui {
 namespace {
 constexpr qint64 CheckInterval = 24 * 60 * 60;
 constexpr qsizetype MaxResponseBytes = 1024 * 1024;
+constexpr qsizetype MaxCacheBytes = 16 * 1024;
 
 class QtReleaseRequest final : public ReleaseRequest {
   public:
@@ -170,7 +174,7 @@ UpdateChecker::UpdateChecker(const QString &installedVersion, const QString &cac
     : QObject(parent), installedVersion_(installedVersion), cachePath_(cachePath),
       request_(request ? request : new QtReleaseRequest(this)) {
     // Bound local cache reads as well as network responses.
-    if (!cachePath_.isEmpty() && QFileInfo(cachePath_).size() <= 16 * 1024) {
+    if (!cachePath_.isEmpty() && QFileInfo(cachePath_).size() <= MaxCacheBytes) {
         QSettings cache(cachePath_, QSettings::IniFormat);
         lastAttempt_ = cache.value("LastAttempt", 0).toLongLong();
         lastSuccess_ = cache.value("LastSuccess", 0).toLongLong();
@@ -233,12 +237,29 @@ void UpdateChecker::finishCheck(int httpStatus, const QByteArray &body) {
 
 void UpdateChecker::saveCache() {
     if (cachePath_.isEmpty() || !QDir().mkpath(QFileInfo(cachePath_).absolutePath())) return;
-    QSettings cache(cachePath_, QSettings::IniFormat);
-    cache.setValue("LastAttempt", lastAttempt_);
-    cache.setValue("LastSuccess", lastSuccess_);
-    cache.setValue("LastAttemptSucceeded", lastAttemptSucceeded_);
-    cache.setValue("Release", release_);
-    cache.sync();
+    // QSettings::sync on a shared INI can wait 30 seconds for another process's
+    // lock, blocking the UI before even starting the network deadline. Serialize
+    // through a private file, then replace this best-effort cache atomically.
+    // This also avoids reading an oversized/corrupt old cache while saving.
+    QTemporaryDir temporary(QFileInfo(cachePath_).absolutePath() + "/update-check-XXXXXX");
+    if (!temporary.isValid()) return;
+    const auto temporaryPath = temporary.filePath("cache.ini");
+    {
+        QSettings cache(temporaryPath, QSettings::IniFormat);
+        cache.setValue("LastAttempt", lastAttempt_);
+        cache.setValue("LastSuccess", lastSuccess_);
+        cache.setValue("LastAttemptSucceeded", lastAttemptSucceeded_);
+        cache.setValue("Release", release_);
+        cache.sync();
+        if (cache.status() != QSettings::NoError) return;
+    }
+    QFile input(temporaryPath);
+    if (!input.open(QIODevice::ReadOnly)) return;
+    const auto serialized = input.read(MaxCacheBytes + 1);
+    if (serialized.size() > MaxCacheBytes) return;
+    QSaveFile output(cachePath_);
+    if (!output.open(QIODevice::WriteOnly)) return;
+    if (output.write(serialized) == serialized.size()) output.commit();
 }
 
 void UpdateChecker::shutdown() {

@@ -11,6 +11,8 @@ overview in your default browser.
   to a newer development build.
 - Check attempts and the last valid release metadata survive restarts. Cached
   metadata is compared with the installed build version after an upgrade.
+- Cache writes use atomic replacement so another process's cache lock cannot
+  stall the interface. Unwritable or corrupt caches are handled quietly.
 - Offline connections, TLS failures, rate limits, malformed or oversized
   responses display **Update check unavailable** without popups or sounds.
 - Requests run asynchronously with a 10-second connection limit, a 15-second

@@ -10,10 +10,15 @@ on:
       - "README.md"
       - "native-qt/**"
   workflow_dispatch:
+    inputs:
+      runner_label:
+        description: "Optional label for a prepared, single-use Windows runner"
+        type: string
+        required: false
 
 jobs:
   fast-gate:
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: ${{ inputs.runner_label || fromJSON('["self-hosted", "Windows", "X64"]') }}
     timeout-minutes: 120
 
     steps:
@@ -42,6 +47,10 @@ jobs:
         shell: pwsh
         working-directory: native-qt
         run: npx playwright install msedge firefox
+
+      - name: Prepare pinned FFmpeg bundle
+        shell: powershell
+        run: ./native-qt/tools/fetch-ffmpeg-lgpl.ps1
 
       - name: Configure CMake (Release)
         shell: pwsh
