@@ -7,7 +7,7 @@
   "engines": { "node": ">=22" },
   "scripts": { "start": "node server.mjs" },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "zod": "4.5.4"
   }
 }
