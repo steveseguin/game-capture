@@ -62,7 +62,7 @@ jobs:
         run: cmake --build native-qt/build-ci --config Release
 
       - name: Run Nightly Soak QA Gate
-        shell: pwsh
+        shell: powershell
         run: |
           $ninjaPluginRepo = Join-Path $env:GITHUB_WORKSPACE "ninja-plugin"
           $firefoxPath = if ($env:GAME_CAPTURE_FIREFOX_PATH) {

@@ -98,6 +98,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate
 
 ## 2.5) Configure VirusTotal key (optional but recommended)
 
+For a prepared Windows runner, the **QA Fast Gate** manual dispatch also accepts
+`validate_release_package=true`. This runs the normal full release-readiness
+script against an existing frozen package, including OBS coverage and both
+30-minute soaks. The runner must provide `GAME_CAPTURE_RELEASE_PACKAGE` (package
+directory), `GAME_CAPTURE_RELEASE_MANIFEST_SHA256` (the independently recorded
+manifest digest), `NINJA_PLUGIN_REPO` (an OBS-ready checkout), and
+`GAME_CAPTURE_FIREFOX_PATH`. Use `runner_label` to select that prepared runner.
+The normal fast-gate mode continues to build and validate its own package.
+
 Use one of:
 
 - Environment variable: `VT_API_KEY`

@@ -15,11 +15,15 @@ on:
         description: "Optional label for a prepared, single-use Windows runner"
         type: string
         required: false
+      validate_release_package:
+        description: "Run full readiness on the runner's frozen release package, including OBS and both 30-minute soaks"
+        type: boolean
+        default: false
 
 jobs:
   fast-gate:
     runs-on: ${{ inputs.runner_label || fromJSON('["self-hosted", "Windows", "X64"]') }}
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
@@ -63,8 +67,10 @@ jobs:
         shell: pwsh
         run: cmake --build native-qt/build-ci --config Release
 
-      - name: Run Fast QA Gate
-        shell: pwsh
+      - name: Run QA Gate
+        shell: powershell
+        env:
+          VALIDATE_RELEASE_PACKAGE: ${{ inputs.validate_release_package }}
         run: |
           $ninjaPluginRepo = Join-Path $env:GITHUB_WORKSPACE "ninja-plugin"
           $firefoxPath = if ($env:GAME_CAPTURE_FIREFOX_PATH) {
@@ -75,12 +81,32 @@ jobs:
           if (-not (Test-Path -LiteralPath $firefoxPath -PathType Leaf)) {
             throw "Installed Mozilla Firefox is required: $firefoxPath"
           }
-          ./native-qt/qa/run-fast-gate.ps1 `
-            -BuildDir build-ci `
-            -Configuration Release `
-            -FirefoxPath $firefoxPath `
-            -RoomAlphaPluginRepo $ninjaPluginRepo `
-            -SkipRoomAlpha
+          if ($env:VALIDATE_RELEASE_PACKAGE -eq "true") {
+            # Prepared release runners supply the frozen package, its independently
+            # recorded manifest digest, and an OBS-ready ninja-plugin checkout.
+            if (-not $env:GAME_CAPTURE_RELEASE_PACKAGE -or
+                -not $env:GAME_CAPTURE_RELEASE_MANIFEST_SHA256 -or
+                -not $env:NINJA_PLUGIN_REPO) {
+              throw "Full release validation requires the prepared package, manifest digest, and OBS runtime."
+            }
+            $publisher = Join-Path $env:GAME_CAPTURE_RELEASE_PACKAGE "game-capture.exe"
+            $manifest = Join-Path $env:GAME_CAPTURE_RELEASE_PACKAGE "release-artifact-manifest.json"
+            $spoutSender = Join-Path $env:GITHUB_WORKSPACE "native-qt/build-ci/bin/spout_test_sender.exe"
+            ./native-qt/qa/run-release-readiness.ps1 `
+              -BuildDir build-ci -Configuration Release `
+              -PublisherPath $publisher -ArtifactManifestPath $manifest `
+              -ArtifactManifestSha256 $env:GAME_CAPTURE_RELEASE_MANIFEST_SHA256 `
+              -FirefoxPath $firefoxPath `
+              -RoomAlphaPluginRepo $env:NINJA_PLUGIN_REPO `
+              -RoomAlphaPublisherPath $publisher -RoomAlphaSpoutSenderPath $spoutSender
+          } else {
+            ./native-qt/qa/run-fast-gate.ps1 `
+              -BuildDir build-ci `
+              -Configuration Release `
+              -FirefoxPath $firefoxPath `
+              -RoomAlphaPluginRepo $ninjaPluginRepo `
+              -SkipRoomAlpha
+          }
 
       - name: Upload QA Reports
         if: always()
