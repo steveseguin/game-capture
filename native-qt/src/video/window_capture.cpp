@@ -26,6 +26,7 @@
 #ifdef VERSUS_USE_GRAPHICS_CAPTURE
 // Windows Graphics Capture API (WinRT-based)
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
@@ -629,11 +630,16 @@ class WindowCapture::Impl {
         borderlessAccessRequested_ = true;
 
         if (!hasPackageIdentity()) {
-            spdlog::info("[Capture::Impl] No package identity detected; Windows may refuse graphicsCaptureWithoutBorder "
-                         "for unpackaged builds");
+            spdlog::info("[Capture::Impl] Skipping borderless access request: no package identity");
+            return;
         }
 
         try {
+            using winrt::Windows::Foundation::Metadata::ApiInformation;
+            if (!ApiInformation::IsMethodPresent(L"Windows.Graphics.Capture.GraphicsCaptureAccess", L"RequestAccessAsync")) {
+                spdlog::info("[Capture::Impl] Borderless capture access is unsupported on this Windows version");
+                return;
+            }
             using winrt::Windows::Graphics::Capture::GraphicsCaptureAccess;
             using winrt::Windows::Graphics::Capture::GraphicsCaptureAccessKind;
             const auto status = GraphicsCaptureAccess::RequestAccessAsync(GraphicsCaptureAccessKind::Borderless).get();
@@ -652,7 +658,15 @@ class WindowCapture::Impl {
 
     void applyBorderlessCapturePreference() {
         try {
-            captureSession_.IsBorderRequired(false);
+            // Windows 10 can capture windows without implementing Session3.
+            // Calling the projected property directly can dereference a null
+            // interface before a catch block can handle E_NOINTERFACE.
+            const auto borderless = captureSession_.try_as<winrt::Windows::Graphics::Capture::IGraphicsCaptureSession3>();
+            if (!borderless) {
+                spdlog::info("[Capture::Impl] Borderless capture is unsupported on this Windows version");
+                return;
+            }
+            borderless.IsBorderRequired(false);
             spdlog::info("[Capture::Impl] Requested borderless graphics capture session");
         } catch (const winrt::hresult_error &e) {
             spdlog::warn("[Capture::Impl] Failed to disable graphics capture border hr=0x{:08x} msg={}",

@@ -129,6 +129,21 @@ and 64-bit Python 3 with Tk support. Its runner installs pinned observer depende
 into `native-qt/.cache/desktop-ui-python` on first use. Close existing Game Capture
 sessions before running it; the workflow restores application preferences afterward.
 
+The desktop workflow can also exercise Windows 10's missing optional borderless
+capture interface in the real app. Frame capture, H.264/VP9 encoding, and browser
+playback still run normally:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\e2e\run-desktop-ui-e2e.ps1 `
+  -PublisherPath C:\path\to\packaged\game-capture.exe `
+  -ProbeHelperPath .\native-qt\build-review2\bin\ffmpeg_probe_hang_helper.exe `
+  -DenyBorderlessInterface
+```
+
+On Windows 11, use `-ObserveCaptureCompatibility` instead to verify the supported
+borderless API path. Fault injection covers the missing-interface condition; it
+does not replace execution on a Windows 10 host.
+
 Fast gate:
 
 ```powershell

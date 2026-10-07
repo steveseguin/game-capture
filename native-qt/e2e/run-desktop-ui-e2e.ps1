@@ -1,7 +1,9 @@
 param(
     [Parameter(Mandatory = $true)][string]$PublisherPath,
     [Parameter(Mandatory = $true)][string]$ProbeHelperPath,
-    [string]$ReportDir = ""
+    [string]$ReportDir = "",
+    [switch]$DenyBorderlessInterface,
+    [switch]$ObserveCaptureCompatibility
 )
 $ErrorActionPreference = 'Stop'
 $nativeRoot = Split-Path $PSScriptRoot -Parent
@@ -20,6 +22,11 @@ if (-not (Test-Path -LiteralPath $stamp) -or (Get-Content -Raw -LiteralPath $sta
     Set-Content -LiteralPath $stamp -Value $hash
 }
 if (-not $ReportDir) { $ReportDir = Join-Path $PSScriptRoot 'reports/desktop-ui' }
-& $python (Join-Path $PSScriptRoot 'desktop-ui-e2e.py') `
-    --publisher $PublisherPath --probe-helper $ProbeHelperPath --report-dir $ReportDir
+$desktopArguments = @(
+    (Join-Path $PSScriptRoot 'desktop-ui-e2e.py'),
+    '--publisher', $PublisherPath, '--probe-helper', $ProbeHelperPath, '--report-dir', $ReportDir
+)
+if ($DenyBorderlessInterface) { $desktopArguments += '--deny-borderless-interface' }
+if ($ObserveCaptureCompatibility) { $desktopArguments += '--observe-capture-compatibility' }
+& $python @desktopArguments
 if ($LASTEXITCODE -ne 0) { throw "Packaged desktop UI workflow failed. See $ReportDir" }

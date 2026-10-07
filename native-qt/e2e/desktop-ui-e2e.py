@@ -133,6 +133,9 @@ def main():
     parser.add_argument("--publisher", required=True)
     parser.add_argument("--probe-helper", required=True)
     parser.add_argument("--report-dir", required=True)
+    parser.add_argument("--deny-borderless-interface", action="store_true",
+                        help="Return Windows 10's E_NOINTERFACE for the real capture session's optional border API")
+    parser.add_argument("--observe-capture-compatibility", action="store_true")
     args = parser.parse_args()
     exe = Path(args.publisher).resolve(strict=True)
     helper = Path(args.probe_helper).resolve(strict=True)
@@ -185,7 +188,11 @@ def main():
         pid = device.spawn([str(exe), "--local-control", "--local-control-discovery=" + str(discovery)],
                            cwd=str(exe.parent), env=env)
         session = device.attach(pid)
-        script = session.create_script(OBSERVER)
+        observer = OBSERVER
+        if args.deny_borderless_interface or args.observe_capture_compatibility:
+            observer += "\nconst CAPTURE_SESSION3_UNAVAILABLE = " + json.dumps(args.deny_borderless_interface) + ";\n"
+            observer += Path(__file__).with_name("capture-session-compatibility.js").read_text(encoding="utf-8")
+        script = session.create_script(observer)
         def on_message(message, data):
             events.append({"phase": phase, "time": time.time(), **message.get("payload", message)})
         script.on("message", on_message)
@@ -200,7 +207,7 @@ def main():
         time.sleep(1)
 
         def named(suffix):
-            return next(c for c in window.descendants() if c.element_info.automation_id.endswith("." + suffix))
+            return next(c for c in window.descendants() if (c.element_info.automation_id or "").endswith("." + suffix))
 
         def status():
             return named("statusLabel").window_text()
@@ -345,6 +352,7 @@ def main():
             wait_for(lambda: selected_codec in codec.selected_text(), selected_codec + " selected")
             if selected_codec == "VP9":
                 wait_for(lambda: "Using" in ffmpeg_status(), "working FFmpeg before start")
+            capture_event_start = len(events)
             named("goLiveButton").invoke()
             wait_for(lambda: status().startswith("LIVE"), selected_codec + " live", timeout=30)
             viewer = subprocess.run(["node", str(Path(__file__).with_name("desktop-ui-viewer.js")),
@@ -353,6 +361,23 @@ def main():
                                     creationflags=subprocess.CREATE_NO_WINDOW)
             print(viewer.stdout, flush=True)
             check(selected_codec + "-gui-start-decodes-in-browser", viewer.returncode == 0, viewer.stderr)
+            if args.deny_borderless_interface or args.observe_capture_compatibility:
+                capture_events = events[capture_event_start:]
+                sessions = [e for e in capture_events if e.get("kind") == "capture_session_created"]
+                check(selected_codec + "-packaged-capture-process-observed",
+                      bool(sessions) and all(Path(e["publisher"]).resolve() == exe for e in sessions), sessions)
+                queries = [e for e in capture_events if e.get("kind") == "capture_session3_query"]
+                check(selected_codec + "-capture-session-interface-observed", bool(queries), queries)
+                if args.deny_borderless_interface:
+                    check(selected_codec + "-unsupported-border-interface-survives",
+                          all(e.get("denied") and e.get("hresult") == -2147467262 for e in queries))
+                    check(selected_codec + "-unsupported-border-property-not-called",
+                          not any(e.get("kind") == "capture_border_preference" for e in capture_events))
+                else:
+                    check(selected_codec + "-supported-border-preference-preserved",
+                          any(e.get("kind") == "capture_border_preference" and e.get("required") == 0 for e in capture_events))
+                check(selected_codec + "-unpackaged-border-consent-skipped",
+                      not any(e.get("kind") == "capture_border_access_requested" for e in events))
             named("goLiveButton").invoke()
             wait_for(lambda: status() == "Stopped"
                      and named("goLiveButton").is_enabled(), selected_codec + " stopped", timeout=20)
