@@ -105,8 +105,19 @@ def main():
             cases.append(('ambiguous-framing-' + str(len(cases)), b'GET /health HTTP/1.1\r\n' + framing + b'\r\n\r\n', 400))
         for name, payload, expected in cases:
             try:
-                actual = raw(payload)
-                check(name, actual == expected, dict(expected=expected, actual=actual))
+                try:
+                    actual = raw(payload)
+                except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+                    if name != 'oversized-buffer':
+                        raise
+                    actual = 0
+                # Rejection can precede completion of this 1 MiB write. Windows
+                # may reset a socket with unread input before delivering its
+                # HTTP error. A confirmed close is valid here; a timeout is not.
+                rejected = actual == expected or (name == 'oversized-buffer' and actual == 0)
+                check(name, rejected, dict(expected=expected, actual=actual))
+                if name == 'oversized-buffer':
+                    check('health-after-oversized-buffer', api('/health')['pid'] == process.pid)
             except OSError as error:
                 check(name, False, type(error).__name__)
 
