@@ -160,7 +160,6 @@ def main():
     import win32event
     import win32process
     from pywinauto import Application
-    from pywinauto.keyboard import send_keys
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--publisher", required=True)
@@ -296,8 +295,7 @@ def main():
         window.wheel_mouse_input(coords=(window.rectangle().width() - 25, 150), wheel_dist=-25)
         time.sleep(.5)
         codec = named("codecSelect")
-        codec.click_input()
-        send_keys("{HOME}{DOWN}{DOWN}{ENTER}", pause=.05)
+        choose_combo(codec, "AV1 (Experimental, auto fallback)")
         wait_for(lambda: "AV1" in codec.selected_text(), "AV1 codec selection")
         check("av1-selected", "AV1" in codec.selected_text(), codec.selected_text())
         wait_for(lambda: not ffmpeg_status().startswith("Checking"), "initial FFmpeg probe")
@@ -358,8 +356,7 @@ def main():
         shutil.copy2(helper, third_helper)
         field.set_edit_text(str(third_helper))
         time.sleep(.5)
-        codec.click_input()
-        send_keys("{HOME}{ENTER}", pause=.05)
+        choose_combo(codec, "H.264 (Compatibility)")
         wait_for(lambda: "H.264" in codec.selected_text(), "return to H.264")
         time.sleep(3.5)
         check("unused-probe-cannot-overwrite-h264-status", ffmpeg_status().startswith("Needed for"))
@@ -372,16 +369,15 @@ def main():
         check("window-responsive-during-probes-and-startup", maximum < 2, {"maxConsecutiveTimeouts": maximum})
 
         phase = "gui-streaming"
-        codec.click_input()
-        send_keys("{END}{ENTER}", pause=.05)
+        choose_combo(codec, "VP9 (OBS Alpha Preview, auto fallback)")
         wait_for(lambda: "VP9" in codec.selected_text(), "VP9 before clearing path")
         field.set_edit_text("")
         # Exercise both the ordinary startup and successful external-FFmpeg
         # preflight through the GUI, with actual browser decoding at each stop.
         stream_id = "desktop-ui-" + run_dir.name
-        for selected_codec, keys in [("H.264", "{HOME}{ENTER}"), ("VP9", "{END}{ENTER}")]:
-            codec.click_input()
-            send_keys(keys, pause=.05)
+        for selected_codec, label in [("H.264", "H.264 (Compatibility)"),
+                                      ("VP9", "VP9 (OBS Alpha Preview, auto fallback)")]:
+            choose_combo(codec, label)
             wait_for(lambda: selected_codec in codec.selected_text(), selected_codec + " selected")
             if selected_codec == "VP9":
                 wait_for(lambda: "Using" in ffmpeg_status(), "working FFmpeg before start")
@@ -442,8 +438,7 @@ def main():
         phase = "quit-during-probe"
         window.wheel_mouse_input(coords=(window.rectangle().width() - 25, 150), wheel_dist=-25)
         time.sleep(.5)
-        codec.click_input()
-        send_keys("{HOME}{DOWN}{DOWN}{ENTER}", pause=.05)
+        choose_combo(codec, "AV1 (Experimental, auto fallback)")
         wait_for(lambda: "AV1" in codec.selected_text(), "AV1 before quit")
         last_helper = run_dir / "slow-ffmpeg-on-quit.exe"
         shutil.copy2(helper, last_helper)
