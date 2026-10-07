@@ -1185,6 +1185,7 @@ async function createBrowserPeerPage(browser) {
         peerInstanceId,
         wireSession: '',
         droppedPublisherCandidates: [],
+        publisherCandidateResults: [],
         dataChannel: null,
         dataMessages: [],
         dataChannelOpened: false,
@@ -1371,8 +1372,10 @@ async function createBrowserPeerPage(browser) {
       }
       try {
         await state.pc.addIceCandidate(candidate);
+        state.publisherCandidateResults.push({ ok: true, candidate });
         return { ok: true };
       } catch (error) {
+        state.publisherCandidateResults.push({ ok: false, candidate, error: String(error) });
         return { ok: false, error: String(error) };
       }
     };
@@ -1478,6 +1481,7 @@ async function createBrowserPeerPage(browser) {
         peerInstanceId: state.peerInstanceId,
         wireSession: state.wireSession,
         droppedPublisherCandidates: state.droppedPublisherCandidates.slice(-20),
+        publisherCandidateResults: state.publisherCandidateResults.slice(-20),
         connectionState: state.pc.connectionState,
         iceConnectionState: state.pc.iceConnectionState,
         signalingState: state.pc.signalingState,
