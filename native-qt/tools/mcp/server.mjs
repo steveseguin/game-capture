@@ -1,7 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { readFile, access, mkdir, mkdtemp } from 'node:fs/promises';
+import { open, access, mkdir, mkdtemp } from 'node:fs/promises';
 import { spawn, execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -36,7 +36,25 @@ function output(value) {
   return { content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: data };
 }
 async function readDiscovery(filename) {
-  const c = JSON.parse((await readFile(filename, 'utf8')).replace(/^\uFEFF/, ''));
+  const limit = 16 * 1024;
+  const file = await open(filename, 'r');
+  let contents;
+  try {
+    const stat = await file.stat();
+    if (!stat.isFile() || stat.size > limit) throw new Error('Discovery must be a regular file no larger than 16 KiB.');
+    const buffer = Buffer.alloc(limit + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await file.read(buffer, length, buffer.length - length, null);
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    if (length > limit) throw new Error('Discovery must be no larger than 16 KiB.');
+    contents = buffer.subarray(0, length).toString('utf8');
+  } finally {
+    await file.close();
+  }
+  const c = JSON.parse(contents.replace(/^\uFEFF/, ''));
   const url = new URL(c.base_url);
   if (url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port ||
       url.pathname !== '/' || url.username || url.password || url.search || url.hash ||

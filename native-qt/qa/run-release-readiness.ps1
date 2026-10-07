@@ -521,6 +521,68 @@ $lines += "- Result: " + ($(if ($desktopPass) { "PASS" } else { "FAIL" }))
 $lines += "- Sound requests, source selection/removal, FFmpeg timeout/startup responsiveness, stale results, H.264/VP9 GUI start/stop with browser decoding, and tray reminders."
 $lines += ""
 
+$compatibilityPass = & $script:runStepImplementation "Packaged capture without optional border API" {
+    $probeHelper = Join-Path (Split-Path -Parent $script:spoutSenderPathBinding) 'ffmpeg_probe_hang_helper.exe'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+        (Join-Path $script:repoRoot 'e2e/run-desktop-ui-e2e.ps1') `
+        -PublisherPath $script:publisherExe -ProbeHelperPath $probeHelper `
+        -ReportDir (Join-Path $script:repoRoot "qa/reports/capture-compatibility-$timestamp") `
+        -DenyBorderlessInterface
+}
+$allPass = $allPass -and $compatibilityPass
+$lines += "## Packaged capture compatibility"
+$lines += ""
+$lines += "- Result: " + ($(if ($compatibilityPass) { "PASS" } else { "FAIL" }))
+$lines += "- Real H.264/VP9 capture and playback with the optional borderless interface unavailable."
+$lines += ""
+
+$controlFuzzPass = & $script:runStepImplementation "Packaged local control malformed-input workflows" {
+    $python = Join-Path $script:repoRoot '.cache/desktop-ui-python/Scripts/python.exe'
+    foreach ($seed in @(2601007, 42, 4294967295)) {
+        & $python (Join-Path $script:repoRoot 'e2e/local-control-fuzz-packaged.py') `
+            --publisher $script:publisherExe --seed $seed `
+            --reports (Join-Path $script:repoRoot "qa/reports/control-fuzz-$timestamp")
+        if ($LASTEXITCODE -ne 0) { throw "Packaged control fuzz workflow failed for seed $seed" }
+    }
+}
+$allPass = $allPass -and $controlFuzzPass
+$lines += "## Packaged local control fuzz"
+$lines += ""
+$lines += "- Result: " + ($(if ($controlFuzzPass) { "PASS" } else { "FAIL" }))
+$lines += "- Three deterministic seeds, malformed HTTP/JSON, fragmented Unicode, connection pressure/deadlines, recovery, and shutdown."
+$lines += ""
+
+$mcpPass = & $script:runStepImplementation "Packaged MCP controls and edge workflows" {
+    $mcpRoot = Join-Path $script:repoRoot 'tools/mcp'
+    & $script:npmExecutable ci --prefix $mcpRoot --ignore-scripts
+    if ($LASTEXITCODE -ne 0) { throw 'MCP dependency installation failed' }
+    $savedMcpEnvironment = @{}
+    foreach ($name in @('GAME_CAPTURE_MCP_EXECUTABLE', 'GAME_CAPTURE_MCP_SPOUT_FIXTURE', 'GAME_CAPTURE_MCP_OBS_RUNTIME', 'GAME_CAPTURE_MCP_PLUGIN_SHA256')) {
+        $savedMcpEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    }
+    try {
+        $env:GAME_CAPTURE_MCP_EXECUTABLE = $script:publisherExe
+        $env:GAME_CAPTURE_MCP_SPOUT_FIXTURE = $script:spoutSenderPathBinding
+        # OBS is covered separately with exact artifact bindings below.
+        Remove-Item Env:GAME_CAPTURE_MCP_OBS_RUNTIME -ErrorAction SilentlyContinue
+        Remove-Item Env:GAME_CAPTURE_MCP_PLUGIN_SHA256 -ErrorAction SilentlyContinue
+        & node (Join-Path $mcpRoot 'packaged-e2e.mjs')
+        if ($LASTEXITCODE -ne 0) { throw 'Packaged MCP workflow failed' }
+        & node (Join-Path $mcpRoot 'edge-packaged-e2e.mjs')
+        if ($LASTEXITCODE -ne 0) { throw 'Packaged MCP edge workflow failed' }
+    } finally {
+        foreach ($name in $savedMcpEnvironment.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $savedMcpEnvironment[$name], 'Process')
+        }
+    }
+}
+$allPass = $allPass -and $mcpPass
+$lines += "## Packaged MCP controls"
+$lines += ""
+$lines += "- Result: " + ($(if ($mcpPass) { "PASS" } else { "FAIL" }))
+$lines += "- Actual app control, browser decoding, recovery, malformed tool/discovery input, live HTTP pressure, and ownership/shutdown races."
+$lines += ""
+
 $updatesPass = & $script:runStepImplementation "Packaged update footer and network failures" {
     $python = Join-Path $script:repoRoot '.cache/desktop-ui-python/Scripts/python.exe'
     $packageVersion = (Get-Content -LiteralPath $script:artifactManifestPathBinding -Raw | ConvertFrom-Json).version

@@ -123,3 +123,17 @@ jobs:
           name: qa-fast-gate-screenshots
           path: .playwright-mcp/**/*.png
           if-no-files-found: warn
+
+      - name: Upload packaged reliability results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-reliability-results
+          path: |
+            native-qt/qa/reports/control-fuzz-*/**/results.json
+            native-qt/qa/reports/capture-compatibility-*/**/results.json
+            native-qt/qa/reports/mcp-edge-e2e/*/results.json
+            native-qt/qa/reports/mcp-e2e/*/results.json
+            native-qt/qa/reports/desktop-ui-*/**/results.json
+            native-qt/qa/reports/update-check-*/results.json
+          if-no-files-found: warn

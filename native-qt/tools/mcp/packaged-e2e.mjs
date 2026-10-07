@@ -14,6 +14,7 @@ const dir = path.dirname(fileURLToPath(import.meta.url));
 const publisher = process.env.GAME_CAPTURE_MCP_EXECUTABLE;
 const senderPath = process.env.GAME_CAPTURE_MCP_SPOUT_FIXTURE;
 if (!publisher || !senderPath) throw Error('Set GAME_CAPTURE_MCP_EXECUTABLE and GAME_CAPTURE_MCP_SPOUT_FIXTURE to real packaged app/fixture paths.');
+const expectedVersion = JSON.parse(await readFile(path.join(path.dirname(publisher), 'release-artifact-manifest.json'), 'utf8')).version;
 const report = path.resolve(dir, '../../qa/reports/mcp-e2e', String(Date.now()));
 await mkdir(report, { recursive: true });
 const source = `mcp_spout_${Date.now()}`;
@@ -45,7 +46,7 @@ try {
   const tools = await client.listTools(); assert.equal(tools.tools.length, 9);
   assert.equal((await call('firewall')).ok, true);
   const inspection = await call('launch'); assert.equal(inspection.mode, 'inspect');
-  const contract = await call('schema'); assert.equal(contract.health.version, '0.2.59');
+  const contract = await call('schema'); assert.equal(contract.health.version, expectedVersion);
   for (const kind of ['windows', 'cameras', 'spout', 'audio-inputs']) {
     const data = await call('sources', { kind }); assert(Array.isArray(data.sources));
     if (kind === 'spout') assert(data.sources.some(s => s.name.includes(source)));

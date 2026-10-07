@@ -28,7 +28,17 @@ namespace versus::control {
 namespace {
 
 constexpr qsizetype kMaxRequestBytes = 1024 * 1024;
+constexpr qsizetype kMaxHeaderBytes = 16 * 1024;
+constexpr qsizetype kMaxConnections = 32;
+constexpr int kConnectionDeadlineMs = 10000;
 constexpr int kDefaultLogLines = 250;
+
+bool isHttpToken(const QByteArray &value) {
+    return !value.isEmpty() && std::all_of(value.begin(), value.end(), [](unsigned char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+               (c >= '0' && c <= '9') || QByteArray("!#$%&'*+-.^_`|~").contains(c);
+    });
+}
 
 QByteArray reasonPhrase(int status) {
     switch (status) {
@@ -163,7 +173,16 @@ LocalControlServer::LocalControlServer(QObject *parent)
     connect(server_, &QTcpServer::newConnection, this, [this]() {
         while (server_->hasPendingConnections()) {
             QTcpSocket *socket = server_->nextPendingConnection();
+            if (buffers_.size() >= kMaxConnections) {
+                socket->abort();
+                socket->deleteLater();
+                continue;
+            }
+            socket->setReadBufferSize(64 * 1024);
             buffers_.insert(socket, {});
+            // An absolute deadline also bounds slow trickles and stalled readers.
+            // The timer belongs to this socket and is canceled when it is deleted.
+            QTimer::singleShot(kConnectionDeadlineMs, socket, [socket]() { socket->abort(); });
             connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
                 handleReadyRead(socket);
             });
@@ -222,7 +241,7 @@ void LocalControlServer::stop() {
     const auto sockets = buffers_.keys();
     for (QTcpSocket *socket : sockets) {
         if (socket) {
-            socket->disconnectFromHost();
+            socket->abort();
         }
     }
     buffers_.clear();
@@ -299,8 +318,12 @@ void LocalControlServer::handleReadyRead(QTcpSocket *socket) {
     if (!socket) {
         return;
     }
-    buffers_[socket].append(socket->readAll());
-    if (buffers_[socket].size() > kMaxRequestBytes) {
+    auto buffer = buffers_.find(socket);
+    if (buffer == buffers_.end()) {
+        return;
+    }
+    buffer->append(socket->read(kMaxRequestBytes - buffer->size() + 1));
+    if (buffer->size() > kMaxRequestBytes) {
         sendError(socket, 400, "Request too large");
         return;
     }
@@ -315,34 +338,55 @@ void LocalControlServer::handleReadyRead(QTcpSocket *socket) {
 bool LocalControlServer::tryParseRequest(QTcpSocket *socket, HttpRequest &request) {
     QByteArray &buffer = buffers_[socket];
     const qsizetype headerEnd = buffer.indexOf("\r\n\r\n");
+    if (headerEnd > kMaxHeaderBytes || (headerEnd < 0 && buffer.size() > kMaxHeaderBytes)) {
+        sendError(socket, 400, "Headers too large");
+        return false;
+    }
     if (headerEnd < 0) {
         return false;
     }
 
     const QByteArray headerBytes = buffer.left(headerEnd);
-    const QList<QByteArray> lines = headerBytes.split('\n');
+    QList<QByteArray> lines = headerBytes.split('\n');
     if (lines.empty()) {
         sendError(socket, 400, "Malformed HTTP request");
         return false;
     }
 
-    const QList<QByteArray> requestLine = lines[0].trimmed().split(' ');
-    if (requestLine.size() < 2) {
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        if (i < lines.size() - 1) {
+            if (!lines[i].endsWith('\r')) {
+                sendError(socket, 400, "Malformed HTTP line ending");
+                return false;
+            }
+            lines[i].chop(1);
+        }
+    }
+    const QList<QByteArray> requestLine = lines[0].split(' ');
+    if (requestLine.size() != 3 || !isHttpToken(requestLine[0]) ||
+        !requestLine[1].startsWith('/') ||
+        std::any_of(requestLine[1].begin(), requestLine[1].end(), [](unsigned char c) { return c <= 0x20 || c == 0x7f; }) ||
+        (requestLine[2] != "HTTP/1.1" && requestLine[2] != "HTTP/1.0")) {
         sendError(socket, 400, "Malformed HTTP request line");
         return false;
     }
 
-    request.method = requestLine[0].trimmed().toUpper();
-    request.path = QString::fromUtf8(requestLine[1].trimmed());
+    request.method = requestLine[0];
+    request.path = QString::fromUtf8(requestLine[1]);
     for (int i = 1; i < lines.size(); ++i) {
-        const QByteArray line = lines[i].trimmed();
+        const QByteArray &line = lines[i];
         const qsizetype colon = line.indexOf(':');
-        if (colon <= 0) {
-            continue;
+        if (colon <= 0 || !isHttpToken(line.left(colon)) ||
+            std::any_of(line.begin() + colon + 1, line.end(), [](unsigned char c) {
+                return (c < 0x20 && c != '\t') || c == 0x7f;
+            })) {
+            sendError(socket, 400, "Malformed HTTP header");
+            return false;
         }
-        const QByteArray name = line.left(colon).trimmed().toLower();
-        if (name == "content-length" && request.headers.contains(name)) {
-            sendError(socket, 400, "Duplicate Content-Length");
+        const QByteArray name = line.left(colon).toLower();
+        if ((name == "content-length" || name == "authorization" || name == "x-game-capture-token" || name == "host") &&
+            request.headers.contains(name)) {
+            sendError(socket, 400, "Duplicate HTTP framing or authentication header");
             return false;
         }
         request.headers.insert(name, line.mid(colon + 1).trimmed());
@@ -522,6 +566,9 @@ bool LocalControlServer::isAuthorized(const HttpRequest &request) const {
 }
 
 void LocalControlServer::sendJson(QTcpSocket *socket, int status, const QByteArray &body) {
+    // Exactly one request per connection, including while a response drains.
+    disconnect(socket, &QTcpSocket::readyRead, this, nullptr);
+    buffers_[socket].clear();
     const QByteArray response =
         "HTTP/1.1 " + QByteArray::number(status) + " " + reasonPhrase(status) + "\r\n"
         "Content-Type: application/json; charset=utf-8\r\n"

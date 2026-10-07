@@ -4,6 +4,13 @@ Game Capture can expose an opt-in loopback HTTP JSON API for same-user automatio
 
 The server is disabled by default. When enabled, it binds only to `127.0.0.1`, writes a discovery file, and requires a bearer token for every endpoint except `/health`.
 
+Each connection handles one HTTP/1.0 or HTTP/1.1 request and closes afterward.
+Connections have a 10-second absolute deadline, including incomplete requests and
+slow readers; at most 32 are active. Requests are limited to 1 MiB including
+headers, with a separate 16 KiB header limit. Transfer-Encoding and duplicate
+framing/authentication headers are rejected. Use a fixed Content-Length for JSON
+bodies, measured in UTF-8 bytes. Normal fragmented requests are supported.
+
 ## Enable
 
 Command-line flags:
