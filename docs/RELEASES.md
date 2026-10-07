@@ -96,8 +96,6 @@ $firefox = (Resolve-Path (Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.e
 powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate.ps1 -BuildDir build-review2 -Configuration Release -FirefoxPath $firefox
 ```
 
-## 2.5) Configure VirusTotal key (optional but recommended)
-
 For a prepared Windows runner, the **QA Fast Gate** manual dispatch also accepts
 `validate_release_package=true`. This runs the normal full release-readiness
 script against an existing frozen package, including OBS coverage and both
@@ -106,6 +104,8 @@ directory), `GAME_CAPTURE_RELEASE_MANIFEST_SHA256` (the independently recorded
 manifest digest), `NINJA_PLUGIN_REPO` (an OBS-ready checkout), and
 `GAME_CAPTURE_FIREFOX_PATH`. Use `runner_label` to select that prepared runner.
 The normal fast-gate mode continues to build and validate its own package.
+
+## 2.5) Configure VirusTotal key (optional but recommended)
 
 Use one of:
 
