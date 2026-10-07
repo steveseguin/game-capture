@@ -497,7 +497,9 @@ $lines += '```'
 $lines += ""
 
 $ctestPass = & $script:runStepImplementation "CTest" {
-    ctest --test-dir $BuildDir -C $Configuration --output-on-failure
+    # CTest 4 enables Windows Error Reporting in interactive mode. The deliberate
+    # crash controls must exit, without waiting for a system debugger dialog.
+    ctest --test-dir $BuildDir -C $Configuration --interactive-debug-mode 0 --output-on-failure
 }
 $allPass = $allPass -and $ctestPass
 $lines += "## CTest"
