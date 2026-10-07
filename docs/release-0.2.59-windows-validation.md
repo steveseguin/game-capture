@@ -113,8 +113,28 @@ artifacts, not the previously published binaries, which predate this feature.
 
 Earlier live verification used the 0.2.57 comparison build to detect GitHub's
 stable v0.2.58 and open the actual Releases overview. The 0.2.58 comparison build
-then reevaluated that same cache as current without a request. A final published-
-release/download verification will follow publication of v0.2.59.
+then reevaluated that same cache as current without a request.
+
+[v0.2.59 was published](https://github.com/steveseguin/game-capture/releases/tag/v0.2.59)
+as the latest stable release on October 7, 2026. Before publication, the 0.2.58
+comparison build ignored the actual GitHub draft and remained current (22
+assertions). After publication it detected **New version available: v0.2.59**;
+clicking the actual footer link opened the Releases overview in the default Edge
+browser, whose address was verified (23 assertions).
+
+All nine release assets were downloaded and matched their recorded SHA-256 and
+size. The extracted ZIP's manifest and all 96 payload files matched the frozen
+package. That downloaded executable then passed 33 assertions: the old build's
+cached v0.2.59 metadata immediately showed **You're up to date** without a request,
+a fresh real GitHub check agreed, and a restart reused the result. Its executable
+and Schannel module paths were verified, and the original user settings and cache
+were restored.
+
+The unauthenticated public API confirms v0.2.59 is latest, non-draft, and not a
+prerelease; all nine published asset digests and sizes match. The four stable
+`releases/latest/download/` links return HTTP 200 with HTTPS verification enabled.
+`SHA256SUMS.txt` is included in the release, and each fixed-name alias is identical
+to its versioned counterpart.
 
 All 21 CTest groups and the source-lifetime, QA-entrypoint, artifact-identity, and
 analyzer contracts pass. These are gates, not end-to-end testing. The checker
@@ -145,7 +165,11 @@ their results have not been rewritten as passes.
 - `native-qt/qa/reports/update-check-final-release/results.json` and UI screenshots.
 - `native-qt/qa/reports/desktop-ui-final-release/results.json`.
 - `native-qt/qa/reports/update-check-final-hardened-upgrade/results.json`.
+- `native-qt/qa/reports/update-check-published-draft-exclusion/results.json`.
+- `native-qt/qa/reports/update-check-published-old-version/results.json`.
+- `native-qt/qa/reports/update-check-published-downloaded-upgrade/results.json`.
 - `native-qt/qa/reports/update-check-busy-cache-baseline/results.json` and `update-check-busy-cache-fixed/results.json`.
 - `native-qt/qa/reports/ci-node20-dns-failure/` and `ci-powershell-module-failure/`.
 - `native-qt/build-update-final-hardened-package.log` and `build-update-frozen-release-ci.log`.
 - `native-qt/qa/reports/release-0.2.59/local-assets.json` and `native-qt/dist/SHA256SUMS.txt`.
+- `native-qt/qa/reports/release-0.2.59/download-verification.json` and `published-release.json`.
