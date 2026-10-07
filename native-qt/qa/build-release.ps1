@@ -74,6 +74,12 @@ function Resolve-Windeployqt {
 
 function Resolve-RuntimeDll([string]$Name) {
     $roots = @()
+    if ($Name -in @('dxcompiler.dll', 'dxil.dll')) {
+        if ($env:WindowsSdkDir) {
+            $roots += (Join-Path $env:WindowsSdkDir 'Redist\D3D\x64')
+        }
+        $roots += 'C:\Program Files (x86)\Windows Kits\10\Redist\D3D\x64'
+    }
     if ($env:VCPKG_ROOT) {
         $roots += (Join-Path $env:VCPKG_ROOT "installed\x64-windows\bin")
     }
@@ -102,7 +108,7 @@ function Resolve-RuntimeDll([string]$Name) {
             return (Resolve-Path $direct).Path
         }
         $match = Get-ChildItem -Path $root -Filter $Name -Recurse -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '(?i)[\\/](x64|amd64)[\\/]' } |
+            Where-Object { $Name -eq 'vc_redist.x64.exe' -or $_.FullName -match '(?i)[\\/](x64|amd64)[\\/]' } |
             Sort-Object FullName -Descending |
             Select-Object -First 1
         if ($match) {
@@ -417,6 +423,7 @@ $windeployqt = Resolve-Windeployqt
 if ($windeployqt) {
     Write-Step "Run windeployqt"
     & $windeployqt --release --no-translations --compiler-runtime --dir $stageDir $exePath
+    if ($LASTEXITCODE -ne 0) { throw "windeployqt failed with exit code $LASTEXITCODE" }
 } else {
     Write-Host "windeployqt not found; copying local runtime files from build output."
     $exeDir = Split-Path -Parent $exePath
@@ -475,8 +482,11 @@ if (-not (Test-Path $styleTarget)) {
     }
 }
 
-Write-Step "Runtime DLL Closure"
+Write-Step "Runtime Dependency Closure"
 $runtimeDlls = @(
+    "dxcompiler.dll",
+    "dxil.dll",
+    "vc_redist.x64.exe",
     "brotlicommon.dll",
     "brotlidec.dll",
     "bz2.dll",
@@ -506,7 +516,7 @@ foreach ($dll in $runtimeDlls) {
         Copy-Item -Path $source -Destination $target -Force
         Write-Host "Copied $dll"
     } else {
-        Write-Warning "Could not locate runtime dependency $dll"
+        throw "Could not locate required runtime dependency $dll"
     }
 }
 
