@@ -13,6 +13,8 @@ This patch hardens capture startup and the optional local automation controls.
   support, and includes the dependency updates that resolved all five reported
   Dependabot alerts. Existing bridge installations should pull the source and
   rerun `npm ci --prefix native-qt/tools/mcp --ignore-scripts`.
+- Packaging now requires the DirectX compiler and Visual C++ redistributable
+  even when built outside a Visual Studio developer shell.
 - Release readiness now exercises the missing capture-interface condition,
   deterministic HTTP/JSON fuzzing, MCP malformed inputs and ownership races, and
   real browser playback during concurrent control requests.
