@@ -22,7 +22,7 @@ import threading
 import time
 
 import frida
-from pywinauto import Application, Desktop
+from pywinauto import Desktop
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('desktop_workflow', Path(__file__).with_name('desktop-ui-e2e.py'))
 desktop = importlib.util.module_from_spec(spec)
@@ -230,8 +230,7 @@ def main():
         script.on('message', message)
         script.load()
         device.resume(active_pid)
-        app = Application(backend='uia').connect(process=active_pid, timeout=20)
-        window = app.window(title='Game Capture - Powered by VDO.Ninja')
+        window = desktop.application_window(active_pid)
         window.wait('visible', timeout=20)
         window.maximize()
         def named(suffix):

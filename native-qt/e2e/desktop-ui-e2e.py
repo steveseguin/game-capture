@@ -78,6 +78,39 @@ def wait_for(predicate, description, timeout=12):
     raise AssertionError("Timed out: " + description)
 
 
+def application_window(pid, timeout=20):
+    import pywintypes
+    import win32con
+    import win32gui
+    import win32process
+    from pywinauto import Desktop
+
+    # UIA can return duplicate title/process entries across rapid app restarts.
+    # Resolve the real visible top-level HWND first, then bind UIA to that HWND.
+    handles = []
+
+    def find():
+        handles.clear()
+
+        def visit(hwnd, _):
+            try:
+                if (win32gui.IsWindowVisible(hwnd) and
+                        win32process.GetWindowThreadProcessId(hwnd)[1] == pid and
+                        win32gui.GetWindow(hwnd, win32con.GW_OWNER) == 0 and
+                        win32gui.GetWindowText(hwnd) == "Game Capture - Powered by VDO.Ninja"):
+                    handles.append(hwnd)
+            except pywintypes.error:
+                pass  # Another window can disappear during enumeration.
+
+        win32gui.EnumWindows(visit, None)
+        if len(handles) > 1:
+            raise AssertionError("Multiple visible application windows: " + str(handles))
+        return len(handles) == 1
+
+    wait_for(find, "visible application HWND", timeout)
+    return Desktop(backend="uia").window(handle=handles[0])
+
+
 OBSERVER = r"""
 const hooked = new Set();
 Process.attachModuleObserver({ onAdded(module) {
@@ -199,7 +232,7 @@ def main():
         script.load()
         device.resume(pid)
         app = Application(backend="uia").connect(process=pid, timeout=20)
-        window = app.window(title="Game Capture - Powered by VDO.Ninja")
+        window = application_window(pid)
         window.wait("visible", timeout=20)
         window.maximize()
         window.set_focus()
