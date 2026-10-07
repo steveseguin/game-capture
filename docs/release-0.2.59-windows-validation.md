@@ -1,156 +1,151 @@
 # Game Capture 0.2.59 Windows validation
 
-The first candidate's completed validation is recorded below. Additional edge-case
-testing on October 7 found a UI stall when another process holds the update-cache
-lock. A correction and an expanded packaged workflow are being validated before
-publication. The original readiness report retains its desktop-harness failure;
-that workflow passed on rerun after the correction described below.
+The frozen release package passed the complete
+[release-readiness workflow in CI](https://github.com/steveseguin/game-capture/actions/runs/37584155023),
+including the desktop, update-check, browser, OBS, encoder, and both 30-minute
+soak workflows. Installer construction and package identity gates also passed.
 
-## Change
+## Shipped behavior
 
-The existing installed-version footer now checks the public GitHub latest-release
-API asynchronously. The checker requires explicit stable/non-draft metadata and a
-stable semantic-version tag. It caches attempts, last-success metadata, and whether
-the latest attempt succeeded in `%LOCALAPPDATA%\GameCapture\update-check.ini`.
-An unsuccessful refresh preserves the last valid metadata but displays unavailable.
-Cached metadata is reevaluated against the build's `APP_VERSION` on every launch.
+The existing version footer uses the build's `APP_VERSION` and checks this
+project's public GitHub latest-release API asynchronously, about once per day.
+Successful checks show **You're up to date** or **New version available: vX.Y.Z**
+with a **Releases** link to `https://github.com/steveseguin/game-capture/releases`.
+Unknown results show **Update check unavailable**.
 
-The request has a 10-second connection/TLS deadline, a 15-second total deadline,
-and a 1 MiB response limit. Redirects, cookies, and credential reuse are disabled;
-authentication requests are aborted. Certificate verification remains enabled.
-Shutdown cancels the request and disconnects callbacks. The Windows package must
-include `tls/qschannelbackend.dll`.
+Drafts, GitHub prereleases, and prerelease tags marked stable are rejected.
+Numeric semantic-version comparisons ignore build metadata and do not recommend
+an older stable release to a development build with a newer version core.
 
-## Validation approach
+Attempts and minimal valid release metadata persist in
+`%LOCALAPPDATA%\GameCapture\update-check.ini`. A failed refresh retains valid
+metadata but does not present it as proof of being current. Cached metadata is
+reevaluated against the installed version after an upgrade. Cache writes use a
+private temporary INI and atomic replacement to avoid blocking on a shared
+QSettings lock; reads are bounded to 16 KiB.
 
-The new packaged workflow runs the actual GUI, reads its footer through Windows
-accessibility, clicks Releases, checks the default browser's address, records the
-loaded executable and TLS-backend paths, and observes Windows sound/Alert requests.
-It samples window responsiveness and verifies normal process exit during a request.
-Settings and the update cache are restored after each run.
+The HTTP client has a 10-second connection/TLS deadline, a 15-second total
+deadline, a 1 MiB response limit, and cancellation on exit. Redirects, cookies,
+and credential reuse are disabled; authentication requests are aborted. HTTPS
+certificate verification stays enabled. There are no update popups, sounds,
+downloads, or installation. Requests contain no settings, credentials, or media.
 
-Real GitHub HTTPS runs without a URL override. Fault cases redirect only the
-update URL inside the validation process to local socket/HTTP/TLS fixtures using
-Frida. The production binary has no endpoint override. These fixtures exercise
-actual refused connections, malformed TLS, an untrusted certificate, stalled TLS,
-stalled response bodies, HTTP errors, and oversized responses. HTTPS certificate
-verification is never disabled, and the fixture certificate is never trusted.
-Synthetic release metadata checks draft/prerelease handling and the available UI.
+Game Capture is a standalone Qt application. The shipped package's
+`tls/qschannelbackend.dll` was loaded and used successfully for real GitHub HTTPS;
+the OBS Qt HTTPS-backend limitation does not apply to this runtime.
 
-The older comparison packages contain the new checker with build versions 0.2.57
-and 0.2.58. They are validation artifacts, not the previously published binaries,
-which predate this feature.
-
-## Completed update-check workflows
-
-The final v0.2.59 package passed all 195 assertions in the packaged update workflow,
-including the actual browser address, loaded package/TLS module paths, drafts,
-both forms of prerelease exclusion, rate limits, malformed and oversized bodies,
-refused connections, broken TLS, and certificate rejection. All 2,391 window
-responsiveness samples passed. There were no sound requests or accessibility
-Alert events. Connection and total deadlines measured 10.10 and 15.08 seconds.
-Clean exit during an active connection and suppression of a new request after
-restart both passed. Settings and the original update cache were restored.
-
-Live GitHub verification used the older comparison build v0.2.57 to detect the
-actual current stable release v0.2.58, click Releases, and confirm the browser
-address `https://github.com/steveseguin/game-capture/releases`. The v0.2.58 comparison
-build then reused that same cached metadata without a request and displayed
-**You're up to date**. Separately, v0.2.59 reevaluated metadata saved by the v0.2.58
-comparison build and displayed **You're up to date** without a new request.
-This final upgrade/live/cache run passed all 29 assertions against the exact
-signed executable identified below.
-
-## Candidate identity
+## Exact package identity
 
 | Item | SHA-256 / commit |
 | --- | --- |
-| Source commit | `6b0ef1ea4ab90a3179306db2860ef03c55127042` |
-| Packaged game-capture.exe | `ab3530de5c9c282351621538544805e5d86d6344953ee525dd3e676d396253e1` |
-| Release artifact manifest | `da8589289dc60463f5151e2f79ebf63e65d7ebba1c3900724952f1379e1a7393` |
-| Native source snapshot, 218 files | `cc60c5787357447312e014a70ea3b96ddfdb3af32c0ea3a51100e2ed17098f76` |
+| Packaged source commit | `d51bb5f808e1fe14a69c8370569d48d7a7ffe72b` |
+| Packaged game-capture.exe | `2118f31581a03d216e30029e8d32091262bf1c1ee3497c43f723de2e2a9d5ebd` |
+| Release artifact manifest | `47fe8a0e65790b7a32f00b70662ebade4df2690c4da37fa126ad964776bbec94` |
+| Native source snapshot, 218 files | `c4e93d3825709e88c6151a715a567aa04369e7c7818722d14f380b6881e8ab59` |
 
-The package was created by `native-qt/qa/build-release.ps1`. Its dirty flag records
-the pre-existing untracked v0.2.57 documentation file outside `native-qt`.
-The signed installer, portable executable, ZIP, FFmpeg source-info archive, and
-their stable aliases passed the package identity gates. This is not a
-reproducible-build claim.
+`native-qt/qa/build-release.ps1` produced the package. Later CI-workflow and
+documentation commits leave this native source snapshot unchanged. Full CI uses
+this frozen package directly, verifying its independently recorded manifest hash.
+The manifest's dirty flag records the pre-existing untracked v0.2.57 document
+outside `native-qt`; that unrelated file is preserved and excluded from the release.
 
-## Gates and publication
+The installer, portable executable, ZIP, FFmpeg source-info archive, and their
+fixed-name aliases pass the package identity gates. The EXEs carry the existing
+project signing certificate and a DigiCert timestamp. Windows reports the
+project's self-signed root as untrusted; this is not a publicly trusted-signature
+or reproducible-build claim. VirusTotal submission was skipped because no key
+was available.
 
-The initial fresh build, all 21 CTest groups, and QA entrypoint contracts passed.
-These are gates, not end-to-end testing. The checker gates cover numeric version
-ordering, development builds, prerelease identifiers, build metadata, cache
-expiry/clock correction, persistence, timeouts, and cancellation. Installer
-construction and versioned/stable package identity gates also passed.
+## Packaged application testing
 
-The packaged playback matrix, viewer refresh/reconnect, stream-ID collision,
-data-channel control, ICE modes/settings, signaling regressions, and Control
-Center negotiation passed. Browser coverage includes Edge, Playwright Firefox,
-and installed Firefox. Dual-quality roles, churn, initialization fuzzing, and
-requirements passed. OBS room-alpha, opaque/half-transparent workflows, bitrate
-presets, and the installed NVIDIA/Intel encoder policies passed. AMD hardware was
-unavailable. The 30-minute dual-quality soak passed all four runs and 310 viewer
-join/decode cycles (1,821 seconds). The separate playback soak passed five runs
-and 101 viewer cycles (1,809 seconds). Neither soak needed a retry.
+The final executable passed all **592 update-workflow assertions** and all
+**5,680 window-responsiveness samples**, with no sound requests or accessibility
+Alert events. The workflow verifies the actual loaded executable and Schannel
+module paths, reads the visible footer, clicks its real Releases link, and checks
+the default browser's address. Settings and the original update cache are restored.
 
-The first desktop workflow failed before capture because its Qt accessibility
-lookup could not find the fixture below the visible source-list rows. A harness
-correction scrolls the actual list to the fixture and checks that the click point
-is within the viewport. Follow-up runs exposed dropdown-focus timing; the script
-now waits for and clicks the actual source-mode option. The complete desktop
-rerun passed all 22 assertions, including real H.264/VP9 browser decoding,
-FFmpeg timeout recovery, UI responsiveness, source removal, sound/alert behavior,
-tray behavior, and clean exit during a probe. Settings were restored.
-These corrections change validation code only; the packaged executable remains
-the exact artifact identified above. Failed reports are retained, including the
-original readiness report's FAIL result; the successful desktop rerun closes
-its only failed workflow.
+Real GitHub requests run without an endpoint override. Fault cases redirect only
+the update URL in the validation process to actual socket, HTTP, and TLS fixtures
+using Frida. The production app has no configurable update endpoint, and the
+workflow does not mock QNetworkReply or disable certificate verification.
+The fixture certificate is never trusted, and machine-wide networking is unchanged.
 
-GitHub currently reports zero registered self-hosted runners for this repository.
-The QA Fast Gate workflow requires a self-hosted Windows X64 runner, so CI has not
-been verified for this change. The [requested CI run](https://github.com/steveseguin/game-capture/actions/runs/37565028196)
-is queued as of October 7, 2026. No v0.2.59 tag or GitHub release has been created.
-The feature commit is available on branch `quiet-update-checks-0.2.59`; remote
-`main` remains unchanged while CI is unavailable.
+Coverage includes:
 
-The unrelated local `docs/release-0.2.57-installer-closeout-2026-09-07.md` file is
-preserved and excluded from this change.
+- DNS lookup failure, connection refusal, malformed TLS, and an untrusted certificate.
+- HTTP 401/403/404/407/429/503, an empty response, and rejected redirects.
+- Malformed JSON, incorrect field types, invalid tags, drafts, both forms of
+  prerelease exclusion, matching versions, and older releases.
+- Oversized declared, streamed, and compressed responses; truncated responses;
+  stalled TLS; stalled bodies; and a slow trickling body.
+- Quit before the first request, quit during connection and body transfer,
+  forced termination, and suppression of repeated requests on restart.
+- Cached success and failure, expired-success refresh failure, preservation of
+  last-valid metadata, later network recovery, daily timer expiry, clock
+  correction, corrupt and oversized caches, held cache locks, unwritable caches,
+  and recovery after writes become possible again.
 
-## Local evidence
+Measured connection timeout: **10.01 seconds**. Measured total timeout:
+**15.08 seconds** for a stalled body and **15.03 seconds** for a trickling body.
 
-- `native-qt/build-update-final-package.log` and `build-update-readiness.log`.
-- `native-qt/qa/reports/update-check-20261006-230206/results.json`.
-- `native-qt/qa/reports/update-check-older-live/results.json` and `live-cache.ini`.
-- `native-qt/qa/reports/update-check-live-upgrade/results.json`.
-- `native-qt/qa/reports/update-check-0.2.59-final-upgrade/results.json`.
-- `native-qt/qa/reports/desktop-ui-0.2.59-final/e5a48008-1299-44ac-9f2f-c38fe56d8f30/results.json`.
-- `native-qt/qa/reports/release-readiness-20261006-230206.md`.
-- `native-qt/qa/reports/dual-quality-soak-2026-10-07T04-03-53-136Z.md`.
-- `native-qt/qa/reports/soak-2026-10-07T04-34-02-750Z.md`.
+The final package also passed **22 desktop-workflow assertions**, including real
+H.264/VP9 browser decoding, source selection/removal, FFmpeg timeout recovery,
+responsiveness, tray behavior, and clean exit during a probe.
+
+Playback, reconnect, stream-ID collision, data-channel controls, ICE modes and
+settings, signaling, and Control Center negotiation passed. Browser coverage is
+Edge, Playwright Firefox, and installed Firefox. Dual-quality roles, churn,
+initialization fuzzing, and requirements passed. OBS room-alpha and opaque/half-
+transparent output workflows passed with artifact hashes stable throughout.
+Bitrate presets and Auto, software, NVIDIA, and Intel encoder policies passed.
+AMD hardware was unavailable. The dual-quality soak passed all four runs and
+311 viewer join/decode cycles over 1,825 seconds. The separate playback soak
+passed five runs and 101 viewer iterations over 1,804 seconds. Neither soak
+needed a retry.
+
+## Upgrade and publication checks
+
+The final package passed 33 assertions covering metadata saved by an older
+comparison build, a fresh real GitHub check, and a cached restart. On upgrade it
+displayed **You're up to date** without a new request. The older comparison builds
+contain this checker with build versions 0.2.57 and 0.2.58; they are validation
+artifacts, not the previously published binaries, which predate this feature.
+
+Earlier live verification used the 0.2.57 comparison build to detect GitHub's
+stable v0.2.58 and open the actual Releases overview. The 0.2.58 comparison build
+then reevaluated that same cache as current without a request. A final published-
+release/download verification will follow publication of v0.2.59.
+
+All 21 CTest groups and the source-lifetime, QA-entrypoint, artifact-identity, and
+analyzer contracts pass. These are gates, not end-to-end testing. The checker
+gates cover numeric ordering, development builds, build metadata, persistence,
+clock correction, timeouts, cancellation, and held/oversized cache files.
+
+## Issues found and corrected
+
+Expanded packaged testing exposed a real UI stall while another process held
+Qt's shared INI lock: 104 of 179 responsiveness samples failed before the request
+even started. Private serialization plus atomic replacement fixes that stall.
+The final locked- and unwritable-cache workflows remain responsive and recover.
+
+An earlier desktop harness could select an off-screen source row or race a Qt
+dropdown. It now scrolls to the actual row and waits for the visible menu option.
+The corrected workflow passes on the final package.
+
+Preparing CI exposed three environment issues: interactive Windows crash
+reporting delayed a deliberate-abort gate; Node 20 discovered only a nonexistent
+localhost DNS server; and a Windows PowerShell child inherited PowerShell 7's
+incompatible module path. CI now uses noninteractive CTest, Node 22, and Windows
+PowerShell for the QA entrypoint. Failed and superseded reports are retained;
+their results have not been rewritten as passes.
+
+## Evidence
+
+- [Full release-readiness CI](https://github.com/steveseguin/game-capture/actions/runs/37584155023), including its uploaded reports.
+- `native-qt/qa/reports/update-check-final-release/results.json` and UI screenshots.
+- `native-qt/qa/reports/desktop-ui-final-release/results.json`.
+- `native-qt/qa/reports/update-check-final-hardened-upgrade/results.json`.
+- `native-qt/qa/reports/update-check-busy-cache-baseline/results.json` and `update-check-busy-cache-fixed/results.json`.
+- `native-qt/qa/reports/ci-node20-dns-failure/` and `ci-powershell-module-failure/`.
+- `native-qt/build-update-final-hardened-package.log` and `build-update-frozen-release-ci.log`.
 - `native-qt/qa/reports/release-0.2.59/local-assets.json` and `native-qt/dist/SHA256SUMS.txt`.
-
-Earlier diagnostic attempts are retained. They exposed browser first-run overlays,
-an off-screen footer, and a timestamp-unit error in the observer. The completed
-final update workflow includes the corrections; it does not rely on the earlier
-timeout assertions. Generated evidence and fixture certificates remain local.
-
-## Additional network and cache validation
-
-The expanded first-candidate run passed 473 assertions and all 4,921 UI
-responsiveness samples. It adds actual DNS failure, HTTP 401/403/404/407/503,
-redirect rejection, truncated and compressed oversized responses, a slow
-trickling response, shutdown during a body download, forced process termination,
-cached failed-refresh behavior, network recovery, clock correction, and a corrupt
-cache. Evidence: `native-qt/qa/reports/update-check-extended-baseline/results.json`.
-
-A separate busy-cache workflow reproduced an interface stall before the request
-started: 104 of 179 responsiveness samples failed while another process held
-Qt's INI lock. Evidence: `native-qt/qa/reports/update-check-busy-cache-baseline/results.json`.
-Cache serialization now uses a private temporary INI file and atomic replacement,
-preserving the cache format without waiting on the shared QSettings lock.
-The final candidate will repeat the expanded workflows, busy/unwritable-cache
-recovery, scheduled expiry, and immediate exit.
-
-A single-use Windows CI runner is being prepared with a unique dispatch label.
-The workflow also prepares the pinned FFmpeg bundle required by a fresh checkout.
