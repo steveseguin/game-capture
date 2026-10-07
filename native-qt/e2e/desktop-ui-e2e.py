@@ -208,17 +208,43 @@ def main():
         def ffmpeg_status():
             return named("ffmpegStatusLabel").window_text()
 
+        def choose_combo(combo, text):
+            combo.click_input()
+            # Qt's popup is a separate window. Wait for its actual option and
+            # click it instead of sending navigation keys before it has focus.
+            def option():
+                return next((c for w in app.windows() for c in w.descendants(control_type="ListItem")
+                             if c.window_text() == text and c.is_visible()), None)
+            wait_for(lambda: option() is not None, "combo option: " + text)
+            option().click_input()
+
         check("sound-observers-attached", {"PlaySoundW", "MessageBeep", "Beep", "QAccessible::updateAccessibility"}
               <= {e.get("api") for e in events if e.get("kind") == "hook"})
         phase = "source-selection"
         combo = named("sourceModeSelect")
-        combo.click_input()
-        send_keys("{END}{ENTER}", pause=.05)
+        choose_combo(combo, "Spout2 (avatar apps)")
         wait_for(lambda: "Spout2" in status(), "Spout source status")
-        combo.click_input()
-        send_keys("{HOME}{ENTER}", pause=.05)
+        choose_combo(combo, "Window")
         wait_for(lambda: status() == "Select a window to capture", "window source status")
         item = window.child_window(title_re=SOURCE_TITLE + ".*", control_type="ListItem")
+        # Qt exposes only nearby rows through UI Automation. Navigate the real
+        # list so a fixture below the viewport is discoverable and clickable.
+        source_list = named("sourceList")
+        if source_list.element_info.control_type == "ListItem":
+            source_list = source_list.parent()
+        center = source_list.rectangle().mid_point()
+        source_list.move_mouse_input(coords=(center.x, center.y), absolute=True)
+        for _ in range(80):
+            if item.exists(timeout=.1):
+                row = item.rectangle()
+                viewport = source_list.rectangle()
+                if viewport.top < row.mid_point().y < viewport.bottom:
+                    break
+            # Small wheel steps avoid skipping the target in this short viewport.
+            win32api.mouse_event(win32con.MOUSEEVENTF_WHEEL, 0, 0, -40, 0)
+            time.sleep(.1)
+        else:
+            raise AssertionError("Desktop capture fixture was not reachable in the source list")
         item.click_input()
         wait_for(lambda: status() == "Ready to go live", "selected window status")
         check("source-selection-enables-start", named("goLiveButton").is_enabled())
