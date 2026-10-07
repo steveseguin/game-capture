@@ -3,6 +3,8 @@
 Final packaged release readiness passed in
 [CI](https://github.com/steveseguin/game-capture/actions/runs/37652698292).
 Both required 30-minute streaming soaks passed without retries.
+[v0.2.60](https://github.com/steveseguin/game-capture/releases/tag/v0.2.60)
+was published as the latest stable release on 2026-10-07 at 18:23:19 UTC.
 
 ## Problems found and fixed
 
@@ -207,8 +209,24 @@ workflow was not run because no AMD adapter was available. All eight release
 assets and the manifest were rehashed after readiness and remained unchanged;
 runtime source also remains unchanged from the packaged source commit.
 
-Draft upload, downloaded-asset verification, and post-publication old/new
-version checks are the remaining publication steps.
+All nine GitHub assets, including `SHA256SUMS.txt`, were downloaded from the
+draft and matched their local sizes and SHA-256 values. All 96 extracted payload
+files matched the frozen manifest. Public metadata retained the same nine
+digests after publication. All four stable download aliases returned HTTP 200,
+passed certificate verification, and redirected through the v0.2.60 asset URLs.
+
+The downloaded v0.2.59 application passed 22 live UI assertions while v0.2.60
+was still a draft, correctly showing "You're up to date". After publication,
+the same older binary passed 23 assertions showing "New version available:
+v0.2.60". Clicking its actual Releases link opened the default browser at
+`https://github.com/steveseguin/game-capture/releases`.
+
+The downloaded v0.2.60 application then passed 33 assertions: it reevaluated the
+older application's cached v0.2.60 metadata without a request, displayed
+"You're up to date", completed a fresh real GitHub check, and reused that result
+on restart. Both published-version workflows verified the actual executable
+path, and live requests verified the packaged Schannel TLS backend. All three
+publication UI workflows restored settings and the prior update cache.
 
 The current process is not elevated, so an actual administrator installer /
 firewall / uninstall workflow is not claimed. Packaged application testing
@@ -240,3 +258,8 @@ uses the release payload directly.
 - `native-qt/qa/reports/release-0.2.60/soak-resource-samples-ci-37628941242.jsonl`.
 - `native-qt/qa/reports/relay-reliability-repro/` (six passing focused comparisons).
 - `native-qt/qa/reports/release-0.2.60/local-assets.json`.
+- `native-qt/qa/reports/release-0.2.60/download-verification.json`.
+- `native-qt/qa/reports/release-0.2.60/public-download-links.json`.
+- `native-qt/qa/reports/release-0.2.60/draft-old-current/results.json`.
+- `native-qt/qa/reports/release-0.2.60/published-old-detects-new/results.json`.
+- `native-qt/qa/reports/release-0.2.60/published-upgraded-current/results.json`.
