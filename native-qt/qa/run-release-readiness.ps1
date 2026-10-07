@@ -519,6 +519,21 @@ $lines += "- Result: " + ($(if ($desktopPass) { "PASS" } else { "FAIL" }))
 $lines += "- Sound requests, source selection/removal, FFmpeg timeout/startup responsiveness, stale results, H.264/VP9 GUI start/stop with browser decoding, and tray reminders."
 $lines += ""
 
+$updatesPass = & $script:runStepImplementation "Packaged update footer and network failures" {
+    $python = Join-Path $script:repoRoot '.cache/desktop-ui-python/Scripts/python.exe'
+    $packageVersion = (Get-Content -LiteralPath $script:artifactManifestPathBinding -Raw | ConvertFrom-Json).version
+    & $python (Join-Path $script:repoRoot 'e2e/update-check-packaged-e2e.py') `
+        --publisher $script:publisherExe --expected-version $packageVersion `
+        --report-dir (Join-Path $script:repoRoot "qa/reports/update-check-$timestamp")
+    if ($LASTEXITCODE -ne 0) { throw 'Packaged update-check workflow failed.' }
+}
+$allPass = $allPass -and $updatesPass
+$lines += "## Packaged update footer"
+$lines += ""
+$lines += "- Result: " + ($(if ($updatesPass) { "PASS" } else { "FAIL" }))
+$lines += "- Real GitHub HTTPS, default-browser Releases link, cached restarts, prerelease/draft exclusion, offline/TLS/HTTP failures, response limits, timeouts, and quit during a request."
+$lines += ""
+
 $e2ePass = & $script:runStepImplementation "E2E Matrix" {
     cmd /c "npm --prefix `"$repoRoot`" run e2e:matrix -- --publisher-path=`"$publisherExe`""
 }

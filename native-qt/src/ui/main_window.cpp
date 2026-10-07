@@ -1,5 +1,7 @@
 ﻿#include "versus/ui/main_window.h"
 
+#include "versus/ui/update_checker.h"
+
 #include <QAbstractItemView>
 #include <QAccessible>
 #include <QApplication>
@@ -1991,12 +1993,54 @@ void MainWindow::setupUI() {
     resetOperatorHealthUi();
 
     auto *footerLayout = new QHBoxLayout();
+    auto *updateLabel = new QLabel(tr("Update check unavailable"), this);
+    updateLabel->setObjectName("updateStatusLabel");
+    updateLabel->setTextFormat(Qt::PlainText);
+    updateLabel->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
+    footerLayout->addWidget(updateLabel);
+    auto *releasesLink = new QLabel(this);
+    releasesLink->setObjectName("releasesLink");
+    releasesLink->setText(QString("<a href=\"%1\" style=\"color: %2;\">%3</a>")
+                              .arg(QString::fromLatin1(ReleasesUrl), COLOR_ACCENT, tr("Releases")));
+    releasesLink->setStyleSheet("font-size: 11px;");
+    releasesLink->setTextInteractionFlags(Qt::LinksAccessibleByMouse | Qt::LinksAccessibleByKeyboard);
+    releasesLink->setVisible(false);
+    connect(releasesLink, &QLabel::linkActivated, this, [] {
+        QDesktopServices::openUrl(QUrl(QString::fromLatin1(ReleasesUrl)));
+    });
+    footerLayout->addWidget(releasesLink);
     footerLayout->addStretch();
     auto *versionLabel = new QLabel(QString("Version %1").arg(APP_VERSION_TEXT), this);
     versionLabel->setObjectName("versionLabel");
     versionLabel->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
     footerLayout->addWidget(versionLabel);
     layout->addLayout(footerLayout);
+
+    if (runtimeOptions_.systemIntegrationsEnabled) {
+        const QString cachePath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                                  + "/GameCapture/update-check.ini";
+        auto *checker = new UpdateChecker(APP_VERSION_TEXT, cachePath, this);
+        const auto refreshUpdateStatus = [checker, updateLabel, releasesLink] {
+            const auto &result = checker->result();
+            switch (result.status) {
+            case UpdateStatus::UpToDate:
+                updateLabel->setText(tr("You\u2019re up to date"));
+                break;
+            case UpdateStatus::Available:
+                updateLabel->setText(tr("New version available: v%1").arg(result.version));
+                break;
+            case UpdateStatus::Checking:
+                updateLabel->setText(tr("Checking for updates\u2026"));
+                break;
+            case UpdateStatus::Unavailable:
+                updateLabel->setText(tr("Update check unavailable"));
+                break;
+            }
+            releasesLink->setVisible(result.status == UpdateStatus::Available);
+        };
+        connect(checker, &UpdateChecker::statusChanged, this, refreshUpdateStatus);
+        refreshUpdateStatus();
+    }
 
     layout->addStretch();
 

@@ -1,7 +1,7 @@
 ﻿param(
     [string]$BuildDir = "build-review2",
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.58",
+    [string]$Version = "0.2.59",
     [Parameter(Mandatory = $true)]
     [ValidatePattern('^[0-9a-f]{64}$')]
     [string]$ExpectedSourceSnapshotSha256,
@@ -422,12 +422,18 @@ if ($windeployqt) {
     $exeDir = Split-Path -Parent $exePath
     Get-ChildItem -Path $exeDir -Filter "*.dll" -File -ErrorAction SilentlyContinue |
         ForEach-Object { Copy-Item -Path $_.FullName -Destination $stageDir -Force }
-    foreach ($subDir in @("platforms", "styles", "imageformats")) {
+    foreach ($subDir in @("platforms", "styles", "imageformats", "tls")) {
         $src = Join-Path $exeDir $subDir
         if (Test-Path $src) {
             Copy-Item -Path $src -Destination (Join-Path $stageDir $subDir) -Recurse -Force
         }
     }
+}
+
+# HTTPS update checks must work with the shipped Qt runtime, without a developer PATH.
+# Schannel uses the Windows certificate store and needs no OpenSSL DLLs.
+if (-not (Test-Path -LiteralPath (Join-Path $stageDir "tls\qschannelbackend.dll") -PathType Leaf)) {
+    throw "Missing required Qt Schannel TLS backend in release staging. Use this build's windeployqt."
 }
 
 $platformsDir = Join-Path $stageDir "platforms"

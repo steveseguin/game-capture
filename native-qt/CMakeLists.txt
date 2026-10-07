@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.58 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.59 LANGUAGES CXX)
 
 # CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
 # declares a 3.1 minimum, so give bundled dependencies the modern floor
@@ -157,6 +157,7 @@ set(VERSUS_SOURCES
     src/control/local_control_server.cpp
     src/diagnostics/crash_reporter.cpp
     src/ui/main_window.cpp
+    src/ui/update_checker.cpp
     src/ui/window_list_widget.cpp
     src/ui/stats_panel.cpp
     src/signaling/vdo_signaling.cpp
@@ -180,6 +181,7 @@ set(VERSUS_HEADERS
     include/versus/control/local_control_server.h
     include/versus/diagnostics/crash_reporter.h
     include/versus/ui/main_window.h
+    include/versus/ui/update_checker.h
     include/versus/ui/window_list_widget.h
     include/versus/ui/stats_panel.h
     include/versus/signaling/vdo_signaling.h
@@ -369,6 +371,7 @@ if(VERSUS_BUILD_TESTS)
         src/control/local_control_server.cpp
         src/diagnostics/crash_reporter.cpp
         src/ui/main_window.cpp
+        src/ui/update_checker.cpp
         src/ui/window_list_widget.cpp
         src/ui/stats_panel.cpp
         src/signaling/vdo_signaling.cpp
@@ -428,6 +431,14 @@ if(VERSUS_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/include ${libdatachannel_SOURCE_DIR}/deps/json/include)
     target_link_libraries(test_video_control_snapshot PRIVATE spdlog::spdlog Threads::Threads)
     add_test(NAME VideoControlSnapshotTest COMMAND test_video_control_snapshot)
+
+    add_executable(test_update_checker tests/test_update_checker.cpp
+        src/ui/update_checker.cpp include/versus/ui/update_checker.h)
+    set_target_properties(test_update_checker PROPERTIES AUTOMOC ON)
+    target_include_directories(test_update_checker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+    target_link_libraries(test_update_checker PRIVATE Qt6::Test Qt6::Network)
+    add_test(NAME UpdateCheckerTest COMMAND test_update_checker)
+    versus_set_qt_test_environment(UpdateCheckerTest)
 
     # Test: WindowListWidget
     add_executable(test_window_list_widget tests/test_window_list_widget.cpp)

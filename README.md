@@ -25,6 +25,14 @@ Game Capture is a free, open-source Windows app for streaming games, app windows
 While streaming, capture/encoder settings are intentionally locked to prevent mid-stream drift between UI and runtime state. Stop first to change advanced settings.
 Logs are available via `Help -> Open Log Folder` (`%LOCALAPPDATA%\GameCapture\logs`).
 
+The footer shows the installed version and quietly checks GitHub for a newer stable
+release about once a day. It shows **You're up to date** after a successful check,
+or **New version available: vX.Y.Z** with a **Releases** link that opens the project's
+release overview in your default browser. Prereleases and drafts are excluded.
+Failed checks show **Update check unavailable**. Check attempts and release metadata
+are remembered across restarts; checks send no settings, credentials, or media.
+Updates are never downloaded or installed automatically.
+
 ## Camera / Webcam Sources
 
 1. Set `Video Source` to `Camera / Webcam`.
@@ -131,7 +139,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate
 Release readiness:
 
 ```powershell
-$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.58-win64).Path
+$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.59-win64).Path
 $publisher = Join-Path $package "game-capture.exe"
 $manifest = Join-Path $package "release-artifact-manifest.json"
 $manifestSha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()

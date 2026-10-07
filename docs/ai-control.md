@@ -106,7 +106,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\native-qt\tools\check-
 Run the real MCP-to-packaged-app workflow with:
 
 ```powershell
-$env:GAME_CAPTURE_MCP_EXECUTABLE = (Resolve-Path .\native-qt\dist\game-capture-0.2.58-win64\game-capture.exe).Path
+$env:GAME_CAPTURE_MCP_EXECUTABLE = (Resolve-Path .\native-qt\dist\game-capture-0.2.59-win64\game-capture.exe).Path
 $env:GAME_CAPTURE_MCP_SPOUT_FIXTURE = (Resolve-Path .\native-qt\build-review2\bin\spout_test_sender.exe).Path
 node .\native-qt\tools\mcp\packaged-e2e.mjs
 ```

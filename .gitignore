@@ -68,6 +68,7 @@ native-qt/build-*.txt
 # QA artifacts
 native-qt/qa/reports/
 native-qt/e2e/reports/
+native-qt/e2e/__pycache__/
 
 /.vt-apikey
 /native-qt/.vt-apikey

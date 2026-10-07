@@ -31,6 +31,7 @@ This runs:
 - A fresh build, packaging, FFmpeg bundle validation/source-info packaging, and signing.
 - Exact packaged-application readiness, including browser/OBS workflows and two 30-minute soaks.
 - Packaged desktop sound/responsiveness and notification workflows (interactive Windows desktop and 64-bit Python 3 with Tk required).
+- Packaged update-footer workflows, including real GitHub HTTPS, the default-browser Releases link, caching, network failures, timeouts, and shutdown. Certificate-rejection fixtures use the OpenSSL executable bundled with Git for Windows. Packages must include Qt's Schannel TLS backend.
 - Versioned/stable asset identity checks, optional VirusTotal submission, and GitHub publication.
 
 There is no `-SkipFastGate` option in this publishing command. Required readiness must pass before upload. Builds, CTest, static contracts, and installer construction are gates; actual application playback and recovery workflows provide end-to-end testing.
