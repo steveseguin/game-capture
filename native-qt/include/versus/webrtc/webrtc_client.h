@@ -30,6 +30,9 @@ struct EncodedAudioPacket {
 struct PeerConfig {
     std::vector<IceServerConfig> iceServers;
     IceMode iceMode = IceMode::All;
+    // WHIP may need an offer to discover TURN credentials in the POST response.
+    // The transport still enforces Relay policy; no direct pair is permitted.
+    bool allowRelayDiscovery = false;
     TurnRegistryProvenance turnRegistry;
     enum class VideoCodec {
         H264,
@@ -69,6 +72,12 @@ enum class SelectedIcePath {
 };
 
 const char *selectedIcePathName(SelectedIcePath path);
+
+struct ReceiverFeedbackStatus {
+    int64_t ageMs = -1;
+    int64_t timeoutMs = 0;
+    uint64_t reports = 0;
+};
 
 struct MediaPlanChange {
     bool changed = false;
@@ -133,6 +142,7 @@ class WebRtcClient {
     bool hasConfiguredVideoTrack() const;
     bool hasConfiguredAudioTrack() const;
     SelectedIcePath selectedIcePath() const;
+    ReceiverFeedbackStatus receiverFeedback() const;
 
   private:
     friend class WebRtcClientTestAccess;

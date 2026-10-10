@@ -85,6 +85,8 @@ set(NO_TESTS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libdatachannel)
 include(cmake/patch-libjuice.cmake)
 game_capture_patch_libjuice("${libdatachannel_SOURCE_DIR}")
+include(cmake/patch-relay-policy.cmake)
+game_capture_patch_relay_policy("${libdatachannel_SOURCE_DIR}")
 
 # Exclude shared library target from default build
 if(TARGET datachannel)

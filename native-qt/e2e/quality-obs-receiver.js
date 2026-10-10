@@ -18,7 +18,8 @@ class Obs {
           this.ws.send(JSON.stringify({op:1,d}));
         }else if(m.op===2){clearTimeout(timeout);resolve();}
         else if(m.op===7){const p=this.pending.get(m.d.requestId);if(p){this.pending.delete(m.d.requestId);clearTimeout(p.timer);m.d.requestStatus.result?p.resolve(m.d.responseData||{}):p.reject(Error(JSON.stringify(m.d.requestStatus)));}}
-        else if(m.op===5)this.events.push({time:Date.now(),...m.d});
+        else if(m.op===5){this.events.push({time:Date.now(),...m.d});
+          if(this.events.length>20000){this.events.splice(0,10000);this.historyLimited=true;}}
       });
     });
   }
@@ -83,6 +84,11 @@ async function receive(obs,c,dir,url,seconds,source){
       c.obsBrowser?{url:c.external?url+'?muted=false&controls=false':url+'&autostart&cleanoutput',width:1280,height:720,reroute_audio:true,shutdown:true}:
       {stream_id:stream,password:'false',room_id:'',use_native_receiver:true,enable_data_channel:true,auto_reconnect:true,width:1280,height:720};
     const created=await client.request('CreateInput',{sceneName:scene,inputName:input,inputKind:c.direct?'window_capture':c.obsBrowser?'browser_source':c.external?'ffmpeg_source':'vdoninja_source',inputSettings:settings,sceneItemEnabled:true});
+    if(c.obsRenderDelayMs){
+      if(!c.obsBrowser||c.obsRenderDelayMs<0||c.obsRenderDelayMs>500)throw Error('Invalid browser render-delay calibration');
+      await client.request('CreateSourceFilter',{sourceName:input,filterName:'Measured browser sync',filterKind:'gpu_delay',filterSettings:{delay_ms:c.obsRenderDelayMs}});
+      r.receiverFilters=await client.request('GetSourceFilterList',{sourceName:input});
+    }
     if(c.direct){
       const items=await client.request('GetInputPropertiesListPropertyItems',{inputName:input,propertyName:'window'});
       const item=items.propertyItems.find(i=>i.itemName.includes('Game Capture Quality Source'));if(!item)throw Error('OBS cannot find calibration fixture');
@@ -122,6 +128,7 @@ async function receive(obs,c,dir,url,seconds,source){
     r.after=await client.request('GetStats');
     r.source=await source.evaluate(()=>({epoch:quality.epoch,calibrations:quality.calibrations}));
     r.audioMeters=client.events.filter(e=>e.eventType==='InputVolumeMeters'&&e.time>=r.recordStart&&e.time<=r.recordStop).map(e=>({time:e.time,inputs:e.eventData.inputs.filter(i=>i.inputName===input)}));
+    r.audioMeterHistoryLimited=!!client.historyLimited;
     r.ok=true;
   }catch(e){r.error=String(e);throw e;}
   finally{await client.request('RemoveInput',{inputName:input}).catch(()=>{});if(c.direct)await client.request('RemoveInput',{inputName:input+'-audio'}).catch(()=>{});if(paired)for(const name of [reference,reference+'-audio'])await client.request('RemoveInput',{inputName:name}).catch(()=>{});fs.writeFileSync(path.join(dir,'obs-receiver.json'),JSON.stringify(r,null,2));}

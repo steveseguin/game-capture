@@ -5,7 +5,7 @@ const fs=require('fs'),path=require('path'),http=require('http'),https=require('
 const {spawn,execFileSync}=require('child_process'),{chromium}=require('playwright'),assert=require('assert/strict');
 const opts=Object.fromEntries(process.argv.slice(2).map(x=>{const i=x.indexOf('=');return[x.slice(2,i),x.slice(i+1)];}));
 const out=path.resolve(opts.output),exe=path.resolve(opts.publisher),native=path.resolve(__dirname,'..'),token=crypto.randomBytes(24).toString('hex');
-const sleep=ms=>new Promise(r=>setTimeout(r,ms)),children=[],logs=[],trace=[];let mode,proxy1,proxy2,stun;const stunRequests=[];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms)),children=[],logs=[],trace=[];let mode,proxy1,proxy2,stun,trustedTls;const stunRequests=[];
 fs.mkdirSync(out,{recursive:true});
 function launch(program,args,name,env={}){const log=fs.createWriteStream(path.join(out,name+'.log'));logs.push(log);const p=spawn(program,args,{windowsHide:true,cwd:path.dirname(path.resolve(program)),env:{...process.env,...env},stdio:['ignore','pipe','pipe']});p.stdout.pipe(log,{end:false});p.stderr.pipe(log,{end:false});p.closed=new Promise(r=>p.once('close',r));children.push(p);return p;}
 async function until(fn,label,ms=30000){const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await sleep(100);}throw Error('Timed out: '+label);}
@@ -25,12 +25,20 @@ function handler(origin){return(req,res)=>{
   if(mode==='redirect'&&origin===1&&req.method==='POST'){
     res.writeHead(307,{Location:'http://127.0.0.1:'+proxy2.address().port+req.url});res.end();return;
   }
+  if(mode==='https-downgrade-redirect'&&req.method==='POST'){
+    res.writeHead(307,{Location:'http://127.0.0.1:'+proxy2.address().port+req.url});res.end();return;
+  }
   if((origin===1&&auth!==('Bearer '+token))||(origin===2&&auth)){
     res.writeHead(403);res.end();return;
   }
   const upstream=http.request({hostname:'127.0.0.1',port:18889,path:req.url,method:req.method,
     headers:{'content-type':req.headers['content-type']||'application/sdp'}},reply=>{
       const headers={...reply.headers};if(headers.location){const target=new URL(headers.location,'http://127.0.0.1:18889');headers.location='http://127.0.0.1:'+(origin===1?proxy1:proxy2).address().port+target.pathname+target.search;}
+      if(headers.location&&mode.startsWith('https-')){
+        const target=new URL(headers.location);
+        headers.location=(mode==='https-proxy-location'?'http':'https')+'://qa.localhost.direct:'+trustedTls.address().port+target.pathname+target.search;
+        if(mode==='https-insecure-location')headers.location='http://127.0.0.1:'+proxy2.address().port+target.pathname+target.search;
+      }
       res.writeHead(reply.statusCode,headers);reply.pipe(res);
     });
   upstream.on('error',()=>{if(!res.headersSent)res.writeHead(502);res.end();});req.pipe(upstream);
@@ -52,22 +60,28 @@ async function main(){
   const key=path.join(out,'localhost.key'),cert=path.join(out,'localhost.crt');
   execFileSync('C:/Program Files/Git/usr/bin/openssl.exe',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost','-keyout',key,'-out',cert],{windowsHide:true,stdio:'ignore'});
   const tls=https.createServer({key:fs.readFileSync(key),cert:fs.readFileSync(cert)},handler(1));await listen(tls);
+  if(opts['tls-dir']){const dir=path.resolve(opts['tls-dir']);trustedTls=https.createServer({
+    key:fs.readFileSync(path.join(dir,'localhost.direct.OPEN.key')),cert:fs.readFileSync(path.join(dir,'localhost.direct.OPEN.crt'))},handler(1));await listen(trustedTls);}
   const fixture=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(fs.readFileSync(path.join(__dirname,'quality-source.html')));});await listen(fixture);
   const browser=await chromium.launch({channel:'chrome',headless:false,args:['--autoplay-policy=no-user-gesture-required','--disable-backgrounding-occluded-windows']});
   const report={sha256:crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),cases:[]};
   try{
     const source=await browser.newPage({viewport:null});await source.goto('http://127.0.0.1:'+fixture.address().port);await source.getByRole('button').click();await source.waitForFunction(()=>quality.ready);
-    for(mode of ['authenticated','redirect','ice-link-token','ice-link-list','unauthorized','malformed','oversized','invalid-tls','cancel','rtmps-invalid-tls']){
+    for(mode of ['authenticated','redirect','ice-link-token','ice-link-list','unauthorized','malformed','oversized','invalid-tls','cancel','rtmps-invalid-tls','relay-no-turn',
+      ...(trustedTls?['https-authenticated','https-proxy-location','https-insecure-location','https-downgrade-redirect']:[])]){
       const dir=path.join(out,mode);fs.mkdirSync(dir);const discovery=path.join(dir,'control.json'),result={mode};report.cases.push(result);
       const secure=mode.includes('invalid-tls'),rtmps=mode.startsWith('rtmps');
-      const endpoint=(secure?(rtmps?'rtmps':'https'):'http')+'://127.0.0.1:'+(secure?tls:proxy1).address().port+'/'+mode+'/whip';
-      const publisher=launch(exe,['--headless','--output='+(rtmps?'rtmp':'whip'),'--output-url='+endpoint,...(rtmps?[]:['--output-token='+token]),
+      const endpoint=mode.startsWith('https-')?'https://qa.localhost.direct:'+trustedTls.address().port+'/'+mode+'/whip':
+        (secure?(rtmps?'rtmps':'https'):'http')+'://127.0.0.1:'+(secure?tls:proxy1).address().port+'/'+mode+'/whip';
+      const publisher=launch(exe,['--headless','--output='+(rtmps?'rtmp':'whip'),'--output-url='+endpoint,...(rtmps?[]:['--output-token='+token]),...(mode==='relay-no-turn'?['--ice-mode=relay']:[]),
         '--window=Game Capture Quality Source','--resolution=960x540','--fps=30','--audio-source=selected-window','--local-control','--local-control-discovery='+discovery],mode+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1'});
       let receiver;
       try{
-        if(['unauthorized','malformed','oversized','invalid-tls'].includes(mode)){
+        if(['unauthorized','malformed','oversized','invalid-tls','https-insecure-location','https-downgrade-redirect','relay-no-turn'].includes(mode)){
           await Promise.race([publisher.closed,sleep(20000)]);assert.equal(publisher.exitCode,3,'Expected a bounded, permanent WHIP error');
           if(mode==='malformed'||mode==='oversized')assert(trace.some(t=>t.mode===mode&&t.method==='DELETE'),'Failed session was not deleted');
+          if(mode.startsWith('https-'))assert(!trace.some(t=>t.mode===mode&&t.origin===2),'Insecure destination received an HTTP request');
+          if(mode==='relay-no-turn')assert(trace.some(t=>t.mode===mode&&t.method==='DELETE'),'Discovery session was not deleted');
         }else{
           await until(()=>fs.existsSync(discovery),'control server');
           if(rtmps){await until(async()=>{const d=await api(discovery,'/diagnostics');result.diagnostics=d;return d.output?.reconnects>0;},'TLS rejection');assert(!trace.some(t=>t.mode===mode),'Untrusted TLS delivered application data');}
@@ -92,7 +106,7 @@ async function main(){
     }
     assert(trace.filter(t=>t.mode==='redirect'&&t.origin===2).every(t=>t.credential==='none'),'Credential crossed origins');
   }finally{
-    await browser.close();stun.close();for(const server of [fixture,proxy1,proxy2,tls]){server.closeAllConnections();server.close();}
+    await browser.close();stun.close();for(const server of [fixture,proxy1,proxy2,tls,trustedTls].filter(Boolean)){server.closeAllConnections();server.close();}
     for(const p of children)if(p.exitCode===null)p.kill();await Promise.all(children.map(p=>p.closed));for(const log of logs)log.end();
   }
   assert(report.cases.every(c=>c.passed),'WHIP HTTP workflow failed');

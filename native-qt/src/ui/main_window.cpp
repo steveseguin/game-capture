@@ -3528,8 +3528,12 @@ void MainWindow::updateOutputControls() {
         ? "Share a game or app window with VDO.Ninja."
         : "Send a game or app window to your streaming server.");
     for (QWidget *field : std::initializer_list<QWidget *>{roomInput_, labelInput_, viewerLimitSpin_, roomModeLqCheck_,
-             iceModeSelect_, remoteControlCheck_, remoteControlTokenInput_, codecSelect_, alphaWorkflowCheck_})
+             remoteControlCheck_, remoteControlTokenInput_, codecSelect_, alphaWorkflowCheck_})
         setFormRowVisible(advancedForm_, field, vdo);
+    setFormRowVisible(advancedForm_, iceModeSelect_, vdo || whip);
+    iceModeSelect_->setToolTip(whip
+        ? "WHIP uses the ICE servers advertised by its endpoint. Relay Only requires an advertised TURN server."
+        : "Auto allows host, STUN/direct, and TURN relay candidates. ICE selects the working path automatically.");
     setFormRowVisible(outputForm_, outputStreamIdInput_, srt);
     setFormRowVisible(outputForm_, outputLatencySpin_, srt);
     outputSecretLabel_->setText(whip ? "Bearer token" : srt ? "Passphrase" : "Stream key");

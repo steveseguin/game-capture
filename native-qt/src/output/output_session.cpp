@@ -79,6 +79,11 @@ std::vector<webrtc::IceServerConfig> iceServers(const QByteArray &links) {
     }
     return result;
 }
+bool hasTurnServer(const std::vector<webrtc::IceServerConfig> &servers) {
+    return std::any_of(servers.begin(), servers.end(), [](const auto &server) {
+        return server.url.rfind("turn:", 0) == 0 || server.url.rfind("turns:", 0) == 0;
+    });
+}
 } // namespace
 
 struct Session::Impl {
@@ -151,6 +156,10 @@ struct Session::Impl {
             request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
             request.setHeader(QNetworkRequest::ContentTypeHeader, "application/sdp");
             request.setRawHeader("Accept", "application/sdp");
+            if (method == "OPTIONS") {
+                request.setRawHeader("Access-Control-Request-Method", "POST");
+                request.setRawHeader("Access-Control-Request-Headers", "Link");
+            }
             if (!config.bearerToken.empty() && sameOrigin(url, credentialOrigin))
                 request.setRawHeader("Authorization", "Bearer " + QByteArray::fromStdString(config.bearerToken));
             auto *reply = network.sendCustomRequest(request, method, body);
@@ -209,9 +218,14 @@ struct Session::Impl {
             webrtc::PeerConfig peer;
             peer.enableDataChannel = false; peer.initialVideo = true; peer.initialAudio = media.audioEnabled;
             peer.audioChannels = media.audioChannels;
+            peer.iceMode = media.iceMode;
             peer.videoWidth = media.width; peer.videoHeight = media.height; peer.videoFps = media.fps;
             peer.iceServers = iceServers(options.links);
-            if (peer.iceServers.empty()) peer.iceServers = cachedIceServers;
+            if (peer.iceServers.empty() || (peer.iceMode == webrtc::IceMode::Relay &&
+                !hasTurnServer(peer.iceServers) && hasTurnServer(cachedIceServers)))
+                peer.iceServers = cachedIceServers;
+            const bool discoverTurn = peer.iceMode == webrtc::IceMode::Relay && !hasTurnServer(peer.iceServers);
+            peer.allowRelayDiscovery = discoverTurn;
             client.setKeyframeRequestCallback([this](uint64_t) { if (!stopping.load()) requestKeyframe(); });
             if (!client.initialize(peer) || client.createOffer().empty()) throw OutputError("WHIP could not create a WebRTC offer.");
             const auto gatheringStart = Clock::now();
@@ -226,6 +240,22 @@ struct Session::Impl {
             offer.replace("a=rtcp-mux\r\n", "a=rtcp-mux\r\na=rtcp-mux-only\r\n");
             const auto answer = http(network, "POST", endpoint, offer, endpoint);
             if (answer.status == 201) resource = answer.location;
+            // Some HTTPS reverse proxies return their HTTP-facing scheme in
+            // Location. Keep a same-host session on the original secure origin;
+            // never follow a downgrade or rewrite another host/service port.
+            if (answer.url.scheme() == "https" && resource.scheme() == "http" &&
+                resource.host().compare(answer.url.host(), Qt::CaseInsensitive) == 0 &&
+                (resource.port(80) == answer.url.port(443) ||
+                 (resource.port(80) == 80 && answer.url.port(443) == 443))) {
+                resource.setScheme("https");
+                resource.setPort(answer.url.port(-1));
+            }
+            if (answer.status == 201 && (resource.isEmpty() || !allowedHttpUrl(resource) ||
+                (answer.url.scheme() == "https" && resource.scheme() != "https"))) {
+                // An invalid/insecure Location must not be followed by cleanup.
+                resource = {};
+                throw OutputError("WHIP did not return a valid secure session location.", true);
+            }
             if (answer.oversized) throw OutputError("WHIP response exceeded the size limit.", true);
             if (answer.status == 401 || answer.status == 403) throw OutputError("WHIP authentication failed. Check the endpoint and bearer token.", true);
             if (answer.status == 404) throw OutputError("WHIP endpoint was not found. Check the complete endpoint URL.", true);
@@ -238,9 +268,13 @@ struct Session::Impl {
             // Keep those credentials for a fresh session if direct ICE fails.
             const auto advertisedServers = iceServers(answer.links);
             if (!advertisedServers.empty()) cachedIceServers = advertisedServers;
-            if (resource.isEmpty() || !allowedHttpUrl(resource) ||
-                (answer.url.scheme() == "https" && resource.scheme() != "https"))
-                throw OutputError("WHIP did not return a valid secure session location.", true);
+            if (discoverTurn) {
+                // Never apply this answer or send media until a fresh peer has
+                // gathered using the endpoint's TURN configuration.
+                if (hasTurnServer(cachedIceServers))
+                    throw OutputError("WHIP TURN configuration received; establishing a relayed session.");
+                throw OutputError("Relay Only requires a TURN server advertised by the WHIP endpoint.", true);
+            }
             // A resource on another origin receives no bearer credential. The
             // server can use an opaque signed session URL for that resource.
             if (!answer.contentType.toLower().startsWith("application/sdp") ||
@@ -255,10 +289,25 @@ struct Session::Impl {
             clearQueue(); restartRequested.store(false); requestKeyframe();
             if (!stopping.load()) setState(State::Live, "Publishing to " + destinationLabel(config));
             bool haveKeyframe = false;
+            auto lastFeedbackCheck = Clock::now(), lastMediaSent = Clock::now();
             while (!stopping.load()) {
                 const auto state = client.connectionState();
                 if (state == webrtc::ConnectionState::Failed || state == webrtc::ConnectionState::Closed || state == webrtc::ConnectionState::Disconnected)
                     throw OutputError("WHIP connection was lost.");
+                if (Clock::now() - lastFeedbackCheck >= std::chrono::milliseconds(500)) {
+                    lastFeedbackCheck = Clock::now();
+                    const auto feedback = client.receiverFeedback();
+                    {
+                        std::lock_guard lock(mutex);
+                        current.receiverReports = feedback.reports;
+                        current.receiverReportAgeMs = feedback.ageMs;
+                        current.receiverReportTimeoutMs = feedback.timeoutMs;
+                        current.icePath = webrtc::selectedIcePathName(client.selectedIcePath());
+                    }
+                    if (feedback.timeoutMs && feedback.ageMs > feedback.timeoutMs &&
+                        Clock::now() - lastMediaSent < std::chrono::seconds(3))
+                        throw OutputError("WHIP receiver feedback stopped; reconnecting.");
+                }
                 Packet packet;
                 if (!pop(packet)) continue;
                 bool sent = false;
@@ -273,6 +322,7 @@ struct Session::Impl {
                     if (!bytes) continue;
                 }
                 if (!sent) throw OutputError("WHIP media send failed.");
+                lastMediaSent = Clock::now();
                 count(packet);
             }
             cleanup();

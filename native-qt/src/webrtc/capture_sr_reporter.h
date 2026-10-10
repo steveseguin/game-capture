@@ -1,6 +1,7 @@
 #pragma once
 
 #include "versus/webrtc/media_clock.h"
+#include "receiver_feedback.h"
 #include <rtc/mediahandler.hpp>
 #include <rtc/rtp.hpp>
 #include <rtc/rtppacketizationconfig.hpp>
@@ -13,8 +14,32 @@ namespace versus::webrtc {
 class CaptureSrReporter final : public rtc::MediaHandler {
   public:
     CaptureSrReporter(std::shared_ptr<rtc::RtpPacketizationConfig> config,
-                      std::shared_ptr<MediaClock> clock)
-        : config_(std::move(config)), clock_(std::move(clock)) {}
+                      std::shared_ptr<MediaClock> clock,
+                      std::shared_ptr<ReceiverFeedback> feedback = {})
+        : config_(std::move(config)), clock_(std::move(clock)), feedback_(std::move(feedback)) {}
+
+    void incoming(rtc::message_vector &messages, const rtc::message_callback &) override {
+        if (!feedback_) return;
+        for (const auto &message : messages) {
+            if (message->type != rtc::Message::Control) continue;
+            const auto *data = reinterpret_cast<const uint8_t *>(message->data());
+            for (size_t offset = 0; offset + 4 <= message->size();) {
+                const auto *header = data + offset;
+                const size_t size = (size_t(header[2]) * 256 + header[3] + 1) * 4;
+                if ((header[0] >> 6) != 2 || size > message->size() - offset) break;
+                const size_t reports = header[0] & 31;
+                if (header[1] == 201 && reports && size >= 8 + reports * 24) {
+                    for (size_t i = 0; i < reports; ++i) {
+                        const auto *block = header + 8 + i * 24;
+                        const uint32_t ssrc = (uint32_t(block[0]) << 24) | (uint32_t(block[1]) << 16) |
+                            (uint32_t(block[2]) << 8) | block[3];
+                        if (ssrc == config_->ssrc) { feedback_->received(); break; }
+                    }
+                }
+                offset += size;
+            }
+        }
+    }
 
     void outgoing(rtc::message_vector &messages, const rtc::message_callback &send) override {
         bool sentMedia = false;
@@ -50,6 +75,7 @@ class CaptureSrReporter final : public rtc::MediaHandler {
   private:
     std::shared_ptr<rtc::RtpPacketizationConfig> config_;
     std::shared_ptr<MediaClock> clock_;
+    std::shared_ptr<ReceiverFeedback> feedback_;
     uint32_t packets_ = 0, octets_ = 0;
     int64_t lastReport_ = 0;
 };

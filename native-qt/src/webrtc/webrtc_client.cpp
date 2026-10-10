@@ -156,6 +156,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     struct TransportState {
         const std::string mediaIdentity = newMediaIdentity();
         const std::shared_ptr<MediaClock> mediaClock = std::make_shared<MediaClock>();
+        const std::shared_ptr<ReceiverFeedback> receiverFeedback = std::make_shared<ReceiverFeedback>();
         uint64_t generation = 0;
         IceMode mode = IceMode::All;
         PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
@@ -736,7 +737,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
                 break;
         }
         if (packetizer) {
-            auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock);
+            auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock, target->receiverFeedback);
             auto nack = std::make_shared<rtc::RtcpNackResponder>();
             auto pli = std::make_shared<rtc::PliHandler>([weakSelf, weakTarget, generation]() {
                 auto self = weakSelf.lock();
@@ -752,7 +753,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             // Manual VP9 already supplies complete RTP packets. Cache those
             // packets directly so receiver NACKs can recover a missing fragment
             // without discarding the entire independently decodable frame.
-            auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock);
+            auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock, target->receiverFeedback);
             reporter->addToChain(std::make_shared<rtc::RtcpNackResponder>());
             reporter->addToChain(std::make_shared<rtc::PliHandler>([weakSelf, weakTarget, generation]() {
                 auto self = weakSelf.lock();
@@ -805,7 +806,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         });
         auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
             target->alphaVideoSsrc, target->mediaIdentity, kAlphaVideoPayloadType, kVideoClockRate);
-        auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock);
+        auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock, target->receiverFeedback);
         reporter->addToChain(std::make_shared<rtc::RtcpNackResponder>());
         track->setMediaHandler(reporter);
         const bool open = track->isOpen();
@@ -860,7 +861,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
             target->audioSsrc, target->mediaIdentity, kAudioPayloadType, kAudioClockRate);
         auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(rtpConfig);
-        packetizer->addToChain(std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock));
+        packetizer->addToChain(std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock, target->receiverFeedback));
         packetizer->addToChain(std::make_shared<rtc::RtcpNackResponder>());
         track->setMediaHandler(packetizer);
         const bool open = track->isOpen();
@@ -1002,7 +1003,7 @@ WebRtcClient::~WebRtcClient() { shutdown(); }
 bool WebRtcClient::initialize(const PeerConfig &config) {
     // Relay mode cannot work without at least one TURN server. Authoritative
     // Auto/Relay registry validation happens before the client is created.
-    if (config.iceMode == IceMode::Relay) {
+    if (config.iceMode == IceMode::Relay && !config.allowRelayDiscovery) {
         const bool hasTurnServer = std::any_of(
             config.iceServers.begin(),
             config.iceServers.end(),
@@ -1279,6 +1280,11 @@ std::string WebRtcClient::createOffer() {
     return sdp.empty() ? std::string{} : filterSessionDescriptionForMode(sdp, target->mode);
 }
 
+ReceiverFeedbackStatus WebRtcClient::receiverFeedback() const {
+    auto target = impl_->transportSnapshot();
+    return target ? target->receiverFeedback->status() : ReceiverFeedbackStatus{};
+}
+
 bool WebRtcClient::iceGatheringComplete() const {
     std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
     auto target = impl_->transportSnapshot();
@@ -1349,31 +1355,6 @@ bool WebRtcClient::addRemoteCandidate(const std::string &candidate,
     std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
     auto target = impl_->transportSnapshot();
     if (!target || !target->pc || !impl_->isCurrentTransport(target)) return false;
-    IceMode activeMode = IceMode::All;
-    {
-        std::lock_guard<std::mutex> lock(impl_->configMutex);
-        activeMode = impl_->iceMode;
-    }
-    if (activeMode == IceMode::Relay) {
-        try {
-            const rtc::Candidate parsed(candidate, mid);
-            if (parsed.type() != rtc::Candidate::Type::Relayed) {
-                // libdatachannel's Relay transport policy suppresses local
-                // host candidates from signaling, but libjuice can still
-                // build a direct pair when a remote host candidate is added.
-                // Ignore that candidate in explicit Relay mode so incoming
-                // checks establish the peer-reflexive remote half against
-                // our TURN-relayed local candidate instead.
-                spdlog::debug(
-                    "[WebRTC] Ignoring non-relay remote ICE candidate in explicit Relay mode");
-                return true;
-            }
-        } catch (...) {
-            spdlog::warn(
-                "[WebRTC] Ignoring malformed remote ICE candidate in explicit Relay mode");
-            return false;
-        }
-    }
     Impl::RemoteCandidate remote{candidate, mid, mlineIndex, target->generation};
     bool descriptionReady = false;
     {

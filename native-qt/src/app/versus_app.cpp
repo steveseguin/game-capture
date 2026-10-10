@@ -1347,6 +1347,7 @@ bool VersusApp::goLive(const StartOptions &options) {
         media.width = videoState.config.width; media.height = videoState.config.height; media.fps = videoState.config.frameRate;
         media.audioChannels = audioOutputChannels_.load();
         media.audioEnabled = lifecycle.audioSourceMode != AudioSourceMode::None || lifecycle.includeMicrophone;
+        media.iceMode = options.iceMode;
         media.ffmpegPath = video::VideoEncoder::resolveFfmpegPath(videoState.config.ffmpegPath);
         auto destination = std::make_shared<output::Session>(options.output, media, [this] {
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -2449,6 +2450,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"video_packets", status.videoPackets}, {"audio_packets", status.audioPackets},
             {"video_input_bytes", status.videoBytes}, {"audio_input_bytes", status.audioBytes},
             {"muxer_pid", status.processId},
+            {"ice_path", status.icePath}, {"receiver_reports", status.receiverReports},
+            {"receiver_report_age_ms", status.receiverReportAgeMs},
+            {"receiver_report_timeout_ms", status.receiverReportTimeoutMs},
             {"audio_codec", audioEnabled ? (external->usesPcmInput() ? "AAC" : "Opus") : "none"},
             {"configured_aac_bitrate_kbps", config.aacBitrateKbps}};
     }

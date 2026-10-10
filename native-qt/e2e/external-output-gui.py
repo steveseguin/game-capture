@@ -57,7 +57,7 @@ def main():
             ('video','alphaWorkflow','true'),('video','resolution','960x540'),('video','fps','30'),('video','ffmpegPath',''),
             ('audio','source','none'),('audio','includeMicrophone','false'),('audio','codec','pcm'),('audio','red','false'),
             ('ui','advancedVisible','false'),('stream','target','gui-source'),('stream','room',''),('stream','password','false'),
-            ('control','enabled','false'),('output','protocol','vdo'),('output','profilesEncrypted','')]:d.setting(group,name,value)
+            ('control','enabled','false'),('network','iceMode','all'),('output','protocol','vdo'),('output','profilesEncrypted','')]:d.setting(group,name,value)
         launch([sys.executable,str(Path(__file__).with_name('desktop-ui-e2e.py')),'--source-window'],'source')
         config=out/'mediamtx.yml';config.write_text('api: true\napiAddress: 127.0.0.1:18990\nrtspAddress: 127.0.0.1:18854\nrtspTransports: [tcp]\nrtmpAddress: 127.0.0.1:19350\nwebrtcAddress: 127.0.0.1:18889\nwebrtcLocalUDPAddress: 127.0.0.1:18189\nwebrtcIPsFromInterfaces: false\nwebrtcAdditionalHosts: [127.0.0.1]\nsrtAddress: 127.0.0.1:18890\nhls: false\nmoq: false\npaths:\n  all_others:\n')
         launch([str(native/'.cache/mediamtx-1.21.2/mediamtx.exe'),str(config)],'server')
@@ -79,6 +79,8 @@ def main():
             for cycle,(protocol,label,url,key) in enumerate([('whip','WHIP','http://127.0.0.1:18889/gui-whip/whip',''),
                     ('srt','SRT (caller)','srt://127.0.0.1:18890',''),('rtmp','RTMP / RTMPS','rtmp://127.0.0.1:19350/live','gui-secret-key')]*a.cycles):
                 select('outputSelect',label)
+                ice_controls=[c for c in window.descendants() if (c.element_info.automation_id or '').endswith('.iceModeSelect')]
+                assert any(c.is_visible() for c in ice_controls)==(protocol=='whip'),'Incorrect ICE control visibility'
                 if restart==0 and cycle<3:
                     text('outputUrlInput',url);text('outputSecretInput',key)
                     if protocol=='srt':text('outputStreamIdInput','publish:gui-srt')

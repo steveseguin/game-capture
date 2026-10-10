@@ -67,6 +67,8 @@ External outputs require a receiving server. They use H.264 without an alpha tra
 
 RTMP/SRT use the bundled FFmpeg for audio encoding and output. Audio and video keep their capture timestamps through the output path. A lost connection retries automatically with fresh media and a keyframe; changing the encoded dimensions restarts an RTMP/SRT session. WHIP supports endpoint-provided ICE servers, bearer authentication, HTTP 307/308 redirects, complete ICE offers and session deletion on stop. Credentials are withheld from redirects to a different origin, and HTTPS cannot redirect to HTTP. HTTPS/RTMPS certificate validation remains enabled. Room controls and VDO.Ninja viewer links apply to VDO.Ninja output.
 
+WHIP also exposes **ICE Mode** in advanced settings. **Relay Only** requires the endpoint to advertise a TURN server and prevents a direct publishing connection. Leave it on **Auto** for ordinary use. Recovery from an abrupt outage takes time: receivers that send regular feedback are monitored for a learned 15–60 second timeout; other receivers use normal ICE failure detection.
+
 Headless examples (add your normal source, resolution and audio-source arguments):
 
 ```powershell

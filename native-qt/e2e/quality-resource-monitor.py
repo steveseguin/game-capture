@@ -1,5 +1,6 @@
 """Measure the real publisher process without changing its behavior."""
 import argparse
+import ctypes
 import json
 from pathlib import Path
 import time
@@ -10,6 +11,9 @@ p=argparse.ArgumentParser()
 p.add_argument('--pid',type=int,required=True)
 p.add_argument('--output',type=Path,required=True)
 a=p.parse_args()
+# Keep the interactive capture fixture awake for long soaks. This request is
+# scoped to this process/thread and disappears on exit; no power plan changes.
+ctypes.windll.kernel32.SetThreadExecutionState(0x80000003)
 proc=psutil.Process(a.pid)
 events=[]
 session=frida.attach(a.pid)

@@ -33,6 +33,7 @@ struct MediaConfig {
     int width = 1920, height = 1080, fps = 60;
     int audioChannels = 2;
     bool audioEnabled = true;
+    webrtc::IceMode iceMode = webrtc::IceMode::All;
     std::string ffmpegPath;
 };
 
@@ -43,6 +44,9 @@ struct Status {
     uint64_t reconnects = 0, videoPackets = 0, audioPackets = 0;
     uint64_t videoBytes = 0, audioBytes = 0, queuedBytes = 0;
     int64_t processId = 0;
+    int64_t receiverReportAgeMs = -1, receiverReportTimeoutMs = 0;
+    uint64_t receiverReports = 0;
+    std::string icePath;
 };
 
 // One destination per capture session. Network and muxer work run on an owned

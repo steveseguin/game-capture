@@ -17,8 +17,12 @@ def summary(values):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--ffmpeg',required=True);p.add_argument('folder',type=Path)
     p.add_argument('--half',choices=['left','right']);p.add_argument('--audio-stream',type=int,default=0)
-    p.add_argument('--fps',type=int,default=30);a=p.parse_args()
-    suffix='-'+a.half if a.half else ''
+    p.add_argument('--fps',type=int,default=30)
+    p.add_argument('--start-seconds',type=float,default=0)
+    p.add_argument('--duration-seconds',type=float)
+    a=p.parse_args()
+    assert a.start_seconds>=0 and (a.duration_seconds is None or a.duration_seconds>0)
+    suffix=('-%gs'%a.start_seconds if a.start_seconds else '')+('-'+a.half if a.half else '')
     r=json.loads((a.folder/'obs-receiver.json').read_text());recording=r['recording']
     # Preserve and inspect timestamps before stripping the streams into raw
     # buffers. An independent zero origin for each stream can fabricate skew.
@@ -33,13 +37,18 @@ def main():
         assert match,'Missing first '+kind+' timestamp'
         first_pts[kind]=float(match[1])
     def decode(args,name):
-        result=subprocess.run([a.ffmpeg,'-hide_banner','-copyts','-i',recording,*args,'pipe:1'],capture_output=True,timeout=120)
+        seek=['-ss',str(a.start_seconds)] if a.start_seconds else []
+        duration=['-t',str(a.duration_seconds)] if a.duration_seconds is not None else []
+        result=subprocess.run([a.ffmpeg,'-hide_banner','-copyts',*seek,'-i',recording,*duration,*args,'pipe:1'],capture_output=True,timeout=120)
         (a.folder/(name+'-decode'+suffix+'.log')).write_bytes(result.stderr)
         assert result.returncode==0,result.stderr.decode(errors='replace')
         return result.stdout
     crop=('crop=iw/2:ih:'+('0' if a.half=='left' else 'iw/2')+':0,') if a.half else ''
-    video=np.frombuffer(decode(['-map','0:v:0','-an','-vf',crop+f'scale=320:180,fps=fps={a.fps}:start_time=0','-pix_fmt','rgb24','-f','rawvideo'],'video'),np.uint8).reshape(-1,180,320,3)
-    pcm=np.frombuffer(decode(['-map',f'0:a:{a.audio_stream}','-vn','-af','aresample=48000:async=1:first_pts=0','-ac','2','-ar','48000','-f','f32le'],'audio'),'<f4').reshape(-1,2)
+    # Keep both tracks on the same recording clock after an accurate seek.
+    video_shift=f'setpts=PTS-{a.start_seconds}/TB,' if a.start_seconds else ''
+    audio_shift=f'asetpts=PTS-{a.start_seconds}/TB,' if a.start_seconds else ''
+    video=np.frombuffer(decode(['-map','0:v:0','-an','-vf',video_shift+crop+f'scale=320:180,fps=fps={a.fps}:start_time=0','-pix_fmt','rgb24','-f','rawvideo'],'video'),np.uint8).reshape(-1,180,320,3)
+    pcm=np.frombuffer(decode(['-map',f'0:a:{a.audio_stream}','-vn','-af',audio_shift+'aresample=48000:async=1:first_pts=0','-ac','2','-ar','48000','-f','f32le'],'audio'),'<f4').reshape(-1,2)
     # Locate the two colored sentinel rectangles in the encoded recording.
     picture=video[len(video)//2]
     cyan=(picture[:,:,0]<80)&(picture[:,:,1]>150)&(picture[:,:,2]>150)
@@ -109,7 +118,8 @@ def main():
         result['offsetByMinute']=[{'minute':minute,'audioMinusVideoMs':summary(
             [pair['offsetMs'] for pair in steady if minute*60<=pair['audioSeconds']<(minute+1)*60])}
             for minute in range(int(steady[-1]['audioSeconds']//60)+1)]
-    result['selection']={'videoHalf':a.half,'audioStream':a.audio_stream}
+    result['selection']={'videoHalf':a.half,'audioStream':a.audio_stream,
+        'startSeconds':a.start_seconds,'durationSeconds':a.duration_seconds}
     (a.folder/('obs-analysis'+suffix+'.json')).write_text(json.dumps(result,indent=2),encoding='utf-8')
     print(json.dumps(result,indent=2))
 
