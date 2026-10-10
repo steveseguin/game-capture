@@ -27,9 +27,9 @@ async function api(discovery, route, body) {
   assert(response.ok, `Local control ${route}: ${response.status}`);
   return response.json();
 }
-async function receive(browser, c, dir, discovery, remoteToken) {
+async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
   const page = await browser.newPage();
-  const result = { requested: c };
+  const result = { requested: c, browserVersion: browser.version() };
   let lossCdp;
   try {
     await page.addInitScript(({ rejectRed }) => {
@@ -78,12 +78,13 @@ async function receive(browser, c, dir, discovery, remoteToken) {
     result.sdp = await page.evaluate(() => ({ offer: window.audioReviewPc.remoteDescription.sdp,
       answer: window.audioReviewPc.localDescription.sdp }));
     assert(result.sdp.offer.includes('opus/48000/2'), 'Opus RTP mapping must remain 48000/2, including mono');
-    assert(result.sdp.offer.includes('sprop-stereo=' + (c.channels === 1 ? '0' : '1')));
+    if (opts.baseline !== 'true') assert(result.sdp.offer.includes('sprop-stereo=' + (c.channels === 1 ? '0' : '1')));
     const pcm = c.codec === 'pcm' && !c.fallback;
     const red = !!c.red && !c.fallback;
     const audioLine = result.sdp.answer.split('\r\n').find(l => l.startsWith('m=audio'));
     assert.equal(audioLine.split(' ')[3], pcm ? '109' : red ? '63' : '111', 'Wrong negotiated audio codec');
     if (pcm) assert(result.sdp.answer.includes(c.channels === 1 ? 'L16/48000' : 'L16/32000/2'));
+    if (synchronize) await synchronize('connected');
 
     async function measure(label, expectedBitrate) {
       const sample = await page.evaluate(async () => {
@@ -151,8 +152,11 @@ async function receive(browser, c, dir, discovery, remoteToken) {
     const wireBitrate = bitrate => red ? bitrate * 2 + 8 : pcm ? (c.channels === 1 ? 768 : 1024) : bitrate;
     await measure('initial', wireBitrate(c.bitrate));
     result.diagnostics = await api(discovery, '/diagnostics');
-    assert.equal(result.diagnostics.audio.preferred_opus_bitrate_kbps, c.bitrate);
-    assert.equal(result.diagnostics.audio.output_channels, c.channels);
+    if (opts.baseline !== 'true') {
+      assert.equal(result.diagnostics.audio.preferred_opus_bitrate_kbps, c.bitrate);
+      assert.equal(result.diagnostics.audio.output_channels, c.channels);
+    }
+    if (synchronize) await synchronize('measured');
     if (remoteToken && !pcm) {
       async function send(bitrate, token) {
         assert(await page.evaluate(({ bitrate, token }) => {
@@ -235,6 +239,7 @@ async function main() {
       return;
     }
     const publisher = path.resolve(opts.publisher), sender = path.resolve(opts.sender);
+    assert(!opts.only || ['boundaries', 'experimental', 'simultaneous'].includes(opts.only), 'Unknown --only selection');
     assert(fs.existsSync(path.join(path.dirname(publisher), 'platforms/qwindows.dll')), 'Complete package required');
     const results = { publisher, browser: 'Google Chrome', browserVersion: browser.version(),
       sha256: crypto.createHash('sha256').update(fs.readFileSync(publisher)).digest('hex'), cases: [] };
@@ -250,7 +255,10 @@ async function main() {
         '-DurationMs', '600000', '-RightFrequencyHz', '880', '-Amplitude', '0.08'], 'tone');
     await until(() => fs.existsSync(path.join(output, 'tone.log')) &&
       fs.readFileSync(path.join(output, 'tone.log'), 'utf8').includes('AUDIO_TEST_TONE_READY'), 'audio fixture');
-    const cases = opts.only === 'boundaries' ? [
+    const cases = opts.only === 'simultaneous' ? [
+      { bitrate: 192, channels: 2, codec: 'pcm' }, { bitrate: 192, channels: 1, codec: 'pcm' },
+      { bitrate: 192, channels: 2, red: true }, { bitrate: 64, channels: 1, red: true }
+    ] : opts.only === 'boundaries' ? [
       { bitrate: 6, channels: 1 }, { bitrate: 6, channels: 2 }, { bitrate: 510, channels: 2 },
       { bitrate: 6, channels: 1, red: true }, { bitrate: 6, channels: 2, red: true }
     ] : [
@@ -261,7 +269,7 @@ async function main() {
       { bitrate: 192, channels: 2, codec: 'pcm', fallback: true },
       { bitrate: 192, channels: 2, red: true, fallback: true }
     ];
-    for (const c of cases.filter(c => !opts.only || opts.only === 'boundaries' || (opts.only === 'experimental' && (c.codec || c.red)))) {
+    for (const c of cases.filter(c => !opts.only || ['boundaries', 'simultaneous'].includes(opts.only) || (opts.only === 'experimental' && (c.codec || c.red)))) {
       const id = `${c.codec || 'opus'}-${c.bitrate}-${c.channels}${c.red ? '-red' : ''}${c.fallback ? '-fallback' : ''}`, dir = path.join(output, id);
       fs.mkdirSync(dir); c.stream = 'audioreview' + crypto.randomBytes(8).toString('hex');
       const discovery = path.join(dir, 'control.json'), token = crypto.randomBytes(12).toString('hex');
@@ -286,7 +294,38 @@ async function main() {
           c.viewerUrl = log.match(/\[App\] VIEW URL: (https:\/\/\S+)/)?.[1];
           return !!c.viewerUrl;
         }, 'publisher viewer link');
-        results.cases.push(await receive(browser, c, dir, discovery, token));
+        if (opts.only === 'simultaneous') {
+          const barriers = new Map();
+          const synchronize = label => {
+            if (!barriers.has(label)) {
+              let resolve;
+              const promise = new Promise(r => { resolve = r; });
+              barriers.set(label, { arrived: 0, promise, resolve });
+            }
+            const barrier = barriers.get(label);
+            if (++barrier.arrived === 2) barrier.resolve();
+            return new Promise((resolve, reject) => {
+              const timer = setTimeout(() => reject(Error('Concurrent receiver barrier timed out: ' + label)), 30000);
+              barrier.promise.then(() => { clearTimeout(timer); resolve(); });
+            });
+          };
+          const receivers = [false, true].map(fallback => {
+            const receiverDir = path.join(dir, fallback ? 'fallback' : 'preferred');
+            fs.mkdirSync(receiverDir);
+            return { requested: { ...c, fallback }, dir: receiverDir };
+          });
+          // Both real receivers stay connected through both decoded measurements.
+          // Do not run competing director bitrate overrides in this comparison.
+          const settled = await Promise.allSettled(receivers.map(r =>
+            receive(browser, r.requested, r.dir, discovery, undefined, synchronize)));
+          for (let i = 0; i < settled.length; i++) {
+            const value = settled[i], receiver = receivers[i];
+            const saved = path.join(receiver.dir, 'receiver.json');
+            results.cases.push(value.status === 'fulfilled' ? value.value :
+              fs.existsSync(saved) ? JSON.parse(fs.readFileSync(saved, 'utf8')) :
+              { requested: receiver.requested, ok: false, error: String(value.reason) });
+          }
+        } else results.cases.push(await receive(browser, c, dir, discovery, token));
       } catch (error) {
         // Retain failed quality measurements and finish the matrix so one
         // degraded boundary setting cannot hide the other codec results.

@@ -329,6 +329,150 @@ entirely at 760x520 failed in the automation's nested-scroll handling. They
 are retained; this is not a claim that every capture action was verified at
 the minimum size.
 
+## Extended validation after c3b87b2
+
+The follow-up uses the same rebuilt package (`1355dd95...6f3`) and published
+baseline above. No production code changed. Additional evidence is under
+`native-qt/qa/reports/audio-quality-extended/` (called `E` here). Capture
+workflows ran sequentially.
+
+### Repeated full stream restarts against the published baseline
+
+`E/baseline-opus-24` and `E/review-opus-24` each completed 24 real GUI
+start/Chrome decoded playback/stop cycles, followed by 120 seconds stopped.
+All 48 playback checks passed; both processes exited normally with code 0 and
+restored application preferences. Each receiver verified video advancement,
+192 kbps audio, and separate 440/880 Hz stereo tones. The baseline URL was
+explicitly given `stereo=1&ab=510` to match the review's receiver preferences.
+
+| Measurement | Published baseline | Audio review |
+| --- | ---: | ---: |
+| Workflow duration, including final idle | 460 s | 671 s |
+| Start latency, median / maximum | 524 / 998 ms | 608 / 2,255 ms |
+| Stop latency, median / maximum | 163 / 194 ms | 182 / 211 ms |
+| Private memory after first stop | 133.4 MiB | 138.9 MiB |
+| Private memory after stop 24 | 201.9 MiB | 218.7 MiB |
+| Private memory, median of final 30 idle seconds | 183.3 MiB | 198.1 MiB |
+| Peak sampled private memory | 236.8 MiB | 245.6 MiB |
+| Handles after first / last stop | 1,133 / 1,218 | 1,169 / 1,256 |
+| Handles at the final snapshot | 1,160 | 1,189 |
+| Threads at the final snapshot | 52 | 50 |
+
+Both builds retain memory after repeated restarts and release some during
+idle. The review retained about 15 MiB more in the late idle comparison.
+There is a similar allocation step around cycle 15 in both runs; neither
+returned to its initial process footprint. This does not isolate a leak,
+establish leak freedom, or attribute the difference to the new encoder.
+Frida sound observers were attached in both runs, and the review also
+exercised its audio settings between cycles. Their overhead and the different
+elapsed durations prevent treating this as a controlled allocator benchmark.
+The two packages' Qt Core and Widgets DLL hashes matched.
+
+The 2.25-second review start outlier occurred after encoder setup while
+waiting for signaling connection; playback then succeeded. Median sampled
+live CPU was 9.2% of one logical core for baseline and 6.9% for review, but
+these windows include connection startup. The simple Tk fixture changes at
+10 Hz, so this is lifecycle/resource evidence, not a new 30/60-fps content
+fidelity result. Sound hooks recorded zero app sound requests; no Windows
+loopback recording was made in these two runs, so the prior tray-chime finding
+remains. `analysis.json` and per-second `resources.jsonl` retain the values.
+Additional compact and live-state screenshots were inspected, including the
+800x600 audio controls and cycle 24. No new overlapping controls were observed;
+the expanded form still requires vertical scrolling at compact sizes.
+
+### Simultaneous experimental and fallback viewers
+
+`E/simultaneous-codecs` ran four publishers with two real Chrome receivers
+connected concurrently: PCM stereo plus Opus fallback, PCM mono plus Opus
+fallback, RED stereo plus plain Opus, and RED mono plus plain Opus. All eight
+receivers negotiated their expected payload type and passed decoded-tone,
+channel-mode, payload-rate and video-advancement checks. The paired measurement
+windows overlapped by 3.53 seconds, so these were simultaneous consumers,
+not sequential fallback checks.
+
+Measured preferred/fallback payload rates were 1,024.5/192.2 kbps for PCM
+stereo, 768.9/192.2 for PCM mono, 392.4/192.2 for RED stereo, and 136.3/64.1
+for RED mono. All eight measurement windows had zero lost audio packets,
+zero concealed samples, and zero reported playout sample insertion/removal.
+No director bitrate override was issued during this comparison; competing
+overrides would make a shared-encoder bitrate measurement ambiguous.
+
+### Longer recorded output and sync drift
+
+`E/obs-long-sync` recorded 180 seconds of steady output plus startup for each
+of direct OBS Window Capture/WASAPI calibration, published Opus via Browser
+Source, and rebuilt PCM stereo via Browser Source. All three recordings
+contain approximately 196.5 seconds of video, decoded tones and repeated
+visual/audio sync pulses. All had zero OBS render/output skips. Publisher
+logs confirm actual PCM negotiation. Publishers exited normally in 249-350 ms;
+OBS exited normally in 497 ms, with no forced termination.
+
+| Recording | Median audio minus video | Fitted steady offset slope |
+| --- | ---: | ---: |
+| Direct source calibration | -131.7 ms | +8.3 ms/min |
+| Published Opus, OBS Browser | -105.0 ms | -7.9 ms/min |
+| Audio review PCM, OBS Browser | -121.7 ms | +4.1 ms/min |
+
+The PCM median was -121.7 ms in each minute bucket, including the final partial
+minute. There was no observed accumulation of multiple frames of skew in this
+run. The fitted slopes include discrete onset changes and outliers; with
+30-fps video and 10-ms audio windows they should not be treated as precise
+device-clock drift estimates. Direct calibration itself moved from roughly
+-132 to -112 ms. Sequential source/receiver runs therefore do not isolate a
+small publisher-induced offset or establish physical speaker/display sync.
+The analyzer preserves every paired pulse and its recording timestamp in
+`pulsePairs`, alongside first-PTS alignment and per-minute measurements.
+
+### PCM playout adjustment and recovery follow-up
+
+`E/pcm-playout-recovery` repeats the selected-window Chrome workflow with raw
+before/after RTP statistics, including playout sample insertion/removal. This
+is a short diagnostic run (one second in its named soak phase), not another
+long-duration soak. It includes unrelated 3 kHz system audio, source silence,
+an idle reconnect, a viewer reconnect, transport refresh, actual 5% loss,
+and a 12-second clean recovery measurement.
+
+All workflow assertions passed and the publisher exited with code 0. The
+reconnect RTP clock advanced exactly 12,220 ms over 12,220 ms elapsed. Source
+silence decoded to exact zeros, and the unrelated tone remained excluded.
+Steady playback and every clean/recovered waveform window had zero clipping
+and zero sine-predictor discontinuity flags; the earlier unrelated-tone and
+post-recovery anomalies did not reproduce in this run. This does not erase
+the earlier evidence or constitute a subjective click-free listening result.
+
+Actual loss produced 136 lost audio packets, 31,200 concealed samples and
+8,240 samples removed for playout acceleration. The waveform detector flagged
+five left-channel and three right-channel windows during that phase, with
+no clipping. Recovery had zero lost/concealed samples and zero waveform flags,
+although Chrome still removed 240 samples for acceleration. Thus playout
+adjustment is observable, but its counters alone do not prove an audible click
+or identify the cause of each earlier anomaly.
+
+Video dropped 22 decoder frames during impairment and recovered to 59.98
+decoded fps with zero further decoder drops. Its measured software visual
+delay remained about 217 ms versus 134 ms before loss, and mean video jitter
+buffer delay was about 85 ms versus 13 ms. Successful recovery did not restore
+the original latency within this 12-second window. The browser observer's
+audio timing remains an independent Web Audio path, not HTML video lip sync;
+decoded fps also does not resolve the previously measured fresh-frame limit.
+
+### Synchronization signaling review
+
+The SDP captured from actual Chrome playback in both packages advertises
+`gamecapture-audio` and `gamecapture-video` as different RTCP CNAMEs. The
+analyzer now records this as `syncSignaling.singleCname: false`, separately
+from successful decoded playback. WebRTC requires a single CNAME within a
+PeerConnection's synchronization context. This is an existing conformance
+issue, and a concrete item to investigate before extending publishing
+transports. See [RFC 8834, CNAME requirements](https://www.rfc-editor.org/rfc/rfc8834.html#section-4.9)
+and [media synchronization](https://www.rfc-editor.org/rfc/rfc8834.html#section-12.2.3).
+
+The publisher also uses the separate names in its sender-report configuration.
+This finding does **not** prove that changing the names alone would correct
+the measured native OBS offset: sender-report clock correlation, capture
+timing and receiver behavior must be checked together. No speculative global
+audio delay or synchronization change was applied during this validation.
+
 ## Scope and follow-up
 
 This change adds collapsed advanced audio controls, per-peer codec negotiation,

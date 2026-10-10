@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import threading
 import time
 import uuid
 
@@ -26,9 +27,16 @@ d=importlib.util.module_from_spec(spec);spec.loader.exec_module(d)
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--publisher',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True);parser.add_argument('--cycles',type=int,default=12)
+    parser.add_argument('--mode',choices=['mixed','opus','pcm','red'],default='mixed')
+    parser.add_argument('--baseline',action='store_true',help='Published package without audio encoding controls; use --mode=opus')
+    parser.add_argument('--idle-seconds',type=int,default=0,help='Observe stopped resources after the last cycle')
     a=parser.parse_args();exe=a.publisher.resolve();output=a.output.resolve();output.mkdir(parents=True)
+    assert not a.baseline or a.mode=='opus','Baseline comparison requires fixed Opus mode'
+    assert (exe.parent/'platforms/qwindows.dll').is_file(),'Complete package required'
     assert not any(p.name()=='game-capture.exe' for p in psutil.process_iter()),'Existing capture session'
-    saved=d.snapshot(d.SETTINGS_KEY);children=[];logs=[];events=[];report={'cycles':[],'screenshots':[]}
+    saved=d.snapshot(d.SETTINGS_KEY);children=[];logs=[];events=[];report={'cycles':[],'screenshots':[],
+        'baseline':a.baseline,'mode':a.mode,'started':time.time()}
+    stop_resources=threading.Event();resource_thread=None;phase='startup'
     stream='guicycle'+uuid.uuid4().hex;discovery=output/'control.json';window=None
     def launch(cmd,name):
         log=(output/(name+'.log')).open('w',encoding='utf-8');logs.append(log)
@@ -55,10 +63,22 @@ def main():
         session=frida.attach(process.pid);script=session.create_script(d.OBSERVER)
         script.on('message',lambda m,data:events.append({'time':time.time(),**m.get('payload',m)}));script.load()
         app=Application(backend='uia').connect(process=process.pid,timeout=20);window=d.application_window(process.pid)
+        win32gui.SetWindowPos(window.handle,win32con.HWND_TOPMOST,0,0,0,0,win32con.SWP_NOMOVE|win32con.SWP_NOSIZE)
         window.set_focus();d.wait_for(discovery.exists,'control endpoint')
         proc=psutil.Process(process.pid)
         report.update({'publisher':str(exe),'loadedPath':proc.exe(),'pid':process.pid,
                        'sha256':hashlib.sha256(exe.read_bytes()).hexdigest()})
+        def resources():
+            mem=proc.memory_info()
+            return {'wall':time.time(),'phase':phase,'rss':mem.rss,'private':mem.private,
+                    'handles':proc.num_handles(),'threads':proc.num_threads(),'cpuPercentOneCore':proc.cpu_percent()}
+        def monitor_resources():
+            with (output/'resources.jsonl').open('w',encoding='utf-8') as f:
+                while not stop_resources.is_set():
+                    try:f.write(json.dumps(resources())+'\n');f.flush()
+                    except psutil.NoSuchProcess:break
+                    stop_resources.wait(1)
+        resource_thread=threading.Thread(target=monitor_resources,daemon=True);resource_thread.start()
         def named(suffix):return next(c for c in window.descendants() if (c.element_info.automation_id or '').endswith('.'+suffix))
         def reveal(c):
             window.set_focus()
@@ -92,27 +112,39 @@ def main():
                 if view.top<rect.mid_point().y<view.bottom:break
             win32api.mouse_event(win32con.MOUSEEVENTF_WHEEL,0,0,-40,0);time.sleep(.05)
         item.click_input();d.wait_for(lambda:named('goLiveButton').is_enabled(),'source ready')
-        named('advancedToggle').click_input();reveal(named('audioEncodingToggle'));named('audioEncodingToggle').click_input()
-        for width,height in [(800,600),(1024,768),(1280,900)]:
-            window.restore();win32gui.MoveWindow(window.handle,20,20,width,height,True)
-            reveal(named('audioCodecSelect'));shot('audio-'+str(width)+'x'+str(height))
+        if not a.baseline:
+            named('advancedToggle').click_input();reveal(named('audioEncodingToggle'));named('audioEncodingToggle').click_input()
+            for width,height in [(800,600),(1024,768),(1280,900)]:
+                window.restore();win32gui.MoveWindow(window.handle,20,20,width,height,True)
+                reveal(named('audioCodecSelect'));shot('audio-'+str(width)+'x'+str(height))
         window.maximize();time.sleep(.5)
+        phase='initial-idle';time.sleep(10);report['initialResources']=resources()
         for cycle in range(a.cycles):
-            pcm=cycle%3==1;red=cycle%3==2;mono=cycle%2==1
-            select(named('audioCodecSelect'),'PCM (experimental)' if pcm else 'Opus (48 kHz)')
-            select(named('audioChannelsSelect'),'Mono (1 channel)' if mono else 'Stereo (2 channels)')
-            if not pcm and bool(named('audioRedCheck').get_toggle_state())!=red:
-                reveal(named('audioRedCheck'));named('audioRedCheck').click_input()
-            bitrate=named('audioBitrateSpin')
-            if not pcm:reveal(bitrate);bitrate.type_keys('^a192{TAB}')
+            pcm=a.mode=='pcm' or (a.mode=='mixed' and cycle%3==1)
+            red=a.mode=='red' or (a.mode=='mixed' and cycle%3==2)
+            mono=a.mode=='mixed' and cycle%2==1
+            phase='configure-'+str(cycle+1)
+            if not a.baseline:
+                select(named('audioCodecSelect'),'PCM (experimental)' if pcm else 'Opus (48 kHz)')
+                select(named('audioChannelsSelect'),'Mono (1 channel)' if mono else 'Stereo (2 channels)')
+                if not pcm and bool(named('audioRedCheck').get_toggle_state())!=red:
+                    reveal(named('audioRedCheck'));named('audioRedCheck').click_input()
+                bitrate=named('audioBitrateSpin')
+                if not pcm:reveal(bitrate);bitrate.type_keys('^a192{TAB}')
+            phase='live-'+str(cycle+1)
             reveal(named('goLiveButton'));start=time.perf_counter();named('goLiveButton').click_input()
             d.wait_for(lambda:api()['app']['live'],'capture start',30)
             row={'cycle':cycle+1,'pcm':pcm,'red':red,'mono':mono,'startMs':(time.perf_counter()-start)*1000}
-            link=html.unescape(re.search(r'https://[^<"\s]+',named('shareLinkLabel').window_text())[0])
+            link_text=(next(c.window_text() for c in window.descendants()
+                            if 'https://' in c.window_text() and 'view=' in c.window_text())
+                       if a.baseline else named('shareLinkLabel').window_text())
+            link=html.unescape(re.search(r'https://[^<"\s]+',link_text)[0])
+            if a.baseline:link+='&stereo=1&ab=510'
             dest=output/('receiver-'+str(cycle+1));dest.mkdir()
             result=subprocess.run(['node',str(Path(__file__).with_name('audio-settings-packaged-e2e.js')),
                 '--stream='+stream,'--bitrate=192','--channels='+('1' if mono else '2'),'--codec='+('pcm' if pcm else 'opus'),
-                '--red='+str(red).lower(),'--discovery='+str(discovery),'--viewer-url='+link,'--output='+str(dest)],
+                '--red='+str(red).lower(),'--baseline='+str(a.baseline).lower(),
+                '--discovery='+str(discovery),'--viewer-url='+link,'--output='+str(dest)],
                 capture_output=True,text=True,timeout=80)
             (dest/'viewer.log').write_text(result.stdout+result.stderr,encoding='utf-8')
             row['decodedPlaybackPassed']=result.returncode==0
@@ -120,9 +152,15 @@ def main():
             row['liveDiagnostics']=api();shot('live-'+str(cycle+1))
             reveal(named('goLiveButton'));start=time.perf_counter();named('goLiveButton').click_input()
             d.wait_for(lambda:not api()['app']['live'],'capture stop',20);row['stopMs']=(time.perf_counter()-start)*1000
+            phase='stopped-'+str(cycle+1)
             time.sleep(3);mem=proc.memory_info();row['stoppedResources']={'rss':mem.rss,'private':mem.private,'handles':proc.num_handles(),'threads':proc.num_threads()}
             report['cycles'].append(row);print(json.dumps({k:v for k,v in row.items() if k!='liveDiagnostics'}),flush=True)
             (output/'progress.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+        phase='final-idle';report['idleStarted']=time.time()
+        for elapsed in range(a.idle_seconds):
+            if elapsed%30==0:print('Final idle',elapsed,'of',a.idle_seconds,'seconds',flush=True)
+            time.sleep(1)
+        report['finalResources']=resources();report['finalDiagnostics']=api()
         api('/commands',{'command':'quit'});report['exitCode']=process.wait(timeout=15);assert report['exitCode']==0
         report['ok']=True
     except BaseException as e:
@@ -132,12 +170,15 @@ def main():
             except Exception:pass
         raise
     finally:
+        stop_resources.set()
+        if resource_thread:resource_thread.join(timeout=5)
         for child in children:
             if child.poll() is None:child.kill()
             child.wait(timeout=10)
         for log in logs:log.close()
         d.restore(d.SETTINGS_KEY,saved);report['settingsRestored']=d.snapshot(d.SETTINGS_KEY)==saved
         report['events']=events;report['soundCalls']=[e for e in events if e.get('kind')=='sound']
+        report['finished']=time.time()
         (output/'results.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
         assert report['settingsRestored']
 

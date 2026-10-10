@@ -142,7 +142,8 @@ sessions before running it; the workflow restores application preferences afterw
 
 Audio encoding playback can be checked with `native-qt/e2e/audio-settings-packaged-e2e.js`
 against a complete package and `spout_test_sender.exe`; `--only=boundaries` exercises
-the bitrate limits. `audio-settings-desktop-e2e.py` covers saved preferences, collapsed
+the bitrate limits and `--only=simultaneous` verifies experimental and Opus fallback
+receivers connected to the same publisher. `audio-settings-desktop-e2e.py` covers saved preferences, collapsed
 controls, restart, and actual Chrome playback, with `--codec=pcm` or `--red`.
 For decoded audio, delay, frame counters, reconnects, and sustained resource measurements:
 
@@ -159,6 +160,11 @@ Use `--record=true` for a separate recorded-frame identity check; recording adds
 and should be kept separate from performance comparisons.
 The desktop workflow's optional `--record-system-audio` records Windows output
 during UI actions and requires SoundCard and NumPy in its Python environment.
+For repeated GUI starts/stops, use `quality-gui-cycles.py --publisher=... --output=...`
+with `--mode=opus --cycles=24 --idle-seconds=120`; add `--baseline` for a published
+package without the audio controls. `analyze-gui-cycles.py` summarizes the resulting
+resource measurements and captured synchronization signaling. These GUI runs attach
+sound observers, whose overhead must be considered when assessing memory retention.
 
 See the [packaged audio/video quality report](docs/audio-quality-validation-2026-10-10.md)
 for measured results, screenshots, and remaining compatibility and performance limits.

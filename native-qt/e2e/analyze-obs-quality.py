@@ -62,10 +62,13 @@ def main():
     threshold=max(float(np.percentile(rms,98)*.4),1e-5)
     active=rms>threshold
     atimes=np.array([i*.01+.005 for i in np.flatnonzero(active & ~np.roll(active,1)) if i>50 and np.count_nonzero(active[i:i+6])>=5])
-    offsets=[]
+    offsets=[];pulse_pairs=[]
     for t in atimes:
         nearest=vtimes[np.argmin(np.abs(vtimes-t))] if len(vtimes) else -10
-        if abs(t-nearest)<.8:offsets.append((t-nearest)*1000)
+        if abs(t-nearest)<.8:
+            offset=(t-nearest)*1000
+            offsets.append(offset)
+            pulse_pairs.append({'audioSeconds':float(t),'videoSeconds':float(nearest),'offsetMs':float(offset)})
     spectrum=[]
     for ch in range(2):
         f,power=signal.welch(pcm[:,ch],48000,nperseg=48000)
@@ -77,11 +80,18 @@ def main():
         'firstFixtureVideoSeconds':first_video,'firstAudibleSamplesSeconds':first_audio,
         'startupPeakSampleStep':float(np.max(np.abs(np.diff(pcm[:int((first_audio+1)*48000)],axis=0)))) if first_audio is not None else None,
         'audioToneEnergy':spectrum,'videoPulseCount':len(vtimes),'audioPulseCount':len(atimes),
-        'audioMinusVideoMs':summary(offsets),'audioMinusVideoAllMs':offsets,
+        'audioMinusVideoMs':summary(offsets),'audioMinusVideoAllMs':offsets,'pulsePairs':pulse_pairs,
         'obsSkippedRenderFrames':r['after']['renderSkippedFrames']-r['before']['renderSkippedFrames'],
         'obsSkippedOutputFrames':r['after']['outputSkippedFrames']-r['before']['outputSkippedFrames'],
         'limitations':'A/V difference in an actual OBS recording. 30-fps video, 10-ms audio windows and filtering limit onset precision; this is not physical display/speaker latency.'}
     result['mediaPassed']=len(vtimes)>3 and len(atimes)>3 and max(result['decodedAudioRms'])>.001
+    steady=[pair for pair in pulse_pairs if pair['audioSeconds']>10]
+    if len(steady)>10 and steady[-1]['audioSeconds']-steady[0]['audioSeconds']>60:
+        times=np.array([pair['audioSeconds'] for pair in steady])/60
+        result['steadyOffsetSlopeMsPerMinute']=float(np.polyfit(times,[pair['offsetMs'] for pair in steady],1)[0])
+        result['offsetByMinute']=[{'minute':minute,'audioMinusVideoMs':summary(
+            [pair['offsetMs'] for pair in steady if minute*60<=pair['audioSeconds']<(minute+1)*60])}
+            for minute in range(int(steady[-1]['audioSeconds']//60)+1)]
     (a.folder/'obs-analysis.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print(json.dumps(result,indent=2))
 
