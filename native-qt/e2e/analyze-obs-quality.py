@@ -16,7 +16,8 @@ def summary(values):
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--ffmpeg',required=True);p.add_argument('folder',type=Path)
-    p.add_argument('--half',choices=['left','right']);p.add_argument('--audio-stream',type=int,default=0);a=p.parse_args()
+    p.add_argument('--half',choices=['left','right']);p.add_argument('--audio-stream',type=int,default=0)
+    p.add_argument('--fps',type=int,default=30);a=p.parse_args()
     suffix='-'+a.half if a.half else ''
     r=json.loads((a.folder/'obs-receiver.json').read_text());recording=r['recording']
     # Preserve and inspect timestamps before stripping the streams into raw
@@ -37,7 +38,7 @@ def main():
         assert result.returncode==0,result.stderr.decode(errors='replace')
         return result.stdout
     crop=('crop=iw/2:ih:'+('0' if a.half=='left' else 'iw/2')+':0,') if a.half else ''
-    video=np.frombuffer(decode(['-map','0:v:0','-an','-vf',crop+'scale=320:180,fps=fps=30:start_time=0','-pix_fmt','rgb24','-f','rawvideo'],'video'),np.uint8).reshape(-1,180,320,3)
+    video=np.frombuffer(decode(['-map','0:v:0','-an','-vf',crop+f'scale=320:180,fps=fps={a.fps}:start_time=0','-pix_fmt','rgb24','-f','rawvideo'],'video'),np.uint8).reshape(-1,180,320,3)
     pcm=np.frombuffer(decode(['-map',f'0:a:{a.audio_stream}','-vn','-af','aresample=48000:async=1:first_pts=0','-ac','2','-ar','48000','-f','f32le'],'audio'),'<f4').reshape(-1,2)
     # Locate the two colored sentinel rectangles in the encoded recording.
     picture=video[len(video)//2]
@@ -52,13 +53,16 @@ def main():
             height=(bottom-top+1)/.1;geometry=(left-width*.05,top-height*.1,width,height);break
     assert geometry,'No actual fixture video found in OBS recording'
     x,y,w,h=geometry
+    barcode=np.zeros(len(video),np.uint64)
+    for i in range(32):barcode|=(video[:,round(y+h*.15),round(x+w*(i+4.5)/40),0]>128).astype(np.uint64)<<i
     lights=video[:,int(y+h*.37),int(x+w*.5),0]>128
     marker=video[:,int(y+h*.15),int(x+w*.05)]
     valid_video=(marker[:,0]<80)&(marker[:,1]>150)&(marker[:,2]>150)
-    first_video=np.flatnonzero(valid_video)[0]/30 if np.any(valid_video) else None
+    first_video=np.flatnonzero(valid_video)[0]/a.fps if np.any(valid_video) else None
     active_audio=np.flatnonzero(np.max(np.abs(pcm),axis=1)>.001)
     first_audio=active_audio[0]/48000 if len(active_audio) else None
-    vtimes=np.flatnonzero(lights & ~np.roll(lights,1))/30
+    vindices=np.flatnonzero(lights & ~np.roll(lights,1))
+    vtimes=vindices/a.fps
     filtered=signal.sosfilt(signal.butter(4,[940,1060],fs=48000,btype='bandpass',output='sos'),pcm[:,0])
     n=len(pcm)//480*480
     rms=np.sqrt(np.mean(filtered[:n].reshape(-1,480)**2,axis=1))
@@ -71,14 +75,23 @@ def main():
         if abs(t-nearest)<.8:
             offset=(t-nearest)*1000
             offsets.append(offset)
-            pulse_pairs.append({'audioSeconds':float(t),'videoSeconds':float(nearest),'offsetMs':float(offset)})
+            vi=int(vindices[np.argmin(np.abs(vtimes-t))])
+            source_ms=float(barcode[vi]);pulse_id=int(round(source_ms/2000))
+            # The first observed white frame can be up to one recording frame
+            # late. Its embedded source clock identifies that quantization;
+            # retain the raw onset and compare the same source-clock instant.
+            assert 0 <= source_ms-pulse_id*2000 < 150,'Invalid pulse barcode'
+            clock_video=nearest-(source_ms-pulse_id*2000)/1000
+            pulse_pairs.append({'audioSeconds':float(t),'videoSeconds':float(nearest),'offsetMs':float(offset),
+                'sourcePulseId':pulse_id,'sourceMsAtVideoPulse':source_ms,
+                'sourceClockVideoSeconds':float(clock_video),'sourceClockOffsetMs':float((t-clock_video)*1000)})
     spectrum=[]
     for ch in range(2):
         f,power=signal.welch(pcm[:,ch],48000,nperseg=48000)
         peaks={str(hz):float(np.sqrt(np.sum(power[(f>hz-2)&(f<hz+2)]))) for hz in [440,880,1000]}
         spectrum.append(peaks)
     result={'recording':recording,'firstPtsSeconds':first_pts,'alignment':'copyts; video fps start_time=0 and audio aresample first_pts=0 pad/trim both streams onto one recording clock',
-        'secondsVideo':len(video)/30,'secondsAudio':len(pcm)/48000,
+        'secondsVideo':len(video)/a.fps,'secondsAudio':len(pcm)/48000,
         'fixtureGeometry':geometry,'decodedAudioRms':np.sqrt(np.mean(pcm**2,axis=0)).tolist(),
         'firstFixtureVideoSeconds':first_video,'firstAudibleSamplesSeconds':first_audio,
         'startupPeakSampleStep':float(np.max(np.abs(np.diff(pcm[:int((first_audio+1)*48000)],axis=0)))) if first_audio is not None else None,
@@ -86,7 +99,8 @@ def main():
         'audioMinusVideoMs':summary(offsets),'audioMinusVideoAllMs':offsets,'pulsePairs':pulse_pairs,
         'obsSkippedRenderFrames':r['after']['renderSkippedFrames']-r['before']['renderSkippedFrames'],
         'obsSkippedOutputFrames':r['after']['outputSkippedFrames']-r['before']['outputSkippedFrames'],
-        'limitations':'A/V difference in an actual OBS recording. 30-fps video, 10-ms audio windows and filtering limit onset precision; this is not physical display/speaker latency.'}
+        'analysisFps':a.fps,
+        'limitations':f'A/V difference in an actual OBS recording. {a.fps}-fps video, 10-ms audio windows and filtering limit onset precision; this is not physical display/speaker latency.'}
     result['mediaPassed']=len(vtimes)>3 and len(atimes)>3 and max(result['decodedAudioRms'])>.001
     steady=[pair for pair in pulse_pairs if pair['audioSeconds']>10]
     if len(steady)>10 and steady[-1]['audioSeconds']-steady[0]['audioSeconds']>60:

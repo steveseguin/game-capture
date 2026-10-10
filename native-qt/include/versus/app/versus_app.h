@@ -31,6 +31,7 @@
 #include "versus/audio/pcm_encoder.h"
 #include "versus/audio/window_audio_capture_core.h"
 #include "versus/audio/audio_format_converter.h"
+#include "versus/output/output_session.h"
 
 namespace versus::app {
 
@@ -140,6 +141,7 @@ struct SourceHealth {
 };
 
 struct StartOptions {
+    output::Config output;
     std::string room;
     std::string password;
     std::string label;
@@ -207,6 +209,8 @@ class VersusApp {
     bool isLive() const { return live_; }
 
     std::string getShareLink() const;
+    output::Status getOutputStatus() const;
+    bool isExternalOutput() const { return static_cast<bool>(externalOutput_.load()); }
     void onRuntimeEvent(RuntimeEventCallback cb);
 
   private:
@@ -480,6 +484,7 @@ class VersusApp {
     LifecycleStateSnapshot lifecycleStateSnapshot() const;
 
     std::atomic<bool> live_{false};
+    std::atomic<std::shared_ptr<output::Session>> externalOutput_;
     std::atomic<bool> capturing_{false};
     std::atomic<bool> stopRequested_{false};
     std::atomic<bool> reconnecting_{false};

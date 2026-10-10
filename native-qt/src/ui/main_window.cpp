@@ -58,6 +58,7 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#include <wincrypt.h>
 #include <tlhelp32.h>
 #endif
 
@@ -84,6 +85,38 @@ static const QString APP_TRAY_LIVE = "Game Capture - LIVE";
 static const QString APP_VERSION_TEXT = QStringLiteral(APP_VERSION);
 static const QString APP_SETTINGS_ORG = "VDO.Ninja";
 static const QString APP_SETTINGS_NAME = "Game Capture";
+
+// Output URLs can contain credentials too. Protect the whole profile with the
+// current Windows user's key, rather than persisting just the token securely.
+static QByteArray protectOutputProfiles(const QByteArray &input, bool decrypt) {
+#ifdef _WIN32
+    if (input.isEmpty()) return {};
+    DATA_BLOB source{static_cast<DWORD>(input.size()), reinterpret_cast<BYTE *>(const_cast<char *>(input.constData()))};
+    DATA_BLOB result{};
+    const BOOL ok = decrypt
+        ? CryptUnprotectData(&source, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &result)
+        : CryptProtectData(&source, L"Game Capture outputs", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &result);
+    if (!ok) return {};
+    QByteArray bytes(reinterpret_cast<const char *>(result.pbData), result.cbData);
+    LocalFree(result.pbData);
+    return bytes;
+#else
+    return {};
+#endif
+}
+
+static void setFormRowVisible(QFormLayout *form, QWidget *field, bool visible) {
+    if (!form || !field) return;
+    for (int row = 0; row < form->rowCount(); ++row) {
+        auto *item = form->itemAt(row, QFormLayout::FieldRole);
+        if (!item) item = form->itemAt(row, QFormLayout::SpanningRole);
+        auto *widget = item ? item->widget() : nullptr;
+        if (widget && (widget == field || widget->isAncestorOf(field))) {
+            form->setRowVisible(row, visible);
+            return;
+        }
+    }
+}
 
 QString percentText(double value) {
     if (value < 0.0) {
@@ -385,6 +418,7 @@ QWidget *wrapSensitiveLineEdit(QLineEdit *input,
     auto *toggle = new QPushButton("Show", wrapper);
     toggle->setCheckable(true);
     toggle->setFixedWidth(58);
+    toggle->setStyleSheet("QPushButton { padding: 6px; } QPushButton:focus { padding: 5px; }");
     toggle->setCursor(Qt::PointingHandCursor);
     toggle->setToolTip(QString("Show %1").arg(label));
     QObject::connect(toggle, &QPushButton::toggled, input, [input, toggle, label](bool checked) {
@@ -995,12 +1029,31 @@ void MainWindow::loadPersistedSettings() {
     }
 
     onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
+    outputProfiles_.clear();
+    const auto profiles = QJsonDocument::fromJson(protectOutputProfiles(
+        QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()), true)).object();
+    for (const auto &name : {QString("whip"), QString("srt"), QString("rtmp")}) {
+        const auto stored = profiles.value(name).toObject();
+        output::Config config; config.protocol = output::parseProtocol(name.toStdString());
+        config.url = stored.value("url").toString().toStdString();
+        config.bearerToken = stored.value("token").toString().toStdString();
+        config.streamKey = stored.value("key").toString().toStdString();
+        config.streamId = stored.value("streamId").toString().toStdString();
+        config.passphrase = stored.value("passphrase").toString().toStdString();
+        config.latencyMs = stored.value("latencyMs").toInt(200);
+        config.aacBitrateKbps = stored.value("aacBitrateKbps").toInt(192);
+        outputProfiles_.insert(name, config);
+    }
+    previousOutput_ = "vdo";
+    { QSignalBlocker block(outputSelect_); restoreComboByData(outputSelect_, settings.value("output/protocol", "vdo")); }
+    switchOutputProtocol();
     syncCodecUiState();
     loadingPersistedSettings_ = false;
+    resetOperatorHealthUi();
 }
 
 void MainWindow::savePersistedSettings() {
-    if (!runtimeOptions_.persistedSettingsEnabled || loadingPersistedSettings_) {
+    if (!runtimeOptions_.persistedSettingsEnabled || loadingPersistedSettings_ || switchingOutput_) {
         return;
     }
 
@@ -1042,6 +1095,24 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("audio/red", audioRedCheck_ && audioRedCheck_->isChecked());
     settings.setValue("control/enabled", remoteControlCheck_ ? remoteControlCheck_->isChecked() : false);
     settings.setValue("control/token", remoteControlTokenInput_ ? remoteControlTokenInput_->text().trimmed() : QString());
+    if (outputSelect_) {
+        const auto name = outputSelect_->currentData().toString();
+        if (name != "vdo") outputProfiles_.insert(name, outputConfigFromUi());
+        QJsonObject profiles;
+        for (auto it = outputProfiles_.cbegin(); it != outputProfiles_.cend(); ++it) {
+            const auto &config = it.value();
+            profiles.insert(it.key(), QJsonObject{
+                {"url", QString::fromStdString(config.url)}, {"token", QString::fromStdString(config.bearerToken)},
+                {"key", QString::fromStdString(config.streamKey)}, {"streamId", QString::fromStdString(config.streamId)},
+                {"passphrase", QString::fromStdString(config.passphrase)}, {"latencyMs", config.latencyMs},
+                {"aacBitrateKbps", config.aacBitrateKbps}});
+        }
+        const auto encrypted = protectOutputProfiles(QJsonDocument(profiles).toJson(QJsonDocument::Compact), false);
+        if (!encrypted.isEmpty()) {
+            settings.setValue("output/profilesEncrypted", encrypted.toBase64());
+            settings.setValue("output/protocol", name);
+        }
+    }
     settings.sync();
 }
 
@@ -1108,7 +1179,12 @@ void MainWindow::onResetToDefaults() {
 void MainWindow::connectPersistedSettingSignals() {
     auto saveNow = [this]() {
         savePersistedSettings();
+        if (!isLive_) resetOperatorHealthUi();
     };
+    for (auto *field : {outputUrlInput_, outputSecretInput_, outputStreamIdInput_})
+        connect(field, &QLineEdit::textChanged, this, saveNow);
+    for (auto *field : {outputLatencySpin_, aacBitrateSpin_})
+        connect(field, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
 
     if (streamIdInput_) {
         connect(streamIdInput_, &QLineEdit::textChanged, this, saveNow);
@@ -1491,12 +1567,15 @@ void MainWindow::setupUI() {
     heroTitle->setStyleSheet(QString("color: %1; font-size: 18px; font-weight: 700;").arg(COLOR_TEXT));
     layout->addWidget(heroTitle);
 
-    auto *heroSubTitle = new QLabel("Select a video source, paste a Stream ID or VDO URL, then go live.", this);
+    auto *heroSubTitle = heroSubtitle_ = new QLabel("Select a video source, paste a Stream ID or VDO URL, then go live.", this);
     heroSubTitle->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     heroSubTitle->setWordWrap(true);
     layout->addWidget(heroSubTitle);
 
     // Basic settings form
+    vdoTargetPanel_ = new QWidget(this);
+    auto *vdoTargetLayout = new QVBoxLayout(vdoTargetPanel_);
+    vdoTargetLayout->setContentsMargins(0, 0, 0, 0);
     auto *basicForm = new QFormLayout();
     basicForm->setSpacing(8);
 
@@ -1518,12 +1597,19 @@ void MainWindow::setupUI() {
     } else {
         basicForm->addRow("Password", passwordInput_);
     }
-    layout->addLayout(basicForm);
+    vdoTargetLayout->addLayout(basicForm);
 
     auto *urlHint = new QLabel("Tip: paste a full VDO URL and Game Capture auto-uses stream/room/password.", this);
     urlHint->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
     urlHint->setWordWrap(true);
-    layout->addWidget(urlHint);
+    vdoTargetLayout->addWidget(urlHint);
+    layout->addWidget(vdoTargetPanel_);
+    outputSummaryLabel_ = new QLabel(this);
+    outputSummaryLabel_->setObjectName("outputSummaryLabel");
+    outputSummaryLabel_->setTextFormat(Qt::PlainText);
+    outputSummaryLabel_->setWordWrap(true);
+    outputSummaryLabel_->hide();
+    layout->addWidget(outputSummaryLabel_);
 
     advancedToggle_ = new QCheckBox("Show advanced settings", this);
     advancedToggle_->setObjectName("advancedToggle");
@@ -1533,7 +1619,7 @@ void MainWindow::setupUI() {
     layout->addWidget(advancedToggle_);
 
     advancedPanel_ = new QWidget(this);
-    auto *advancedForm = new QFormLayout(advancedPanel_);
+    auto *advancedForm = advancedForm_ = new QFormLayout(advancedPanel_);
     advancedForm->setSpacing(8);
     layout->addWidget(advancedPanel_);
     advancedPanel_->setVisible(false);
@@ -1548,6 +1634,43 @@ void MainWindow::setupUI() {
             advancedToggle_);
         updateStatus("Stop stream before changing advanced settings", "connecting");
     });
+
+    outputSelect_ = new QComboBox(this);
+    outputSelect_->setObjectName("outputSelect");
+    outputSelect_->setAccessibleName("Output destination");
+    outputSelect_->addItem("VDO.Ninja (default)", "vdo");
+    outputSelect_->addItem("WHIP", "whip");
+    outputSelect_->addItem("SRT (caller)", "srt");
+    outputSelect_->addItem("RTMP / RTMPS", "rtmp");
+    installComboWheelGuard(outputSelect_);
+    advancedForm->addRow("Output", outputSelect_);
+    outputPanel_ = new QWidget(this);
+    outputPanel_->setObjectName("outputPanel");
+    outputForm_ = new QFormLayout(outputPanel_);
+    outputForm_->setContentsMargins(12, 0, 0, 0);
+    outputUrlInput_ = new QLineEdit(this);
+    outputUrlInput_->setObjectName("outputUrlInput");
+    outputUrlInput_->setAccessibleName("Output URL");
+    outputForm_->addRow("Server URL", outputUrlInput_);
+    outputSecretInput_ = new QLineEdit(this);
+    outputSecretInput_->setObjectName("outputSecretInput");
+    outputSecretInput_->setAccessibleName("Output credential");
+    outputSecretLabel_ = new QLabel("Bearer token", this);
+    auto *outputSecretRow = wrapSensitiveLineEdit(outputSecretInput_, &outputSecretRevealButton_, "output credential", this);
+    outputForm_->addRow(outputSecretLabel_, outputSecretRow ? outputSecretRow : outputSecretInput_);
+    outputStreamIdInput_ = new QLineEdit(this);
+    outputStreamIdInput_->setObjectName("outputStreamIdInput");
+    outputStreamIdInput_->setPlaceholderText("Optional, supplied by the receiver");
+    outputForm_->addRow("Stream ID", outputStreamIdInput_);
+    outputLatencySpin_ = new QSpinBox(this);
+    outputLatencySpin_->setObjectName("outputLatencySpin");
+    outputLatencySpin_->setRange(20, 8000); outputLatencySpin_->setValue(200); outputLatencySpin_->setSuffix(" ms");
+    installSpinWheelGuard(outputLatencySpin_);
+    outputForm_->addRow("SRT latency", outputLatencySpin_);
+    outputHelp_ = new QLabel(this); outputHelp_->setWordWrap(true);
+    outputForm_->addRow(outputHelp_);
+    advancedForm->addRow(outputPanel_);
+    outputPanel_->hide();
 
     roomInput_ = new QLineEdit(this);
     roomInput_->setObjectName("roomInput");
@@ -1667,7 +1790,7 @@ void MainWindow::setupUI() {
     advancedForm->addRow(audioEncodingToggle_);
     audioEncodingPanel_ = new QWidget(this);
     audioEncodingPanel_->setObjectName("audioEncodingPanel");
-    auto *audioEncodingForm = new QFormLayout(audioEncodingPanel_);
+    auto *audioEncodingForm = audioEncodingForm_ = new QFormLayout(audioEncodingPanel_);
     audioEncodingForm->setContentsMargins(12, 0, 0, 0);
     advancedForm->addRow(audioEncodingPanel_);
     audioEncodingPanel_->hide();
@@ -1692,6 +1815,12 @@ void MainWindow::setupUI() {
         "higher values preserve more detail. Applies to all viewers on the next stream.");
     installSpinWheelGuard(audioBitrateSpin_);
     audioEncodingForm->addRow("Opus bitrate", audioBitrateSpin_);
+    aacBitrateSpin_ = new QSpinBox(this);
+    aacBitrateSpin_->setObjectName("aacBitrateSpin");
+    aacBitrateSpin_->setRange(32, 320); aacBitrateSpin_->setValue(192); aacBitrateSpin_->setSuffix(" kbps");
+    installSpinWheelGuard(aacBitrateSpin_);
+    audioEncodingForm->addRow("AAC bitrate", aacBitrateSpin_);
+    audioEncodingForm->setRowVisible(aacBitrateSpin_, false);
 
     audioChannelsSelect_ = new QComboBox(this);
     audioChannelsSelect_->setObjectName("audioChannelsSelect");
@@ -1853,7 +1982,10 @@ void MainWindow::setupUI() {
     connect(ffmpegPathInput_, &QLineEdit::textChanged, this, [this]() {
         refreshFfmpegStatus();
     });
+    connect(outputSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::switchOutputProtocol);
+    connect(outputUrlInput_, &QLineEdit::textChanged, this, &MainWindow::updateOutputControls);
     syncCodecUiState();
+    updateOutputControls();
 
     encoderStatusLabel_ = new QLabel("Active Encoder: (not streaming)", this);
     encoderStatusLabel_->setObjectName("encoderStatusLabel");
@@ -2612,6 +2744,11 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
         config.preferredHardware = versus::video::HardwareEncoder::NVENC;
         config.explicitEncoderSelection = false;
     }
+    if (outputSelect_ && outputSelect_->currentData().toString() != "vdo") {
+        config.codec = versus::video::VideoCodec::H264;
+        config.enableAlpha = false;
+        config.bFrames = 0;
+    }
     return config;
 }
 
@@ -2629,6 +2766,7 @@ versus::app::StartOptions MainWindow::buildStartOptionsFromUi() const {
     const QString passwordText = passwordInput_ ? passwordInput_->text().trimmed() : QString();
 
     versus::app::StartOptions options;
+    options.output = outputConfigFromUi();
     options.streamId = resolvedStreamId.toStdString();
     options.room = roomText.isEmpty() ? parsedTarget.room.toStdString() : roomText.toStdString();
     options.password = passwordText.isEmpty() ? parsedTarget.password.toStdString() : passwordText.toStdString();
@@ -2641,6 +2779,11 @@ versus::app::StartOptions MainWindow::buildStartOptionsFromUi() const {
     options.remoteControlToken = remoteControlTokenInput_
         ? remoteControlTokenInput_->text().trimmed().toStdString()
         : std::string();
+    if (options.output.protocol != output::Protocol::VdoNinja) {
+        options.room.clear(); options.streamId.clear(); options.password.clear();
+        options.remoteControlEnabled = false; options.remoteControlToken.clear();
+        options.roomModeLqEnabled = false;
+    }
     return options;
 }
 
@@ -2796,8 +2939,10 @@ void MainWindow::onGoLiveClicked() {
         const bool audioLimiterEnabled = audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true;
         const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : 192;
         const int audioChannels = audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2;
-        const bool pcmAudio = audioCodecSelect_->currentData().toString() == "pcm";
-        const bool audioRed = audioRedCheck_->isChecked() && !pcmAudio;
+        const bool externalOutput = outputSelect_->currentData().toString() != "vdo";
+        const bool muxedOutput = outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "rtmp";
+        const bool pcmAudio = !externalOutput && audioCodecSelect_->currentData().toString() == "pcm";
+        const bool audioRed = !externalOutput && audioRedCheck_->isChecked() && !pcmAudio;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
         spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={} alphaBackground={}",
                      config.width,
@@ -2810,10 +2955,10 @@ void MainWindow::onGoLiveClicked() {
                      static_cast<int>(config.alphaBackgroundMode));
 
         const bool requiresFfmpeg =
-            codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
+            muxedOutput || codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
             (config.explicitEncoderSelection && config.preferredHardware == versus::video::HardwareEncoder::QuickSync);
 
-        const QString streamTargetRaw = streamIdInput_->text().trimmed();
+        const QString streamTargetRaw = externalOutput ? QString() : streamIdInput_->text().trimmed();
         const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
         if (!streamTargetRaw.isEmpty() && !parsedTarget.valid) {
             updateStatus("Invalid stream target URL", "error");
@@ -2826,6 +2971,8 @@ void MainWindow::onGoLiveClicked() {
         }
 
         versus::app::StartOptions options = buildStartOptionsFromUi();
+        const auto outputError = output::validateConfig(options.output);
+        if (!outputError.empty()) { updateStatus(QString::fromStdString(outputError), "error"); return; }
 
         if (parsedTarget.isUrl) {
             streamIdInput_->setText(resolvedStreamId);
@@ -2978,7 +3125,8 @@ void MainWindow::onGoLiveClicked() {
                 }
                 self->setConfigControlsEnabled(false);
 
-                self->updateStatus("LIVE", "live");
+                self->updateStatus(self->core_->isExternalOutput() ? "Connecting to output..." : "LIVE",
+                    self->core_->isExternalOutput() ? "connecting" : "live");
                 self->refreshPublisherCameraPreview();
 
                 const QString shareLink = QString::fromStdString(self->core_->getShareLink());
@@ -3045,7 +3193,7 @@ void MainWindow::onGoLiveClicked() {
                     if (fallbackActive) {
                         self->encoderStatusLabel_->setStyleSheet(
                             QString("color: %1; font-size: 11px; font-weight: bold;").arg(COLOR_YELLOW));
-                        self->updateStatus("LIVE (fallback encoder)", "live");
+                        if (!self->core_->isExternalOutput()) self->updateStatus("LIVE (fallback encoder)", "live");
                     } else {
                         self->encoderStatusLabel_->setStyleSheet(
                             QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
@@ -3228,12 +3376,22 @@ void MainWindow::onTrayIconActivated(QSystemTrayIcon::ActivationReason reason) {
 }
 
 void MainWindow::onStatsTimer() {
-    if (core_ && isLive_) {
+    if (core_ && isLive_ && !stopInProgress_) {
         StreamStats stats;
         const auto metrics = core_->getStreamMetrics();
         const auto health = core_->getConnectionHealth();
         stats.videoBitrate = metrics.videoBitrateKbps > 0.0 ? metrics.videoBitrateKbps : selectedBitrateKbps();
         stats.audioBitrate = metrics.audioBitrateKbps > 0.0 ? metrics.audioBitrateKbps : 0.0;
+        if (core_->isExternalOutput()) {
+            const auto state = core_->getOutputStatus();
+            updateStatus(QString::fromStdString(state.message), state.state == output::State::Live ? "live" :
+                state.state == output::State::Error ? "error" : "connecting");
+            const auto protocol = outputConfigFromUi().protocol;
+            if (protocol == output::Protocol::Srt || protocol == output::Protocol::Rtmp) {
+                stats.audioBitrateIsTarget = audioSourceSelect_->currentData().toString() != "none" || includeMicrophoneCheck_->isChecked();
+                stats.audioBitrate = stats.audioBitrateIsTarget ? aacBitrateSpin_->value() : 0;
+            }
+        }
         stats.frameRate = metrics.frameRate > 0.0 ? metrics.frameRate : fpsSelect_->currentData().toInt();
         stats.width = metrics.width;
         stats.height = metrics.height;
@@ -3314,14 +3472,92 @@ void MainWindow::onAdvancedToggleChanged(bool checked) {
     advancedPanel_->setVisible(checked);
 }
 
+output::Config MainWindow::outputConfigFromUi() const {
+    output::Config config;
+    if (!outputSelect_) return config;
+    config.protocol = output::parseProtocol(outputSelect_->currentData().toString().toStdString());
+    config.url = outputUrlInput_->text().trimmed().toStdString();
+    const auto secret = outputSecretInput_->text().toStdString();
+    if (config.protocol == output::Protocol::Whip) config.bearerToken = secret;
+    if (config.protocol == output::Protocol::Rtmp) config.streamKey = secret;
+    if (config.protocol == output::Protocol::Srt) config.passphrase = secret;
+    config.streamId = outputStreamIdInput_->text().toStdString();
+    config.latencyMs = outputLatencySpin_->value();
+    config.aacBitrateKbps = aacBitrateSpin_->value();
+    return config;
+}
+
+void MainWindow::switchOutputProtocol() {
+    if (switchingOutput_) return;
+    switchingOutput_ = true;
+    if (previousOutput_ != "vdo") {
+        auto old = outputConfigFromUi();
+        old.protocol = output::parseProtocol(previousOutput_.toStdString());
+        old.bearerToken.clear(); old.streamKey.clear(); old.passphrase.clear();
+        const auto secret = outputSecretInput_->text().toStdString();
+        if (previousOutput_ == "whip") old.bearerToken = secret;
+        if (previousOutput_ == "rtmp") old.streamKey = secret;
+        if (previousOutput_ == "srt") old.passphrase = secret;
+        outputProfiles_.insert(previousOutput_, old);
+    }
+    previousOutput_ = outputSelect_->currentData().toString();
+    const auto config = outputProfiles_.value(previousOutput_);
+    outputUrlInput_->setText(QString::fromStdString(config.url));
+    outputSecretInput_->setText(QString::fromStdString(previousOutput_ == "whip" ? config.bearerToken :
+        previousOutput_ == "srt" ? config.passphrase : config.streamKey));
+    if (outputSecretRevealButton_) outputSecretRevealButton_->setChecked(false);
+    outputSecretInput_->setEchoMode(QLineEdit::Password);
+    outputStreamIdInput_->setText(QString::fromStdString(config.streamId));
+    outputLatencySpin_->setValue(config.latencyMs);
+    aacBitrateSpin_->setValue(config.aacBitrateKbps);
+    switchingOutput_ = false;
+    updateOutputControls();
+    syncCodecUiState();
+    savePersistedSettings();
+}
+
+void MainWindow::updateOutputControls() {
+    if (!outputSelect_ || !audioCodecSelect_ || switchingOutput_) return;
+    const QString protocol = outputSelect_->currentData().toString();
+    const bool vdo = protocol == "vdo", srt = protocol == "srt", whip = protocol == "whip";
+    vdoTargetPanel_->setVisible(vdo);
+    setFormRowVisible(advancedForm_, outputPanel_, !vdo);
+    outputSummaryLabel_->setVisible(!vdo);
+    outputSummaryLabel_->setText(QString::fromStdString(output::destinationLabel(outputConfigFromUi())));
+    if (heroSubtitle_) heroSubtitle_->setText(vdo
+        ? "Share a game or app window with VDO.Ninja."
+        : "Send a game or app window to your streaming server.");
+    for (QWidget *field : std::initializer_list<QWidget *>{roomInput_, labelInput_, viewerLimitSpin_, roomModeLqCheck_,
+             iceModeSelect_, remoteControlCheck_, remoteControlTokenInput_, codecSelect_, alphaWorkflowCheck_})
+        setFormRowVisible(advancedForm_, field, vdo);
+    setFormRowVisible(outputForm_, outputStreamIdInput_, srt);
+    setFormRowVisible(outputForm_, outputLatencySpin_, srt);
+    outputSecretLabel_->setText(whip ? "Bearer token" : srt ? "Passphrase" : "Stream key");
+    outputSecretInput_->setAccessibleName(whip ? "WHIP bearer token" : srt ? "SRT passphrase" : "RTMP stream key");
+    outputSecretInput_->setPlaceholderText("Optional");
+    outputUrlInput_->setPlaceholderText(whip ? "https://server.example/live/whip" :
+        srt ? "srt://server.example:8890" : "rtmps://server.example/live");
+    outputHelp_->setText(whip ? "H.264 video and 48 kHz Opus audio. Enter the complete WHIP publishing endpoint."
+        : srt ? "H.264 video and 48 kHz AAC audio. Caller mode connects to a listening receiver. Higher latency allows more time to recover lost packets."
+        : "H.264 video and 48 kHz AAC audio. Enter a server URL and stream key, or paste the complete publishing URL. RTMPS encrypts the connection.");
+    updateAudioEncodingControls();
+    if (!isLive_) resetOperatorHealthUi();
+}
+
 void MainWindow::updateAudioEncodingControls() {
     if (!audioCodecSelect_ || !audioRedCheck_) return;
-    const bool pcm = audioCodecSelect_->currentData().toString() == "pcm";
+    const auto protocol = outputSelect_ ? outputSelect_->currentData().toString() : QString("vdo");
+    const bool vdo = protocol == "vdo", aac = protocol == "srt" || protocol == "rtmp";
+    const bool pcm = vdo && audioCodecSelect_->currentData().toString() == "pcm";
+    setFormRowVisible(audioEncodingForm_, audioCodecSelect_, vdo);
+    setFormRowVisible(audioEncodingForm_, audioRedCheck_, vdo);
+    setFormRowVisible(audioEncodingForm_, audioBitrateSpin_, !aac);
+    setFormRowVisible(audioEncodingForm_, aacBitrateSpin_, aac);
     const bool enabled = audioCodecSelect_->isEnabled();
     audioBitrateSpin_->setEnabled(enabled && !pcm);
     audioRedCheck_->setEnabled(enabled && !pcm);
     const bool mono = audioChannelsSelect_->currentData().toInt() == 1;
-    audioEncodingNote_->setText(pcm
+    audioEncodingNote_->setText(aac ? QString("48 kHz AAC. Default: 192 kbps stereo. Changes apply on the next stream.") : pcm
         ? (mono ? "16-bit PCM: 48 kHz mono, 768 kbps before network overhead. "
                 : "16-bit PCM: 32 kHz stereo, 1,024 kbps before network overhead. ") +
             QString("Use the generated viewer link in Chrome. Other viewers may use Opus instead. RED is available with Opus.")
@@ -3355,11 +3591,13 @@ void MainWindow::syncCodecUiState() {
         return;
     }
 
-    const versus::video::VideoCodec selectedCodec = codecFromUiValue(codecSelect_->currentData().toString());
+    const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
+    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "rtmp");
+    const versus::video::VideoCodec selectedCodec = externalOutput ? versus::video::VideoCodec::H264 : codecFromUiValue(codecSelect_->currentData().toString());
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
-    const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
-    const bool enableFfmpegFields = mode == "ffmpeg_nvenc" || mode == "qsv" || usesExternalFfmpeg || alphaWorkflowSelected;
+    const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
+    const bool enableFfmpegFields = muxedOutput || mode == "ffmpeg_nvenc" || mode == "qsv" || usesExternalFfmpeg || alphaWorkflowSelected;
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
@@ -3428,13 +3666,15 @@ void MainWindow::refreshFfmpegStatus() {
     if (ffmpegProbeTimer_) {
         ffmpegProbeTimer_->stop();
     }
-    const bool alphaWorkflowSelected = alphaWorkflowEffectiveForSelectedCodec();
-    const auto selectedCodec = codecSelect_
+    const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
+    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "rtmp");
+    const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
+    const auto selectedCodec = codecSelect_ && !externalOutput
         ? codecFromUiValue(codecSelect_->currentData().toString())
         : versus::video::VideoCodec::H264;
     const bool needsFfmpeg =
         codecSelect_ &&
-        (codecUsesExternalFfmpeg(selectedCodec) ||
+        (muxedOutput || codecUsesExternalFfmpeg(selectedCodec) ||
          (encoderSelect_ && (encoderSelect_->currentData().toString() == "ffmpeg_nvenc" ||
                              encoderSelect_->currentData().toString() == "qsv")) ||
          alphaWorkflowSelected);
@@ -3552,6 +3792,7 @@ QString MainWindow::audioSourceSummaryText() const {
         return QStringLiteral("Primary: -");
     }
     const QString text = audioSourceSelect_->currentText().trimmed();
+    if (audioSourceSelect_->currentData().toString() == "none") return QStringLiteral("Primary: No audio");
     const int gain = primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100;
     return QStringLiteral("Primary: %1 (%2%)").arg(text.isEmpty() ? QStringLiteral("-") : text).arg(gain);
 }
@@ -3602,7 +3843,9 @@ void MainWindow::updateAudioMeter(QProgressBar *meter, QLabel *label, float rms,
 
 void MainWindow::resetOperatorHealthUi() {
     if (connectionHealthLabel_) {
-        connectionHealthLabel_->setText("ICE: - | Selected path: - | Peers: 0");
+        connectionHealthLabel_->setText(outputSelect_ && outputSelect_->currentData().toString() != "vdo"
+            ? QString::fromStdString(output::destinationLabel(outputConfigFromUi())) + " | Not publishing"
+            : QStringLiteral("ICE: - | Selected path: - | Peers: 0"));
         connectionHealthLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     }
     if (connectionMediaLabel_) {
@@ -3688,10 +3931,28 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
                                  health.audioSendFailures > 0;
         connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(hasFailures ? COLOR_YELLOW : COLOR_TEXT_DIM));
     }
+    if (core_ && core_->isExternalOutput()) {
+        const auto status = core_->getOutputStatus();
+        const auto config = outputConfigFromUi();
+        if (connectionHealthLabel_) connectionHealthLabel_->setText(QString::fromStdString(output::destinationLabel(config)) +
+            QString(" | Reconnects: %1 | Queued: %2 KiB").arg(status.reconnects).arg(status.queuedBytes / 1024));
+        if (connectionMediaLabel_) {
+            const bool aac = config.protocol != output::Protocol::Whip;
+            const bool audioEnabled = audioSourceSelect_->currentData().toString() != "none" || includeMicrophoneCheck_->isChecked();
+            connectionMediaLabel_->setText(QString("H.264 | %1x%2 | %3 fps | %4%5")
+                .arg(health.width).arg(health.height).arg(health.frameRate, 0, 'f', 1)
+                .arg(audioEnabled ? (aac ? "AAC audio" : "Opus audio") : "No audio")
+                .arg(audioEnabled && aac ? QString(" (%1 kbps target)").arg(config.aacBitrateKbps) : QString()));
+        }
+    }
 }
 
 void MainWindow::setConfigControlsEnabled(bool enabled) {
     configControlsEnabled_ = enabled;
+    for (QWidget *field : std::initializer_list<QWidget *>{outputSelect_, outputUrlInput_, outputSecretInput_,
+            outputSecretRevealButton_, outputStreamIdInput_, outputLatencySpin_, aacBitrateSpin_})
+        if (field) field->setEnabled(enabled);
+    if (!enabled && outputSecretRevealButton_) outputSecretRevealButton_->setChecked(false);
 
     if (resetDefaultsAction_) {
         resetDefaultsAction_->setEnabled(enabled && runtimeOptions_.persistedSettingsEnabled);

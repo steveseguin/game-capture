@@ -8,6 +8,7 @@ namespace versus::ui {
 
 struct StreamStats {
     double videoBitrate = 0.0;   // kbps
+    bool audioBitrateIsTarget = false;
     double audioBitrate = 0.0;   // kbps
     double frameRate = 0.0;      // fps
     int width = 0;

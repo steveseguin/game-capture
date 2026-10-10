@@ -26,19 +26,26 @@ def main():
     for remote in receiver['pulsePairs']:
         if remote['audioSeconds'] < 10:
             continue
-        local = min(source['pulsePairs'], key=lambda p: abs(p['audioSeconds'] - remote['audioSeconds']))
-        if abs(local['audioSeconds'] - remote['audioSeconds']) >= 1:
-            continue
+        if 'sourcePulseId' in remote:
+            matches = [p for p in source['pulsePairs'] if p.get('sourcePulseId') == remote['sourcePulseId']]
+            if len(matches) != 1:
+                continue
+            local = matches[0]
+        else:
+            local = min(source['pulsePairs'], key=lambda p: abs(p['audioSeconds'] - remote['audioSeconds']))
+            if abs(local['audioSeconds'] - remote['audioSeconds']) >= 1:
+                continue
         pairs.append({
             'atSeconds': remote['audioSeconds'],
             'additionalOffsetMs': remote['offsetMs'] - local['offsetMs'],
+            'additionalSourceClockOffsetMs': remote.get('sourceClockOffsetMs',remote['offsetMs']) - local.get('sourceClockOffsetMs',local['offsetMs']),
             'additionalAudioDelayMs': 1000 * (remote['audioSeconds'] - local['audioSeconds']),
-            'additionalVideoDelayMs': 1000 * (remote['videoSeconds'] - local['videoSeconds']),
+            'additionalVideoDelayMs': 1000 * (remote.get('sourceClockVideoSeconds',remote['videoSeconds']) - local.get('sourceClockVideoSeconds',local['videoSeconds'])),
         })
     assert len(pairs) >= 20, 'Too few corresponding steady playback pulses'
     result = {'pairs': pairs, 'maximumAllowedSkewMs': args.maximum_skew_ms,
-              'limitations': 'Relative to simultaneous OBS source capture; 30-fps video and 10-ms audio windows. Not physical playback latency.'}
-    for key in ['additionalOffsetMs', 'additionalAudioDelayMs', 'additionalVideoDelayMs']:
+              'limitations': f"Relative to simultaneous OBS source capture; {source.get('analysisFps', 30)}-fps video and 10-ms audio windows. Not physical playback latency."}
+    for key in ['additionalOffsetMs', 'additionalSourceClockOffsetMs', 'additionalAudioDelayMs', 'additionalVideoDelayMs']:
         values = [pair[key] for pair in pairs]
         result[key] = {'n': len(values), 'median': statistics.median(values),
                        'min': min(values), 'max': max(values), 'p95': float(np.percentile(values, 95))}

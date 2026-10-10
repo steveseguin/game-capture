@@ -30,7 +30,7 @@ function setIni(text,section,key,value){
   if(!regex.test(text))return text+'\n['+section+']\n'+key+'='+value+'\n';
   return text.replace(regex,(_,heading,body)=>heading+(new RegExp('^'+key+'=.*$','m').test(body)?body.replace(new RegExp('^'+key+'=.*$','m'),key+'='+value):body+'\n'+key+'='+value));
 }
-async function start(root,output,{paired=false}={}){
+async function start(root,output,{paired=false,fps=30}={}){
   root=path.resolve(root);fs.mkdirSync(output,{recursive:true});
   const config=path.join(root,'config/obs-studio'),configFile=path.join(config,'plugin_config/obs-websocket/config.json');
   // This helper only owns the disposable portable copy under the QA report.
@@ -44,6 +44,7 @@ async function start(root,output,{paired=false}={}){
   const profiles=path.join(config,'basic/profiles');const profile=fs.readdirSync(profiles).map(n=>path.join(profiles,n,'basic.ini')).find(p=>fs.existsSync(p));
   let ini=fs.readFileSync(profile,'utf8');
   for(const [s,k,v] of [['Video','BaseCX',1280],['Video','BaseCY',720],['Video','OutputCX',1280],['Video','OutputCY',720],
+    ['Video','FPSType',0],['Video','FPSCommon',fps],
     ['Output','Mode','Simple'],['SimpleOutput','FilePath',output.replaceAll('\\','/')],['SimpleOutput','RecFormat2','mkv'],
     ['SimpleOutput','RecQuality','HQ'],['SimpleOutput','RecEncoder','x264'],['SimpleOutput','ABitrate',320],
     ['SimpleOutput','RecTracks',paired?3:1]])ini=setIni(ini,s,k,v);
@@ -77,9 +78,11 @@ async function receive(obs,c,dir,url,seconds,source){
     r.before=await client.request('GetStats');r.recordStart=Date.now();r.recordingIncludesInputStartup=true;
     await client.request('StartRecord');await sleep(500);
     if(!(await client.request('GetRecordStatus')).outputActive)throw Error('OBS recording did not remain active');
-    const settings=c.direct?{method:2,capture_cursor:false}:c.obsBrowser?{url:url+'&autostart&cleanoutput',width:1280,height:720,reroute_audio:true,shutdown:true}:
+    const settings=c.direct?{method:2,capture_cursor:false,capture_audio:!!c.processAudio}:c.external&&!c.obsBrowser?
+      {input:url,is_local_file:false,restart_on_activate:true,close_when_inactive:true,reconnect_delay_sec:1,buffering_mb:1}:
+      c.obsBrowser?{url:c.external?url+'?muted=false&controls=false':url+'&autostart&cleanoutput',width:1280,height:720,reroute_audio:true,shutdown:true}:
       {stream_id:stream,password:'false',room_id:'',use_native_receiver:true,enable_data_channel:true,auto_reconnect:true,width:1280,height:720};
-    const created=await client.request('CreateInput',{sceneName:scene,inputName:input,inputKind:c.direct?'window_capture':c.obsBrowser?'browser_source':'vdoninja_source',inputSettings:settings,sceneItemEnabled:true});
+    const created=await client.request('CreateInput',{sceneName:scene,inputName:input,inputKind:c.direct?'window_capture':c.obsBrowser?'browser_source':c.external?'ffmpeg_source':'vdoninja_source',inputSettings:settings,sceneItemEnabled:true});
     if(c.direct){
       const items=await client.request('GetInputPropertiesListPropertyItems',{inputName:input,propertyName:'window'});
       const item=items.propertyItems.find(i=>i.itemName.includes('Game Capture Quality Source'));if(!item)throw Error('OBS cannot find calibration fixture');
@@ -91,14 +94,16 @@ async function receive(obs,c,dir,url,seconds,source){
     if(paired){
       r.pairedReference={videoHalf:'left',audioStream:0,receiverVideoHalf:'right',receiverAudioStream:1};
       await client.request('SetInputAudioTracks',{inputName:input,inputAudioTracks:{'1':false,'2':true,'3':false,'4':false,'5':false,'6':false}});
-      const ref=await client.request('CreateInput',{sceneName:scene,inputName:reference,inputKind:'window_capture',inputSettings:{method:2,capture_cursor:false},sceneItemEnabled:true});
+      const ref=await client.request('CreateInput',{sceneName:scene,inputName:reference,inputKind:'window_capture',inputSettings:{method:2,capture_cursor:false,capture_audio:!!c.processAudio},sceneItemEnabled:true});
       const items=await client.request('GetInputPropertiesListPropertyItems',{inputName:reference,propertyName:'window'});
       const item=items.propertyItems.find(i=>i.itemName.includes('Game Capture Quality Source'));if(!item)throw Error('Missing simultaneous source reference');
       await client.request('SetInputSettings',{inputName:reference,inputSettings:{window:item.itemValue,method:2,capture_cursor:false},overlay:true});
       await client.request('SetSceneItemTransform',{sceneName:scene,sceneItemId:ref.sceneItemId,sceneItemTransform:{positionX:0,positionY:0,boundsType:'OBS_BOUNDS_SCALE_INNER',boundsWidth:640,boundsHeight:720}});
-      await client.request('CreateInput',{sceneName:scene,inputName:reference+'-audio',inputKind:'wasapi_output_capture',inputSettings:{device_id:'default'},sceneItemEnabled:true});
-      await client.request('SetInputAudioMonitorType',{inputName:reference+'-audio',monitorType:'OBS_MONITORING_TYPE_NONE'});
-      await client.request('SetInputAudioTracks',{inputName:reference+'-audio',inputAudioTracks:{'1':true,'2':false,'3':false,'4':false,'5':false,'6':false}});
+      const referenceAudio=c.processAudio?reference:reference+'-audio';
+      if(!c.processAudio)await client.request('CreateInput',{sceneName:scene,inputName:referenceAudio,inputKind:'wasapi_output_capture',inputSettings:{device_id:'default'},sceneItemEnabled:true});
+      await client.request('SetInputMute',{inputName:referenceAudio,inputMuted:false});
+      await client.request('SetInputAudioMonitorType',{inputName:referenceAudio,monitorType:'OBS_MONITORING_TYPE_NONE'});
+      await client.request('SetInputAudioTracks',{inputName:referenceAudio,inputAudioTracks:{'1':true,'2':false,'3':false,'4':false,'5':false,'6':false}});
     }
     if(!c.direct){await client.request('SetInputMute',{inputName:input,inputMuted:false});
     await client.request('SetInputAudioMonitorType',{inputName:input,monitorType:'OBS_MONITORING_TYPE_NONE'});}

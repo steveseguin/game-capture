@@ -1279,6 +1279,21 @@ std::string WebRtcClient::createOffer() {
     return sdp.empty() ? std::string{} : filterSessionDescriptionForMode(sdp, target->mode);
 }
 
+bool WebRtcClient::iceGatheringComplete() const {
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    auto target = impl_->transportSnapshot();
+    return target && target->pc &&
+        target->pc->gatheringState() == rtc::PeerConnection::GatheringState::Complete;
+}
+
+std::string WebRtcClient::localDescriptionWithCandidates() const {
+    std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
+    auto target = impl_->transportSnapshot();
+    if (!target || !target->pc) return {};
+    const auto description = target->pc->localDescription();
+    return description ? filterSessionDescriptionForMode(std::string(*description), target->mode) : std::string{};
+}
+
 std::string WebRtcClient::createAnswer(const std::string &offer) {
     std::lock_guard<std::recursive_mutex> callbackDispatchLock(
         impl_->callbackDispatchMutex);

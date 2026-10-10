@@ -1334,6 +1334,34 @@ bool VersusApp::goLive(const StartOptions &options) {
 
     maxViewers_.store(std::max(0, options.maxViewers), std::memory_order_relaxed);
     remoteControlEnabled_.store(options.remoteControlEnabled, std::memory_order_relaxed);
+    if (options.output.protocol != output::Protocol::VdoNinja) {
+        const auto error = output::validateConfig(options.output);
+        const auto videoState = videoStateSnapshot();
+        if (!error.empty() || videoState.config.codec != video::VideoCodec::H264 || videoState.config.enableAlpha ||
+            pcmAudio_.load() || audioRed_.load()) {
+            emitRuntimeEvent(error.empty() ? "External outputs require H.264 video and Opus/AAC audio without alpha or RED." : error, true);
+            stopLive(); return false;
+        }
+        const auto lifecycle = lifecycleStateSnapshot();
+        output::MediaConfig media;
+        media.width = videoState.config.width; media.height = videoState.config.height; media.fps = videoState.config.frameRate;
+        media.audioChannels = audioOutputChannels_.load();
+        media.audioEnabled = lifecycle.audioSourceMode != AudioSourceMode::None || lifecycle.includeMicrophone;
+        media.ffmpegPath = video::VideoEncoder::resolveFfmpegPath(videoState.config.ffmpegPath);
+        auto destination = std::make_shared<output::Session>(options.output, media, [this] {
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+        });
+        if (!destination->start()) {
+            emitRuntimeEvent(destination->status().message, true);
+            stopLive(); return false;
+        }
+        remoteControlEnabled_.store(false);
+        externalOutput_.store(std::move(destination));
+        live_ = true;
+        startVideoMaintenanceThread();
+        spdlog::info("[Output] Starting {}", output::destinationLabel(options.output));
+        return true;
+    }
     webrtc::ResolvedIceConfig resolvedIce;
     try {
         resolvedIce = webrtc::resolveIceConfig(options.iceMode);
@@ -1477,6 +1505,7 @@ bool VersusApp::goLive(const StartOptions &options) {
 
 void VersusApp::stopLive() {
     const bool wasLive = live_.exchange(false);
+    auto external = externalOutput_.exchange({});
     stopRequested_.store(true);
     cancelDuplicateOfferRechecks(true, "stop-live");
     reconnecting_.store(false);
@@ -1484,7 +1513,8 @@ void VersusApp::stopLive() {
     pendingGlobalKeyframe_.store(false);
     stopSignalingRecoveryThread();
     stopVideoMaintenanceThread();
-    if (wasLive) {
+    if (external) external->stop();
+    if (wasLive && !external) {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
         signaling_.unpublish();
         signaling_.disconnect();
@@ -1494,6 +1524,7 @@ void VersusApp::stopLive() {
 }
 
 std::string VersusApp::getShareLink() const {
+    if (isExternalOutput()) return {};
     std::lock_guard<std::mutex> lock(signalingOpsMutex_);
     std::string url = signaling_.getViewUrl();
     if (!url.empty()) {
@@ -1507,6 +1538,11 @@ std::string VersusApp::getShareLink() const {
         else if (audioRed_.load(std::memory_order_relaxed)) url += "&audiocodec=red";
     }
     return url;
+}
+
+output::Status VersusApp::getOutputStatus() const {
+    auto external = externalOutput_.load();
+    return external ? external->status() : output::Status{};
 }
 
 void VersusApp::onRuntimeEvent(RuntimeEventCallback cb) {
@@ -1708,6 +1744,11 @@ StreamMetrics VersusApp::buildStreamMetricsSnapshot(
     metrics.lqPeerCount = counts.lq;
     metrics.activeVideoPeers = counts.activeVideo;
     metrics.activeAudioPeers = counts.activeAudio;
+    if (auto external = externalOutput_.load()) {
+        const bool connected = external->status().state == output::State::Live;
+        metrics.peerCount = metrics.hqPeerCount = metrics.activeVideoPeers = connected ? 1 : 0;
+        metrics.activeAudioPeers = connected && external->wantsAudio() ? 1 : 0;
+    }
     metrics.videoFramesCaptured = videoFramesCaptured_.load(std::memory_order_relaxed);
     metrics.videoFramesSent = videoFrames;
     metrics.videoFramesDropped = droppedFrames;
@@ -2397,6 +2438,20 @@ std::string VersusApp::buildDiagnosticsJson() const {
         root["peers"].push_back(std::move(item));
     }
 
+    if (auto external = externalOutput_.load()) {
+        const auto status = external->status();
+        const auto config = lifecycleStateSnapshot().startOptions.output;
+        const bool audioEnabled = diagnosticsAudioSourceMode != AudioSourceMode::None || diagnosticsIncludeMicrophone;
+        root["audio"]["codec"] = audioEnabled ? (external->usesPcmInput() ? "aac" : "opus") : "none";
+        root["output"] = {{"protocol", output::protocolName(config.protocol)},
+            {"destination", output::destinationLabel(config)}, {"state", static_cast<int>(status.state)},
+            {"message", status.message}, {"reconnects", status.reconnects}, {"queued_bytes", status.queuedBytes},
+            {"video_packets", status.videoPackets}, {"audio_packets", status.audioPackets},
+            {"video_input_bytes", status.videoBytes}, {"audio_input_bytes", status.audioBytes},
+            {"muxer_pid", status.processId},
+            {"audio_codec", audioEnabled ? (external->usesPcmInput() ? "AAC" : "Opus") : "none"},
+            {"configured_aac_bitrate_kbps", config.aacBitrateKbps}};
+    }
     return root.dump(2);
 }
 
@@ -2840,6 +2895,11 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
     int64_t pts = audioPts100ns_.load();
     if (!pts || std::abs(captureTime100ns - pts) > 500000) pts = captureTime100ns;
     audioPts100ns_.store(pts + chunkDuration100ns);
+    if (auto external = externalOutput_.load(); external && external->usesPcmInput()) {
+        if (external->wantsAudio() && !external->sendPcm(normalizedSamples, pts))
+            audioSendFailures_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
     if (!hasAnyActiveAudioTrack()) {
         return;
     }
@@ -6210,14 +6270,16 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     }
     decisionLock.unlock();
 
-    if (hqPeers.empty() && lqPeers.empty()) {
+    const auto external = externalOutput_.load();
+    const bool externalVideo = external && external->wantsVideo();
+    if (hqPeers.empty() && lqPeers.empty() && !externalVideo) {
         shutdownLqEncoderLocked();
         return false;
     }
 
     const int64_t nowMs = steadyNowMs();
 
-    if (!hqPeers.empty()) {
+    if (!hqPeers.empty() || externalVideo) {
         if (!adaptHqEncoderToFrameLocked(frame, nowMs)) {
             return false;
         }
@@ -6261,7 +6323,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
         }
     }
 
-    if (!hqPeers.empty()) {
+    if (!hqPeers.empty() || externalVideo) {
         const bool externalFfmpegEncoder =
             videoEncoder_.activeEncoderName().find("FFmpeg") != std::string::npos;
         auto fallbackUnstableSoftwareCodec = [&](const char *reason) {
@@ -6730,6 +6792,14 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
         packet.data = hqPacket.data;
         packet.pts = hqPacket.sourceTimestamp;
         packet.isKeyframe = hqPacket.isKeyframe;
+        if (externalVideo) {
+            if (external->sendVideo(packet, primaryFrameWidth, primaryFrameHeight)) {
+                sentAny = true; videoBytesSentThisCall += packet.data.size();
+                primaryPtsSentThisCall.push_back(packet.pts);
+                sentWidth = primaryFrameWidth; sentHeight = primaryFrameHeight;
+                sentKeyframe = packet.isKeyframe;
+            } else videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
+        }
         for (const auto &peer : hqPeers) {
             if (!peer || !peer->client) {
                 continue;
@@ -7790,11 +7860,13 @@ void VersusApp::refreshPeerTrackObservations(
 }
 
 bool VersusApp::hasAnyActiveVideoTrack() const {
+    if (auto external = externalOutput_.load()) return external->wantsVideo();
     refreshPeerTrackObservations(true, false);
     return roomQualityDiagnosticsSnapshot().counts.activeVideo > 0;
 }
 
 bool VersusApp::hasAnyActiveAudioTrack() const {
+    if (auto external = externalOutput_.load()) return external->wantsAudio();
     refreshPeerTrackObservations(false, true);
     return roomQualityDiagnosticsSnapshot().counts.activeAudio > 0;
 }
@@ -7970,6 +8042,15 @@ VersusApp::LifecycleStateSnapshot VersusApp::lifecycleStateSnapshot() const {
 }
 
 void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet) {
+    if (auto external = externalOutput_.load()) {
+        if (!external->usesPcmInput() && external->wantsAudio()) {
+            if (external->sendOpus(packet)) {
+                audioBytesSent_.fetch_add(packet.data.size(), std::memory_order_relaxed);
+                audioPacketsSent_.fetch_add(1, std::memory_order_relaxed);
+            } else audioSendFailures_.fetch_add(1, std::memory_order_relaxed);
+        }
+        return;
+    }
     refreshPeerTrackObservations(false, true);
     const RoomQualityDiagnosticsSnapshot roomQualitySnapshot =
         roomQualityDiagnosticsSnapshot();

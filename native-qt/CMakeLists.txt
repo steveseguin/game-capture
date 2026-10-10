@@ -1,5 +1,5 @@
-﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.61 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.24)
+project(game-capture-native-qt VERSION 0.2.62 LANGUAGES CXX)
 
 # CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
 # declares a 3.1 minimum, so give bundled dependencies the modern floor
@@ -27,7 +27,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
 option(VERSUS_USE_NVENC "Enable NVIDIA NVENC hardware encoding" ON)
-option(VERSUS_USE_WHIP "Enable WHIP publishing support" OFF)
 option(VERSUS_USE_GRAPHICS_CAPTURE "Enable Windows Graphics Capture API (requires WinRT)" ON)
 option(VERSUS_USE_SPOUT "Enable Spout2 source support on Windows" ON)
 
@@ -164,6 +163,8 @@ set(VERSUS_SOURCES
     src/ui/stats_panel.cpp
     src/signaling/vdo_signaling.cpp
     src/webrtc/webrtc_client.cpp
+    src/output/output_config.cpp
+    src/output/output_session.cpp
     src/webrtc/ice_config.cpp
     src/video/camera_capture.cpp
     src/video/spout_capture.cpp
@@ -188,6 +189,7 @@ set(VERSUS_HEADERS
     include/versus/ui/stats_panel.h
     include/versus/signaling/vdo_signaling.h
     include/versus/webrtc/webrtc_client.h
+    include/versus/output/output_session.h
     include/versus/webrtc/ice_config.h
     include/versus/video/aspect_fit.h
     include/versus/video/camera_capture.h
@@ -246,6 +248,7 @@ endif()
 if(WIN32)
     target_link_libraries(game-capture PRIVATE
         ole32
+        crypt32
         oleaut32
         uuid
         user32
@@ -378,6 +381,8 @@ if(VERSUS_BUILD_TESTS)
         src/ui/stats_panel.cpp
         src/signaling/vdo_signaling.cpp
         src/webrtc/webrtc_client.cpp
+        src/output/output_config.cpp
+        src/output/output_session.cpp
         src/webrtc/ice_config.cpp
         src/video/camera_capture.cpp
         src/video/spout_capture.cpp
@@ -416,7 +421,7 @@ if(VERSUS_BUILD_TESTS)
     endif()
     if(WIN32)
         target_link_libraries(versus-lib PUBLIC
-            ole32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi winhttp
+            ole32 crypt32 oleaut32 uuid user32 gdi32 shlwapi winmm dwmapi d3d11 dxgi winhttp
             dbghelp runtimeobject mf mfplat mfreadwrite mfuuid
         )
     endif()

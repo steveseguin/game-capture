@@ -106,6 +106,9 @@ class WebRtcClient {
 
     bool setRemoteDescription(const std::string &sdp, const std::string &type);
     std::string createOffer();
+    // WHIP can post a complete offer after gathering, without trickle PATCHes.
+    bool iceGatheringComplete() const;
+    std::string localDescriptionWithCandidates() const;
     std::string createAnswer(const std::string &offer);
     bool addRemoteCandidate(const std::string &candidate, const std::string &mid, int mlineIndex);
 

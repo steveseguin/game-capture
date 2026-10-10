@@ -16,6 +16,8 @@
 #include <QFutureWatcher>
 #include <QIcon>
 #include <QColor>
+#include <QFormLayout>
+#include <QHash>
 
 #include "versus/app/versus_app.h"
 #include "versus/ui/window_list_widget.h"
@@ -152,6 +154,28 @@ class MainWindow : public QMainWindow {
     QCheckBox *audioRedCheck_ = nullptr;
     QLabel *audioEncodingNote_ = nullptr;
     void updateAudioEncodingControls();
+    output::Config outputConfigFromUi() const;
+    void switchOutputProtocol();
+    void updateOutputControls();
+    QComboBox *outputSelect_ = nullptr;
+    QWidget *outputPanel_ = nullptr;
+    QFormLayout *outputForm_ = nullptr;
+    QFormLayout *advancedForm_ = nullptr;
+    QFormLayout *audioEncodingForm_ = nullptr;
+    QWidget *vdoTargetPanel_ = nullptr;
+    QLabel *heroSubtitle_ = nullptr;
+    QLabel *outputSummaryLabel_ = nullptr;
+    QLabel *outputHelp_ = nullptr;
+    QLabel *outputSecretLabel_ = nullptr;
+    QLineEdit *outputUrlInput_ = nullptr;
+    QLineEdit *outputSecretInput_ = nullptr;
+    QPushButton *outputSecretRevealButton_ = nullptr;
+    QLineEdit *outputStreamIdInput_ = nullptr;
+    QSpinBox *outputLatencySpin_ = nullptr;
+    QSpinBox *aacBitrateSpin_ = nullptr;
+    QString previousOutput_ = QStringLiteral("vdo");
+    bool switchingOutput_ = false;
+    QHash<QString, output::Config> outputProfiles_;
     QComboBox *audioChannelsSelect_ = nullptr;
     QCheckBox *includeMicrophoneCheck_ = nullptr;
     QComboBox *microphoneDeviceSelect_ = nullptr;

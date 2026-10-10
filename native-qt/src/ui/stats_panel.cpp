@@ -79,7 +79,8 @@ void StatsPanel::setupUI() {
 
 void StatsPanel::updateStats(const StreamStats &stats) {
     videoBitrateValue_->setText(QString::number(static_cast<int>(stats.videoBitrate)) + " kbps");
-    audioBitrateValue_->setText(QString::number(static_cast<int>(stats.audioBitrate)) + " kbps");
+    audioBitrateValue_->setText(QString::number(static_cast<int>(stats.audioBitrate)) +
+        (stats.audioBitrateIsTarget ? " kbps target" : " kbps"));
     frameRateValue_->setText(QString::number(stats.frameRate, 'f', 1) + " fps");
     resolutionValue_->setText(QString::number(stats.width) + "x" + QString::number(stats.height));
     codecValue_->setText(QString::fromStdString(stats.codec));

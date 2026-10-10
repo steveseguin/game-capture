@@ -184,6 +184,7 @@ QJsonArray audioInputListToJson(const std::vector<versus::audio::AudioDeviceInfo
 int main(int argc, char *argv[]) {
     // Check for --headless mode
     bool headless = false;
+    versus::output::Config outputConfig;
     std::string streamId = "steve123";
     std::string password;
     std::string room;
@@ -232,6 +233,27 @@ int main(int argc, char *argv[]) {
         std::string arg = argv[i];
         if (arg == "--headless") {
             headless = true;
+        } else if (arg.rfind("--output=", 0) == 0) {
+            try { outputConfig.protocol = versus::output::parseProtocol(arg.substr(9)); }
+            catch (const std::exception &error) { spdlog::error("{}", error.what()); return 2; }
+        } else if (arg.rfind("--output-url=", 0) == 0) {
+            outputConfig.url = arg.substr(13);
+        } else if (arg.rfind("--output-token=", 0) == 0) {
+            outputConfig.bearerToken = arg.substr(15);
+        } else if (arg.rfind("--output-key=", 0) == 0) {
+            outputConfig.streamKey = arg.substr(13);
+        } else if (arg.rfind("--srt-stream-id=", 0) == 0) {
+            outputConfig.streamId = arg.substr(16);
+        } else if (arg.rfind("--srt-passphrase=", 0) == 0) {
+            outputConfig.passphrase = arg.substr(17);
+        } else if (arg.rfind("--srt-latency-ms=", 0) == 0) {
+            const auto value = parsePositiveInteger(arg.substr(17));
+            if (!value || *value < 20 || *value > 8000) { spdlog::error("SRT latency must be 20 to 8000 ms"); return 2; }
+            outputConfig.latencyMs = *value;
+        } else if (arg.rfind("--aac-bitrate-kbps=", 0) == 0) {
+            const auto value = parsePositiveInteger(arg.substr(19));
+            if (!value || *value < 32 || *value > 320) { spdlog::error("AAC bitrate must be 32 to 320 kbps"); return 2; }
+            outputConfig.aacBitrateKbps = *value;
         } else if (arg.find("--stream=") == 0) {
             streamId = arg.substr(9);
         } else if (arg.find("--password=") == 0) {
@@ -740,6 +762,23 @@ int main(int argc, char *argv[]) {
         hasVideoConfigOverride = true;
     }
 
+    if (outputConfig.protocol == versus::output::Protocol::VdoNinja &&
+        (!outputConfig.url.empty() || !outputConfig.bearerToken.empty() || !outputConfig.streamKey.empty() ||
+         !outputConfig.streamId.empty() || !outputConfig.passphrase.empty())) {
+        spdlog::error("Select --output=whip, srt or rtmp when supplying external output settings"); return 2;
+    }
+    if (outputConfig.protocol != versus::output::Protocol::VdoNinja) {
+        if (!headless) { spdlog::error("Use advanced output settings in the GUI, or add --headless for output arguments"); return 2; }
+        const auto error = versus::output::validateConfig(outputConfig);
+        if (!error.empty()) { spdlog::error("{}", error); return 2; }
+        if ((!videoCodecArg.empty() && videoCodecArg != "h264") || alphaWorkflowEnabled || pcmAudio || audioRed) {
+            spdlog::error("External outputs require H.264 and Opus/AAC; alpha, PCM and RED are available with VDO.Ninja"); return 2;
+        }
+        encoderOverride.codec = versus::video::VideoCodec::H264;
+        encoderOverride.enableAlpha = false;
+        encoderOverride.bFrames = 0;
+        hasVideoConfigOverride = true;
+    }
     if (hasVideoConfigOverride) {
         spdlog::info("[Main] Applying video config override: encoder={} codec={} resolution={}x{} fps={} bitrate={}kbps alpha={} alphaBackground={}",
                      videoEncoderArg.empty() ? "default" : videoEncoderArg,
@@ -794,6 +833,7 @@ int main(int argc, char *argv[]) {
 
         // Configure
         versus::app::StartOptions options;
+        options.output = outputConfig;
         options.server = server;
         options.streamId = streamId;
         options.password = password;
@@ -805,6 +845,22 @@ int main(int argc, char *argv[]) {
         options.remoteControlToken = remoteControlToken;
         options.roomModeLqEnabled = roomModeLqEnabled;
         options.iceMode = iceMode;
+        if (outputConfig.protocol != versus::output::Protocol::VdoNinja) {
+            options.streamId.clear(); options.room.clear(); options.password.clear();
+            options.remoteControlEnabled = false; options.remoteControlToken.clear(); options.roomModeLqEnabled = false;
+        }
+        QTimer outputHealthTimer;
+        if (outputConfig.protocol != versus::output::Protocol::VdoNinja) {
+            QObject::connect(&outputHealthTimer, &QTimer::timeout, [&core, &writeDiagnostics]() {
+                const auto status = core.getOutputStatus();
+                if (status.state == versus::output::State::Error) {
+                    spdlog::error("[Output] {}", status.message);
+                    writeDiagnostics("output-error");
+                    QApplication::exit(3);
+                }
+            });
+            outputHealthTimer.start(500);
+        }
 
         QTimer::singleShot(
             1000,

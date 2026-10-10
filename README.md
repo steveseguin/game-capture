@@ -52,6 +52,33 @@ For headless publishing, use `--audio-bitrate-kbps=128 --audio-channels=mono` (o
 
 Use the app's generated share link to preserve the selected channel mode in browser playback. Its `stereo` parameter configures the receiver; `ab=510` allows the receiver to accept the supported bitrate range, while the publisher sends at your selected bitrate. Older links may play stereo streams as mono.
 
+## Additional output destinations
+
+**Show advanced settings → Output** selects one destination. VDO.Ninja remains the default; WHIP, SRT and RTMP settings appear only when selected. The active external destination stays visible when advanced settings are collapsed. Each protocol remembers its own settings, and Windows protects the saved destination profiles, including URLs and credentials, with the current user's encryption key.
+
+| Output | Destination | Media |
+| --- | --- | --- |
+| VDO.Ninja | Existing stream ID / room workflow | Existing codec choices, including experimental PCM / RED |
+| WHIP | Complete HTTP(S) publishing endpoint; optional bearer token | H.264 + 48 kHz Opus, mono or stereo |
+| SRT | `srt://host:port`, optional stream ID and passphrase | H.264 + 48 kHz AAC in MPEG-TS; caller mode |
+| RTMP / RTMPS | Server URL and optional stream key, or a complete publishing URL | H.264 + 48 kHz AAC in FLV |
+
+External outputs require a receiving server. They use H.264 without an alpha track; returning to VDO.Ninja restores your existing codec selections. Expand **Audio encoding** for Opus bitrate or AAC bitrate (32–320 kbps, default 192), and mono/stereo. AAC bitrate is displayed as a target. SRT latency defaults to 200 ms and can be adjusted from 20–8,000 ms. Higher latency gives SRT more time to recover lost packets. An optional SRT encryption passphrase needs 10–79 bytes.
+
+RTMP/SRT use the bundled FFmpeg for audio encoding and output. Audio and video keep their capture timestamps through the output path. A lost connection retries automatically with fresh media and a keyframe; changing the encoded dimensions restarts an RTMP/SRT session. WHIP supports endpoint-provided ICE servers, bearer authentication, HTTP 307/308 redirects, complete ICE offers and session deletion on stop. Credentials are withheld from redirects to a different origin, and HTTPS cannot redirect to HTTP. HTTPS/RTMPS certificate validation remains enabled. Room controls and VDO.Ninja viewer links apply to VDO.Ninja output.
+
+Headless examples (add your normal source, resolution and audio-source arguments):
+
+```powershell
+game-capture.exe --headless --output=whip --output-url=https://server.example/live/whip --output-token=TOKEN
+game-capture.exe --headless --output=srt --output-url=srt://server.example:8890 --srt-stream-id=publish:my-stream --srt-latency-ms=200 --aac-bitrate-kbps=192
+game-capture.exe --headless --output=rtmp --output-url=rtmps://server.example/live --output-key=STREAM_KEY --audio-channels=stereo
+```
+
+Use `--srt-passphrase=...` when the SRT receiver requires encryption. Command-line credentials can be visible in the local process command line; the GUI stores credentials in encrypted profiles. External outputs reject PCM, RED and non-H.264 CLI selections. Authentication or negotiation errors from WHIP stop headless publishing with exit code 3; transient network failures retry until stopped.
+
+Playback delay and synchronization also depend on the receiving server and player. WHIP recovery waits for ICE failure detection and can take tens of seconds after abrupt connection loss. See the [packaged output validation report](docs/external-output-validation-2026-10-10.md) for measured behavior and coverage limits.
+
 ## Spout2 / VTuber Sources
 
 Game Capture can publish a local Spout2 sender from VTube Studio, Warudo, VSeeFace, VNyan, and other Windows avatar or graphics apps. This avoids capturing the app's controls and preserves transparent pixels for the alpha or chroma workflow.
@@ -194,7 +221,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-fast-gate
 Release readiness:
 
 ```powershell
-$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.61-win64).Path
+$package = (Resolve-Path .\native-qt\dist\game-capture-0.2.62-win64).Path
 $publisher = Join-Path $package "game-capture.exe"
 $manifest = Join-Path $package "release-artifact-manifest.json"
 $manifestSha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
