@@ -28,6 +28,7 @@
 #include "versus/video/video_encoder.h"
 #include "versus/video/window_capture.h"
 #include "versus/audio/opus_encoder.h"
+#include "versus/audio/pcm_encoder.h"
 #include "versus/audio/window_audio_capture_core.h"
 #include "versus/audio/audio_format_converter.h"
 
@@ -181,6 +182,8 @@ class VersusApp {
     void setIncludeMicrophone(bool enabled);
     void setMicrophoneDeviceId(const std::string &deviceId);
     void setAudioMixConfig(float primaryGain, float additionalGain, bool limiterEnabled);
+    // Configure the next capture session. Remote overrides never replace this baseline.
+    bool setAudioEncodingConfig(int bitrateKbps, int channels, bool pcm = false, bool red = false);
     std::string getVideoEncoderName() const;
     std::string getRequestedVideoEncoderMode() const;
     std::string getVideoEncoderCategory() const;
@@ -534,6 +537,10 @@ class VersusApp {
     std::atomic<uint64_t> alphaSendFailures_{0};
     std::atomic<uint64_t> audioSendFailures_{0};
     std::atomic<int> audioEncoderBitrateKbps_{192};
+    std::atomic<int> configuredAudioBitrateKbps_{192};
+    std::atomic<int> audioOutputChannels_{2};
+    std::atomic<bool> pcmAudio_{false};
+    std::atomic<bool> audioRed_{false};
     std::atomic<int64_t> metricsStartMs_{0};
     std::atomic<int> lastSentWidth_{0};
     std::atomic<int> lastSentHeight_{0};
@@ -871,6 +878,7 @@ class VersusApp {
     versus::audio::AudioResamplerState additionalAudioResampler_;
     versus::audio::WindowAudioCaptureCore microphoneAudioCapture_;
     versus::audio::OpusEncoder opusEncoder_;
+    versus::audio::PcmEncoder pcmEncoder_;
     versus::signaling::VdoSignaling signaling_;
 };
 

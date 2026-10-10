@@ -24,6 +24,7 @@ struct EncodedAudioPacket {
     int64_t pts = 0;
     uint32_t sampleRate = 48000;
     uint16_t channels = 2;
+    bool pcm = false;
 };
 
 struct PeerConfig {
@@ -41,6 +42,9 @@ struct PeerConfig {
     bool enableDataChannel = true;
     bool initialVideo = false;
     bool initialAudio = false;
+    int audioChannels = 2;
+    bool pcmAudio = false;
+    bool audioRed = false;
     bool initialAlpha = false;
     // Keep an inactive alpha m-line before data until the receiver opts in.
     bool reserveAlphaTrack = false;
@@ -115,7 +119,7 @@ class WebRtcClient {
 
     bool sendVideo(const EncodedVideoPacket &packet);
     bool sendAlphaVideo(const EncodedVideoPacket &packet);
-    bool sendAudio(const EncodedAudioPacket &packet);
+    bool sendAudio(const EncodedAudioPacket &packet, size_t *payloadBytesSent = nullptr);
     bool sendDataMessage(const std::string &message);
     bool isDataChannelOpen() const;
     ConnectionState connectionState() const;
@@ -129,6 +133,7 @@ class WebRtcClient {
 
   private:
     friend class WebRtcClientTestAccess;
+    void configureAudioFromDescription(const std::string &sdp);
 
     void setConcurrencyTestHooks(std::function<void(uint64_t)> beforeVideoSend,
                                  std::function<void(uint64_t)> beforeCallbackAdmission,

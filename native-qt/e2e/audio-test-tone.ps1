@@ -2,6 +2,7 @@
 param(
     [int]$DurationMs = 180000,
     [int]$FrequencyHz = 440,
+    [int]$RightFrequencyHz = 0,
     [int]$SampleRate = 48000,
     [double]$Amplitude = 0.2
 )
@@ -10,6 +11,7 @@ $ErrorActionPreference = "Stop"
 
 $DurationMs = [Math]::Max(1000, $DurationMs)
 $FrequencyHz = [Math]::Max(20, [Math]::Min(20000, $FrequencyHz))
+$RightFrequencyHz = if ($RightFrequencyHz -eq 0) { $FrequencyHz } else { [Math]::Max(20, [Math]::Min(20000, $RightFrequencyHz)) }
 $SampleRate = [Math]::Max(8000, [Math]::Min(192000, $SampleRate))
 $Amplitude = [Math]::Max(0.01, [Math]::Min(0.8, $Amplitude))
 
@@ -43,7 +45,8 @@ try {
         $angle = 2.0 * [Math]::PI * $FrequencyHz * $sample / $SampleRate
         $value = [int16]([Math]::Round([Math]::Sin($angle) * $peak))
         $writer.Write($value)
-        $writer.Write($value)
+        $rightAngle = 2.0 * [Math]::PI * $RightFrequencyHz * $sample / $SampleRate
+        $writer.Write([int16]([Math]::Round([Math]::Sin($rightAngle) * $peak)))
     }
     $writer.Flush()
     $stream.Position = 0
@@ -51,7 +54,7 @@ try {
     $player = [System.Media.SoundPlayer]::new($stream)
     $player.Load()
     $player.PlayLooping()
-    Write-Output "AUDIO_TEST_TONE_READY frequencyHz=$FrequencyHz sampleRate=$SampleRate channels=$channels"
+    Write-Output "AUDIO_TEST_TONE_READY frequencyHz=$FrequencyHz rightFrequencyHz=$RightFrequencyHz sampleRate=$SampleRate channels=$channels"
     Start-Sleep -Milliseconds $DurationMs
     $player.Stop()
 } finally {

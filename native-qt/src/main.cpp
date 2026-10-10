@@ -206,6 +206,10 @@ int main(int argc, char *argv[]) {
     int height = 0;
     int fps = 0;
     int bitrateKbps = 0;
+    int audioBitrateKbps = 192;
+    int audioChannels = 2;
+    bool pcmAudio = false;
+    bool audioRed = false;
     int durationMs = 120000;
     int maxViewers = 10;
     bool remoteControlEnabled = false;
@@ -288,6 +292,32 @@ int main(int argc, char *argv[]) {
             spoutSenderArg = arg.substr(15);
         } else if (arg.find("--camera=") == 0) {
             cameraFilterArg = arg.substr(9);
+        } else if (arg.find("--audio-codec=") == 0) {
+            const auto codec = arg.substr(14);
+            if (codec != "opus" && codec != "pcm") {
+                spdlog::error("--audio-codec must be opus|pcm");
+                return 2;
+            }
+            pcmAudio = codec == "pcm";
+        } else if (arg == "--audio-red") {
+            audioRed = true;
+        } else if (arg.find("--audio-bitrate-kbps=") == 0) {
+            const auto parsed = parsePositiveInteger(arg.substr(21));
+            if (!parsed || *parsed < 6 || *parsed > 510) {
+                spdlog::error("--audio-bitrate-kbps must be an integer from 6 to 510");
+                return 2;
+            }
+            audioBitrateKbps = *parsed;
+        } else if (arg.find("--audio-channels=") == 0) {
+            const std::string value = arg.substr(17);
+            if (value == "mono" || value == "1") {
+                audioChannels = 1;
+            } else if (value == "stereo" || value == "2") {
+                audioChannels = 2;
+            } else {
+                spdlog::error("--audio-channels must be mono|stereo|1|2");
+                return 2;
+            }
         } else if (arg.find("--audio-source=") == 0) {
             audioSourceArg = arg.substr(15);
             std::string normalized = audioSourceArg;
@@ -723,6 +753,14 @@ int main(int argc, char *argv[]) {
         core.setVideoConfig(encoderOverride);
     }
     core.setAudioSourceMode(audioSourceMode);
+    if (pcmAudio && audioRed) {
+        spdlog::error("--audio-red currently supports Opus only; PCM RED is not negotiated by the viewer");
+        return 2;
+    }
+    if (!core.setAudioEncodingConfig(audioBitrateKbps, audioChannels, pcmAudio, audioRed)) {
+        spdlog::error("Failed to apply audio encoding settings");
+        return 2;
+    }
     core.setVideoSourceMode(videoSourceMode);
     core.setIncludeMicrophone(includeMicrophone);
     core.setMicrophoneDeviceId(microphoneDeviceId);

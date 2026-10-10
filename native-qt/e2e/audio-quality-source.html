@@ -1,0 +1,52 @@
+<!doctype html><meta charset="utf-8"><title>Game Capture Quality Fixture</title>
+<style>html,body{margin:0;background:#000;overflow:hidden}canvas{width:100vw;height:100vh;object-fit:contain}</style>
+<canvas width="1280" height="720"></canvas>
+<script>
+(async()=>{
+const canvas=document.querySelector('canvas'),g=canvas.getContext('2d');
+const audio=new AudioContext({sampleRate:48000,latencyHint:'interactive'});
+await audio.resume();
+const buffer=audio.createBuffer(2,96000,48000);
+for(let ch=0;ch<2;ch++){
+ const data=buffer.getChannelData(ch);
+ for(let i=0;i<data.length;i++){
+  const t=i/48000,p=t-.5;
+  const envelope=p>=0&&p<.08?Math.min(1,p/.005,(.08-p)/.005):0;
+  data[i]=.07*Math.sin(2*Math.PI*(ch?800:400)*t)+.16*envelope*Math.sin(2*Math.PI*2000*t);
+ }
+}
+const gain=audio.createGain();gain.connect(audio.destination);
+const source=audio.createBufferSource();source.buffer=buffer;source.loop=true;source.connect(gain);
+const start=audio.currentTime+.25;source.start(start);
+window.fixture={frames:0,flashEvents:[],clockSamples:[],audioStart:start};
+window.setFixtureSilence=value=>gain.gain.setTargetAtTime(value?0:1,audio.currentTime,.005);
+let lastFlash=false;
+const colors=['#b43c3c','#3cb43c','#3c3cb4','#b4b43c','#3cb4b4','#b43cb4','#808080','#f0f0f0'];
+function draw(now){
+ const output=audio.getOutputTimestamp();
+ const audioTime=output.contextTime+(now-output.performanceTime)/1000;
+ const phase=((audioTime-start)%2+2)%2;
+ const flash=audioTime>=start&&phase>=.5&&phase<.58;
+ const wall=performance.timeOrigin+now,stamp=Math.floor(wall)%16777216;
+ g.fillStyle='#18202c';g.fillRect(0,0,1280,720);
+ for(let i=0;i<8;i++){g.fillStyle=colors[i];g.fillRect(i*160,0,160,72);}
+ for(let y=90;y<580;y+=32)for(let x=0;x<1280;x+=32){g.fillStyle=((Math.floor((x+now/12)/32)+y/32)%2)<1?'#26334b':'#596d8b';g.fillRect(x,y,30,30);}
+ g.fillStyle='#20cfff';g.fillRect((now/6)%1100,200,120,200);
+ g.fillStyle='#fff';g.font='32px sans-serif';g.fillText('400 Hz LEFT | 800 Hz RIGHT | 2 kHz sync marker',32,125);
+ g.fillText('Source frame '+window.fixture.frames+' / '+Math.floor(wall)+' ms',32,555);
+ g.fillStyle=flash?'#fff':'#000';g.fillRect(16,634,1248,20);
+ for(let cell=0;cell<52;cell++){
+  const bit=(stamp>>((cell-2+24)%24))&1;
+  g.fillStyle=cell===0||cell===51?'#ff00ff':cell===1||cell===50?'#00ffff':(bit^(cell>=26?1:0))?'#ebebeb':'#141414';
+  g.fillRect(16+cell*24,670,24,24);
+ }
+ if(flash&&!lastFlash)window.fixture.flashEvents.push({wall,sourceAudioOnsetWall:performance.timeOrigin+output.performanceTime+(start+Math.floor((audioTime-start)/2)*2+.5-output.contextTime)*1000});
+ lastFlash=flash;window.fixture.frames++;
+ if(window.fixture.frames%60===0)window.fixture.clockSamples.push({wall,contextTime:output.contextTime,performanceTime:output.performanceTime});
+ if(window.fixture.flashEvents.length>1000)window.fixture.flashEvents.shift();
+ if(window.fixture.clockSamples.length>1000)window.fixture.clockSamples.shift();
+ requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+})();
+</script>

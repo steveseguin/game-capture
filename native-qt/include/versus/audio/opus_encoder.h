@@ -11,6 +11,9 @@ struct AudioEncoderConfig {
     int sampleRate = 48000;
     int channels = 2;
     int bitrate = 192;
+    // 0 keeps Opus automatic channel selection; input/mixer channels are unchanged.
+    int outputChannels = 0;
+    int packetDurationMs = 10;
 };
 
 struct EncodedAudioPacket {

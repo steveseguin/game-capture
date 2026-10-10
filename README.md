@@ -39,7 +39,18 @@ Updates are never downloaded or installed automatically.
 2. Choose the camera, resolution, frame rate, and `Microphone / Input` device.
 3. Paste a Stream ID or VDO.Ninja URL, then go live.
 
-Camera mode selects the chosen microphone/input as the primary audio source by default. Once live, `Selected Source Preview` shows the local camera feed seen by the publisher. Microphone inputs from 8–384 kHz, mono through multichannel, and 16/24/32-bit PCM or 32-bit float are converted to the 48 kHz stereo format used for WebRTC. Advanced settings can switch to system output, disable audio, or mix the microphone with another audio source. Windows can list installed virtual cameras even when their sender is inactive; Game Capture waits for a real first frame and stops startup with an actionable error instead of publishing a blank source. The same bounded error path handles disconnected cameras and cameras already owned by another app. If a device is missing, enable desktop camera or microphone access in Windows Privacy & security settings and click Refresh.
+Camera mode selects the chosen microphone/input as the primary audio source by default. Once live, `Selected Source Preview` shows the local camera feed seen by the publisher. Microphone inputs from 8–384 kHz, mono through multichannel, and 16/24/32-bit PCM or 32-bit float are converted to 48 kHz for mixing and Opus encoding. Advanced settings can switch to system output, disable audio, or mix the microphone with another audio source. Windows can list installed virtual cameras even when their sender is inactive; Game Capture waits for a real first frame and stops startup with an actionable error instead of publishing a blank source. The same bounded error path handles disconnected cameras and cameras already owned by another app. If a device is missing, enable desktop camera or microphone access in Windows Privacy & security settings and click Refresh.
+
+**Show advanced settings → Audio encoding** expands the optional audio controls. Audio encoding starts collapsed each time the app opens; the default remains **Opus, 48 kHz, stereo, 192 kbps**, with RED off. Saved encoding changes apply on the next stream, and the controls lock while live.
+
+- **Opus bitrate:** 6–510 kbps across both channels, excluding network overhead. Very low bitrates severely reduce fidelity and stereo separation. An authorized director can temporarily override the bitrate; releasing that override restores your selection.
+- **PCM (experimental):** uncompressed signed 16-bit audio, 48 kHz mono (768 kbps) or 32 kHz stereo (1,024 kbps), excluding overhead. Stereo is filtered and resampled from the 48 kHz mix to match VDO.Ninja's PCM viewer negotiation. Bitrate is fixed by the format. Use the generated viewer link in Chrome; receivers that select Opus receive an Opus fallback. Select Opus for Firefox: the PCM viewer link is not supported there. A remote bitrate override affects that fallback only.
+- **RED (experimental, Opus only):** sends the preceding audio packet alongside the current packet when the receiver selects RED. This roughly doubles audio bandwidth and can recover isolated packet loss. It does not repair clipping, capture glitches, or long outages. Receivers that decline RED get plain Opus. PCM+RED is not enabled because the current VDO.Ninja PCM viewer path does not negotiate it.
+- **Channels:** mono or stereo. Multichannel inputs still mix down; surround output is not currently offered.
+
+For headless publishing, use `--audio-bitrate-kbps=128 --audio-channels=mono` (or `stereo`), `--audio-codec=pcm`, or `--audio-codec=opus --audio-red`. Combining PCM with `--audio-red` is rejected. GUI publishing uses saved settings.
+
+Use the app's generated share link to preserve the selected channel mode in browser playback. Its `stereo` parameter configures the receiver; `ab=510` allows the receiver to accept the supported bitrate range, while the publisher sends at your selected bitrate. Older links may play stereo streams as mono.
 
 ## Spout2 / VTuber Sources
 
@@ -124,10 +135,33 @@ Primary QA plans and gates live in `native-qt/qa/`.
 Release readiness also runs the packaged Windows desktop workflow, checking
 unwanted sound requests, source selection/removal, FFmpeg failure responsiveness,
 local diagnostics, H.264/VP9 GUI streaming with browser playback, and tray reminders.
-It requires Node.js/Playwright (including Chromium), an interactive Windows desktop,
+It requires Node.js/Playwright and installed Google Chrome, an interactive Windows desktop,
 and 64-bit Python 3 with Tk support. Its runner installs pinned observer dependencies
 into `native-qt/.cache/desktop-ui-python` on first use. Close existing Game Capture
 sessions before running it; the workflow restores application preferences afterward.
+
+Audio encoding playback can be checked with `native-qt/e2e/audio-settings-packaged-e2e.js`
+against a complete package and `spout_test_sender.exe`; `--only=boundaries` exercises
+the bitrate limits. `audio-settings-desktop-e2e.py` covers saved preferences, collapsed
+controls, restart, and actual Chrome playback, with `--codec=pcm` or `--red`.
+For decoded audio, delay, frame counters, reconnects, and sustained resource measurements:
+
+```powershell
+node native-qt/e2e/audio-quality-packaged-e2e.js --publisher=C:\path\to\packaged\game-capture.exe --output=native-qt/qa/reports/audio-quality --cases=opus,pcm,red --soak-seconds=600 --cycles=10 --gpu=true --reconnect=true
+python native-qt/e2e/audio-quality-analyze.py native-qt/qa/reports/audio-quality
+```
+
+Run capture workflows sequentially: competing fixtures can contaminate audio and
+performance measurements. The analyzer requires NumPy/SciPy and writes decoded WAV
+files plus waveform and memory measurements. Its independent Web Audio track timing
+does not establish HTML video lip sync or physical speaker/display latency.
+Use `--record=true` for a separate recorded-frame identity check; recording adds load
+and should be kept separate from performance comparisons.
+The desktop workflow's optional `--record-system-audio` records Windows output
+during UI actions and requires SoundCard and NumPy in its Python environment.
+
+See the [packaged audio/video quality report](docs/audio-quality-validation-2026-10-10.md)
+for measured results, screenshots, and remaining compatibility and performance limits.
 
 The desktop workflow can also exercise Windows 10's missing optional borderless
 capture interface in the real app. Frame capture, H.264/VP9 encoding, and browser

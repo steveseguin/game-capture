@@ -1119,13 +1119,21 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         }
     }
 
-    audio::AudioEncoderConfig audioConfig;
-    audioConfig.sampleRate = 48000;
-    audioConfig.channels = 2;
-    audioConfig.bitrate = audioEncoderBitrateKbps_.load(std::memory_order_relaxed);
-    opusEncoder_.initialize(audioConfig);
-
-    capturing_ = true;
+    {
+        std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
+        audio::AudioEncoderConfig audioConfig;
+        audioConfig.bitrate = configuredAudioBitrateKbps_.load(std::memory_order_relaxed);
+        audioConfig.outputChannels = audioOutputChannels_.load(std::memory_order_relaxed);
+        // Keep both RED copies below the MTU even at the highest Opus bitrate.
+        audioConfig.packetDurationMs = audioRed_.load(std::memory_order_relaxed) ? 5 : 10;
+        pcmEncoder_.reset(audioConfig.outputChannels);
+        if (!opusEncoder_.initialize(audioConfig)) {
+            spdlog::error("[App] Failed to initialize audio encoder");
+            return false;
+        }
+        audioEncoderBitrateKbps_.store(audioConfig.bitrate, std::memory_order_relaxed);
+        capturing_ = true;
+    }
     startEncodeThread();
     startVideoMaintenanceThread();
     startupRollback.armed = false;
@@ -1173,7 +1181,13 @@ void VersusApp::stopCapture() {
         additionalAudioSampleRate_ = 0;
         additionalAudioChannels_ = 0;
     }
-    opusEncoder_.shutdown();
+    {
+        std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
+        opusEncoder_.shutdown();
+        capturing_ = false;
+        audioEncoderBitrateKbps_.store(
+            configuredAudioBitrateKbps_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
     audioLevelRms_.store(0.0f, std::memory_order_relaxed);
     audioPeak_.store(0.0f, std::memory_order_relaxed);
     primaryAudioLevelRms_.store(0.0f, std::memory_order_relaxed);
@@ -1250,6 +1264,19 @@ void VersusApp::setAudioMixConfig(float primaryGain, float additionalGain, bool 
     primaryAudioGain_.store(std::clamp(primaryGain, 0.0f, 2.0f), std::memory_order_relaxed);
     additionalAudioGain_.store(std::clamp(additionalGain, 0.0f, 2.0f), std::memory_order_relaxed);
     audioLimiterEnabled_.store(limiterEnabled, std::memory_order_relaxed);
+}
+
+bool VersusApp::setAudioEncodingConfig(int bitrateKbps, int channels, bool pcm, bool red) {
+    std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
+    if (capturing_ || bitrateKbps < 6 || bitrateKbps > 510 || (channels != 1 && channels != 2)) {
+        return false;
+    }
+    configuredAudioBitrateKbps_.store(bitrateKbps, std::memory_order_relaxed);
+    audioEncoderBitrateKbps_.store(bitrateKbps, std::memory_order_relaxed);
+    audioOutputChannels_.store(channels, std::memory_order_relaxed);
+    pcmAudio_.store(pcm, std::memory_order_relaxed);
+    audioRed_.store(red && !pcm, std::memory_order_relaxed);
+    return true;
 }
 
 bool VersusApp::goLive(const StartOptions &options) {
@@ -1437,11 +1464,7 @@ bool VersusApp::goLive(const StartOptions &options) {
         return false;
     }
 
-    std::string viewUrl;
-    {
-        std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        viewUrl = signaling_.getViewUrl();
-    }
+    const std::string viewUrl = getShareLink();
     spdlog::info("[App] ========================================");
     spdlog::info("[App] VIEW URL: {}", redactPasswordQueryValue(viewUrl));
     spdlog::info("[App] ========================================");
@@ -1472,7 +1495,18 @@ void VersusApp::stopLive() {
 
 std::string VersusApp::getShareLink() const {
     std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-    return signaling_.getViewUrl();
+    std::string url = signaling_.getViewUrl();
+    if (!url.empty()) {
+        // Browser viewers otherwise default to mono. ab is the receiver's
+        // bitrate ceiling, allowing the full encoder range and live overrides;
+        // the publisher remains responsible for the actual selected bitrate.
+        url += audioOutputChannels_.load(std::memory_order_relaxed) == 1
+            ? "&stereo=0&ab=510"
+            : "&stereo=1&ab=510";
+        if (pcmAudio_.load(std::memory_order_relaxed)) url += "&audiocodec=pcm";
+        else if (audioRed_.load(std::memory_order_relaxed)) url += "&audiocodec=red";
+    }
+    return url;
 }
 
 void VersusApp::onRuntimeEvent(RuntimeEventCallback cb) {
@@ -2133,6 +2167,11 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"include_microphone", diagnosticsIncludeMicrophone},
         {"active_microphone_source", diagnosticsMicrophoneSource},
         {"configured_opus_bitrate_kbps", audioEncoderBitrateKbps_.load(std::memory_order_relaxed)},
+        {"preferred_opus_bitrate_kbps", configuredAudioBitrateKbps_.load(std::memory_order_relaxed)},
+        {"codec", pcmAudio_.load() ? "pcm" : "opus"},
+        {"sample_rate", pcmAudio_.load() && audioOutputChannels_.load() == 2 ? 32000 : 48000},
+        {"red_requested", audioRed_.load()},
+        {"output_channels", audioOutputChannels_.load(std::memory_order_relaxed)},
         {"primary_gain", primaryAudioGain_.load(std::memory_order_relaxed)},
         {"additional_gain", additionalAudioGain_.load(std::memory_order_relaxed)},
         {"limiter_enabled", audioLimiterEnabled_.load(std::memory_order_relaxed)},
@@ -2505,7 +2544,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         if (capture.sampleRate != 48000 || capture.channels != 2) {
             const std::string message =
                 "Audio source " + source + " is " + std::to_string(capture.sampleRate) + " Hz/" +
-                std::to_string(capture.channels) + " channel(s); converting to 48 kHz stereo for WebRTC.";
+                std::to_string(capture.channels) + " channel(s); converting to 48 kHz for mixing and Opus encoding.";
             spdlog::warn("[Audio] {}", message);
             if (capture.sampleRate > 96000 || capture.channels > 2) {
                 emitRuntimeEvent(message, false);
@@ -2801,6 +2840,17 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples) {
                         static_cast<int>(kOpusSampleRate),
                         static_cast<int>(kOpusChannels),
                         pts);
+    if (pcmAudio_.load(std::memory_order_relaxed)) {
+        pcmEncoder_.encode(normalizedSamples, pts, [this](const audio::EncodedAudioPacket &packet) {
+            webrtc::EncodedAudioPacket out;
+            out.data = packet.data;
+            out.pts = packet.pts;
+            out.sampleRate = packet.sampleRate;
+            out.channels = static_cast<uint16_t>(packet.channels);
+            out.pcm = true;
+            sendAudioPacketToPeers(out);
+        });
+    }
 }
 
 void VersusApp::setupCallbacks() {
@@ -3382,6 +3432,9 @@ void VersusApp::setupSignalingCallbacks() {
         // does not need a second negotiation before it can attach the stream.
         peerConfig.initialVideo = true;
         peerConfig.initialAudio = true;
+        peerConfig.audioChannels = audioOutputChannels_.load(std::memory_order_relaxed);
+        peerConfig.pcmAudio = pcmAudio_.load(std::memory_order_relaxed);
+        peerConfig.audioRed = audioRed_.load(std::memory_order_relaxed);
         // Reserve the optional alpha transceiver in the first offer. Adding it
         // behind an already-negotiated data m-line and then rebuilding a fresh
         // libdatachannel transport would reorder the m-lines on ICE recovery.
@@ -3913,14 +3966,16 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
 }
 
 bool VersusApp::applyRuntimeAudioControl(int bitrateKbps) {
-    const int targetKbps = bitrateKbps <= 0 ? 192 : std::clamp(bitrateKbps, 6, 510);
+    std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
+    const int targetKbps = bitrateKbps <= 0
+        ? configuredAudioBitrateKbps_.load(std::memory_order_relaxed)
+        : std::clamp(bitrateKbps, 6, 510);
 
     if (!capturing_) {
         audioEncoderBitrateKbps_.store(targetKbps, std::memory_order_relaxed);
         return true;
     }
 
-    std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
     if (!opusEncoder_.setBitrate(targetKbps)) {
         return false;
     }
@@ -4644,7 +4699,7 @@ void VersusApp::sendPeerAudioOptions(const std::shared_ptr<PeerSession> &peer) {
         track["audioConstraints"] = nlohmann::json::object();
         track["currentAudioConstraints"] = {
             {"sampleRate", 48000},
-            {"channelCount", 2}
+            {"channelCount", audioOutputChannels_.load(std::memory_order_relaxed)}
         };
         track["equalizer"] = false;
         track["lowcut"] = false;
@@ -7922,10 +7977,12 @@ void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket 
         if (!peer->client) {
             continue;
         }
-        if (peer->client->sendAudio(packet)) {
-            bytesSent += packet.data.size();
+        size_t payloadBytes = 0;
+        if (peer->client->sendAudio(packet, &payloadBytes)) {
+            if (!payloadBytes) continue; // Other codec selected by this viewer.
+            bytesSent += payloadBytes;
             packetsSent++;
-            peer->audioBytesSent.fetch_add(packet.data.size(), std::memory_order_relaxed);
+            peer->audioBytesSent.fetch_add(payloadBytes, std::memory_order_relaxed);
             peer->audioPacketsSent.fetch_add(1, std::memory_order_relaxed);
         } else {
             audioSendFailures_.fetch_add(1, std::memory_order_relaxed);

@@ -168,6 +168,8 @@ def main():
     parser.add_argument("--deny-borderless-interface", action="store_true",
                         help="Return Windows 10's E_NOINTERFACE for the real capture session's optional border API")
     parser.add_argument("--observe-capture-compatibility", action="store_true")
+    parser.add_argument("--record-system-audio", action="store_true",
+                        help="Save actual Windows loopback during quiet UI workflows (requires soundcard/NumPy)")
     args = parser.parse_args()
     exe = Path(args.publisher).resolve(strict=True)
     helper = Path(args.probe_helper).resolve(strict=True)
@@ -192,8 +194,32 @@ def main():
     user32.PostMessageW.argtypes = [wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM]
     user32.IsWindowVisible.argtypes = [wintypes.HWND]
     stop_monitor = threading.Event()
+    stop_audio = threading.Event()
     monitor_thread = None
     samples = []
+    system_audio = {"blocks": []}
+    audio_thread = None
+
+    def record_system_audio():
+        try:
+            import numpy as np
+            import soundcard as sc
+            import wave
+            speaker = sc.default_speaker()
+            device = sc.get_microphone(id=speaker.id, include_loopback=True)
+            with wave.open(str(run_dir / "system-output.wav"), "wb") as wav:
+                wav.setnchannels(2)
+                wav.setsampwidth(2)
+                wav.setframerate(48000)
+                with device.recorder(samplerate=48000, channels=[0, 1]) as recorder:
+                    system_audio["device"] = speaker.name
+                    while not stop_audio.is_set():
+                        block = recorder.record(numframes=4800)
+                        system_audio["blocks"].append({"wall": time.time(), "phase": phase,
+                            "peak": float(np.max(np.abs(block)))})
+                        wav.writeframes(np.clip(block * 32767, -32768, 32767).astype('<i2').tobytes())
+        except BaseException as error:
+            system_audio["error"] = str(error)
 
     def check(name, passed, detail=None):
         checks.append({"name": name, "passed": bool(passed), "detail": detail})
@@ -202,6 +228,11 @@ def main():
             raise AssertionError(name + (": " + str(detail) if detail else ""))
 
     try:
+        if args.record_system_audio:
+            audio_thread = threading.Thread(target=record_system_audio, daemon=True)
+            audio_thread.start()
+            wait_for(lambda: "device" in system_audio or "error" in system_audio, "system audio observer")
+            check("system-audio-observer-started", "error" not in system_audio, system_audio.get("error"))
         for group, name, value in [("video", "sourceMode", "window"), ("video", "codec", "h264"),
                                    ("video", "encoderMode", "auto"), ("video", "alphaWorkflow", "false"),
                                    ("video", "resolution", "960x540"), ("video", "fps", "30"),
@@ -248,6 +279,12 @@ def main():
             return named("ffmpegStatusLabel").window_text()
 
         def choose_combo(combo, text):
+            # Changing source mode can move controls. Re-resolve UIA geometry
+            # after the layout settles before issuing another click.
+            automation_id = combo.element_info.automation_id
+            time.sleep(.4)
+            combo = next(c for c in window.descendants()
+                         if c.element_info.automation_id == automation_id)
             combo.click_input()
             # Qt's popup is a separate window. Wait for its actual option and
             # click it instead of sending navigation keys before it has focus.
@@ -259,6 +296,7 @@ def main():
 
         check("sound-observers-attached", {"PlaySoundW", "MessageBeep", "Beep", "QAccessible::updateAccessibility"}
               <= {e.get("api") for e in events if e.get("kind") == "hook"})
+        window.capture_as_image().save(run_dir / "startup.png")
         phase = "source-selection"
         combo = named("sourceModeSelect")
         choose_combo(combo, "Spout2 (avatar apps)")
@@ -337,6 +375,7 @@ def main():
         wait_for(lambda: "timed out" in status(), "startup failure status")
         wait_for(lambda: named("goLiveButton").is_enabled(), "start controls restored")
         check("failed-start-restores-editing", named("ffmpegPathInput").is_enabled())
+        window.capture_as_image().save(run_dir / "failed-start.png")
 
         phase = "ffmpeg-stale-result"
         field.set_edit_text("")
@@ -390,6 +429,7 @@ def main():
                                     creationflags=subprocess.CREATE_NO_WINDOW)
             print(viewer.stdout, flush=True)
             check(selected_codec + "-gui-start-decodes-in-browser", viewer.returncode == 0, viewer.stderr)
+            window.capture_as_image().save(run_dir / (selected_codec + "-live.png"))
             if args.deny_borderless_interface or args.observe_capture_compatibility:
                 capture_events = events[capture_event_start:]
                 sessions = [e for e in capture_events if e.get("kind") == "capture_session_created"]
@@ -420,6 +460,7 @@ def main():
         check("source-removal-disables-start", not named("goLiveButton").is_enabled())
         time.sleep(4)
         check("ordinary-workflows-request-no-sounds", not any(e.get("kind") == "sound" for e in events))
+        window.capture_as_image().save(run_dir / "stopped.png")
         check("ordinary-workflows-request-no-system-alerts", not any(e.get("event") == 2 for e in events))
         check("status-accessibility-announcements-preserved", any(e.get("event") == 0x80d0 for e in events))
 
@@ -462,8 +503,19 @@ def main():
         raise
     finally:
         stop_monitor.set()
+        stop_audio.set()
         if monitor_thread:
             monitor_thread.join(timeout=2)
+        if audio_thread:
+            audio_thread.join(timeout=3)
+            required_phases = {"startup", "ffmpeg-failed-start", "gui-streaming",
+                               "background-source-disappears", "close-to-tray", "quit-during-probe"}
+            observed_phases = {block["phase"] for block in system_audio["blocks"]}
+            system_audio["missingPhases"] = sorted(required_phases - observed_phases)
+            system_audio["complete"] = (not system_audio["missingPhases"] and
+                                        not audio_thread.is_alive() and "error" not in system_audio)
+            if not system_audio["complete"]:
+                failure = failure or "System audio observation was incomplete"
         if pid:
             try:
                 device.kill(pid)
@@ -476,11 +528,14 @@ def main():
         restored = snapshot(SETTINGS_KEY) == saved
         report = {"ok": failure is None and restored, "error": failure, "publisher": str(exe),
                   "sha256": hashlib.sha256(exe.read_bytes()).hexdigest(), "settingsRestored": restored,
-                  "checks": checks, "events": events, "responsiveness": samples}
+                  "checks": checks, "events": events, "responsiveness": samples,
+                  "systemAudio": system_audio if args.record_system_audio else None}
         (run_dir / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
         print("Desktop workflow report: " + str(run_dir / "results.json"), flush=True)
         if not restored:
             raise RuntimeError("Settings were not restored")
+        if args.record_system_audio and not system_audio.get("complete"):
+            raise RuntimeError("System audio observation was incomplete")
 
 
 if __name__ == "__main__":

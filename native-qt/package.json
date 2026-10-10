@@ -1,5 +1,7 @@
 {
   "scripts": {
+    "e2e:audio-settings": "node e2e/audio-settings-packaged-e2e.js",
+    "e2e:audio-quality": "node e2e/audio-quality-packaged-e2e.js",
     "e2e:stream": "node e2e/stream-e2e.js",
     "e2e:stream:test-stream": "node e2e/stream-e2e.js --publisher=test-stream",
     "e2e:collision": "node e2e/collision-e2e.js",

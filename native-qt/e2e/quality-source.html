@@ -1,0 +1,51 @@
+<!doctype html><meta charset="utf-8"><title>Game Capture Quality Source</title>
+<style>html,body{margin:0;background:#111;overflow:hidden}canvas{width:100vw;height:100vh}button{position:absolute;top:45%;left:40%;font:24px sans-serif}</style>
+<canvas width="1920" height="1080"></canvas><button>Start quality fixture</button>
+<script>
+const canvas=document.querySelector('canvas'), g=canvas.getContext('2d');
+window.quality={ready:false, frames:0, calibrations:[]};
+document.querySelector('button').onclick=async function(){
+  await document.documentElement.requestFullscreen(); this.remove();
+  const ctx=new AudioContext({sampleRate:48000}); await ctx.resume();
+  const buffer=ctx.createBuffer(2,48000*60,48000);
+  for(let ch=0;ch<2;ch++){
+    const data=buffer.getChannelData(ch);
+    for(let i=0;i<data.length;i++){
+      const t=i/48000, phase=t%2;
+      const pulse=phase<.1 ? Math.min(1,phase/.005,(.1-phase)/.005)*.12*Math.sin(2*Math.PI*1000*t):0;
+      // A deliberate five-second silent interval exercises transitions and DTX.
+      const gain=t<45?Math.min(1,(45-t)/.01):t<50?0:Math.min(1,(t-50)/.01);
+      data[i]=gain*(.04*Math.sin(2*Math.PI*(ch?880:440)*t)+pulse);
+    }
+  }
+  const source=ctx.createBufferSource();source.buffer=buffer;source.loop=true;source.connect(ctx.destination);
+  const start=ctx.currentTime+.3; source.start(start);
+  window.quality.context=ctx;window.quality.start=start;
+  const draw=()=>{
+    window.quality.frames++;
+    const stamp=ctx.getOutputTimestamp();
+    const audible=stamp.contextTime+(performance.now()-stamp.performanceTime)/1000-start;
+    const elapsed=Math.max(0,Math.floor(audible*1000));
+    window.quality.epoch=performance.timeOrigin+stamp.performanceTime+(start-stamp.contextTime)*1000;
+    g.fillStyle='#183042';g.fillRect(0,0,1920,1080);
+    const colors=['#fff','#ff0','#0ff','#0f0','#f0f','#f00','#00f','#111'];
+    colors.forEach((c,i)=>{g.fillStyle=c;g.fillRect(i*240,600,240,200)});
+    // Frame timestamp: 32 binary cells, plus two fixed calibration sentinels.
+    for(let i=0;i<32;i++){
+      g.fillStyle=((elapsed>>>i)&1)?'#fff':'#000';g.fillRect((i+4)*48,108,48,108);
+    }
+    g.fillStyle='#00ffff';g.fillRect(48,108,96,108);
+    g.fillStyle='#ff00ff';g.fillRect(1776,108,96,108);
+    const pulse=audible>=0 && audible%2<.1 && !(audible%60>=45&&audible%60<50);
+    g.fillStyle=pulse?'#fff':'#000';g.fillRect(192,300,1536,200);
+    g.fillStyle='#fff';g.font='48px sans-serif';g.fillText('Game Capture quality fixture',100,80);
+    g.fillText('Source audio time: '+(elapsed/1000).toFixed(3)+' s',100,570);
+    for(let x=0;x<1920;x+=24){g.fillStyle=(x/24)%2?'#fff':'#000';g.fillRect((x+elapsed*.2)%1920,840,12,130);}
+    g.fillStyle='#fff';g.fillText('L: 440 Hz / R: 880 Hz / sync: 1 kHz',100,1040);
+    window.quality.ready=audible>0;
+    requestAnimationFrame(draw);
+  }; draw();
+  setInterval(()=>{window.quality.calibrations.push({wall:Date.now(),frames:window.quality.frames,epoch:window.quality.epoch,
+    outputLatency:ctx.outputLatency,baseLatency:ctx.baseLatency});},1000);
+};
+</script>

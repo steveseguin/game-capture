@@ -942,6 +942,16 @@ void MainWindow::loadPersistedSettings() {
     if (audioLimiterCheck_) {
         audioLimiterCheck_->setChecked(settings.value("audio/limiterEnabled", true).toBool());
     }
+    if (audioBitrateSpin_) {
+        bool valid = false;
+        const int bitrate = settings.value("audio/bitrateKbps", 192).toInt(&valid);
+        audioBitrateSpin_->setValue(valid && bitrate >= 6 && bitrate <= 510 ? bitrate : 192);
+    }
+    restoreComboByData(audioChannelsSelect_, settings.value("audio/channels", 2));
+    restoreComboByData(audioCodecSelect_, settings.value("audio/codec", "opus"));
+    if (audioRedCheck_) audioRedCheck_->setChecked(settings.value("audio/red", false).toBool());
+    if (audioEncodingToggle_) audioEncodingToggle_->setChecked(false);
+    updateAudioEncodingControls();
 
     restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
@@ -1048,6 +1058,10 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("audio/primaryGainPercent", primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100);
     settings.setValue("audio/microphoneGainPercent", microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100);
     settings.setValue("audio/limiterEnabled", audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true);
+    settings.setValue("audio/bitrateKbps", audioBitrateSpin_ ? audioBitrateSpin_->value() : 192);
+    settings.setValue("audio/channels", audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2);
+    settings.setValue("audio/codec", audioCodecSelect_ ? audioCodecSelect_->currentData().toString() : "opus");
+    settings.setValue("audio/red", audioRedCheck_ && audioRedCheck_->isChecked());
     settings.setValue("control/enabled", remoteControlCheck_ ? remoteControlCheck_->isChecked() : false);
     settings.setValue("control/token", remoteControlTokenInput_ ? remoteControlTokenInput_->text().trimmed() : QString());
     settings.sync();
@@ -1195,6 +1209,14 @@ void MainWindow::connectPersistedSettingSignals() {
     if (audioLimiterCheck_) {
         connect(audioLimiterCheck_, &QCheckBox::toggled, this, saveNow);
     }
+    if (audioBitrateSpin_) {
+        connect(audioBitrateSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
+    }
+    if (audioChannelsSelect_) {
+        connect(audioChannelsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
+    connect(audioCodecSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    connect(audioRedCheck_, &QCheckBox::toggled, this, saveNow);
     if (remoteControlCheck_) {
         connect(remoteControlCheck_, &QCheckBox::toggled, this, saveNow);
     }
@@ -1661,6 +1683,56 @@ void MainWindow::setupUI() {
     installComboWheelGuard(audioSourceSelect_);
     advancedForm->addRow("Audio Source", audioSourceSelect_);
 
+    audioEncodingToggle_ = new QCheckBox("Audio encoding", this);
+    audioEncodingToggle_->setObjectName("audioEncodingToggle");
+    audioEncodingToggle_->setToolTip("Expand optional codec, bitrate and channel settings.");
+    advancedForm->addRow(audioEncodingToggle_);
+    audioEncodingPanel_ = new QWidget(this);
+    audioEncodingPanel_->setObjectName("audioEncodingPanel");
+    auto *audioEncodingForm = new QFormLayout(audioEncodingPanel_);
+    audioEncodingForm->setContentsMargins(12, 0, 0, 0);
+    advancedForm->addRow(audioEncodingPanel_);
+    audioEncodingPanel_->hide();
+    connect(audioEncodingToggle_, &QCheckBox::toggled, audioEncodingPanel_, &QWidget::setVisible);
+    audioCodecSelect_ = new QComboBox(this);
+    audioCodecSelect_->setObjectName("audioCodecSelect");
+    audioCodecSelect_->addItem("Opus (48 kHz)", "opus");
+    audioCodecSelect_->addItem("PCM (experimental)", "pcm");
+    installComboWheelGuard(audioCodecSelect_);
+    audioEncodingForm->addRow("Codec", audioCodecSelect_);
+
+    audioBitrateSpin_ = new QSpinBox(this);
+    audioBitrateSpin_->setObjectName("audioBitrateSpin");
+    audioBitrateSpin_->setRange(6, 510);
+    audioBitrateSpin_->setValue(192);
+    audioBitrateSpin_->setSuffix(" kbps");
+    audioBitrateSpin_->setToolTip(
+        "Total audio bitrate for all channels, excluding network overhead. Lower values save bandwidth; "
+        "higher values preserve more detail. Applies to all viewers on the next stream.");
+    installSpinWheelGuard(audioBitrateSpin_);
+    audioEncodingForm->addRow("Bitrate", audioBitrateSpin_);
+
+    audioChannelsSelect_ = new QComboBox(this);
+    audioChannelsSelect_->setObjectName("audioChannelsSelect");
+    audioChannelsSelect_->addItem("Stereo (2 channels)", 2);
+    audioChannelsSelect_->addItem("Mono (1 channel)", 1);
+    audioChannelsSelect_->setToolTip(
+        "Stereo preserves left/right separation. Mono combines both channels. "
+        "Applies to the mixed audio sent to all viewers on the next stream.");
+    installComboWheelGuard(audioChannelsSelect_);
+    audioEncodingForm->addRow("Channels", audioChannelsSelect_);
+    audioRedCheck_ = new QCheckBox("Packet-loss protection (RED, experimental)", this);
+    audioRedCheck_->setObjectName("audioRedCheck");
+    audioRedCheck_->setToolTip("Repeats the previous Opus packet when it fits. Roughly doubles audio bandwidth. "
+        "Receivers that do not select RED use plain Opus. Does not protect against clipping or capture glitches.");
+    audioEncodingForm->addRow(audioRedCheck_);
+    audioEncodingNote_ = new QLabel(this);
+    audioEncodingNote_->setWordWrap(true);
+    audioEncodingForm->addRow(audioEncodingNote_);
+    connect(audioCodecSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::updateAudioEncodingControls);
+    connect(audioChannelsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::updateAudioEncodingControls);
+    updateAudioEncodingControls();
+
     includeMicrophoneCheck_ = new QCheckBox("Also add microphone/input", this);
     includeMicrophoneCheck_->setObjectName("includeMicrophoneCheck");
     includeMicrophoneCheck_->setChecked(false);
@@ -1948,6 +2020,7 @@ void MainWindow::setupUI() {
 
     // Share link
     shareLabel_ = new QLabel("", this);
+    shareLabel_->setObjectName("shareLinkLabel");
     shareLabel_->setAlignment(Qt::AlignCenter);
     shareLabel_->setTextInteractionFlags(Qt::TextBrowserInteraction);
     shareLabel_->setWordWrap(true);
@@ -2458,7 +2531,7 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
                     device.channels != 2 ||
                     device.bitsPerSample != 32 ||
                     !device.floatingPoint) {
-                    tooltip += "\nGame Capture will convert this input to 48 kHz stereo for WebRTC.";
+                    tooltip += "\nGame Capture will convert this input to 48 kHz for mixing and Opus encoding.";
                 }
             }
             microphoneDeviceSelect_->setItemData(index, tooltip, Qt::ToolTipRole);
@@ -2722,6 +2795,10 @@ void MainWindow::onGoLiveClicked() {
         const float microphoneAudioGain =
             static_cast<float>(microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100) / 100.0f;
         const bool audioLimiterEnabled = audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true;
+        const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : 192;
+        const int audioChannels = audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2;
+        const bool pcmAudio = audioCodecSelect_->currentData().toString() == "pcm";
+        const bool audioRed = audioRedCheck_->isChecked() && !pcmAudio;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
         spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={} alphaBackground={}",
                      config.width,
@@ -2791,6 +2868,10 @@ void MainWindow::onGoLiveClicked() {
                                            primaryAudioGain,
                                            microphoneAudioGain,
                                            audioLimiterEnabled,
+                                           audioBitrateKbps,
+                                           audioChannels,
+                                           pcmAudio,
+                                           audioRed,
                                            requiresFfmpeg]() {
             bool started = false;
             QString failureStatus;
@@ -2831,7 +2912,9 @@ void MainWindow::onGoLiveClicked() {
                     core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
                     core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
-                    if (!core->startCapture(sourceMode, selectedWindowId)) {
+                    if (!core->setAudioEncodingConfig(audioBitrateKbps, audioChannels, pcmAudio, audioRed)) {
+                        failureStatus = "Failed to apply audio encoding settings";
+                    } else if (!core->startCapture(sourceMode, selectedWindowId)) {
                         const std::string detail = core->lastCaptureError();
                         failureStatus = detail.empty()
                             ? QStringLiteral("Failed to start capture")
@@ -3230,6 +3313,20 @@ void MainWindow::onAdvancedToggleChanged(bool checked) {
         return;
     }
     advancedPanel_->setVisible(checked);
+}
+
+void MainWindow::updateAudioEncodingControls() {
+    if (!audioCodecSelect_ || !audioRedCheck_) return;
+    const bool pcm = audioCodecSelect_->currentData().toString() == "pcm";
+    const bool enabled = audioCodecSelect_->isEnabled();
+    audioBitrateSpin_->setEnabled(enabled && !pcm);
+    audioRedCheck_->setEnabled(enabled && !pcm);
+    const bool mono = audioChannelsSelect_->currentData().toInt() == 1;
+    audioEncodingNote_->setText(pcm
+        ? (mono ? "16-bit PCM: 48 kHz mono, 768 kbps before network overhead. "
+                : "16-bit PCM: 32 kHz stereo, 1,024 kbps before network overhead. ") +
+            QString("Use the generated viewer link in Chrome. Other viewers may use Opus instead. RED is available with Opus.")
+        : QString("Default: 192 kbps stereo. Changes apply on the next stream."));
 }
 
 void MainWindow::syncRoomModeLqUiState() {
@@ -3663,6 +3760,14 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (audioSourceSelect_) {
         audioSourceSelect_->setEnabled(enabled);
     }
+    if (audioBitrateSpin_) {
+        audioBitrateSpin_->setEnabled(enabled);
+    }
+    if (audioChannelsSelect_) {
+        audioChannelsSelect_->setEnabled(enabled);
+    }
+    if (audioCodecSelect_) audioCodecSelect_->setEnabled(enabled);
+    updateAudioEncodingControls();
     if (includeMicrophoneCheck_) {
         includeMicrophoneCheck_->setEnabled(enabled);
     }

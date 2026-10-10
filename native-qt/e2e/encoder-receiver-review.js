@@ -223,7 +223,7 @@ async function main() {
     if(opts['frame-identity']==='1')fs.appendFileSync(html,frameIdentity.sourceScript);
     const fixtureServer=await require('./browser-fixture-server').start(html,playbackVideo);
     fixtureServers.add(fixtureServer);
-    sourceBrowser=await chromium.launch({headless:false,args:[`--window-size=${width},${height+120}`,'--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
+    sourceBrowser=await chromium.launch({channel:opts['browser-channel'],headless:false,args:[`--window-size=${width},${height+120}`,'--autoplay-policy=no-user-gesture-required','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
     browsers.add(sourceBrowser);
     // WGC captures the physical window, not Playwright's emulated viewport.
     // Let responsive layout follow the real client area when Windows constrains
@@ -235,7 +235,7 @@ async function main() {
   const toneArgs=['-NoProfile','-ExecutionPolicy','Bypass','-File',path.join(__dirname,'audio-test-tone.ps1'),'-DurationMs',String(fixtureDuration),'-Amplitude','0.08'];
   let tone=launch('powershell.exe',toneArgs,'tone');
   await sleep(2500);
-  const browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+  const browser=await chromium.launch({channel:opts['browser-channel'],headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
   browsers.add(browser);
   let proxy, proxyPort, blockedUntil=0, proxyConnections=0;
   const udpRelay=opts['native-loss']?require('./udp-loss-relay').create():null;

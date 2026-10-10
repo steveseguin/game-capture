@@ -248,6 +248,7 @@ private slots:
     void testInvalidPersistedIceModeDefaultsToAuto();
     void testAudioSourceOptions();
     void testAudioMixControls();
+    void testAudioEncodingPersistenceAndReset();
     void testRoomModeQualityToggle();
     void testRoomQualityAvailabilityExplanationInitialState();
     void testRoomQualityUnavailableUi_data();
@@ -863,6 +864,45 @@ void TestMainWindow::testAudioSourceOptions() {
     QVERIFY(microphoneCombo != nullptr);
     QVERIFY(microphoneCombo->count() >= 1);
     QCOMPARE(microphoneCombo->itemData(0).toString(), QString());
+}
+
+void TestMainWindow::testAudioEncodingPersistenceAndReset() {
+    auto *bitrate = window_->findChild<QSpinBox *>("audioBitrateSpin");
+    auto *channels = window_->findChild<QComboBox *>("audioChannelsSelect");
+    auto *codec = window_->findChild<QComboBox *>("audioCodecSelect");
+    auto *red = window_->findChild<QCheckBox *>("audioRedCheck");
+    auto *toggle = window_->findChild<QCheckBox *>("audioEncodingToggle");
+    QVERIFY(codec && red && toggle);
+    QVERIFY(!toggle->isChecked());
+    QVERIFY(bitrate && channels);
+    QCOMPARE(bitrate->value(), 192);
+    QCOMPARE(channels->currentData().toInt(), 2);
+    bitrate->setValue(320);
+    channels->setCurrentIndex(channels->findData(1));
+    red->setChecked(true);
+    codec->setCurrentIndex(codec->findData("pcm"));
+    QVERIFY(!bitrate->isEnabled() && !red->isEnabled());
+    delete window_;
+    window_ = new versus::ui::MainWindow(nullptr);
+    bitrate = window_->findChild<QSpinBox *>("audioBitrateSpin");
+    channels = window_->findChild<QComboBox *>("audioChannelsSelect");
+    codec = window_->findChild<QComboBox *>("audioCodecSelect");
+    red = window_->findChild<QCheckBox *>("audioRedCheck");
+    QCOMPARE(codec->currentData().toString(), QString("pcm"));
+    QVERIFY(red->isChecked() && !red->isEnabled());
+    QVERIFY(!window_->findChild<QCheckBox *>("audioEncodingToggle")->isChecked());
+    codec->setCurrentIndex(codec->findData("opus"));
+    QCOMPARE(bitrate->value(), 320);
+    QCOMPARE(channels->currentData().toInt(), 1);
+    versus::ui::MainWindowTestAccess::setConfigControlsEnabled(*window_, false);
+    QVERIFY(!bitrate->isEnabled() && !channels->isEnabled());
+    versus::ui::MainWindowTestAccess::setConfigControlsEnabled(*window_, true);
+    QVERIFY(bitrate->isEnabled() && channels->isEnabled());
+    QVERIFY(versus::ui::MainWindowTestAccess::resetPersistedSettingsToDefaults(*window_));
+    QCOMPARE(bitrate->value(), 192);
+    QCOMPARE(channels->currentData().toInt(), 2);
+    QCOMPARE(codec->currentData().toString(), QString("opus"));
+    QVERIFY(!red->isChecked());
 }
 
 void TestMainWindow::testAudioMixControls() {

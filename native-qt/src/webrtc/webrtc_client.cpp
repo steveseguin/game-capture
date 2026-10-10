@@ -1,4 +1,5 @@
 #include "versus/webrtc/webrtc_client.h"
+#include "versus/audio/red_packet.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -21,6 +22,8 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <sstream>
+#include <unordered_map>
 #include <thread>
 #include <utility>
 #include <variant>
@@ -31,6 +34,8 @@ namespace {
 constexpr uint8_t kVideoPayloadType = 96;
 constexpr uint8_t kAlphaVideoPayloadType = 97;
 constexpr uint8_t kAudioPayloadType = 111;
+constexpr uint8_t kPcmPayloadType = 109;
+constexpr uint8_t kRedPayloadType = 63;
 constexpr uint32_t kVideoClockRate = rtc::RtpPacketizer::VideoClockRate;
 constexpr uint32_t kAudioClockRate = rtc::OpusRtpPacketizer::DefaultClockRate;
 constexpr size_t kMaxVp9RtpPayload = 1150;
@@ -162,6 +167,11 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         std::shared_ptr<rtc::RtpPacketizationConfig> videoRtpConfig;
         std::shared_ptr<rtc::RtpPacketizationConfig> alphaVideoRtpConfig;
         std::shared_ptr<rtc::RtpPacketizationConfig> audioRtpConfig;
+        bool usePcm = false;
+        bool useRed = false;
+        bool audioNegotiated = false;
+        std::vector<uint8_t> previousAudioPayload;
+        uint32_t previousAudioTimestamp = 0;
 
         std::mutex descriptionMutex;
         std::string localDescription;
@@ -280,6 +290,9 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     int configuredVideoWidth = 1920;
     int configuredVideoHeight = 1080;
     int configuredVideoFps = 60;
+    int configuredAudioChannels = 2;
+    bool configuredPcmAudio = false;
+    bool configuredAudioRed = false;
 
     std::mutex callbackMutex;
     IceCandidateCallback iceCallback;
@@ -794,7 +807,17 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         }
 
         rtc::Description::Audio audio("audio", rtc::Description::Direction::SendOnly);
-        audio.addOpusCodec(kAudioPayloadType);
+        if (configuredPcmAudio) {
+            audio.addAudioCodec(kPcmPayloadType, configuredAudioChannels == 1 ? "L16/48000/1" : "L16/32000/2");
+        } else if (configuredAudioRed) {
+            audio.addAudioCodec(kRedPayloadType, "red/48000/2", "111/111");
+        }
+        // This is a send-only track. maxaveragebitrate/stereo describe receive
+        // preferences, not our encoder settings. Keep opus/48000/2 even for mono
+        // per RFC 7587; sprop-stereo describes the audio we intend to send.
+        audio.addOpusCodec(kAudioPayloadType,
+                           std::string("minptime=10;sprop-stereo=") +
+                               (configuredAudioChannels == 1 ? "0" : "1"));
         audio.addSSRC(target->audioSsrc, "gamecapture-audio");
         auto track = target->pc->addTrack(audio);
         if (!track) return false;
@@ -1008,6 +1031,9 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         impl_->configuredVideoWidth = std::max(1, config.videoWidth);
         impl_->configuredVideoHeight = std::max(1, config.videoHeight);
         impl_->configuredVideoFps = std::max(1, config.videoFps);
+        impl_->configuredAudioChannels = config.audioChannels == 1 ? 1 : 2;
+        impl_->configuredPcmAudio = config.pcmAudio;
+        impl_->configuredAudioRed = config.audioRed && !config.pcmAudio;
         replacement = impl_->buildTransport(
             rtcConfig, config.iceMode, config.initialVideo, config.initialAudio, config.initialAlpha);
         if (replacement) {
@@ -1082,6 +1108,77 @@ void WebRtcClient::setVideoCodec(PeerConfig::VideoCodec codec, bool enableAlphaT
     impl_->enableAlphaTrack = enableAlphaTrack;
 }
 
+void WebRtcClient::configureAudioFromDescription(const std::string &sdp) {
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return;
+    // Read only the accepted audio section, honoring receiver preference.
+    // Never send an experimental payload based only on what we offered.
+    std::istringstream input(sdp);
+    std::string line;
+    bool inAudio = false, accepted = false;
+    std::vector<int> formats;
+    std::unordered_map<int, std::string> mappings, parameters;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.rfind("m=", 0) == 0) {
+            if (inAudio) break;
+            inAudio = line.rfind("m=audio ", 0) == 0;
+            if (inAudio) {
+                std::istringstream media(line);
+                std::string kind, port, protocol;
+                media >> kind >> port >> protocol;
+                accepted = port != "0";
+                int pt;
+                while (media >> pt) formats.push_back(pt);
+            }
+        } else if (inAudio && (line.rfind("a=rtpmap:", 0) == 0 || line.rfind("a=fmtp:", 0) == 0)) {
+            const bool mapping = line.rfind("a=rtpmap:", 0) == 0;
+            std::istringstream attribute(line.substr(mapping ? 9 : 7));
+            int pt;
+            std::string value;
+            if (attribute >> pt >> value) {
+                if (mapping) {
+                    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+                        return static_cast<char>(std::tolower(c));
+                    });
+                    if (std::count(value.begin(), value.end(), '/') == 1) value += "/1";
+                }
+                (mapping ? mappings : parameters)[pt] = value;
+            }
+        }
+    }
+    bool pcm = false, red = false, negotiated = false;
+    if (accepted) for (const int pt : formats) {
+        if (pt == kPcmPayloadType && impl_->configuredPcmAudio &&
+            mappings[pt] == (impl_->configuredAudioChannels == 1 ? "l16/48000/1" : "l16/32000/2")) {
+            pcm = negotiated = true;
+            break;
+        }
+        if (pt == kRedPayloadType && impl_->configuredAudioRed &&
+            mappings[pt] == "red/48000/2" && parameters[pt] == "111/111" &&
+            mappings[kAudioPayloadType] == "opus/48000/2") {
+            red = negotiated = true;
+            break;
+        }
+        if (pt == kAudioPayloadType && mappings[pt] == "opus/48000/2") {
+            negotiated = true;
+            break;
+        }
+    }
+    std::lock_guard<std::mutex> audioLock(target->audioSendMutex);
+    target->usePcm = pcm;
+    target->useRed = red;
+    target->audioNegotiated = negotiated;
+    target->previousAudioPayload.clear();
+    if (target->audioRtpConfig) {
+        target->audioRtpConfig->payloadType = pcm ? kPcmPayloadType : red ? kRedPayloadType : kAudioPayloadType;
+        target->audioRtpConfig->clockRate = pcm && impl_->configuredAudioChannels == 2 ? 32000 : 48000;
+    }
+    if (inAudio) spdlog::info("[WebRTC] Audio negotiated: {}{}", negotiated ? (pcm ? "PCM" : "Opus") : "disabled",
+                             red ? " + RED" : "");
+
+}
+
 bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::string &type) {
     std::lock_guard<std::recursive_mutex> operationLock(impl_->operationMutex);
     auto target = impl_->transportSnapshot();
@@ -1099,6 +1196,7 @@ bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::strin
         return false;
     }
     if (!impl_->isCurrentTransport(target)) return false;
+    if (type == "answer") configureAudioFromDescription(sdp);
     {
         std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
         target->remoteDescriptionSet = true;
@@ -1201,6 +1299,7 @@ std::string WebRtcClient::createAnswer(const std::string &offer) {
     }
     if (!impl_->isCurrentTransport(target)) return {};
     std::lock_guard<std::mutex> lock(target->descriptionMutex);
+    configureAudioFromDescription(target->localDescription);
     return target->localDescription;
 }
 
@@ -1496,7 +1595,8 @@ bool WebRtcClient::sendAlphaVideo(const EncodedVideoPacket &packet) {
                            packet.data);
 }
 
-bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet) {
+bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet, size_t *payloadBytesSent) {
+    if (payloadBytesSent) *payloadBytesSent = 0;
     auto target = impl_->transportSnapshot();
     if (!target || packet.data.empty() || !impl_->isCurrentTransport(target)) return false;
     std::lock_guard<std::mutex> sendLock(target->audioSendMutex);
@@ -1504,9 +1604,17 @@ bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet) {
         !impl_->isCurrentTransport(target)) {
         return false;
     }
-    target->audioRtpConfig->timestamp = static_cast<uint32_t>((packet.pts * 48) / 10000);
+    if (!target->audioNegotiated || packet.pcm != target->usePcm) return true;
+    target->audioRtpConfig->timestamp = static_cast<uint32_t>((packet.pts * packet.sampleRate) / 10000000);
     try {
-        target->audioTrack->send(toBinary(packet.data));
+        auto data = target->useRed ? audio::makeRedPacket(packet.data, target->previousAudioPayload,
+            target->audioRtpConfig->timestamp - target->previousAudioTimestamp, kAudioPayloadType) : packet.data;
+        target->audioTrack->send(toBinary(data));
+        if (payloadBytesSent) *payloadBytesSent = data.size();
+        if (target->useRed) {
+            target->previousAudioPayload = packet.data;
+            target->previousAudioTimestamp = target->audioRtpConfig->timestamp;
+        }
         return true;
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to send audio packet: {}", e.what());

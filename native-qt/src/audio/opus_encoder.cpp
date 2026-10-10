@@ -27,6 +27,12 @@ OpusEncoder::OpusEncoder() : impl_(std::make_unique<Impl>()) {}
 OpusEncoder::~OpusEncoder() { shutdown(); }
 
 bool OpusEncoder::initialize(const AudioEncoderConfig &config) {
+    shutdown();
+    if (config.bitrate < 6 || config.bitrate > 510 ||
+        config.outputChannels < 0 || config.outputChannels > config.channels ||
+        (config.packetDurationMs != 5 && config.packetDurationMs != 10)) {
+        return false;
+    }
     config_ = config;
 
     int error = 0;
@@ -36,8 +42,16 @@ bool OpusEncoder::initialize(const AudioEncoderConfig &config) {
         return false;
     }
 
-    opus_encoder_ctl(impl_->encoder, OPUS_SET_BITRATE(config.bitrate * 1000));
-    opus_encoder_ctl(impl_->encoder, OPUS_SET_VBR(0));
+    const int bitrateResult = opus_encoder_ctl(impl_->encoder, OPUS_SET_BITRATE(config.bitrate * 1000));
+    const int vbrResult = opus_encoder_ctl(impl_->encoder, OPUS_SET_VBR(0));
+    const int channelsResult = opus_encoder_ctl(
+        impl_->encoder, OPUS_SET_FORCE_CHANNELS(config.outputChannels == 0 ? OPUS_AUTO : config.outputChannels));
+    if (bitrateResult != OPUS_OK || vbrResult != OPUS_OK || channelsResult != OPUS_OK) {
+        spdlog::error("Failed to configure Opus encoder: bitrate={}, vbr={}, channels={}",
+                      bitrateResult, vbrResult, channelsResult);
+        shutdown();
+        return false;
+    }
     impl_->sampleRate = config.sampleRate;
     impl_->channels = config.channels;
     impl_->pendingSamples.clear();
@@ -88,7 +102,7 @@ bool OpusEncoder::encode(const std::vector<float> &samples, int sampleRate, int 
     }
     impl_->pendingSamples.insert(impl_->pendingSamples.end(), samples.begin(), samples.end());
 
-    const int frameSize = sampleRate / 100;  // 10ms
+    const int frameSize = sampleRate * config_.packetDurationMs / 1000;
     const size_t frameSamples = static_cast<size_t>(frameSize) * static_cast<size_t>(channels);
     size_t offset = 0;
 
@@ -106,7 +120,7 @@ bool OpusEncoder::encode(const std::vector<float> &samples, int sampleRate, int 
         packet.data = std::move(encoded);
         packet.pts = impl_->pendingPts;
         packet.sampleRate = sampleRate;
-        packet.channels = channels;
+        packet.channels = opus_packet_get_nb_channels(packet.data.data());
         packetCallback_(packet);
         offset += frameSamples;
         impl_->pendingPts += static_cast<int64_t>(frameSize) * 10000000LL / static_cast<int64_t>(sampleRate);

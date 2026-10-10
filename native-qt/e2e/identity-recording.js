@@ -48,7 +48,7 @@ exports.record=async function(page,file,ms,source=false) {
   return {...result,file,bytes:bytes.length,sha256:crypto.createHash('sha256').update(bytes).digest('hex')};
 };
 
-exports.analyze=async function(ffmpeg,recording) {
+exports.analyze=async function(ffmpeg,recording,bits=12) {
   // Preserve native timestamps: never synthesize frames with an fps filter.
   const {stdout}=await execFile(ffmpeg,['-hide_banner','-loglevel','error','-i',recording.file,
     '-vf','scale=640:-2,crop=640:80:0:ih-80','-fps_mode','passthrough','-f','rawvideo','-pix_fmt','rgb24','pipe:1'],
@@ -64,8 +64,8 @@ exports.analyze=async function(ffmpeg,recording) {
     const cyan=(x,y)=>{const i=at(x,y);return p[i]<100&&p[i+1]>160&&p[i+2]>160;};
     const read=(x,y,cell)=>{
       let id=0;
-      for(let bit=0;bit<12;bit++) {
-        const a=p[at(x+(bit+2)*cell,y)],b=p[at(x+(bit+14)*cell,y)];
+      for(let bit=0;bit<bits;bit++) {
+        const a=p[at(x+(bit+2)*cell,y)],b=p[at(x+(bit+bits+2)*cell,y)];
         const va=a>160?1:a<90?0:-1,vb=b>160?1:b<90?0:-1;
         if(va<0||vb<0||va===vb)return null;id|=va<<bit;
       }
@@ -81,8 +81,8 @@ exports.analyze=async function(ffmpeg,recording) {
           if(x-first>=3&&x-first<=20)runs.push((first+x-1)/2);
         }
         search: for(const left of runs)for(const right of runs) {
-          const cell=(right-left)/27;
-          if(cell<3||cell>20||!cyan(left+cell,y)||!cyan(left+26*cell,y)||!mag(left,y+3))continue;
+          const cell=(right-left)/(bits*2+3);
+          if(cell<3||cell>20||!cyan(left+cell,y)||!cyan(left+(bits*2+2)*cell,y)||!mag(left,y+3))continue;
           id=read(left,y+3,cell);
           if(id!==null){location={x:left,y:y+3,cell};break search;}
         }

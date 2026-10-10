@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
   assert(stream && report, 'Stream ID and report directory are required');
   fs.mkdirSync(report, { recursive: true });
   const browser = await chromium.launch({
-    headless: true, args: ['--autoplay-policy=no-user-gesture-required']
+    channel: 'chrome', headless: true, args: ['--autoplay-policy=no-user-gesture-required']
   });
   let page;
   try {

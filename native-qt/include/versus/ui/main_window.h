@@ -145,6 +145,14 @@ class MainWindow : public QMainWindow {
     QPushButton *alphaBackgroundColorButton_ = nullptr;
     QLabel *ffmpegStatusLabel_ = nullptr;
     QComboBox *audioSourceSelect_ = nullptr;
+    QSpinBox *audioBitrateSpin_ = nullptr;
+    QCheckBox *audioEncodingToggle_ = nullptr;
+    QWidget *audioEncodingPanel_ = nullptr;
+    QComboBox *audioCodecSelect_ = nullptr;
+    QCheckBox *audioRedCheck_ = nullptr;
+    QLabel *audioEncodingNote_ = nullptr;
+    void updateAudioEncodingControls();
+    QComboBox *audioChannelsSelect_ = nullptr;
     QCheckBox *includeMicrophoneCheck_ = nullptr;
     QComboBox *microphoneDeviceSelect_ = nullptr;
     QSpinBox *primaryAudioGainSpin_ = nullptr;
