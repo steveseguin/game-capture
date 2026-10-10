@@ -1,7 +1,7 @@
 'use strict';
 // Runs in the real Chrome receiver. Timings use estimated presentation clocks;
 // they are software measurements, not a microphone/photodiode measurement.
-exports.install = async page => page.evaluate(async () => {
+exports.install = async (page, {recordTrack = false} = {}) => page.evaluate(async ({recordTrack}) => {
   const pc=window.qualityPeers.find(p=>p.connectionState==='connected'&&p.getReceivers().some(r=>r.track.kind==='audio'));
   const track=pc.getReceivers().find(r=>r.track.kind==='audio').track;
   const ctx=new AudioContext({sampleRate:48000,latencyHint:'interactive'});await ctx.resume();
@@ -32,7 +32,7 @@ exports.install = async page => page.evaluate(async () => {
   const video=[...document.querySelectorAll('video')].find(v=>v.videoWidth);
   const canvas=document.createElement('canvas');canvas.width=640;canvas.height=Math.round(640*video.videoHeight/video.videoWidth);
   const g=canvas.getContext('2d',{willReadFrequently:true});
-  let active=false,rows=[],audio=[],raw=[],location=null;
+  let active=false,rows=[],audio=[],raw=[],location=null,trackRecorder=null,trackChunks=[],trackRecordingStartWall=null;
   node.port.onmessage=e=>{
     const stamp=ctx.getOutputTimestamp();
     for(const r of e.data.rows)audio.push({...r,wall:performance.timeOrigin+stamp.performanceTime+(r.frame/ctx.sampleRate-stamp.contextTime)*1000});
@@ -65,12 +65,21 @@ exports.install = async page => page.evaluate(async () => {
     }
     video.requestVideoFrameCallback(frame);
   }video.requestVideoFrameCallback(frame);
-  window.qualityObserver={start(){rows=[];audio=[];raw=[];active=true;node.port.postMessage('start');},
+  const base64=bytes=>{let binary='';for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));return btoa(binary);};
+  window.qualityObserver={start(){rows=[];audio=[];raw=[];active=true;node.port.postMessage('start');
+      if(recordTrack){trackChunks=[];trackRecorder=new MediaRecorder(new MediaStream([track]),
+        {mimeType:'audio/webm;codecs=opus',audioBitsPerSecond:192000});
+        trackRecorder.ondataavailable=e=>{if(e.data.size)trackChunks.push(e.data);};
+        trackRecordingStartWall=performance.timeOrigin+performance.now();trackRecorder.start();}},
     async stop(){active=false;node.port.postMessage('stop');await new Promise(r=>setTimeout(r,200));
-      const bytes=new Uint8Array(new Float32Array(raw).buffer);let binary='';for(let i=0;i<bytes.length;i+=16384)binary+=String.fromCharCode(...bytes.subarray(i,i+16384));
-      return {video:rows,audio,pcmBase64:btoa(binary),sampleRate:ctx.sampleRate,baseLatency:ctx.baseLatency,outputLatency:ctx.outputLatency};},
+      let trackAudioBase64;
+      if(trackRecorder){await new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(Error('Track recorder did not stop')),5000);
+        trackRecorder.onstop=()=>{clearTimeout(timeout);resolve();};trackRecorder.stop();});
+        trackAudioBase64=base64(new Uint8Array(await new Blob(trackChunks).arrayBuffer()));trackRecorder=null;trackChunks=[];}
+      return {video:rows,audio,pcmBase64:base64(new Uint8Array(new Float32Array(raw).buffer)),trackAudioBase64,trackRecordingStartWall,
+        sampleRate:ctx.sampleRate,baseLatency:ctx.baseLatency,outputLatency:ctx.outputLatency};},
     async close(){input.disconnect();node.disconnect();await ctx.close();}};
-});
+}, {recordTrack});
 
 exports.analyze = data => {
   const median = a => {a=[...a].sort((x,y)=>x-y);return a[Math.floor(a.length/2)];};
@@ -86,4 +95,24 @@ exports.analyze = data => {
       medianAmplitudes:[0,1].map(ch=>[0,1,2,3].map(f=>median(trim.map(a=>a.amplitude[ch][f]))))},
     sync:{audioMinusVideoMs:sync,medianMs:median(sync),flashes:flashes.length,beeps:beeps.length},
     timingNote:'Independent decoded audio track through Web Audio; bypasses HTML video audio synchronization. Offset is diagnostic, not browser lip sync. Software clocks, not physical display/speaker measurements.'};
+};
+
+// Independent received-track recording, decoded by FFmpeg to 48-kHz stereo.
+// Keep its continuity result separate from the Web Audio FIFO/observer path.
+exports.analyzeTrackPcm = bytes => {
+  const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),frames=bytes.length/8;
+  const minimumWindowRms=[Infinity,Infinity];let lowEnergyWindows=0,clippedSamples=0,windows=0;
+  // Exclude recorder startup and final codec padding.
+  for(let start=48000;start+480<=frames-9600;start+=480){
+    const energy=[0,0];
+    for(let i=start;i<start+480;i++)for(let ch=0;ch<2;ch++){
+      const v=view.getFloat32(i*8+ch*4,true);if(!Number.isFinite(v))throw Error('Non-finite received audio sample');
+      energy[ch]+=v*v;if(Math.abs(v)>=.999)clippedSamples++;
+    }
+    const rms=energy.map(v=>Math.sqrt(v/480));
+    for(let ch=0;ch<2;ch++)minimumWindowRms[ch]=Math.min(minimumWindowRms[ch],rms[ch]);
+    if(Math.max(...rms)<.02)lowEnergyWindows++;windows++;
+  }
+  if(!windows)throw Error('Independent audio recording has no usable continuity window');
+  return {seconds:frames/48000,windows,minimumWindowRms,lowEnergyWindows,clippedSamples};
 };

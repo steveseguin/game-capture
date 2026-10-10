@@ -30,7 +30,7 @@ function setIni(text,section,key,value){
   if(!regex.test(text))return text+'\n['+section+']\n'+key+'='+value+'\n';
   return text.replace(regex,(_,heading,body)=>heading+(new RegExp('^'+key+'=.*$','m').test(body)?body.replace(new RegExp('^'+key+'=.*$','m'),key+'='+value):body+'\n'+key+'='+value));
 }
-async function start(root,output){
+async function start(root,output,{paired=false}={}){
   root=path.resolve(root);fs.mkdirSync(output,{recursive:true});
   const config=path.join(root,'config/obs-studio'),configFile=path.join(config,'plugin_config/obs-websocket/config.json');
   // This helper only owns the disposable portable copy under the QA report.
@@ -45,7 +45,8 @@ async function start(root,output){
   let ini=fs.readFileSync(profile,'utf8');
   for(const [s,k,v] of [['Video','BaseCX',1280],['Video','BaseCY',720],['Video','OutputCX',1280],['Video','OutputCY',720],
     ['Output','Mode','Simple'],['SimpleOutput','FilePath',output.replaceAll('\\','/')],['SimpleOutput','RecFormat2','mkv'],
-    ['SimpleOutput','RecQuality','HQ'],['SimpleOutput','RecEncoder','x264'],['SimpleOutput','ABitrate',320]])ini=setIni(ini,s,k,v);
+    ['SimpleOutput','RecQuality','HQ'],['SimpleOutput','RecEncoder','x264'],['SimpleOutput','ABitrate',320],
+    ['SimpleOutput','RecTracks',paired?3:1]])ini=setIni(ini,s,k,v);
   fs.writeFileSync(profile,ini);
   const exe=path.join(root,'bin/64bit/obs64.exe'),log=fs.createWriteStream(path.join(output,'obs-process.log'));
   const proc=spawn(exe,['--portable','--disable-shutdown-check','--disable-updater'],{cwd:path.dirname(exe),windowsHide:true,stdio:['ignore','pipe','pipe']});
@@ -61,11 +62,12 @@ async function start(root,output){
     // Silence unrelated global OBS inputs in this disposable profile. Monitoring
     // stays off so the receiver cannot feed back into publisher loopback audio.
     const inputs=await client.request('GetInputList');for(const input of inputs.inputs)await client.request('SetInputMute',{inputName:input.inputName,inputMuted:true}).catch(()=>{});
-    return {client,proc,closed,log,root,output};
+    return {client,proc,closed,log,root,output,paired};
   }catch(e){proc.kill();await closed;throw e;}
 }
 async function receive(obs,c,dir,url,seconds,source){
   const client=obs.client,scene='Quality-'+c.id,input=scene+'-receiver',r={case:c,seconds};
+  const paired=obs.paired&&!c.direct,reference=input+'-reference';
   const viewer=new URL(url);const stream=viewer.searchParams.get('view');
   try{
     const existingScenes=await client.request('GetSceneList');
@@ -85,7 +87,19 @@ async function receive(obs,c,dir,url,seconds,source){
       await client.request('CreateInput',{sceneName:scene,inputName:input+'-audio',inputKind:'wasapi_output_capture',inputSettings:{device_id:'default'},sceneItemEnabled:true});
       await client.request('SetInputAudioMonitorType',{inputName:input+'-audio',monitorType:'OBS_MONITORING_TYPE_NONE'});
     }
-    await client.request('SetSceneItemTransform',{sceneName:scene,sceneItemId:created.sceneItemId,sceneItemTransform:{positionX:0,positionY:0,boundsType:'OBS_BOUNDS_SCALE_INNER',boundsWidth:1280,boundsHeight:720}});
+    await client.request('SetSceneItemTransform',{sceneName:scene,sceneItemId:created.sceneItemId,sceneItemTransform:{positionX:paired?640:0,positionY:0,boundsType:'OBS_BOUNDS_SCALE_INNER',boundsWidth:paired?640:1280,boundsHeight:720}});
+    if(paired){
+      r.pairedReference={videoHalf:'left',audioStream:0,receiverVideoHalf:'right',receiverAudioStream:1};
+      await client.request('SetInputAudioTracks',{inputName:input,inputAudioTracks:{'1':false,'2':true,'3':false,'4':false,'5':false,'6':false}});
+      const ref=await client.request('CreateInput',{sceneName:scene,inputName:reference,inputKind:'window_capture',inputSettings:{method:2,capture_cursor:false},sceneItemEnabled:true});
+      const items=await client.request('GetInputPropertiesListPropertyItems',{inputName:reference,propertyName:'window'});
+      const item=items.propertyItems.find(i=>i.itemName.includes('Game Capture Quality Source'));if(!item)throw Error('Missing simultaneous source reference');
+      await client.request('SetInputSettings',{inputName:reference,inputSettings:{window:item.itemValue,method:2,capture_cursor:false},overlay:true});
+      await client.request('SetSceneItemTransform',{sceneName:scene,sceneItemId:ref.sceneItemId,sceneItemTransform:{positionX:0,positionY:0,boundsType:'OBS_BOUNDS_SCALE_INNER',boundsWidth:640,boundsHeight:720}});
+      await client.request('CreateInput',{sceneName:scene,inputName:reference+'-audio',inputKind:'wasapi_output_capture',inputSettings:{device_id:'default'},sceneItemEnabled:true});
+      await client.request('SetInputAudioMonitorType',{inputName:reference+'-audio',monitorType:'OBS_MONITORING_TYPE_NONE'});
+      await client.request('SetInputAudioTracks',{inputName:reference+'-audio',inputAudioTracks:{'1':true,'2':false,'3':false,'4':false,'5':false,'6':false}});
+    }
     if(!c.direct){await client.request('SetInputMute',{inputName:input,inputMuted:false});
     await client.request('SetInputAudioMonitorType',{inputName:input,monitorType:'OBS_MONITORING_TYPE_NONE'});}
     await sleep(16000);
@@ -105,7 +119,7 @@ async function receive(obs,c,dir,url,seconds,source){
     r.audioMeters=client.events.filter(e=>e.eventType==='InputVolumeMeters'&&e.time>=r.recordStart&&e.time<=r.recordStop).map(e=>({time:e.time,inputs:e.eventData.inputs.filter(i=>i.inputName===input)}));
     r.ok=true;
   }catch(e){r.error=String(e);throw e;}
-  finally{await client.request('RemoveInput',{inputName:input}).catch(()=>{});if(c.direct)await client.request('RemoveInput',{inputName:input+'-audio'}).catch(()=>{});fs.writeFileSync(path.join(dir,'obs-receiver.json'),JSON.stringify(r,null,2));}
+  finally{await client.request('RemoveInput',{inputName:input}).catch(()=>{});if(c.direct)await client.request('RemoveInput',{inputName:input+'-audio'}).catch(()=>{});if(paired)for(const name of [reference,reference+'-audio'])await client.request('RemoveInput',{inputName:name}).catch(()=>{});fs.writeFileSync(path.join(dir,'obs-receiver.json'),JSON.stringify(r,null,2));}
   return r;
 }
 async function stop(obs){

@@ -16,6 +16,9 @@
 #include <nlohmann/json.hpp>
 
 #include "versus/webrtc/webrtc_client.h"
+#include "versus/webrtc/media_clock.h"
+#include "../src/webrtc/capture_sr_reporter.h"
+#include <set>
 #include "versus/app/versus_app.h"
 
 namespace versus::webrtc {
@@ -915,6 +918,7 @@ class TestWebRtcClient : public QObject {
     void testRelayModeRequiresTurnServer();
     void testRemoteCandidateQueuesBeforeRemoteDescription();
     void testInitialOfferCompletesPromptlyAfterBootstrapTracks();
+    void testSenderReportClockIgnoresEncoderDelay();
     void testVp9AlphaOfferUsesPluginDualTrackContract();
     void testAlphaMlineOrderSurvivesResetAndCodecFallback();
     void testReservedAlphaIsInactiveUntilCapability();
@@ -1209,11 +1213,60 @@ void TestWebRtcClient::testInitialOfferCompletesPromptlyAfterBootstrapTracks() {
     QVERIFY2(offer.find("m=video") != std::string::npos, "Initial offer is missing video");
     QVERIFY2(offer.find("m=audio") != std::string::npos, "Initial offer is missing audio");
     QVERIFY2(offer.find("m=application") != std::string::npos, "Initial offer is missing sendChannel");
+    std::set<std::string> cnames, streams;
+    std::istringstream lines(offer);
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const auto cname = line.find(" cname:");
+        if (cname != std::string::npos) cnames.insert(line.substr(cname + 7));
+        const auto msid = line.find(" msid:");
+        if (msid != std::string::npos) streams.insert(line.substr(msid + 6, line.find(' ', msid + 6) - (msid + 6)));
+    }
+    QCOMPARE(cnames.size(), size_t(1));
+    QCOMPARE(streams.size(), size_t(1));
+    // A machine running for a year must not overflow when converting QPC to RTP.
+    const int64_t uptime = 365LL * 24 * 60 * 60 * 10000000 + 1234567;
+    const auto expected = static_cast<uint32_t>(365ULL * 24 * 60 * 60 * 48000 + 5925);
+    QCOMPARE(versus::webrtc::mediaRtpTimestamp(uptime, 48000), expected);
+    versus::webrtc::MediaClock mediaClock;
+    const auto now = versus::webrtc::mediaTime100ns();
+    QCOMPARE(mediaClock.ntpTimestamp(now + 10000000) - mediaClock.ntpTimestamp(now), 1ULL << 32);
     QVERIFY2(elapsedMs < 1000,
              qPrintable(QString("Initial offer took %1 ms; it must not wait for the two-second fallback")
                             .arg(elapsedMs)));
 
     client.shutdown();
+}
+
+void TestWebRtcClient::testSenderReportClockIgnoresEncoderDelay() {
+    using namespace versus::webrtc;
+    const auto clock = std::make_shared<MediaClock>();
+    for (uint32_t rate : {32000u, 48000u, 90000u}) {
+        auto config = std::make_shared<rtc::RtpPacketizationConfig>(1234, "shared-capture", 96, rate);
+        CaptureSrReporter reporter(config, clock);
+        auto packet = rtc::make_message(sizeof(rtc::RtpHeader) + 4);
+        auto *header = reinterpret_cast<rtc::RtpHeader *>(packet->data());
+        header->preparePacket();
+        header->setSsrc(config->ssrc);
+        header->setTimestamp(mediaRtpTimestamp(mediaTime100ns() - 2500000, rate));
+        rtc::message_vector packets{packet};
+        rtc::message_ptr report;
+        const auto before = mediaTime100ns();
+        reporter.outgoing(packets, [&](rtc::message_ptr message) { report = std::move(message); });
+        const auto after = mediaTime100ns();
+        QVERIFY(report);
+        const auto *sr = reinterpret_cast<const rtc::RtcpSr *>(report->data());
+        QCOMPARE(sr->senderSSRC(), uint32_t(1234));
+        QCOMPARE(sr->packetCount(), uint32_t(1));
+        QCOMPARE(sr->octetCount(), uint32_t(4));
+        QVERIFY(sr->ntpTimestamp() >= clock->ntpTimestamp(before));
+        QVERIFY(sr->ntpTimestamp() <= clock->ntpTimestamp(after));
+        // Modular difference also works when the RTP timestamp wraps.
+        QVERIFY(uint32_t(sr->rtpTimestamp() - mediaRtpTimestamp(before, rate)) <=
+                uint32_t(mediaRtpTimestamp(after, rate) - mediaRtpTimestamp(before, rate)));
+        QVERIFY(uint32_t(sr->rtpTimestamp() - header->timestamp()) >= rate / 4);
+    }
 }
 
 void TestWebRtcClient::testVp9AlphaOfferUsesPluginDualTrackContract() {

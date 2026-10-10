@@ -77,6 +77,12 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
     await sleep(2000);
     result.sdp = await page.evaluate(() => ({ offer: window.audioReviewPc.remoteDescription.sdp,
       answer: window.audioReviewPc.localDescription.sdp }));
+    if (opts.baseline !== 'true') {
+      const cnames = [...new Set([...result.sdp.offer.matchAll(/^a=ssrc:\d+ cname:(.+)$/gm)].map(m => m[1].trim()))];
+      assert.equal(cnames.length, 1, 'Audio and video must share one synchronization CNAME');
+      const streams = [...new Set([...result.sdp.offer.matchAll(/(?:^a=msid:|^a=ssrc:\d+ msid:)(\S+)/gm)].map(m => m[1]))];
+      assert.equal(streams.length, 1, 'Audio and video must belong to one MediaStream');
+    }
     assert(result.sdp.offer.includes('opus/48000/2'), 'Opus RTP mapping must remain 48000/2, including mono');
     if (opts.baseline !== 'true') assert(result.sdp.offer.includes('sprop-stereo=' + (c.channels === 1 ? '0' : '1')));
     const pcm = c.codec === 'pcm' && !c.fallback;
@@ -151,6 +157,12 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
     }
     const wireBitrate = bitrate => red ? bitrate * 2 + 8 : pcm ? (c.channels === 1 ? 768 : 1024) : bitrate;
     await measure('initial', wireBitrate(c.bitrate));
+    result.senderReports = await page.evaluate(async () => [...(await window.audioReviewPc.getStats()).values()]
+      .filter(s => s.type === 'remote-outbound-rtp'));
+    if (opts.baseline !== 'true') {
+      for (const kind of ['audio', 'video']) assert(result.senderReports.some(s =>
+        (s.kind || s.mediaType) === kind && s.reportsSent > 0), 'Missing actual RTCP sender reports for ' + kind);
+    }
     result.diagnostics = await api(discovery, '/diagnostics');
     if (opts.baseline !== 'true') {
       assert.equal(result.diagnostics.audio.preferred_opus_bitrate_kbps, c.bitrate);

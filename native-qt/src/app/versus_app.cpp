@@ -908,7 +908,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     }
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        pendingVideoFrame_.reset();
+        pendingVideoFrames_.clear();
         cachedVideoFrame_.reset();
     }
     const auto frameCallback = [this](video::CapturedFrame frame) {
@@ -916,8 +916,8 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     };
     windowCapture_.setFrameCallback(frameCallback);
     windowCapture_.setFrameAdmissionCallback([this]() {
-        // Capture is rate-limited before readback and handleVideoFrame replaces
-        // a single pending image. Keep the latest image even while encoding;
+        // Capture is rate-limited before readback and handleVideoFrame retains
+        // at most two pending images. Keep fresh images even while encoding;
         // rejecting it based on output-thread phase lowers motion cadence.
         return !live_.load(std::memory_order_acquire) ||
             encodeThreadRunning_.load(std::memory_order_acquire);
@@ -1203,7 +1203,7 @@ void VersusApp::stopCapture() {
     capturing_ = false;
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        pendingVideoFrame_.reset();
+        pendingVideoFrames_.clear();
         cachedVideoFrame_.reset();
     }
 }
@@ -2709,7 +2709,7 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
     }
 
     if (!standaloneSamples.empty()) {
-        encodeNormalizedAudio(standaloneSamples);
+        encodeNormalizedAudio(standaloneSamples, chunk.captureTime100ns);
     }
 }
 
@@ -2744,7 +2744,7 @@ void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
     updateAudioLevelMeters(normalizedSamples, primaryAudioLevelRms_, primaryAudioPeak_);
     mixAdditionalAudioInto(normalizedSamples, 48000, 2);
 
-    encodeNormalizedAudio(normalizedSamples);
+    encodeNormalizedAudio(normalizedSamples, chunk.captureTime100ns);
 }
 
 void VersusApp::applyAudioGain(std::vector<float> &samples, float gain) const {
@@ -2814,7 +2814,7 @@ void VersusApp::updateAudioLevelMeters(const std::vector<float> &samples,
     peakTarget.store(std::clamp(decayedPeak, 0.0f, 1.0f), std::memory_order_relaxed);
 }
 
-void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples) {
+void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int64_t captureTime100ns) {
     if (!live_ || normalizedSamples.empty()) {
         return;
     }
@@ -2831,7 +2831,15 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples) {
     const size_t frames = normalizedSamples.size() / kOpusChannels;
     const int64_t chunkDuration100ns =
         static_cast<int64_t>(frames) * 10000000LL / static_cast<int64_t>(kOpusSampleRate);
-    const int64_t pts = audioPts100ns_.fetch_add(chunkDuration100ns);
+    // Anchor the sample clock to the capture clock, not stream startup or the
+    // time a queued packet happens to be sent. Keep device/callback jitter out
+    // of individual packets, but re-anchor after a real capture interruption.
+    if (captureTime100ns <= 0) {
+        captureTime100ns = outputFrameTimestamp100ns(std::chrono::steady_clock::now()) - chunkDuration100ns;
+    }
+    int64_t pts = audioPts100ns_.load();
+    if (!pts || std::abs(captureTime100ns - pts) > 500000) pts = captureTime100ns;
+    audioPts100ns_.store(pts + chunkDuration100ns);
     if (!hasAnyActiveAudioTrack()) {
         return;
     }
@@ -7108,10 +7116,11 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
     {
         std::lock_guard<std::mutex> notifyLock(encodeNotifyMutex_);
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        if (encodeFrameReady_) {
+        if (pendingVideoFrames_.size() >= 2) {
+            pendingVideoFrames_.pop_front();
             videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
         }
-        pendingVideoFrame_ = sharedFrame;
+        pendingVideoFrames_.push_back(sharedFrame);
         cachedVideoFrame_ = sharedFrame;
         encodeFrameReady_ = true;
     }
@@ -7678,12 +7687,17 @@ void VersusApp::startEncodeThread() {
                 if (!encodeThreadRunning_.load()) {
                     break;
                 }
-                encodeFrameReady_ = false;
                 // Consume the frame and its readiness flag atomically with
                 // capture publication. A late notification for an already
                 // consumed image must not suppress the next fresh-frame wait.
                 std::lock_guard<std::mutex> frameLock(latestVideoFrameMutex_);
-                frame = pendingVideoFrame_ ? std::move(pendingVideoFrame_) : cachedVideoFrame_;
+                if (pendingVideoFrames_.empty()) {
+                    frame = cachedVideoFrame_;
+                } else {
+                    frame = std::move(pendingVideoFrames_.front());
+                    pendingVideoFrames_.pop_front();
+                }
+                encodeFrameReady_ = !pendingVideoFrames_.empty();
             }
 
             nextFrameDue = advanceOutputFrameDeadline(

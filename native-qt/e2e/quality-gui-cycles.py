@@ -30,12 +30,18 @@ def main():
     parser.add_argument('--mode',choices=['mixed','opus','pcm','red'],default='mixed')
     parser.add_argument('--baseline',action='store_true',help='Published package without audio encoding controls; use --mode=opus')
     parser.add_argument('--idle-seconds',type=int,default=0,help='Observe stopped resources after the last cycle')
+    parser.add_argument('--no-sound-hooks',action='store_true',help='Measure resources without injecting Frida')
+    parser.add_argument('--selected-window-audio',action='store_true',help='Capture the fixture process audio instead of the system endpoint')
+    parser.add_argument('--event-handle-hooks',action='store_true',help='Observe app-owned audio event handle creation and closure')
+    parser.add_argument('--require-handle-cleanup',action='store_true',help='Require no retained app events or per-cycle app mutex growth')
     a=parser.parse_args();exe=a.publisher.resolve();output=a.output.resolve();output.mkdir(parents=True)
     assert not a.baseline or a.mode=='opus','Baseline comparison requires fixed Opus mode'
+    assert not a.require_handle_cleanup or a.event_handle_hooks,'Handle cleanup checks require handle observation'
     assert (exe.parent/'platforms/qwindows.dll').is_file(),'Complete package required'
     assert not any(p.name()=='game-capture.exe' for p in psutil.process_iter()),'Existing capture session'
     saved=d.snapshot(d.SETTINGS_KEY);children=[];logs=[];events=[];report={'cycles':[],'screenshots':[],
-        'baseline':a.baseline,'mode':a.mode,'started':time.time()}
+        'baseline':a.baseline,'mode':a.mode,'started':time.time(),'soundHooks':not a.no_sound_hooks,
+        'selectedWindowAudio':a.selected_window_audio,'eventHandleHooks':a.event_handle_hooks}
     stop_resources=threading.Event();resource_thread=None;phase='startup'
     stream='guicycle'+uuid.uuid4().hex;discovery=output/'control.json';window=None
     def launch(cmd,name):
@@ -52,16 +58,30 @@ def main():
     try:
         for group,name,value in [('video','sourceMode','window'),('video','codec','h264'),('video','encoderMode','auto'),
             ('video','alphaWorkflow','false'),('video','resolution','960x540'),('video','fps','30'),('video','ffmpegPath',''),
-            ('audio','source','default-output'),('audio','includeMicrophone','false'),('audio','bitrateKbps','192'),
+            ('audio','source','selected-window' if a.selected_window_audio else 'default-output'),('audio','includeMicrophone','false'),('audio','bitrateKbps','192'),
             ('audio','channels','2'),('audio','primaryGainPercent','100'),('audio','limiterEnabled','true'),
             ('audio','codec','opus'),('audio','red','false'),('ui','advancedVisible','false'),('stream','target',stream),
             ('stream','room',''),('stream','password','false'),('control','enabled','false'),('network','iceMode','all')]:d.setting(group,name,value)
-        launch([sys.executable,str(Path(__file__).with_name('desktop-ui-e2e.py')),'--source-window'],'source')
-        launch(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(__file__).with_name('audio-test-tone.ps1')),
-                '-RightFrequencyHz','880','-Amplitude','0.08','-DurationMs','1800000'],'tone')
+        source_args=[sys.executable,str(Path(__file__).with_name('desktop-ui-e2e.py')),'--source-window']
+        if a.selected_window_audio:
+            import math,struct,wave
+            tone_file=output/'fixture-tone.wav'
+            with wave.open(str(tone_file),'wb') as tone:
+                tone.setparams((2,2,48000,48000,'NONE','not compressed'))
+                tone.writeframes(b''.join(struct.pack('<hh',*[round(32767*.08*math.sin(2*math.pi*f*i/48000)) for f in (440,880)]) for i in range(48000)))
+            source_args.append('--tone-file='+str(tone_file))
+        else:
+            launch(['powershell.exe','-NoProfile','-ExecutionPolicy','Bypass','-File',str(Path(__file__).with_name('audio-test-tone.ps1')),
+                    '-RightFrequencyHz','880','-Amplitude','0.08','-DurationMs','1800000'],'tone')
+        launch(source_args,'source')
         process=launch([str(exe),'--local-control','--local-control-discovery='+str(discovery)],'publisher')
-        session=frida.attach(process.pid);script=session.create_script(d.OBSERVER)
-        script.on('message',lambda m,data:events.append({'time':time.time(),**m.get('payload',m)}));script.load()
+        if not a.no_sound_hooks:
+            session=frida.attach(process.pid);script=session.create_script(d.OBSERVER)
+            script.on('message',lambda m,data:events.append({'time':time.time(),**m.get('payload',m)}));script.load()
+        if a.event_handle_hooks:
+            handle_session=frida.attach(process.pid)
+            handle_script=handle_session.create_script(Path(__file__).with_name('audio-event-handle-observer.js').read_text())
+            handle_script.on('message',lambda m,data:events.append({'time':time.time(),**m.get('payload',m)}));handle_script.load()
         app=Application(backend='uia').connect(process=process.pid,timeout=20);window=d.application_window(process.pid)
         win32gui.SetWindowPos(window.handle,win32con.HWND_TOPMOST,0,0,0,0,win32con.SWP_NOMOVE|win32con.SWP_NOSIZE)
         window.set_focus();d.wait_for(discovery.exists,'control endpoint')
@@ -71,7 +91,9 @@ def main():
         def resources():
             mem=proc.memory_info()
             return {'wall':time.time(),'phase':phase,'rss':mem.rss,'private':mem.private,
-                    'handles':proc.num_handles(),'threads':proc.num_threads(),'cpuPercentOneCore':proc.cpu_percent()}
+                    'handles':proc.num_handles(),'threads':proc.num_threads(),'cpuPercentOneCore':proc.cpu_percent(),
+                    'systemCpuPercent':psutil.cpu_percent(),
+                    'availableMemoryMiB':psutil.virtual_memory().available/1048576}
         def monitor_resources():
             with (output/'resources.jsonl').open('w',encoding='utf-8') as f:
                 while not stop_resources.is_set():
@@ -124,7 +146,7 @@ def main():
             red=a.mode=='red' or (a.mode=='mixed' and cycle%3==2)
             mono=a.mode=='mixed' and cycle%2==1
             phase='configure-'+str(cycle+1)
-            if not a.baseline:
+            if not a.baseline and (cycle==0 or a.mode=='mixed'):
                 select(named('audioCodecSelect'),'PCM (experimental)' if pcm else 'Opus (48 kHz)')
                 select(named('audioChannelsSelect'),'Mono (1 channel)' if mono else 'Stereo (2 channels)')
                 if not pcm and bool(named('audioRedCheck').get_toggle_state())!=red:
@@ -154,6 +176,16 @@ def main():
             d.wait_for(lambda:not api()['app']['live'],'capture stop',20);row['stopMs']=(time.perf_counter()-start)*1000
             phase='stopped-'+str(cycle+1)
             time.sleep(3);mem=proc.memory_info();row['stoppedResources']={'rss':mem.rss,'private':mem.private,'handles':proc.num_handles(),'threads':proc.num_threads()}
+            if a.event_handle_hooks:
+                row['eventHandles']=handle_script.exports_sync.snapshot()
+                owned=row['eventHandles']['outstanding']
+                row['retainedAppEvents']=sum(h['api'].startswith('CreateEvent') for h in owned)
+                row['retainedAppMutexes']=sum('Mutex' in h['api'] and h['site'].startswith('game-capture.exe+') for h in owned)
+                if a.require_handle_cleanup:
+                    assert row['eventHandles']['created']>0,'Event observation captured no handles'
+                    assert row['retainedAppEvents']==0,'App audio event handle remains after stopping capture'
+                    if report['cycles']:
+                        assert row['retainedAppMutexes']<=report['cycles'][0]['retainedAppMutexes'],'App mutex handles grew across stopped sessions'
             report['cycles'].append(row);print(json.dumps({k:v for k,v in row.items() if k!='liveDiagnostics'}),flush=True)
             (output/'progress.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
         phase='final-idle';report['idleStarted']=time.time()
@@ -161,6 +193,7 @@ def main():
             if elapsed%30==0:print('Final idle',elapsed,'of',a.idle_seconds,'seconds',flush=True)
             time.sleep(1)
         report['finalResources']=resources();report['finalDiagnostics']=api()
+        if a.event_handle_hooks:report['eventHandles']=handle_script.exports_sync.snapshot()
         api('/commands',{'command':'quit'});report['exitCode']=process.wait(timeout=15);assert report['exitCode']==0
         report['ok']=True
     except BaseException as e:

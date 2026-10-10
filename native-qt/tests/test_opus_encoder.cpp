@@ -14,6 +14,7 @@ class TestOpusEncoder : public QObject {
   private slots:
     void testPtsIsMonotonicIn100nsUnits();
     void testRemainderCarriesIntoNextEncodeCall();
+    void testResumeDropsStalePartialPacket();
     void testFormatMismatchRejected();
     void testRuntimeBitrateUpdate();
     void testEncodedChannelsAndBitrate_data();
@@ -50,6 +51,22 @@ void TestOpusEncoder::testPtsIsMonotonicIn100nsUnits() {
     QCOMPARE(packetPts[2], static_cast<int64_t>(1200000));
     QCOMPARE(packetPts[1] - packetPts[0], static_cast<int64_t>(100000));
     QCOMPARE(packetPts[2] - packetPts[1], static_cast<int64_t>(100000));
+}
+
+void TestOpusEncoder::testResumeDropsStalePartialPacket() {
+    versus::audio::OpusEncoder encoder;
+    versus::audio::AudioEncoderConfig config;
+    QVERIFY(encoder.initialize(config));
+    std::vector<int64_t> timestamps;
+    encoder.setPacketCallback([&](const auto &packet) { timestamps.push_back(packet.pts); });
+    const std::vector<float> half(480, .1f);
+    QVERIFY(encoder.encode(half, 48000, 2, 1000000));
+    QVERIFY(timestamps.empty());
+    QVERIFY(encoder.encode(half, 48000, 2, 11000000));
+    QVERIFY(timestamps.empty());
+    QVERIFY(encoder.encode(half, 48000, 2, 11050000));
+    QCOMPARE(timestamps.size(), size_t(1));
+    QCOMPARE(timestamps[0], int64_t(11000000));
 }
 
 void TestOpusEncoder::testRemainderCarriesIntoNextEncodeCall() {

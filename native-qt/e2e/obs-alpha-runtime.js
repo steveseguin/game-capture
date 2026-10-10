@@ -47,7 +47,9 @@ exports.start=async function({repo,stream,room='',output,expectedPluginHash,widt
     } while(Date.now()<deadline);
     throw Error(`OBS recording did not become ${active?'active':'fully stopped'}`);
   }
-  async function close() {
+  let closePromise;
+  function close() { return closePromise ||= closeOnce(); }
+  async function closeOnce() {
     if(client) {
       if(recording)try{await client.request('StopRecord');await waitRecording(false);recording=false;}catch{}
       for(const name of [input,background])try{await client.request('RemoveInput',{inputName:name});}catch{}
@@ -60,11 +62,20 @@ exports.start=async function({repo,stream,room='',output,expectedPluginHash,widt
       if(previousVideo)try{await client.request('SetVideoSettings',previousVideo);}catch{}
       try{await client.close();}catch{}
     }
-    if(proc&&proc.exitCode===null) {
-      proc.kill();const deadline=Date.now()+5000;
+    const shutdownStarted=Date.now();
+    let forced=false;
+    if(proc&&proc.exitCode===null&&proc.signalCode===null) {
+      // Process.MainWindowHandle can identify an auxiliary OBS window. Close
+      // the owned application window explicitly, as in the recording workflow.
+      try {await exec(path.resolve(__dirname,'../.cache/desktop-ui-python/Scripts/python.exe'),['-c',
+        `import win32gui,win32process,win32con\npid=${proc.pid}\nwindows=[]\ndef visit(h,_):\n if win32process.GetWindowThreadProcessId(h)[1]==pid and win32gui.GetWindowText(h).startswith('OBS '): windows.append(h)\nwin32gui.EnumWindows(visit,None)\nassert windows, 'Owned OBS application window not found'\nfor h in windows: win32gui.PostMessage(h,win32con.WM_CLOSE,0,0)`],
+        {windowsHide:true,timeout:5000});} catch(e) {evidence.closeRequestError=String(e);}
+      const deadline=Date.now()+15000;
       while(proc.exitCode===null&&proc.signalCode===null&&Date.now()<deadline)await sleep(50);
+      if(proc.exitCode===null&&proc.signalCode===null){forced=true;proc.kill();}
     }
     if(procClosed)await Promise.race([procClosed,sleep(5000)]);
+    if(proc)evidence.shutdown={elapsedMs:Date.now()-shutdownStarted,exitCode:proc.exitCode,signal:proc.signalCode,forced};
     if(proc){proc.stdout.unpipe(log);proc.stderr.unpipe(log);}
     fs.writeFileSync(configPath,originalConfig);log.end();
     evidence.applicationLogs=[];
@@ -77,6 +88,7 @@ exports.start=async function({repo,stream,room='',output,expectedPluginHash,widt
     fs.writeFileSync(path.join(output,'obs-runtime-results.json'),JSON.stringify(evidence,null,2));
     if(evidence.recordDirectoryRestored===false||evidence.recordDirectoryRestoreError)
       throw Error('OBS recording directory restoration failed');
+    if(proc&&(evidence.shutdown.forced||evidence.shutdown.exitCode!==0))throw Error('OBS did not exit normally');
   }
   async function screenshot(label) {
     const startedAt=Date.now();

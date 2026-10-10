@@ -31,7 +31,15 @@ def source_window():
         label.config(text="Desktop workflow source\n" + str(time.monotonic()))
         root.after(100, tick)
     tick()
-    root.mainloop()
+    tone = next((arg.split('=', 1)[1] for arg in sys.argv if arg.startswith('--tone-file=')), None)
+    if tone:
+        import winsound
+        winsound.PlaySound(tone, winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_LOOP)
+    try:
+        root.mainloop()
+    finally:
+        if tone:
+            winsound.PlaySound(None, 0)
 
 
 def snapshot(path):
@@ -469,11 +477,14 @@ def main():
         for _ in range(2):
             window.close()
             wait_for(lambda: not user32.IsWindowVisible(hwnd), "window hides to tray")
+            time.sleep(.75)  # Include shell notification audio in loopback coverage.
             # Deliver the same shell notification as activating this tray icon.
             user32.PostMessageW(int(tray["hwnd"], 16), tray["callback"], 0, (tray["id"] << 16) | 0x400)
             wait_for(lambda: bool(user32.IsWindowVisible(hwnd)), "tray activation restores window")
-        reminders = [e for e in events if e.get("kind") == "tray" and "Still running" in e.get("message", "")]
-        check("tray-reminder-once-per-session", len(reminders) == 1, len(reminders))
+            time.sleep(.75)
+        reminders = [e for e in events if e.get("kind") == "tray" and e.get("message")]
+        check("tray-workflows-request-no-notification-balloons", len(reminders) == 0, reminders)
+        check("tray-workflows-request-no-sounds", not any(e.get("kind") == "sound" for e in events))
         check("observer-had-no-errors", not any(e.get("type") == "error" for e in events))
 
         phase = "quit-during-probe"

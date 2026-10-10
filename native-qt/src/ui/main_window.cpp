@@ -689,31 +689,9 @@ MainWindow::MainWindow(
                 }
                 updateStatus(status, statusClass);
 
-                if (trayIcon_ && trayIcon_->supportsMessages()) {
-                    if (fatal && remoteHangupMsg) {
-                        trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Information, 3000);
-                    } else if (fatal) {
-                        trayIcon_->showMessage(APP_BRAND, status, QSystemTrayIcon::Warning, 5000);
-                    } else if ((reconnectingMsg || disconnectedMsg) && !isVisible() && !reconnectNoticeActive_) {
-                        trayIcon_->showMessage(
-                            APP_BRAND,
-                            "Connection dropped. Attempting to reconnect...",
-                            QSystemTrayIcon::Information,
-                            4000);
-                        reconnectNoticeActive_ = true;
-                    } else if (reconnectedMsg && reconnectNoticeActive_ && !isVisible()) {
-                        trayIcon_->showMessage(
-                            APP_BRAND,
-                            "Reconnected to signaling server.",
-                            QSystemTrayIcon::Information,
-                            3000);
-                        reconnectNoticeActive_ = false;
-                    } else if (reconnectedMsg) {
-                        reconnectNoticeActive_ = false;
-                    }
-                } else if (reconnectedMsg) {
-                    reconnectNoticeActive_ = false;
-                }
+                // Shell notification balloons can play a Windows sound even
+                // when the app never calls a sound API. Keep capture silent.
+                if (trayIcon_) trayIcon_->setToolTip(APP_BRAND + " - " + status.left(100));
 
                 if (!fatal) {
                     return;
@@ -1700,6 +1678,9 @@ void MainWindow::setupUI() {
     audioCodecSelect_->addItem("PCM (experimental)", "pcm");
     installComboWheelGuard(audioCodecSelect_);
     audioEncodingForm->addRow("Codec", audioCodecSelect_);
+    audioEncodingNote_ = new QLabel(this);
+    audioEncodingNote_->setWordWrap(true);
+    audioEncodingForm->addRow(audioEncodingNote_);
 
     audioBitrateSpin_ = new QSpinBox(this);
     audioBitrateSpin_->setObjectName("audioBitrateSpin");
@@ -1707,10 +1688,10 @@ void MainWindow::setupUI() {
     audioBitrateSpin_->setValue(192);
     audioBitrateSpin_->setSuffix(" kbps");
     audioBitrateSpin_->setToolTip(
-        "Total audio bitrate for all channels, excluding network overhead. Lower values save bandwidth; "
+        "Total Opus bitrate for all channels, excluding network overhead. Lower values save bandwidth; "
         "higher values preserve more detail. Applies to all viewers on the next stream.");
     installSpinWheelGuard(audioBitrateSpin_);
-    audioEncodingForm->addRow("Bitrate", audioBitrateSpin_);
+    audioEncodingForm->addRow("Opus bitrate", audioBitrateSpin_);
 
     audioChannelsSelect_ = new QComboBox(this);
     audioChannelsSelect_->setObjectName("audioChannelsSelect");
@@ -1726,11 +1707,9 @@ void MainWindow::setupUI() {
     audioRedCheck_->setToolTip("Repeats the previous Opus packet when it fits. Roughly doubles audio bandwidth. "
         "Receivers that do not select RED use plain Opus. Does not protect against clipping or capture glitches.");
     audioEncodingForm->addRow(audioRedCheck_);
-    audioEncodingNote_ = new QLabel(this);
-    audioEncodingNote_->setWordWrap(true);
-    audioEncodingForm->addRow(audioEncodingNote_);
     connect(audioCodecSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::updateAudioEncodingControls);
     connect(audioChannelsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::updateAudioEncodingControls);
+    connect(audioBitrateSpin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::updateAudioEncodingControls);
     updateAudioEncodingControls();
 
     includeMicrophoneCheck_ = new QCheckBox("Also add microphone/input", this);
@@ -2276,6 +2255,7 @@ void MainWindow::applyDarkTheme() {
         QCheckBox::indicator:checked {
             border: 1px solid %4;
             background-color: %4;
+            image: url(:/icons/checkmark.xpm);
         }
         QCheckBox[locked="true"]::indicator:checked {
             border: 1px solid #3b4f62;
@@ -2286,11 +2266,30 @@ void MainWindow::applyDarkTheme() {
             width: 20px;
         }
         QComboBox::down-arrow {
-            image: none;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-top: 5px solid %2;
-            margin-right: 5px;
+            image: url(:/icons/chevron-down.xpm);
+            width: 12px;
+            height: 8px;
+        }
+        QSpinBox::up-button, QSpinBox::down-button {
+            subcontrol-origin: border;
+            width: 24px;
+            border-left: 1px solid #50667b;
+        }
+        QSpinBox::up-button {
+            subcontrol-position: top right;
+        }
+        QSpinBox::down-button {
+            subcontrol-position: bottom right;
+        }
+        QSpinBox::up-arrow {
+            image: url(:/icons/chevron-up.xpm);
+            width: 12px;
+            height: 8px;
+        }
+        QSpinBox::down-arrow {
+            image: url(:/icons/chevron-down.xpm);
+            width: 12px;
+            height: 8px;
         }
         QComboBox QAbstractItemView {
             background-color: %3;
@@ -3326,7 +3325,9 @@ void MainWindow::updateAudioEncodingControls() {
         ? (mono ? "16-bit PCM: 48 kHz mono, 768 kbps before network overhead. "
                 : "16-bit PCM: 32 kHz stereo, 1,024 kbps before network overhead. ") +
             QString("Use the generated viewer link in Chrome. Other viewers may use Opus instead. RED is available with Opus.")
-        : QString("Default: 192 kbps stereo. Changes apply on the next stream."));
+        : (audioBitrateSpin_->value() < 32
+            ? QString("Very low bitrates reduce fidelity and may collapse stereo. Use mono or increase the bitrate. Changes apply on the next stream.")
+            : QString("Default: 192 kbps stereo. Changes apply on the next stream.")));
 }
 
 void MainWindow::syncRoomModeLqUiState() {
@@ -4050,14 +4051,6 @@ void MainWindow::closeEvent(QCloseEvent *event) {
         hide();
         if (showHideAction_) {
             showHideAction_->setText("Show");
-        }
-        if (!trayReminderShown_ && trayIcon_->supportsMessages()) {
-            trayReminderShown_ = true;
-            trayIcon_->showMessage(
-                APP_BRAND,
-                "Still running in system tray (next to the clock)",
-                QSystemTrayIcon::Information,
-                3000);
         }
         return;
     }

@@ -3,6 +3,9 @@
   <qresource prefix="/icons">
     <file>vdoninja.ico</file>
     <file>logo.png</file>
+    <file>chevron-down.xpm</file>
+    <file>chevron-up.xpm</file>
+    <file>checkmark.xpm</file>
   </qresource>
 </RCC>
 

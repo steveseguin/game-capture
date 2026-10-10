@@ -322,6 +322,7 @@ async function main() {
         '--local-control','--local-control-port=0',`--local-control-discovery=${controlPath}`,
         `--diagnostics-out=${path.join(run,name+'-exit.json')}`],name,
         {LOCALAPPDATA:run,QT_PLUGIN_PATH:path.dirname(publisher),QT_QPA_PLATFORM_PLUGIN_PATH:path.join(path.dirname(publisher),'platforms'),
+          ...(opts['rejected-capture-trace']==='1'?{VERSUS_TRACE_REJECTED_CAPTURE:'1'}:{}),
           ...(opts['frame-trace']==='1'?{VERSUS_FRAME_TRACE:path.join(run,name+'-frames.csv'),
             ...(opts['obs-plugin-repo']?{VERSUS_FRAME_TRACE_PATTERN:'alpha-moving-edge'}:{})}:{})});
       let control,context,page,lossCdp,obsAlpha;
@@ -396,6 +397,11 @@ async function main() {
           result.identityRecording.coverage=result.identityRecording.receiver.frames/decoded;
           if(!decoded||result.identityRecording.coverage<.98||result.identityRecording.coverage>1.02)
             throw Error('Recording frame count does not cover the receiver decoding window');
+          const expectedFreshFps=Math.min(fps,result.identityRecording.source.changesPerSecond);
+          const freshRatio=result.identityRecording.receiver.changesPerSecond/expectedFreshFps;
+          result.freshFrameDelivery={expectedFreshFps,ratio:freshRatio,passed:freshRatio>=.95};
+          if(opts['require-fresh-frames']==='1'&&!result.freshFrameDelivery.passed)
+            throw Error('Distinct source-frame delivery fell below 95%: '+JSON.stringify(result.freshFrameDelivery));
         }
         if(opts['color-check']==='1') {
           result.colors=await colorProbe(page);

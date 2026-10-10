@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.60 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.61 LANGUAGES CXX)
 
 # CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
 # declares a 3.1 minimum, so give bundled dependencies the modern floor
@@ -84,6 +84,8 @@ set(CMAKE_SKIP_INSTALL_RULES ON CACHE BOOL "" FORCE)
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
 set(NO_TESTS ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(libdatachannel)
+include(cmake/patch-libjuice.cmake)
+game_capture_patch_libjuice("${libdatachannel_SOURCE_DIR}")
 
 # Exclude shared library target from default build
 if(TARGET datachannel)

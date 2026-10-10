@@ -28,6 +28,7 @@ cmake_install.cmake
 compile_commands.json
 *.cmake
 !CMakeLists.txt
+!native-qt/cmake/*.cmake
 
 # Visual Studio
 *.vcxproj*

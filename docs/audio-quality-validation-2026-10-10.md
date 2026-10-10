@@ -1,13 +1,12 @@
 # Packaged audio and video quality validation — 2026-10-10
 
-This pass exercised actual packaged Game Capture applications, real Chrome and
-Firefox receivers, and recorded OBS output. It is not a build or unit-check
-report. The experimental audio review is not an unconditional compatibility or
-release sign-off: generated PCM links were silent in Firefox, and native OBS
-sync needs follow-up. Other retained findings include an existing capture
-cadence limit, a first-close Windows tray chime, low-bitrate stereo quality
-failures, and resources retained after repeated full stream restarts. Default
-Opus playback did not show a new regression in the measured comparisons.
+This report records actual packaged Game Capture workflows, real Chrome and
+Firefox receivers, and recorded OBS output. The initial investigation found
+Firefox PCM-link silence, reduced fresh-frame delivery, a Windows tray chime,
+low-bitrate stereo limitations and retained resources. The 0.2.61 follow-up
+below records the fixes and their separate validation; earlier failures remain
+as evidence. Native Ninja receiver synchronization and unmeasured hardware or
+physical playback behavior remain outside this publisher's sign-off.
 
 Local raw evidence is under
 `native-qt/qa/reports/quality-20261010/` (called `Q` below). It includes decoded
@@ -473,7 +472,7 @@ the measured native OBS offset: sender-report clock correlation, capture
 timing and receiver behavior must be checked together. No speculative global
 audio delay or synchronization change was applied during this validation.
 
-## Scope and follow-up
+## Scope of the initial pass
 
 This change adds collapsed advanced audio controls, per-peer codec negotiation,
 experimental PCM and Opus redundancy, and reusable packaged quality fixtures.
@@ -488,3 +487,344 @@ native Ninja A/V sync, full-rate capture cadence, and silent tray reminders.
 Results from earlier release/update/network-failure
 validation remain documented in `release-0.2.60-windows-validation.md`; they
 were not silently counted as reruns in this pass.
+
+## Quality fixes for 0.2.61
+
+Evidence for this follow-up is under
+`native-qt/qa/reports/quality-fixes-20261010/` (`F` below). Earlier observations
+above describe the original packages, not the corrected candidate. No claim
+of flawless behavior across untested hardware, receivers or network conditions
+is made.
+
+### Capture cadence
+
+The original WGC limiter used `SystemRelativeTime`. Diagnostic readback showed
+that Windows supplied different images with the same timestamp: all 1,003
+rejected frames inspected in one diagnostic interval contained a different
+embedded source-frame ID from the previously accepted image at that timestamp.
+The evidence is `F/chrome-capture-diagnostic/aa907a97-789f-4aba-be0d-1ae20c17e5c4/auto-h264-frames.csv`.
+
+Capture admission now uses callback time and a two-credit rate limiter. It
+accepts closely spaced fresh frames without allowing sustained readback above
+the selected rate. The encode worker retains at most two pending frames and
+discards the oldest under overload. This accommodates observed 4/29-ms callback
+pairs without an unbounded queue. Output remains paced, including cached output
+when the source is paused. The optional WGC interval is 1 ms; a zero-interval
+experiment did not resolve the problem and is not the final change.
+
+The complete runtime candidate `F/package-c/game-capture.exe`, SHA-256
+`79b641ef0f4685ce5df9fabaeb06d2b0b99573b71f0832e44adc848361ccaf26`, passed the
+recorded-frame workflow in
+`F/chrome-cadence-c/480f3f05-7ce4-42d4-9d6f-bed51297ec83`. At 1280×720/60,
+actual receiver recording contained **59.45 distinct source-frame changes/s**,
+up from approximately 40 in the diagnostic run. Source calibration contained
+58.16 changes/s; the sequential recording windows need not contain identical
+frame counts. The receiver recording contained 59.95 decoded frames/s and
+passed the stricter requirement of at least 95% of the measured source rate.
+
+Steady playback, viewer reload and transport refresh delivered 59.94, 60.09
+and 60.06 decoded fps respectively, with zero decoder drops, freezes, lost
+packets or concealed audio samples in those measurement windows. Browser pause,
+seek and resume passed. The publisher exited normally in 321 ms with no
+remaining encoder process. The receiver screenshot was inspected.
+
+### Synchronization and audio handling
+
+All tracks in a peer connection now share one RTCP CNAME, media-stream ID and
+clock correlation. Sender reports pair RTP and NTP timestamps for the same
+instant, independent of encoder delay; VP9 and alpha tracks now also send
+reports. RTP conversion avoids multiplication overflow after long system
+uptime. WASAPI's first-sample capture timestamp anchors the audio sample clock,
+and an interrupted partial Opus packet is discarded before resumed samples
+are encoded.
+
+Streaming audio capture no longer retains and repeatedly shifts a duplicate
+15-second audio buffer. Stop releases that buffer's storage. Windows tray
+balloons have been removed to avoid notification chimes; connection state stays
+available in the window and tray tooltip. Low Opus bitrates display a fidelity
+warning. Advanced audio remains collapsed initially.
+
+The earlier complete candidate `F/package-a` passed seven actual Chrome
+playback cases: PCM mono/stereo, RED with Opus, selected bitrate/channel modes,
+and per-peer Opus fallback. Its OBS Browser Source recordings
+(`F/obs-browser-a`, about 91.5 seconds each) measured median audio-minus-video
+onset of -128.3 ms for direct calibration, -95.0 ms for Opus, and -108.3 ms for
+PCM stereo. The two streamed recordings had zero OBS rendering or output
+skips. These offsets are within one 30-fps frame of direct calibration; they
+do not establish zero physical speaker/display skew.
+
+Firefox's generated PCM link previously produced silent audio. It now uses
+negotiated Opus fallback. `F/firefox-0261` verified actual Firefox 146.0.1
+playback for PCM-selected and RED-selected links with VP9 video, Chrome as the
+source, normal exits, zero lost packets and zero concealed samples. Both audio
+and video sender reports were received. This run used the earlier signed
+0.2.61 candidate, before the final capture-cadence correction.
+
+The companion native Ninja OBS receiver independently anchors audio and video
+to their arrival/decode clocks. Publisher signaling alone does not correct
+that receiver behavior. Companion changes are awaiting scope clarification;
+native receiver synchronization is not marked resolved by Browser Source
+results.
+
+### Desktop output and package identity
+
+`F/final-desktop-quiet/42be473b-76ac-4f44-acb0-756cc0c1386f` exercised packaged
+H.264/VP9 start and stop with actual browser decoding, FFmpeg failure/timeout
+handling, source removal, two close/restore cycles and quitting during a probe.
+All assertions passed. Windows loopback contained 59.6 seconds of exact silence
+across all ten observed phases, including 3.3 seconds in the tray phase.
+There were no app sound calls, system-alert accessibility events or notification
+balloons; ordinary status accessibility announcements remained present.
+The recorder emitted discontinuity warnings during stream lifecycle changes;
+its 100-ms blocks covered 59.5 seconds of wall time, with a maximum callback gap
+of 141.8 ms. This establishes observed silent output for this workflow, not an
+exhaustive assertion about every Windows sound configuration.
+
+That run used signed executable
+`a4bc26ba473902b5e2e73917b6b09eebba3df822208344ba60ff564aeb42863c`.
+Screenshot review of the following 800×600 PCM workflow exposed an ambiguous
+disabled bitrate label. The label now says **Opus bitrate**, and the PCM fixed
+bandwidth explanation appears immediately below the codec selector. Both
+advanced controls remain initially collapsed. The full 21 compiled gates
+passed before this text/layout adjustment; the MainWindow gate passed again
+after it. These are regression gates, separate from end-to-end testing.
+
+The intermediate signed 0.2.61 package used for the following audio runs was:
+
+- Executable SHA-256: `b7379fe9bd2fdd7f943821d12290f70215e6fd45da4eacd450956034f55ff735`.
+- Manifest SHA-256: `3700d90b976729f14cbedecc8847cccb12eea93b6351456c85ee35a00d78a55f`.
+- Source snapshot SHA-256: `cf00f74cc733fc390ad14a6bd5e26754980b37f21c260a3ed981af1256ed4f85` (241 files).
+
+Packaging completed successfully, including signed portable/installer artifacts
+and byte-identical stable aliases. The optional Qt translation catalog is absent
+from the local SDK; packaging reports that existing warning. Public upload and
+release publication have not occurred in this validation pass.
+
+### Audio observation cross-check
+
+The initial `F/final-audio-quality` Opus run failed its strict Web Audio
+continuity assertion: one exact 480-sample silent interval appeared 3.54 seconds
+into the clean post-loss window. Receiver statistics reported no loss or
+concealment there. Extended recovery was continuous; its visual delay was
+150.4 ms versus 133.5 ms initially. The failure is retained, not replaced by a
+passing rerun.
+
+`F/opus-dual-recording` repeated the workflow while also recording the incoming
+audio track independently with MediaRecorder. All assertions passed. FFmpeg
+decoding of that independent recording found no low-energy 10-ms blocks in
+any normal playback/recovery window. The packet-loss phase still had measurable
+attenuation, as expected. This diagnostic used a one-second named soak and one
+viewer reconnect; it is not another long-duration resource run.
+
+The subsequent PCM dual-recording workflow reproduced a measurement-path
+underrun during the unrelated-system-tone phase. Chrome tracing recorded
+`WebAudioMediaStreamAudioSink::ProvideInput underrun`, missing 320 samples at
+32 kHz. The Web Audio recording contained a corresponding 9.54-ms low-amplitude
+interval. The independent recording of the same received track remained
+continuous: minimum 10-ms RMS was 0.04937/0.04920, with zero low-energy blocks.
+Evidence is `F/pcm-red-dual-recording/observer-underrun-comparison.json` and its
+referenced waveform, track recording and trace files.
+
+This distinguishes a receiver Web Audio consumption underrun from missing
+transmitted audio in that observed PCM case. Chromium explicitly fills its
+Web Audio sink output with zeros on FIFO underrun
+([implementation](https://chromium.googlesource.com/chromium/src/+/d27dad4649f1c35e08af6c9ad343d8037c2645b7/third_party/blink/renderer/modules/mediastream/webaudio_media_stream_audio_sink.cc)).
+The earlier unpaired Opus gap is consistent with this mechanism, but its exact
+cause cannot be proven retrospectively. Independent received-track recording
+and actual OBS Browser Source output remain necessary cross-checks; Web Audio
+metrics alone do not establish ordinary HTML video playback continuity.
+
+The completed PCM/RED run (`F/pcm-red-dual-recording`) included a 120-second
+soak per mode, four viewer reconnects, an eight-second viewer-free interval,
+transport replacement, actual 5% packet loss and 75 seconds of recovery.
+Both publishers exited normally. Independent received-track recordings had
+zero low-energy 10-ms blocks and zero clipped samples in every normal and
+recovery window. RED also had zero low-energy blocks during its loss window;
+PCM had three. These independent random loss windows are indicative, not a
+controlled codec ranking. Reported concealed samples were 7.55% for PCM and
+0.188% for RED. RED protects Opus packets; it does not protect PCM or repair
+source clipping.
+
+Visual delay remained bounded but did not always return to its initial value:
+PCM measured 150.5 ms initially and 200.4 ms after extended recovery; RED
+measured 150.5 and 200.6 ms. Receiver jitter buffering increased during loss.
+Normal recovery windows resumed about 60 decoded fps without additional packet
+loss or concealment. This does not establish physical end-to-end latency or
+zero audio/video skew.
+
+### Repeated lifecycle and resource investigation
+
+The published 0.2.60 baseline completed 24 GUI start/play/stop cycles; the
+signed `b737...` candidate completed 48. Every cycle verified actual decoded
+Chrome audio/video, and both apps exited normally with saved settings restored.
+These runs used no injected sound observer. Their evidence is
+`F/baseline-gui-nohooks` and `F/final-gui-nohooks`.
+
+| Measurement | Baseline 0.2.60 | Candidate before final cleanup fixes |
+| --- | ---: | ---: |
+| Cycles / elapsed seconds | 24 / 458.8 | 48 / 948.2 |
+| Start median / maximum | 514 / 639 ms | 599 / 3,149 ms |
+| Stop median / maximum | 166 / 196 ms | 185 / 235 ms |
+| Stopped private memory, cycles 13–24 median | 184.3 MiB | 186.5 MiB |
+| Stopped private memory, cycles 25–36 / 37–48 median | — | 192.9 / 192.3 MiB |
+| Peak private memory | 222.8 MiB | 229.4 MiB |
+| Late idle private-memory median after two-minute observation | 164.1 MiB | 136.0 MiB |
+| Live CPU median, percent of one logical core | 7.7% | 6.2% |
+
+CPU memory settled, but handle counts increased. Source review and direct
+creation/closure tracing then identified **two real leaks**, rather than
+declaring the resource run clean. In `F/handle-leak-before`, four actual
+selected-window audio sessions retained one activation event per session and
+one ICE-registry mutex per connection lifecycle. App COM initialization and
+uninitialization balanced on the observed worker thread in this run.
+
+The audio completion handler now closes its owned event. The build also applies
+a source-hash-checked backport of libjuice's
+[registry mutex cleanup](https://github.com/paullouisageneau/libjuice/commit/f68639a7fa272acfaa4a246d29957d94bef670ae),
+including cleanup on registry initialization failure. `F/cleanup-gui` then
+passed 12 actual selected-window audio start/play/stop cycles: retained app
+events were **zero after every stop**, and app-owned mutexes remained **two**
+(the process-wide ICE locks), without per-cycle growth. The app exited normally
+and restored settings. This diagnostic injected handle observers, so its CPU
+memory figures are not compared directly with the uninstrumented benchmark.
+
+GPU counters were sampled independently every 15 seconds. Reported GPU
+committed memory stayed bounded (candidate live maximum 66.2 MiB), while the
+shared-usage counter increased across repeated sessions in both builds: final
+idle values were 126.3 MiB after 24 baseline cycles and 234.0 MiB after 48
+candidate cycles. Evidence: `F/gui-gpu-memory.jsonl` and `F/gui-gpu-analysis.json`.
+The post-fix run independently queried `IDXGIAdapter3::QueryVideoMemoryInfo`
+inside the publisher. Its current Intel GPU allocation repeatedly returned to
+previous levels: 16.7–44.6 MiB during active phases, 16.7–33.6 MiB between
+sessions, and 24.1 MiB at the end of the one-minute idle observation. NVIDIA
+and software-adapter usage remained zero. The separate Windows shared-usage
+counter still reported a higher value. These counters therefore disagree;
+the directly queried process budget showed no cumulative increase over the
+observed 12 sessions. This finite observation does not prove universal GPU
+leak freedom. Evidence: `F/cleanup-gpu-budget.jsonl`,
+`F/cleanup-gpu-budget-analysis.json`, and `F/cleanup-gpu-counters.jsonl`.
+
+Log timestamps localized the slow starts to WebSocket connection establishment:
+capture/encoder/ICE configuration medians were 305.5 ms for the baseline and
+302.5 ms for the 48-cycle candidate, with maxima 416 and 411 ms. WebSocket
+connection time reached 2,705 ms in the candidate run, versus 162 ms in the
+earlier baseline run. This is observed signaling-phase variability, not
+evidence of slower encoding. See `F/gui-startup-phases.json`.
+
+Screenshot review also found that CSS-style triangle borders rendered dropdown
+arrows as small bars, and spin-box indicators lacked contrast. Embedded Qt
+bitmap indicators replace those shapes; checked boxes now include a checkmark.
+The advanced panels remain collapsed initially. Actual packaged screenshots at
+800×600, 1024×768 and 1280×900 were inspected in `F/cleanup-gui`; the dropdown
+chevrons, spin arrows and checkmarks now render clearly. Controls remain
+reachable by scrolling in the smallest window.
+
+The final cleanup candidate has executable SHA-256
+`95f4b6ee8accf38010a8292dab978b0b8e29858de50d63bd82f851aa5738dde7`, manifest
+SHA-256 `6b1dd641fb172036ccc128a43bf94bf372fdfaacebbd5d3efc55dbe3d8bf1182`,
+and source snapshot
+`e814fcbdb05da49a5b6924812ac08ce82618339be1a3ed2a838cb3e2dd0d2ab2`
+(246 files, including the reproducible dependency backport). All 21 compiled
+gates passed again in 89.89 seconds. Signed ZIP, portable and NSIS packages and
+stable aliases were produced successfully. These remain local artifacts.
+
+### Final packaged Chrome workflows
+
+The final `95f4...` executable passed the source pause/seek/resume, window
+resize, viewer reload, transport replacement and two 30-to-60-fps control
+cycles in `F/final-chrome-controls/fc762b6d-9795-4898-b82b-0ddae46e1537`.
+The independent receiver recording contained 59.26 distinct image changes/s
+and 59.86 decoded fps; the sequential source calibration contained 57.75
+changes/s. Fresh-image delivery exceeded the required 95% of the calibrated
+source rate. Steady, reload, refreshed-transport and final playback windows
+delivered 59.92–60.07 decoded fps, with zero reported decoder drops, freezes,
+packet loss or concealed audio samples. Shutdown took 414 ms, exited zero and
+left no encoder process.
+
+`F/cleanup-audio-experimental` passed all seven PCM/RED/fallback playback
+cases. `F/cleanup-audio-simultaneous` passed four modes with two concurrent
+receivers each: one preferred-codec receiver and one Opus fallback receiver.
+These are eight receiver cases, not eight concurrent viewers. Shared CNAME,
+media-stream identity and sender reports were verified alongside decoded
+audio. These runs used Chrome for Testing 143.0.7499.4.
+
+`F/cleanup-audio-probe` passed the final selected-window Opus workflow with an
+independent received-track recording. Normal playback and the unrelated
+system-tone phase had zero low-energy 10-ms windows and zero clipped samples;
+minimum per-channel RMS stayed above 0.049. The unrelated tone was excluded,
+and intentional source silence produced exactly silent output. Video delivered
+59.80–59.88 decoded fps with no reported decoder drops, freezes, packet loss or
+concealed audio samples. Software visual delay medians were 134–150 ms. This
+short probe verifies the new independent-recording assertion; it is not a
+repeat of the earlier long soak or physical lip-sync measurement.
+
+### Final OBS playback and alpha regression
+
+`F/final-obs-browser` recorded direct-source calibration, Opus and PCM stereo
+for 75 seconds each, plus startup. All recordings decoded real fixture video
+and separated stereo tones. Streamed cases had zero OBS rendering/output
+skips; direct calibration had six rendering skips during its recorded startup
+and zero output skips. Publisher shutdowns took 321–343 ms and OBS took 477 ms,
+all normal exits. The PCM output screenshot was inspected.
+
+Median audio-minus-video pulse offsets were −81.7 ms for direct calibration,
+−98.3 ms for Opus and −141.7 ms for PCM. Thus this sequential PCM comparison
+showed 60 ms of additional audio lead. That result prompted the simultaneous
+source/receiver comparison below. Observed offset slopes were −2.2, +3.6
+and +5.3 ms/min respectively over these short, quantized recordings.
+
+The first final alpha run (`F/final-alpha/8cbb31c4-fde1-4ba3-ba9e-0b4c17031eb5`)
+passed browser motion and native alpha compositing through reload and transport
+replacement, but failed OBS shutdown. The QA helper selected OBS's auxiliary
+window through `Process.MainWindowHandle`; its second cleanup call also
+overwrote the first shutdown evidence. Cleanup now explicitly closes the owned
+OBS application window and preserves its first result.
+
+`F/final-alpha-close/85fb31ef-8d75-4c9b-b959-7cb28a384eb4` then passed all five
+browser phases, including playback after the native viewer closed, and both
+native alpha-composite sample sequences. OBS exited normally in 283 ms and the
+publisher exited zero. The composited alpha screenshot was inspected. This
+workflow has audio disabled and makes no native-plugin audio sync claim. These
+QA helper corrections postdate the final packaged executable's source snapshot;
+the application binary remained `95f4...` throughout.
+
+### Simultaneous synchronization cross-check and closeout
+
+`F/obs-sync-paired` records the original Chrome source and its streamed OBS
+Browser output side by side in one recording, with source audio on the first
+audio track and received audio on the second. Both use the same OBS recording
+clock. Matching each pulse individually avoids subtracting medians from
+different source-capture phases. The paired screenshot and both recorded audio
+tracks were inspected; the repeatable analyzer is `analyze-obs-sync-pair.py`.
+
+| Additional timing relative to simultaneous source capture | Opus | PCM stereo |
+| --- | ---: | ---: |
+| Matched steady pulses | 38 | 38 |
+| Median audio-minus-video skew | −16.7 ms | −30.0 ms |
+| Full observed skew range | −26.7 to +16.7 ms | −30.0 to +3.3 ms |
+| Median added audio delay | 50 ms | 70 ms |
+| Median added video delay | 66.7 ms | 100 ms |
+
+Both modes stayed within one 30-fps video frame in every matched steady pulse
+and passed the analyzer's 50-ms bound. Source capture itself changed phase
+between recordings, so the earlier sequential 60-ms difference is not a stable
+publisher offset. No fixed compensation was added from that result. This is a
+bounded relative comparison, not zero lip-sync error or physical latency.
+The Opus recording included five rendering skips during startup; PCM had zero.
+Both had zero output skips. Publishers exited normally in 223/233 ms and OBS
+in 479 ms. Evidence is the per-case `paired-sync-analysis.json` files.
+
+The measured publisher release workflows are complete: fresh-frame delivery,
+audio/channel negotiation and continuity, loss/recovery, GUI lifecycle,
+resource cleanup, quiet tray behavior, browser compatibility, OBS Browser
+synchronization and native alpha/browser coexistence. The 21 compiled gates
+and changed QA-script syntax gates also passed. Earlier failed observations
+remain in this report with their investigation and limitations.
+
+Remaining coverage limits are physical listening/display measurements,
+multi-hour resource runs, other hardware/driver/OS combinations and the
+separate native Ninja receiver's A/V clock mapping. PCM/RED remain explicitly
+experimental; RED protects Opus, not PCM. These results support the 0.2.61
+publisher change within the documented coverage and do not assert universally
+flawless playback. The signed packages are local; no release assets were
+uploaded during this pass.

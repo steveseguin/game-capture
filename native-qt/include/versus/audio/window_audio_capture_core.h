@@ -50,6 +50,8 @@ struct StreamChunk {
     std::vector<float> samples;
     uint32_t sampleRate = 48000;
     uint32_t channels = 2;
+    // QPC time of the first sample, in 100-ns units; zero if unavailable.
+    int64_t captureTime100ns = 0;
 };
 
 enum class DefaultAudioEndpoint {
@@ -85,7 +87,7 @@ class WindowAudioCaptureCore {
     CaptureResult StartDefaultEndpoint(DefaultAudioEndpoint endpoint);
     CaptureResult StartInputDevice(const std::string &deviceId);
     void CaptureLoop();
-    void AppendSamples(const float *samples, size_t count);
+    void AppendSamples(const float *samples, size_t count, int64_t captureTime100ns = 0);
 
     std::mutex mutex_;
     std::vector<float> audioBuffer_;

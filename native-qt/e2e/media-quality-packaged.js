@@ -138,7 +138,7 @@ async function main(){
   try{
     await source.goto('http://127.0.0.1:'+server.address().port);await source.getByRole('button').click();
     await source.waitForFunction(()=>quality.ready);await source.screenshot({path:path.join(output,'source.png')});
-    if(opts.obs)obs=await require('./quality-obs-receiver').start(opts.obs,path.join(output,'obs-recordings'));
+    if(opts.obs)obs=await require('./quality-obs-receiver').start(opts.obs,path.join(output,'obs-recordings'),{paired:opts['sync-pair']==='true'});
     for(const c of selected){
       c.loss=opts.loss==='true';const dir=path.join(output,c.id);fs.mkdirSync(dir,{recursive:true});
       const exe=path.resolve(c.baseline?opts.baseline:opts.publisher),discovery=path.join(dir,'control.json');

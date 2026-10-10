@@ -76,14 +76,34 @@ async function main(){
       return {audioCodec:audio&&all.get(audio.codecId),audioAnswer:pc.localDescription.sdp.split('\r\n').find(l=>l.startsWith('m=audio '))};
     });
     check(result.negotiated.audioAnswer.split(' ')[3]===(name==='pcm'?'109':name==='red'?'63':'111'),'Wrong negotiated audio mode');
-    await observer.install(page);
+    await observer.install(page, {recordTrack: opts['dual-audio-recording']==='true'});
    }
    async function stage(label,seconds=12){
+    if(opts['audio-trace']==='true')await cdp.send('Tracing.start',{
+      categories:'disabled-by-default-mediastream',transferMode:'ReturnAsStream'});
     const before=await stats();await page.evaluate(()=>window.qualityObserver.start());
     await sleep(seconds*1000);
     const after=await stats(),data=await page.evaluate(()=>window.qualityObserver.stop());
     fs.writeFileSync(path.join(dir,label+'.f32'),Buffer.from(data.pcmBase64,'base64'));delete data.pcmBase64;
+    let receivedTrack;
+    if(data.trackAudioBase64){
+      const trackFile=path.join(dir,label+'-track.webm'),decodedFile=path.join(dir,label+'-track.f32');
+      fs.writeFileSync(trackFile,Buffer.from(data.trackAudioBase64,'base64'));delete data.trackAudioBase64;
+      await exec(path.join(path.dirname(publisher),'ffmpeg/bin/ffmpeg.exe'),
+        ['-hide_banner','-loglevel','error','-y','-i',trackFile,'-vn','-ar','48000','-ac','2','-f','f32le','-acodec','pcm_f32le',decodedFile],
+        {windowsHide:true,timeout:15000});
+      receivedTrack=observer.analyzeTrackPcm(fs.readFileSync(decodedFile));
+    }
+    if(opts['audio-trace']==='true'){
+      const completed=new Promise(resolve=>cdp.once('Tracing.tracingComplete',resolve));
+      await cdp.send('Tracing.end');const {stream}=await completed;
+      const fd=fs.openSync(path.join(dir,label+'-audio-trace.json'),'w');
+      try {let chunk;do{chunk=await cdp.send('IO.read',{handle:stream});
+        fs.writeSync(fd,chunk.base64Encoded?Buffer.from(chunk.data,'base64'):chunk.data);}while(!chunk.eof);}
+      finally {fs.closeSync(fd);await cdp.send('IO.close',{handle:stream});}
+    }
     const analyzed=observer.analyze(data);
+    if(receivedTrack)analyzed.receivedTrack=receivedTrack;
     const source=await sourcePage.evaluate(()=>window.fixture);
     const audioEvents=data.audio.filter((a,i)=>i&&a.amplitude[0][2]>.035&&data.audio[i-1].amplitude[0][2]<=.035).map(a=>a.wall);
     const delays=audioEvents.map(t=>source.flashEvents.map(s=>t-s.sourceAudioOnsetWall).filter(d=>d>=-100&&d<1500).sort((a,b)=>Math.abs(a)-Math.abs(b))[0]).filter(Number.isFinite);
@@ -161,14 +181,22 @@ async function main(){
       await stage('five-percent-loss');
       await cdp.send('Network.emulateNetworkConditionsByRule',{offline:false,matchedNetworkConditions:[{urlPattern:'',latency:1,downloadThroughput:-1,uploadThroughput:-1,packetLoss:0}]});
       await sleep(3000);await stage('after-loss');
+      if(opts['recovery-seconds']) {
+        const extended = Math.max(0, Number(opts['recovery-seconds']) - 15);
+        await sleep(extended * 1000);
+        await stage('after-extended-recovery');
+      }
     }
     result.finalDiagnostics=await api('/diagnostics');result.samples.push(await resources());
     const quiet=result.stages.find(s=>s.label==='source-silence');
     result.checks=[{name:'silent-source-has-no-spurious-output',passed:quiet.audio.peak<.002}];
     if(opts.probe!=='true')result.checks.push({name:'network-loss-actually-applied',passed:
       result.stages.find(s=>s.label==='five-percent-loss').metrics.find(m=>m.kind==='audio').packetsLost>5});
-    for(const s of result.stages.filter(s=>['steady','after-idle-reconnect','after-soak','after-viewer-churn','after-transport-refresh','after-loss'].includes(s.label))){
-      result.checks.push({name:s.label+'-audio-not-clipped-or-silent',passed:s.audio.clippedSamples===0&&s.audio.silentWindows===0});
+    for(const s of result.stages.filter(s=>['steady','after-idle-reconnect','after-soak','after-viewer-churn','after-transport-refresh','after-loss','after-extended-recovery'].includes(s.label))){
+      result.checks.push({name:s.label+'-audio-not-clipped-or-silent',
+        path:s.receivedTrack?'independent-received-track':'Web Audio',
+        passed:s.receivedTrack?(s.receivedTrack.clippedSamples===0&&s.receivedTrack.lowEnergyWindows===0):
+          (s.audio.clippedSamples===0&&s.audio.silentWindows===0)});
       result.checks.push({name:s.label+'-stereo-separation',passed:s.audio.medianAmplitudes[0][0]>.06&&s.audio.medianAmplitudes[1][1]>.06&&
         s.audio.medianAmplitudes[0][1]<.007&&s.audio.medianAmplitudes[1][0]<.007});
       result.checks.push({name:s.label+'-video-delivered',passed:s.metrics.find(m=>m.kind==='video').fps>57});

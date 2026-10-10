@@ -58,7 +58,8 @@ CaptureFramePacer::CaptureFramePacer(int targetFps) {
 
 void CaptureFramePacer::reset(int targetFps) {
     scheduled_ = false;
-    nextDue_ = {};
+    lastRefill_ = {};
+    credits_ = 2.0;
     interval_ = targetFps > 0
         ? std::chrono::nanoseconds(1000000000LL / std::max(1, targetFps))
         : std::chrono::steady_clock::duration::zero();
@@ -69,25 +70,21 @@ bool CaptureFramePacer::shouldAdmit(std::chrono::steady_clock::time_point now) {
         return true;
     }
     if (!scheduled_) {
-        nextDue_ = now + interval_;
+        lastRefill_ = now;
         scheduled_ = true;
-        return true;
     }
-    // Callback jitter must not discard slightly early frames from a source
-    // already running at the requested rate. Keep the deadline phase and skip
-    // missed slots, so this allowance cannot accumulate into catch-up bursts.
-    const auto tolerance = std::min(
-        interval_ / 4,
-        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::milliseconds(2)));
-    const auto admissionTime = now + tolerance;
-    if (admissionTime < nextDue_) {
+    // WGC can deliver distinct images in pairs only a few milliseconds apart.
+    // Admit a bounded two-frame burst while retaining the requested average
+    // rate. The encode worker paces output and holds at most two pending frames.
+    const auto elapsed = std::max(now - lastRefill_,
+                                  std::chrono::steady_clock::duration::zero());
+    credits_ = std::min(2.0, credits_ + std::chrono::duration<double>(elapsed).count()
+                                      / std::chrono::duration<double>(interval_).count());
+    lastRefill_ = now;
+    if (credits_ + 1e-9 < 1.0) {
         return false;
     }
-
-    const auto overdue = admissionTime - nextDue_;
-    const auto intervalsElapsed = (overdue / interval_) + 1;
-    nextDue_ += interval_ * intervalsElapsed;
+    credits_ = std::max(0.0, credits_ - 1.0);
     return true;
 }
 
@@ -753,14 +750,15 @@ class WindowCapture::Impl {
     void applyCaptureUpdateInterval(int fps) {
         // Windows 11 24H2 defaults to an OS-side 60-Hz minimum interval.
         // Compositor jitter can undershoot that rate before our own limiter
-        // sees a frame. Leave half an interval of headroom and keep our
-        // readback limiter authoritative. Older Windows has no session5.
+        // sees a frame. Request 1 ms and keep our readback limiter authoritative.
+        // Zero/sub-millisecond values can throttle WGC on Windows 11 instead
+        // of disabling throttling (Win32CaptureSample issue 82).
+        // Older Windows has no session5.
         // https://github.com/robmikh/Win32CaptureSample/issues/92
         if (!captureSession_) return;
         try {
             if (auto timing = captureSession_.try_as<winrt::Windows::Graphics::Capture::IGraphicsCaptureSession5>()) {
-                const auto interval = winrt::Windows::Foundation::TimeSpan{
-                    5000000LL / std::max(1, fps)};
+                const auto interval = winrt::Windows::Foundation::TimeSpan{10000};
                 timing.MinUpdateInterval(interval);
                 spdlog::info("[Capture::Impl] OS capture update interval set to {}us for {} FPS", interval.count() / 10, fps);
             }
@@ -1227,23 +1225,22 @@ class WindowCapture::Impl {
             framePacer_.reset(targetFps_);
             applyCaptureUpdateInterval(targetFps_);
         }
-        // WGC SystemRelativeTime is the compositor's QPC timestamp in 100-ns
-        // units. Callback/lock scheduling jitter must not discard source frames
-        // around a deadline. Desktop duplication retains its wall-clock limiter.
-        const auto frameTime = useGraphicsCapture_
-            ? std::chrono::steady_clock::time_point(
-                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-                    std::chrono::duration<int64_t, std::ratio<1, 10000000>>(timestamp)))
-            : std::chrono::steady_clock::now();
+        // WGC can report the same SystemRelativeTime for DIFFERENT images,
+        // followed by a two-frame timestamp jump. Pixel-identity recordings
+        // reproduced this on Windows 11. Pace callback arrivals instead; the
+        // bounded burst allowance absorbs callback jitter without treating
+        // a repeated compositor timestamp as proof of duplicate content.
+        const auto frameTime = std::chrono::steady_clock::now();
         // Opt-in, timestamp-only QA evidence before admission. This separates
         // compositor delivery gaps from frames rejected by our own limiter,
         // without performing GPU readback for rejected frames.
         app::detail::FrameTrace::instance().record("capture-arrival", nullptr, timestamp);
-        if (!detail::frameAdmissionAllowed(frameAdmissionCallback_) ||
-            !framePacer_.shouldAdmit(frameTime)) {
+        const bool consumerReady = detail::frameAdmissionAllowed(frameAdmissionCallback_);
+        const bool paced = consumerReady && framePacer_.shouldAdmit(frameTime);
+        if (!paced) {
             app::detail::FrameTrace::instance().record("capture-rejected", nullptr, timestamp);
             framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
-            return;
+            if (!consumerReady || !app::detail::FrameTrace::instance().captureRejectedFrames()) return;
         }
         D3D11_TEXTURE2D_DESC desc;
         texture->GetDesc(&desc);
@@ -1313,6 +1310,10 @@ class WindowCapture::Impl {
             std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
         }
 
+        if (!paced) {
+            app::detail::FrameTrace::instance().record("capture-rejected-pixels", &frame, timestamp);
+            return;
+        }
         if (frameCallback_) {
             frameCallback_(std::move(frame));
         }

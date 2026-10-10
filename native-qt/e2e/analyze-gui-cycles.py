@@ -35,14 +35,17 @@ def analyze(folder):
         "lateStoppedHandles": describe([c["stoppedResources"]["handles"] for c in late]),
         "peakPrivateMiB": max(s["private"] for s in samples) / 1048576,
         "liveCpuPercentOneCore": describe([s["cpuPercentOneCore"] for s in live]),
+        "systemCpuPercent": describe([s["systemCpuPercent"] for s in samples if "systemCpuPercent" in s]),
+        "availableMemoryMiB": describe([s["availableMemoryMiB"] for s in samples if "availableMemoryMiB" in s]),
         "finalResources": report.get("finalResources"),
         "finalIdleSeconds": idle[-1]["wall"] - idle[0]["wall"] if len(idle) > 1 else 0,
         "lateIdlePrivateMiB": describe([s["private"] / 1048576 for s in idle[-30:]]),
         "lateIdleHandles": describe([s["handles"] for s in idle[-30:]]),
-        "appSoundCalls": len(report["soundCalls"]),
+        "soundHooks": report.get("soundHooks", True),
+        "appSoundCalls": len(report["soundCalls"]) if report.get("soundHooks", True) else None,
         "syncSignaling": {"cnames": cnames, "singleCname": len(cnames) == 1,
                           "mediaStreamIds": [line for line in offer if line.startswith("a=msid:")]},
-        "limitations": "Observed resource retention and bounds for this finite GUI workflow, with Frida sound observers attached; not proof of a leak or leak freedom. Baseline uses explicit stereo/ab receiver preferences to match the review. Playback passes do not imply synchronization-signaling conformance.",
+        "limitations": "Observed resource retention and bounds for a finite GUI workflow, not proof of a leak or leak freedom. Check soundHooks for injected observer overhead. Baseline uses explicit stereo/ab receiver preferences to match the review. Playback passes do not imply synchronization-signaling conformance.",
     }
     (folder / "analysis.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     return result

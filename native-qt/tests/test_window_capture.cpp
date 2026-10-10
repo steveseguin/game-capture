@@ -18,7 +18,7 @@ class TestWindowCapture : public QObject {
     void testInvalidWindowIdThumbnailReturnsNull();
     void testGdiThumbnailIsOpaque();
     void testFramePacerAdmitsAtRequestedCadence();
-    void testFramePacerDoesNotBurstAfterDelay();
+    void testFramePacerLimitsBurstAfterDelay();
     void testFramePacerToleratesCallbackJitterWithoutIncreasingAverageRate();
     void testFrameAdmissionCallbackCanRejectBeforeReadback();
 };
@@ -114,19 +114,21 @@ void TestWindowCapture::testFramePacerAdmitsAtRequestedCadence() {
     const auto start = std::chrono::steady_clock::time_point{};
 
     QVERIFY(pacer.shouldAdmit(start));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(4)));
     QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(10)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(17)));
     QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(25)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(34)));
 }
 
-void TestWindowCapture::testFramePacerDoesNotBurstAfterDelay() {
+void TestWindowCapture::testFramePacerLimitsBurstAfterDelay() {
     versus::video::detail::CaptureFramePacer pacer(30);
     const auto start = std::chrono::steady_clock::time_point{};
 
     QVERIFY(pacer.shouldAdmit(start));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(200)));
-    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(201)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(201)));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(202)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(234)));
 }
 
@@ -135,10 +137,10 @@ void TestWindowCapture::testFramePacerToleratesCallbackJitterWithoutIncreasingAv
     const auto start = steady_clock::time_point{};
     versus::video::detail::CaptureFramePacer pacer(60);
     int admitted = 0;
-    // A 60-Hz producer whose callbacks alternate by 1 ms around the deadline.
+    // WGC may deliver 60-Hz frames in pairs 4 ms apart, then wait 29 ms.
     // Rejected early callbacks cannot be recovered by the next output slot.
     for (int i = 0; i < 600; ++i) {
-        const auto jitter = microseconds(i % 2 ? -1000 : 0);
+        const auto jitter = microseconds(i % 2 ? -12666 : 0);
         admitted += pacer.shouldAdmit(start + nanoseconds(16666666LL * i) + jitter);
     }
     QCOMPARE(admitted, 600);

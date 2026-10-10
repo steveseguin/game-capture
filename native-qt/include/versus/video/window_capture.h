@@ -43,7 +43,8 @@ class CaptureFramePacer {
 
   private:
     std::chrono::steady_clock::duration interval_{};
-    std::chrono::steady_clock::time_point nextDue_{};
+    std::chrono::steady_clock::time_point lastRefill_{};
+    double credits_ = 2.0;
     bool scheduled_ = false;
 };
 

@@ -6,6 +6,7 @@
 #include <type_traits>
 
 #include <algorithm>
+#include <cstdlib>
 #include <vector>
 
 namespace versus::audio {
@@ -97,6 +98,13 @@ bool OpusEncoder::encode(const std::vector<float> &samples, int sampleRate, int 
         return false;
     }
 
+    const int64_t pendingEnd = impl_->pendingPts +
+        static_cast<int64_t>(impl_->pendingSamples.size() / channels) * 10000000LL / sampleRate;
+    if (!impl_->pendingSamples.empty() && std::abs(pts - pendingEnd) > 10000) {
+        // Do not append samples captured after a pause to an old partial packet.
+        impl_->pendingSamples.clear();
+        opus_encoder_ctl(impl_->encoder, OPUS_RESET_STATE);
+    }
     if (impl_->pendingSamples.empty()) {
         impl_->pendingPts = pts;
     }

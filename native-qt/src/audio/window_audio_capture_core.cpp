@@ -407,6 +407,11 @@ class ActivateAudioInterfaceHandler
           Microsoft::WRL::FtmBase, IActivateAudioInterfaceCompletionHandler> {
   public:
     ActivateAudioInterfaceHandler() { event_ = CreateEventW(nullptr, FALSE, FALSE, nullptr); }
+    ~ActivateAudioInterfaceHandler() {
+        if (event_) {
+            CloseHandle(event_);
+        }
+    }
 
     HRESULT GetActivateResult(IAudioClient **client, DWORD timeoutMs = 5000) {
         if (!event_) {
@@ -580,7 +585,7 @@ void WindowAudioCaptureCore::StopCapture() {
             static_cast<IAudioClient *>(audioClient_)->Release();
             audioClient_ = nullptr;
         }
-        audioBuffer_.clear();
+        std::vector<float>().swap(audioBuffer_);
         usingProcessLoopback_.store(false);
         sampleRate_ = kDefaultSampleRate;
         channels_ = kDefaultChannelCount;
@@ -1146,7 +1151,8 @@ void WindowAudioCaptureCore::CaptureLoop() {
             BYTE *data = nullptr;
             UINT32 frameCount = 0;
             DWORD flags = 0;
-            hr = captureClient->GetBuffer(&data, &frameCount, &flags, nullptr, nullptr);
+            UINT64 captureTime100ns = 0;
+            hr = captureClient->GetBuffer(&data, &frameCount, &flags, nullptr, &captureTime100ns);
             if (FAILED(hr)) {
                 break;
             }
@@ -1174,7 +1180,8 @@ void WindowAudioCaptureCore::CaptureLoop() {
                     }
                 }
 
-                AppendSamples(converted.data(), converted.size());
+                AppendSamples(converted.data(), converted.size(),
+                    (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) ? 0 : static_cast<int64_t>(captureTime100ns));
             } catch (const std::exception &e) {
                 spdlog::warn("[Audio] Capture packet conversion failed: {}", e.what());
             } catch (...) {
@@ -1186,7 +1193,7 @@ void WindowAudioCaptureCore::CaptureLoop() {
     capturing_.store(false);
 }
 
-void WindowAudioCaptureCore::AppendSamples(const float *samples, size_t count) {
+void WindowAudioCaptureCore::AppendSamples(const float *samples, size_t count, int64_t captureTime100ns) {
     if (!samples || count == 0) {
         return;
     }
@@ -1196,7 +1203,9 @@ void WindowAudioCaptureCore::AppendSamples(const float *samples, size_t count) {
         streamCopy.assign(samples, samples + count);
     }
 
-    {
+    // Streaming consumers already receive every chunk. Keeping another fifteen
+    // seconds wastes memory and shifts megabytes on every capture callback.
+    if (!streaming_.load()) {
         std::lock_guard<std::mutex> lock(mutex_);
         if (audioBuffer_.size() + count > maxBufferSamples_) {
             size_t excess = audioBuffer_.size() + count - maxBufferSamples_;
@@ -1220,6 +1229,7 @@ void WindowAudioCaptureCore::AppendSamples(const float *samples, size_t count) {
             chunk.samples = std::move(streamCopy);
             chunk.sampleRate = sampleRate_;
             chunk.channels = channels_;
+            chunk.captureTime100ns = captureTime100ns;
             callback(std::move(chunk));
         }
     }

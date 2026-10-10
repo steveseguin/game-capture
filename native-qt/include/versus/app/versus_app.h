@@ -298,7 +298,7 @@ class VersusApp {
     void updateAudioLevelMeters(const std::vector<float> &samples,
                                 std::atomic<float> &rmsTarget,
                                 std::atomic<float> &peakTarget);
-    void encodeNormalizedAudio(std::vector<float> &normalizedSamples);
+    void encodeNormalizedAudio(std::vector<float> &normalizedSamples, int64_t captureTime100ns = 0);
     StreamMetrics buildStreamMetricsSnapshot(
         bool updateRecentWindow,
         const PeerCounts *peerCountsOverride = nullptr) const;
@@ -829,7 +829,7 @@ class VersusApp {
     mutable std::mutex videoStateSnapshotMutex_;
     mutable VideoStateSnapshot cachedVideoStateSnapshot_;
     std::mutex latestVideoFrameMutex_;
-    std::shared_ptr<const versus::video::CapturedFrame> pendingVideoFrame_;
+    std::deque<std::shared_ptr<const versus::video::CapturedFrame>> pendingVideoFrames_;
     std::shared_ptr<const versus::video::CapturedFrame> cachedVideoFrame_;
     int activeHqWidth_ = 0;
     int activeHqHeight_ = 0;

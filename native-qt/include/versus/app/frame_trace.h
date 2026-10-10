@@ -17,6 +17,7 @@ namespace versus::app::detail {
 class FrameTrace {
   public:
     static FrameTrace &instance() { static FrameTrace trace; return trace; }
+    bool captureRejectedFrames() const { return enabled_ && rejectedFrames_; }
     void record(const char *stage, const video::CapturedFrame *frame, int64_t pts) {
         if (!enabled_) return;
         std::lock_guard<std::mutex> lock(mutex_);
@@ -31,6 +32,7 @@ class FrameTrace {
     }
   private:
     FrameTrace() {
+        rejectedFrames_ = qEnvironmentVariableIntValue("VERSUS_TRACE_REJECTED_CAPTURE") == 1;
         movingEdge_ = qEnvironmentVariable("VERSUS_FRAME_TRACE_PATTERN") == "alpha-moving-edge";
         const auto path = qEnvironmentVariable("VERSUS_FRAME_TRACE");
         if (!path.isEmpty()) {
@@ -107,6 +109,7 @@ class FrameTrace {
         return -1;
     }
     bool enabled_ = false;
+    bool rejectedFrames_ = false;
     bool movingEdge_ = false;
     std::ofstream file_;
     std::mutex mutex_;

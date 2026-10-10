@@ -215,7 +215,6 @@ class MainWindow : public QMainWindow {
     bool forceQuitEnabled_ = false;
     bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
-    bool trayReminderShown_ = false;
     bool loadingPersistedSettings_ = false;
     bool roomModeLqPreference_ = true;
     bool configControlsEnabled_ = true;

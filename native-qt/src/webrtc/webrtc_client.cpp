@@ -1,5 +1,6 @@
 #include "versus/webrtc/webrtc_client.h"
 #include "versus/audio/red_packet.h"
+#include "capture_sr_reporter.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -22,6 +23,7 @@
 #include <cstdint>
 #include <cstring>
 #include <mutex>
+#include <random>
 #include <sstream>
 #include <unordered_map>
 #include <thread>
@@ -39,6 +41,13 @@ constexpr uint8_t kRedPayloadType = 63;
 constexpr uint32_t kVideoClockRate = rtc::RtpPacketizer::VideoClockRate;
 constexpr uint32_t kAudioClockRate = rtc::OpusRtpPacketizer::DefaultClockRate;
 constexpr size_t kMaxVp9RtpPayload = 1150;
+
+std::string newMediaIdentity() {
+    std::random_device random;
+    std::ostringstream text;
+    text << "gamecapture-" << std::hex << random() << random() << random() << random();
+    return text.str();
+}
 
 rtc::binary toBinary(const std::vector<uint8_t> &data) {
     rtc::binary out;
@@ -145,6 +154,8 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     };
 
     struct TransportState {
+        const std::string mediaIdentity = newMediaIdentity();
+        const std::shared_ptr<MediaClock> mediaClock = std::make_shared<MediaClock>();
         uint64_t generation = 0;
         IceMode mode = IceMode::All;
         PeerConfig::VideoCodec videoCodec = PeerConfig::VideoCodec::H264;
@@ -684,7 +695,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
                 break;
             }
         }
-        video.addSSRC(target->videoSsrc, "gamecapture-video");
+        video.addSSRC(target->videoSsrc, target->mediaIdentity, target->mediaIdentity, "video");
         auto track = target->pc->addTrack(video);
         if (!track) return false;
 
@@ -705,7 +716,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         });
 
         auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
-            target->videoSsrc, "gamecapture-video", kVideoPayloadType, kVideoClockRate);
+            target->videoSsrc, target->mediaIdentity, kVideoPayloadType, kVideoClockRate);
         std::shared_ptr<rtc::RtpPacketizer> packetizer;
         switch (codec) {
             case PeerConfig::VideoCodec::H265:
@@ -725,7 +736,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
                 break;
         }
         if (packetizer) {
-            auto reporter = std::make_shared<rtc::RtcpSrReporter>(rtpConfig);
+            auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock);
             auto nack = std::make_shared<rtc::RtcpNackResponder>();
             auto pli = std::make_shared<rtc::PliHandler>([weakSelf, weakTarget, generation]() {
                 auto self = weakSelf.lock();
@@ -741,7 +752,15 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             // Manual VP9 already supplies complete RTP packets. Cache those
             // packets directly so receiver NACKs can recover a missing fragment
             // without discarding the entire independently decodable frame.
-            track->setMediaHandler(std::make_shared<rtc::RtcpNackResponder>());
+            auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock);
+            reporter->addToChain(std::make_shared<rtc::RtcpNackResponder>());
+            reporter->addToChain(std::make_shared<rtc::PliHandler>([weakSelf, weakTarget, generation]() {
+                auto self = weakSelf.lock();
+                auto state = weakTarget.lock();
+                if (self && state && self->isCurrentTransport(state))
+                    self->invokeCallback(generation, &Impl::keyframeCallback, generation);
+            }));
+            track->setMediaHandler(reporter);
         }
         const bool open = track->isOpen();
         {
@@ -766,7 +785,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         rtc::Description::Video alpha("video-alpha", active
             ? rtc::Description::Direction::SendOnly : rtc::Description::Direction::Inactive);
         alpha.addVP9Codec(kAlphaVideoPayloadType);
-        alpha.addSSRC(target->alphaVideoSsrc, "gamecapture-alpha");
+        alpha.addSSRC(target->alphaVideoSsrc, target->mediaIdentity, target->mediaIdentity, "video-alpha");
         auto track = target->pc->addTrack(alpha);
         if (!track) return false;
 
@@ -785,8 +804,10 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             state->alphaVideoTrackOpen.store(false, std::memory_order_release);
         });
         auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
-            target->alphaVideoSsrc, "gamecapture-alpha", kAlphaVideoPayloadType, kVideoClockRate);
-        track->setMediaHandler(std::make_shared<rtc::RtcpNackResponder>());
+            target->alphaVideoSsrc, target->mediaIdentity, kAlphaVideoPayloadType, kVideoClockRate);
+        auto reporter = std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock);
+        reporter->addToChain(std::make_shared<rtc::RtcpNackResponder>());
+        track->setMediaHandler(reporter);
         const bool open = track->isOpen();
         {
             std::lock_guard<std::mutex> lock(target->alphaVideoSendMutex);
@@ -818,7 +839,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         audio.addOpusCodec(kAudioPayloadType,
                            std::string("minptime=10;sprop-stereo=") +
                                (configuredAudioChannels == 1 ? "0" : "1"));
-        audio.addSSRC(target->audioSsrc, "gamecapture-audio");
+        audio.addSSRC(target->audioSsrc, target->mediaIdentity, target->mediaIdentity, "audio");
         auto track = target->pc->addTrack(audio);
         if (!track) return false;
 
@@ -837,9 +858,9 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             state->audioTrackOpen.store(false, std::memory_order_release);
         });
         auto rtpConfig = std::make_shared<rtc::RtpPacketizationConfig>(
-            target->audioSsrc, "gamecapture-audio", kAudioPayloadType, kAudioClockRate);
+            target->audioSsrc, target->mediaIdentity, kAudioPayloadType, kAudioClockRate);
         auto packetizer = std::make_shared<rtc::OpusRtpPacketizer>(rtpConfig);
-        packetizer->addToChain(std::make_shared<rtc::RtcpSrReporter>(rtpConfig));
+        packetizer->addToChain(std::make_shared<CaptureSrReporter>(rtpConfig, target->mediaClock));
         packetizer->addToChain(std::make_shared<rtc::RtcpNackResponder>());
         track->setMediaHandler(packetizer);
         const bool open = track->isOpen();
@@ -1148,8 +1169,12 @@ void WebRtcClient::configureAudioFromDescription(const std::string &sdp) {
         }
     }
     bool pcm = false, red = false, negotiated = false;
+    // VDO.Ninja's PCM URL can insert L16 into Firefox's answer even though
+    // Firefox has no L16 WebRTC decoder. Select the also-negotiated Opus payload
+    // for this receiver instead of trusting that injected format preference.
+    const bool firefoxReceiver = sdp.find("\no=mozilla") != std::string::npos;
     if (accepted) for (const int pt : formats) {
-        if (pt == kPcmPayloadType && impl_->configuredPcmAudio &&
+        if (pt == kPcmPayloadType && impl_->configuredPcmAudio && !firefoxReceiver &&
             mappings[pt] == (impl_->configuredAudioChannels == 1 ? "l16/48000/1" : "l16/32000/2")) {
             pcm = negotiated = true;
             break;
@@ -1554,7 +1579,7 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
     if (!target->sentFirstKeyframe.exchange(true)) {
         spdlog::info("[WebRTC] Starting video transmission, isKeyframe={}", packet.isKeyframe);
     }
-    const uint32_t timestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
+    const uint32_t timestamp = mediaRtpTimestamp(packet.pts, kVideoClockRate);
     if (target->videoCodec == PeerConfig::VideoCodec::VP9) {
         std::lock_guard<std::mutex> sequenceLock(impl_->vp9VideoSequenceMutex);
         return sendVp9FrameRtp(target->videoTrack,
@@ -1585,7 +1610,7 @@ bool WebRtcClient::sendAlphaVideo(const EncodedVideoPacket &packet) {
         !impl_->isCurrentTransport(target)) {
         return false;
     }
-    const uint32_t timestamp = static_cast<uint32_t>((packet.pts * 9) / 1000);
+    const uint32_t timestamp = mediaRtpTimestamp(packet.pts, kVideoClockRate);
     std::lock_guard<std::mutex> sequenceLock(impl_->vp9AlphaSequenceMutex);
     return sendVp9FrameRtp(target->alphaVideoTrack,
                            impl_->vp9AlphaSequenceNumber,
@@ -1605,7 +1630,7 @@ bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet, size_t *payloadBy
         return false;
     }
     if (!target->audioNegotiated || packet.pcm != target->usePcm) return true;
-    target->audioRtpConfig->timestamp = static_cast<uint32_t>((packet.pts * packet.sampleRate) / 10000000);
+    target->audioRtpConfig->timestamp = mediaRtpTimestamp(packet.pts, packet.sampleRate);
     try {
         auto data = target->useRed ? audio::makeRedPacket(packet.data, target->previousAudioPayload,
             target->audioRtpConfig->timestamp - target->previousAudioTimestamp, kAudioPayloadType) : packet.data;
