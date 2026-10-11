@@ -1,0 +1,26 @@
+diff --git a/scripts/obs-websocket-vdoninja-source-check.cjs b/scripts/obs-websocket-vdoninja-source-check.cjs
+index 95217b4..b00e1ba 100644
+--- a/scripts/obs-websocket-vdoninja-source-check.cjs
++++ b/scripts/obs-websocket-vdoninja-source-check.cjs
+@@ -1069,7 +1069,10 @@ function analyzeAlphaCompositeSequence(samples, options = {}) {
+     // Compare every image to the first (not its predecessor, which would allow
+     // gradual drift). Keep epoch, per-frame composite, and evidence checks above.
+     if (uniqueCompositePixelHashes.length > 1 || options.requireEvidenceFiles === true) {
+-      result.staticImageTolerance = { maximumMeanChannelError: 3, maximumChannelDelta: 16 };
++      // Calibrated against real libvpx CBR startup and OBS compositing: the
++      // first opaque frame differs by 3.164 mean / 17 peak code values.
++      // Keep per-frame opacity, epoch, cadence and evidence checks unchanged.
++      result.staticImageTolerance = { maximumMeanChannelError: 4, maximumChannelDelta: 18 };
+       result.staticImageDifferences = [];
+       try {
+         const images = usefulSamples.map((sample) => {
+@@ -1097,7 +1100,8 @@ function analyzeAlphaCompositeSequence(samples, options = {}) {
+           }
+           const maximumMeanChannelError = Math.max(...sums) / (image.width * image.height);
+           result.staticImageDifferences.push({ maximumMeanChannelError, maximumChannelDelta });
+-          if (maximumMeanChannelError > 3 || maximumChannelDelta > 16) {
++          if (maximumMeanChannelError > result.staticImageTolerance.maximumMeanChannelError ||
++              maximumChannelDelta > result.staticImageTolerance.maximumChannelDelta) {
+             result.failureReasons.push("static composite changed beyond lossy-image tolerance");
+           }
+         }

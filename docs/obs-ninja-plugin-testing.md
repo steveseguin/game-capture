@@ -14,6 +14,37 @@ C:\Users\steve\Code\ninja-plugin
 
 Do not edit that repo from Game Capture work unless the current task explicitly includes the OBS plugin.
 
+For release QA, use an isolated prepared clone under `native-qt/.cache`.
+The current helper's static-image threshold rejects normal libvpx CBR startup
+quantization on the opaque fixture. The measured first-to-later OBS difference
+was 3.164 mean and 17 peak code values; direct bundled-FFmpeg encoding reproduced
+the initial color and alpha variation without the application or network.
+The bounded fixture calibration uses 4 mean / 18 peak values. It preserves
+the first-frame opacity, cadence, connection-epoch and evidence checks, and
+all existing negative controls still fail as intended. This accepts the
+documented lossy startup behavior; it does not change the application's output.
+
+Prepare the known checker revision before running the packaged OBS workflows:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\qa\prepare-obs-alpha-check.ps1 `
+  -PluginRepo .\native-qt\.cache\ninja-plugin-readiness
+```
+
+This hash-guarded patch only accepts an isolated checkout under the local
+cache. The plugin DLL and application remain unchanged. Its boundary checks
+and analyzer controls are gates; rerun the real packaged OBS workflows after
+preparation. See the [0.2.62 qualification report](release-qualification-0.2.62-2026-10-10.md)
+for the original failures and calibrated playback results.
+
+The diagnostic control can be reproduced separately (Python with NumPy):
+
+```powershell
+python .\qa\vp9-startup-control.py `
+  --ffmpeg .\native-qt\dist\game-capture-0.2.62-win64\ffmpeg\bin\ffmpeg.exe `
+  --output .\native-qt\qa\reports\vp9-startup-control
+```
+
 ## Portable OBS
 
 Portable OBS executable:

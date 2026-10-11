@@ -79,7 +79,9 @@ game-capture.exe --headless --output=rtmp --output-url=rtmps://server.example/li
 
 Use `--srt-passphrase=...` when the SRT receiver requires encryption. Command-line credentials can be visible in the local process command line; the GUI stores credentials in encrypted profiles. External outputs reject PCM, RED and non-H.264 CLI selections. Authentication or negotiation errors from WHIP stop headless publishing with exit code 3; transient network failures retry until stopped.
 
-Playback delay and synchronization also depend on the receiving server and player. WHIP recovery waits for ICE failure detection and can take tens of seconds after abrupt connection loss. See the [packaged output validation report](docs/external-output-validation-2026-10-10.md) for measured behavior and coverage limits.
+Playback delay and synchronization also depend on the receiving server and player. WHIP recovery uses receiver feedback when available, otherwise ICE failure detection; abrupt outages can take tens of seconds to recover. See the [packaged output validation report](docs/external-output-validation-2026-10-10.md) and [release qualification](docs/release-qualification-0.2.62-2026-10-10.md) for measurements and coverage limits.
+
+For OBS, a native **Media Source** using your receiving server's RTSP playback URL is a tested option. Our OBS 32.2.2 browser source produced an audio discontinuity when returning from silence, including with audio generated directly inside OBS without Game Capture. The native media receiver passed the recorded audio checks. Browser-source A/V alignment may also need a measured OBS Render Delay filter; it does not fix the audio discontinuity. Measure your own receiver delay and synchronization before a live production.
 
 ## Spout2 / VTuber Sources
 

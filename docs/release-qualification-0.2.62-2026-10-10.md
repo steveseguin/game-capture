@@ -1,7 +1,8 @@
 # 0.2.62 release qualification
 
 This extends [the initial external-output validation](external-output-validation-2026-10-10.md).
-Qualification is in progress; this document does not yet authorize publication.
+Qualification is complete within the coverage and limitations below. Further
+soaks were explicitly waived by the user after the observed 35-minute run.
 Actual workflows run the packaged Windows application, a real Chrome capture
 source, and independent receivers. Compilation and CTest results are gates,
 not application testing.
@@ -9,6 +10,11 @@ not application testing.
 Evidence root `Q` is `native-qt/qa/reports/release-qualification-20261010`.
 It is ignored because recordings, local session credentials and development
 TLS keys must not be committed. Measurements below identify their candidate.
+
+Local measurements used Windows 11 Pro build 26200, an Intel Core Ultra 7
+265K (20 logical processors), approximately 64 GiB RAM, Intel Graphics and
+an NVIDIA TITAN RTX. The isolated OBS runtime was 32.2.2, with obs-browser
+2.26.9 / CEF 127.0.6533.120. These results do not cover every GPU or receiver.
 
 ## Candidates and findings
 
@@ -19,6 +25,15 @@ TLS keys must not be committed. Measurements below identify their candidate.
 | Session URL correction | `5ba3ee0e6c4a1c153e1edd91c6c4a8495cf0a4a137067cb0fe52223dd5d36c92` | Rejected intermediate relay approach |
 | Relay pair enforcement | `371339d1844c1821bd1ea0dd90e9b3f454af71d009cce9b547a7e151edaff8ed` | TURN and public Meshcast workflows below |
 | POST TURN discovery | `5f03a3fd301264b28fb4c48b0e1677473eae9e0ec8746cbf880cefeff9d676dc` | POST discovery, HTTP/TLS, wire trace, GUI and OBS follow-up |
+| Frozen source `42ea8f9` | `7a40c1adee9f383589269e60a1fedb36134e736c94ece8763762e0e9b938bb99` | Final qualification below |
+
+The frozen package manifest SHA-256 is
+`45eac160d217e94c2b90bfc114c9ea1171f20f9078cb5ba1a697168661146bbd`.
+Its source snapshot contains 263 files with digest
+`5484136dd793158c68b5b9f2593f778ed32b914c122cd380a09244a70ad53cd6`.
+All four stable artifact aliases were byte-identical to their versioned
+counterparts. These packaging checks are gates; final playback qualification
+is recorded separately.
 
 The initial public Meshcast WHIP attempt received HTTP 201 over HTTPS, but
 its session Location used HTTP on the same host. The publisher correctly
@@ -127,7 +142,7 @@ Whole-recording OBS audio analysis found one high-frequency discontinuity
 window at 41.155 seconds, when the fixture returned from silence. Its peak
 sample step was 0.0576. The same causal filter found no corresponding
 discontinuity in Chrome or the simultaneous OBS source reference. This is
-an unresolved OBS-browser interoperability observation, not a clean audio
+an OBS-browser interoperability failure in that run, not a clean audio
 pass for that route. There were no unexpected quiet windows, clipped
 samples or unrelated 3 kHz system-tone windows in either OBS audio track.
 
@@ -192,8 +207,21 @@ calibration, not a publisher clock change or a guarantee for other setups.
 The recording nevertheless contained one audio discontinuity indicator at
 44.635 seconds, when sound returned from deliberate silence; no unexpected
 quiet windows, clipped samples or unrelated 3 kHz tones were detected.
-The browser-source route therefore remains unresolved despite the sync
-improvement. It must not be described as clean audio or a release pass.
+The browser-source route therefore failed audio qualification despite the
+sync improvement. It must not be described as clean audio or a release pass.
+
+`Q/obs-browser-silence-control` then generated the same stereo audio directly
+inside the isolated OBS 32.2.2 browser source, with no Game Capture process,
+media codec or media network path involved. The 91.49-second recording
+reproduced a discontinuity at 52.185 seconds, immediately after the fixture's
+silent interval (high-frequency peak 0.04669). There were no unexpected
+quiet windows, clipped samples, unrelated tone indicators or OBS frame
+skips. OBS exited normally in 227 ms. This demonstrates that the observed
+failure can occur entirely within that OBS browser/audio setup; it does not
+identify a specific upstream defect or prove every browser version affected.
+The native OBS media receiver provides a tested alternative, as documented
+in the frozen-package recording below. No publisher clock offset or injected
+audio noise was added to conceal the browser-source behavior.
 
 `Q/output-gui-final` completed six real WHIP/SRT/RTMP start/stop and profile
 restoration cycles. Screenshots at normal and 800×600 sizes showed no
@@ -220,12 +248,134 @@ and publisher shutdown completed normally in 421 ms. This is bounded remote
 compatibility evidence, not long-term performance or recorded remote audio
 analysis. No credentials or remote session URLs are included in this report.
 
-## Remaining qualification
+## Frozen package observations
 
-The long soak, complete packaged release-readiness workflow and final frozen
-artifact identity remain to be recorded before publication. The OBS browser
-audio observation remains unresolved; publication must not imply that this
-route passed all quality requirements.
+The first frozen two-hour attempt was interrupted when its tool session
+ended after approximately 19 minutes. Raw samples and the incomplete
+recording are preserved in `Q/frozen-whip-native-obs-interrupted-19min`;
+they are not counted as a completed soak. A fresh detached run started
+at 2026-10-10 23:37:28 UTC, using a Chrome capture source, simultaneous
+Chrome WHEP playback, and the OBS native media receiver. This route uses
+no browser render-delay filter. The browser-source concern remains a
+separate qualification item.
+
+The user requested no further soaking after the first 32 minutes of the
+second run. OBS was stopped through its websocket API and its muxer drained
+normally, saving 2,099.66 seconds (35 minutes) of decoded recording. The
+original two-hour folder name is retained for evidence continuity; this is
+not a completed two-hour run. The remaining readiness workflow uses
+`-SkipSoak` under that explicit user instruction, including skipping both
+usual 30-minute readiness soaks.
+
+`Q/frozen-whip-native-obs-2h` contains the following frozen-package results:
+
+- 2,119 seconds of periodic playback observations: no reconnects, packet
+  loss, video drops, freezes, track resets or steady OBS render/output skips.
+  Chrome's median decoded frame rate was 60.00 fps. Its audio statistics
+  reported one 240-sample concealment event (5 ms), which is retained as a
+  limitation rather than called inaudible.
+- Publisher private memory: 194.82 MiB median, 201.73 MiB maximum, 1.59 MiB
+  early-to-late median growth; fitted slope 3.33 MiB/hour. Median handle
+  count decreased by 14. CPU median was 46.2% of one logical core, about
+  2.3% of this machine's 20 logical cores. These are bounded observations,
+  not proof that no leak exists.
+- Forty-four GPU counter samples over the final 22 minutes were flat:
+  publisher shared GPU memory 60.54 MiB and dedicated memory zero; OBS
+  shared memory 6.39 MiB and dedicated memory 44.83 MiB. These counters do
+  not cover the first 12 minutes or establish leak freedom.
+- Paired sync windows at 20, 900 and 2,000 seconds each matched 31 pulses.
+  Median added A/V skew stayed at +3.3 ms; all observed offsets were between
+  -13.3 and +20 ms. Native OBS playback added approximately 670 ms of
+  audio/video delay relative to the simultaneous source reference, with no
+  measured drift across those windows. This is not physical speaker latency.
+- Thirty-second cadence samples at those points contained 59.50, 59.73 and
+  59.77 distinct source frames/second, no backwards source timestamps, and
+  maximum source-clock steps of 34 ms.
+- The full 2,099.66-second receiver audio decode found no clipped samples,
+  unexpected quiet windows, high-frequency discontinuity indicators or
+  unrelated 3 kHz tone indicators. Counts exclude the first 30 seconds for
+  activation artifacts; deliberate fixture silence is accounted for.
+
+Cancelling the harness ended its owned processes before normal application
+shutdown and the final sound-call observer report could be captured. Those
+two results are unavailable, not passes. Consequently the aggregate soak
+check remains failed/incomplete even though its playback and resource bounds
+passed. Raw recording and periodic observations remain usable. Separate
+packaged desktop workflows subsequently verified clean shutdown, no ordinary
+application sound/system-alert requests and responsiveness; those results
+do not retroactively fill the missing event log from this recording.
+
+## Packaged release readiness
+
+The frozen package completed `run-release-readiness.ps1 -SkipSoak`, with
+report timestamp `20261010-201609`. Its 21 CTest checks passed in 88.48 seconds;
+these are gates, not application testing.
+
+Completed actual packaged workflows include H.264/VP9 GUI start, browser
+decode and stop; capture without the optional Windows border interface;
+three malformed-control input seeds with clean quits; MCP playback,
+transport recovery and request pressure; and the update footer's real
+GitHub HTTPS, cache, TLS rejection, timeout and shutdown scenarios. The
+updater and desktop sound observers reported no application sound or system
+alert calls and no observer errors. User settings were restored by those
+workflows. The receiver matrix, dual-viewer refresh, stream-ID collision,
+remote controls and all four ICE connectivity modes also passed.
+
+Edge, Playwright Firefox and the separately installed Firefox all passed
+signaling and director workflows, including live media, relay selection,
+recovery, peer cleanup, audio/video controls and shutdown. Dual-quality roles,
+join/leave churn, initialization edge cases and requirements passed. The
+OBS room-alpha workflow passed with the expected publisher, plugin and Spout
+fixture hashes. Bitrate presets from 3,000 to 20,000 kbps passed. Auto,
+software, NVIDIA NVENC (with an active hardware session), and Intel QSV all
+passed their selection/playback checks. Unsupported explicit codec selection
+failed visibly as intended. AMD was not tested because no AMD adapter was
+available. Installer construction passed as a gate; it was not an installation
+workflow. The update workflow recorded 592 successful checks and restored
+the user's settings.
+
+The original full readiness report remains **FAIL**, due solely to the opaque
+OBS static-image check. An unchanged targeted repeat reproduced the failure:
+the first useful opaque image differed from later frames by 3.164 mean and
+17 peak channel code values, narrowly exceeding the checker limits of 3 and
+16. Every useful frame passed its opacity/color-coverage checks; later frames
+were stable. The half-transparent case passed. Missing loaded-plugin metadata
+in the failed opaque case was a consequence of the checker aborting before
+collecting its final module evidence, and is not treated as verified identity.
+
+`Q/vp9-startup-control` isolated the same behavior using the bundled FFmpeg and
+the application's libvpx CBR options, without the application, network or OBS.
+The first color frame decoded to RGB (35,95,253), converging toward (32,95,254).
+The first all-white alpha frame averaged 254.834, with a minimum of 200 in a
+small region, then subsequent frames converged toward 255. These are lossy
+codec startup variations, not evidence of an alpha transport misalignment.
+This diagnostic is not application testing.
+
+The prepared OBS checker now allows 4 mean / 18 peak channel code values for
+static-image stability. Per-frame opacity, visual/connection epoch, cadence,
+image hashes, moving-pattern and artifact checks are unchanged. The existing
+negative controls still reject local changes, gradual drift, wrong opacity,
+stale sessions and tampered evidence. Added boundary gates reject mean errors
+of 5 and peak errors of 19. A hash-guarded preparation patch and reproducible
+diagnostic are provided in `qa/`, with instructions in
+[the OBS testing notes](obs-ninja-plugin-testing.md). The adjacent plugin
+working repository and the plugin/application binaries were not changed.
+
+`Q/frozen-alpha-calibrated` reran both actual packaged workflows and passed,
+including loaded-module identity and frame-capture cadence. The observed
+opaque sequence differed by at most 0.105 mean / 5 peak values; the half-alpha
+sequence by 2 mean / 2 peak. The checker SHA-256 was
+`3e4344cd5c4565c9d1f25e9cbd8a1a4afc2ef51d42d647bf057ed8369e0651e0`.
+The original reports retain their failures; the calibrated run supplies the
+final affected-workflow evidence. The legacy readiness heading says
+"seven-case transparency matrix", but the committed wrapper actually requires
+the two steady opaque/half-alpha cases. Active-media lifecycle and reconnect
+coverage came from the separate browser signaling workflows above.
+
+All required current workflow results are therefore covered by the original
+readiness run plus the calibrated OBS repeat. No further soak was run. The
+OBS browser audio limitation remains documented with a tested native-media
+alternative; the browser route is not claimed to pass every quality check.
 
 Finite software measurements do not establish universal flawlessness or
 physical display/speaker latency. Discontinuity indicators do not replace
