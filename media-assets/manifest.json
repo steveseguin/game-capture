@@ -33,7 +33,8 @@
       "height": 903,
       "bytes": 43658,
       "sha256": "af6205301fc023e611a63035a39ffbc9142f92235b12de1ea29fec584297de22",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/01-source-selection.png"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/01-source-selection.png",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/screenshots/01-source-selection.png?ref=main"
     },
     {
       "path": "screenshots/02-advanced-settings.png",
@@ -51,7 +52,8 @@
       "height": 903,
       "bytes": 41944,
       "sha256": "b2bbc7fd9e008ec5ee9fd4532a8815b8fe1583af123a57af6a1dd3338cbbed87",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/02-advanced-settings.png"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/02-advanced-settings.png",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/screenshots/02-advanced-settings.png?ref=main"
     },
     {
       "path": "screenshots/03-live-publishing.png",
@@ -68,7 +70,8 @@
       "height": 903,
       "bytes": 69302,
       "sha256": "df74be97bd4788d97b67d8e0ea4cecc6159b8965b04a14fd8008594c8c369f3b",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/03-live-publishing.png"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/03-live-publishing.png",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/screenshots/03-live-publishing.png?ref=main"
     },
     {
       "path": "screenshots/04-viewer-link-and-health.png",
@@ -85,7 +88,8 @@
       "height": 903,
       "bytes": 56598,
       "sha256": "7a915f50364062d480510cb80ef527686cdcdb6bba93f19e68cc5047f11549f6",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/04-viewer-link-and-health.png"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/04-viewer-link-and-health.png",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/screenshots/04-viewer-link-and-health.png?ref=main"
     },
     {
       "path": "screenshots/05-received-in-obs.png",
@@ -101,7 +105,8 @@
       "height": 720,
       "bytes": 221914,
       "sha256": "d85ce66daa276b81a90b1989dfcc9e594b21391c3c5c3f8b138208af1ce7d9f3",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/05-received-in-obs.png"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/05-received-in-obs.png",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/screenshots/05-received-in-obs.png?ref=main"
     },
     {
       "path": "videos/game-capture-walkthrough.mp4",
@@ -119,7 +124,8 @@
       "chapters": "walkthrough.json",
       "bytes": 609636,
       "sha256": "faa151eed7afa48ce6418ae7b1eecda854fe96e9c1a12079ff2244e1832ddf2b",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/videos/game-capture-walkthrough.mp4"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/videos/game-capture-walkthrough.mp4",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/videos/game-capture-walkthrough.mp4?ref=main"
     },
     {
       "path": "videos/game-capture-walkthrough.vtt",
@@ -128,7 +134,8 @@
       "title": "English walkthrough captions",
       "bytes": 533,
       "sha256": "20dcc1824d32b3175119513c1c32841b92a4305b5c455bcb7637924ce4fbb5bd",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/videos/game-capture-walkthrough.vtt"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/videos/game-capture-walkthrough.vtt",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/videos/game-capture-walkthrough.vtt?ref=main"
     },
     {
       "path": "walkthrough.json",
@@ -137,7 +144,8 @@
       "title": "Timestamped walkthrough transcript",
       "bytes": 702,
       "sha256": "04f4d165ed12f58d882174174d57b94a103f1b49c1e1ffd0cc1b5afc2d9a7f71",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/walkthrough.json"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/walkthrough.json",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/walkthrough.json?ref=main"
     },
     {
       "path": "fixtures/neon-orbit.html",
@@ -146,7 +154,10 @@
       "title": "Local animated demo source",
       "bytes": 2786,
       "sha256": "beb8be7dd322bfefb1cd279b7bcb0f1286ee607e6ab04db15c44f580eb4a32c9",
-      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/fixtures/neon-orbit.html"
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/fixtures/neon-orbit.html",
+      "contents_api_url": "https://api.github.com/repos/steveseguin/game-capture/contents/media-assets/fixtures/neon-orbit.html?ref=main"
     }
-  ]
+  ],
+  "repository_visibility_at_capture": "public",
+  "download_access": "Public raw URLs are readable without authentication."
 }

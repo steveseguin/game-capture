@@ -2,7 +2,7 @@
 
 Real screenshots and recordings of **Game Capture 0.2.62**, captured on Windows on **2026-10-13**. Select a window, review capture settings, publish it to VDO.Ninja, and share the viewer link.
 
-For AI assistants and applications: start with [manifest.json](manifest.json). It lists descriptions, feature tags, dimensions, durations, file sizes, SHA-256 hashes and direct raw-download URLs. [walkthrough.json](walkthrough.json) provides timestamped descriptions. Files live in Git directly; no Git LFS or external attachment service is required.
+For AI assistants and applications: start with [manifest.json](manifest.json). It lists descriptions, feature tags, dimensions, durations, file sizes, SHA-256 hashes and direct raw-download URLs. [walkthrough.json](walkthrough.json) provides timestamped descriptions. Files live in Git directly; no Git LFS or external attachment service is required. The manifest also provides GitHub Contents API URLs for authenticated integrations.
 
 ## Videos
 
