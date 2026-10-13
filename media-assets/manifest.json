@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "application": "Game Capture",
+  "application_version": "0.2.62",
+  "captured_on": "2026-10-13",
+  "platform": "Windows 11 x64",
+  "repository": "https://github.com/steveseguin/game-capture",
+  "repository_revision_at_capture": "a76d44feaf01ad228aa99ed35531454be6fe1b4b",
+  "binary_sha256": "7a40c1adee9f383589269e60a1fedb36134e736c94ece8763762e0e9b938bb99",
+  "provenance": "Real packaged application captures. Repository revision identifies the checkout at capture time; binary hash identifies the exact executable or plugin captured.",
+  "capture_method": "Unretouched PNG application client-area screen captures and 15 fps H.264 desktop-region recordings; receiver output images use OBS screenshot API or Chrome viewport capture.",
+  "audio": "Walkthroughs are silent and include English selectable subtitles. Sample source contains no audio.",
+  "demo_content": "Locally hosted procedural Neon Orbit animation; included in fixtures/neon-orbit.html. Shown stream IDs are temporary, inactive demo identifiers.",
+  "verified_workflows": [
+    "Selected the local sample window and confirmed its preview.",
+    "Started GUI publishing; diagnostics reported an active video peer and sent frames.",
+    "Visually confirmed the decoded native OBS receiver image.",
+    "Observed 1280x720 H.264 at approximately 30 fps after startup."
+  ],
+  "assets": [
+    {
+      "path": "screenshots/01-source-selection.png",
+      "kind": "screenshot",
+      "mime_type": "image/png",
+      "title": "Source selection",
+      "description": "The native Windows app with the local Neon Orbit demo selected and its source preview visible.",
+      "tags": [
+        "window capture",
+        "source preview",
+        "setup"
+      ],
+      "width": 1648,
+      "height": 903,
+      "bytes": 43658,
+      "sha256": "af6205301fc023e611a63035a39ffbc9142f92235b12de1ea29fec584297de22",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/01-source-selection.png"
+    },
+    {
+      "path": "screenshots/02-advanced-settings.png",
+      "kind": "screenshot",
+      "mime_type": "image/png",
+      "title": "Advanced capture settings",
+      "description": "Output destination, room, resolution, frame rate, bitrate, ICE and audio controls before publishing.",
+      "tags": [
+        "settings",
+        "resolution",
+        "bitrate",
+        "audio"
+      ],
+      "width": 1648,
+      "height": 903,
+      "bytes": 41944,
+      "sha256": "b2bbc7fd9e008ec5ee9fd4532a8815b8fe1583af123a57af6a1dd3338cbbed87",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/02-advanced-settings.png"
+    },
+    {
+      "path": "screenshots/03-live-publishing.png",
+      "kind": "screenshot",
+      "mime_type": "image/png",
+      "title": "Live publishing",
+      "description": "The selected window is publishing with H.264 hardware encoding and an active OBS viewer.",
+      "tags": [
+        "publishing",
+        "hardware encoding",
+        "live"
+      ],
+      "width": 1648,
+      "height": 903,
+      "bytes": 69302,
+      "sha256": "df74be97bd4788d97b67d8e0ea4cecc6159b8965b04a14fd8008594c8c369f3b",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/03-live-publishing.png"
+    },
+    {
+      "path": "screenshots/04-viewer-link-and-health.png",
+      "kind": "screenshot",
+      "mime_type": "image/png",
+      "title": "Viewer link and connection health",
+      "description": "Running 1280x720, 30 fps stream with one peer, connection statistics and a generated viewer link.",
+      "tags": [
+        "viewer link",
+        "connection health",
+        "statistics"
+      ],
+      "width": 1648,
+      "height": 903,
+      "bytes": 56598,
+      "sha256": "7a915f50364062d480510cb80ef527686cdcdb6bba93f19e68cc5047f11549f6",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/04-viewer-link-and-health.png"
+    },
+    {
+      "path": "screenshots/05-received-in-obs.png",
+      "kind": "screenshot",
+      "mime_type": "image/png",
+      "title": "Received video",
+      "description": "The actual decoded Game Capture window received by the OBS plugin, captured through OBS source screenshot output.",
+      "tags": [
+        "receiver output",
+        "end-to-end"
+      ],
+      "width": 1280,
+      "height": 720,
+      "bytes": 221914,
+      "sha256": "d85ce66daa276b81a90b1989dfcc9e594b21391c3c5c3f8b138208af1ce7d9f3",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/screenshots/05-received-in-obs.png"
+    },
+    {
+      "path": "videos/game-capture-walkthrough.mp4",
+      "kind": "screen_recording",
+      "mime_type": "video/mp4",
+      "title": "Game Capture walkthrough",
+      "description": "Select a window, review capture settings, publish it to VDO.Ninja, and share the viewer link.",
+      "duration_seconds": 31.0,
+      "width": 1648,
+      "height": 903,
+      "fps": 14.94,
+      "video_codec": "h264",
+      "decode_validation": "Full video/audio decode completed without errors.",
+      "captions": "videos/game-capture-walkthrough.vtt",
+      "chapters": "walkthrough.json",
+      "bytes": 609636,
+      "sha256": "faa151eed7afa48ce6418ae7b1eecda854fe96e9c1a12079ff2244e1832ddf2b",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/videos/game-capture-walkthrough.mp4"
+    },
+    {
+      "path": "videos/game-capture-walkthrough.vtt",
+      "kind": "captions",
+      "mime_type": "text/vtt",
+      "title": "English walkthrough captions",
+      "bytes": 533,
+      "sha256": "20dcc1824d32b3175119513c1c32841b92a4305b5c455bcb7637924ce4fbb5bd",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/videos/game-capture-walkthrough.vtt"
+    },
+    {
+      "path": "walkthrough.json",
+      "kind": "chapters",
+      "mime_type": "application/json",
+      "title": "Timestamped walkthrough transcript",
+      "bytes": 702,
+      "sha256": "04f4d165ed12f58d882174174d57b94a103f1b49c1e1ffd0cc1b5afc2d9a7f71",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/walkthrough.json"
+    },
+    {
+      "path": "fixtures/neon-orbit.html",
+      "kind": "demo_fixture",
+      "mime_type": "text/html",
+      "title": "Local animated demo source",
+      "bytes": 2786,
+      "sha256": "beb8be7dd322bfefb1cd279b7bcb0f1286ee607e6ab04db15c44f580eb4a32c9",
+      "raw_url": "https://raw.githubusercontent.com/steveseguin/game-capture/main/media-assets/fixtures/neon-orbit.html"
+    }
+  ]
+}

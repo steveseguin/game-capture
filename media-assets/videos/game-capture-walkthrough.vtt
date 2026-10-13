@@ -1,0 +1,17 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:07.300
+Select a game or application window. The local preview confirms the source.
+
+00:00:07.300 --> 00:00:15.300
+Advanced settings expose output, resolution, frame rate, audio and codec
+controls.
+
+00:00:15.300 --> 00:00:16.900
+Go Live starts the encoder and publishes the selected window to VDO.Ninja.
+
+00:00:16.900 --> 00:00:23.000
+The live preview and connection health show the running stream.
+
+00:00:23.000 --> 00:00:31.000
+Share the generated viewer link with a browser or add the stream to OBS.

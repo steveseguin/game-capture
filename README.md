@@ -2,6 +2,8 @@
 
 Game Capture is a free, open-source Windows app for streaming games, app windows, webcams, and Spout2 video to VDO.Ninja and OBS. It supports hardware encoding, window audio capture, and optional transparency through the OBS native receiver.
 
+[Screenshots and demo videos](media-assets/README.md) | [Machine-readable media manifest](media-assets/manifest.json)
+
 [Download for Windows](https://github.com/steveseguin/game-capture/releases/latest) | [Website](https://steveseguin.github.io/game-capture/gamecapture.html) | [Setup guide](https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja) | [Report an issue](https://github.com/steveseguin/game-capture/issues)
 
 ## Why Teams Use It

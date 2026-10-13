@@ -1,0 +1,25 @@
+{
+  "video": "videos/game-capture-walkthrough.mp4",
+  "chapters": [
+    {
+      "seconds": 0.0,
+      "text": "Select a game or application window. The local preview confirms the source."
+    },
+    {
+      "seconds": 7.3,
+      "text": "Advanced settings expose output, resolution, frame rate, audio and codec controls."
+    },
+    {
+      "seconds": 15.3,
+      "text": "Go Live starts the encoder and publishes the selected window to VDO.Ninja."
+    },
+    {
+      "seconds": 16.9,
+      "text": "The live preview and connection health show the running stream."
+    },
+    {
+      "seconds": 23.0,
+      "text": "Share the generated viewer link with a browser or add the stream to OBS."
+    }
+  ]
+}

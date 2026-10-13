@@ -1,0 +1,6 @@
+*.md text eol=lf
+*.json text eol=lf
+*.vtt text eol=lf
+*.html text eol=lf
+*.png binary
+*.mp4 binary
