@@ -2593,8 +2593,13 @@ class VideoEncoder::Impl {
             args.push_back("-f");
             args.push_back("h264");
         } else if (config_.codec == VideoCodec::H265) {
-            args.push_back("-bsf:v");
-            args.push_back("hevc_metadata=aud=insert");
+            // AMF already inserts AUDs via -aud 1. Some AMD drivers expose
+            // extradata without a VPS, which makes hevc_metadata abort before
+            // the first packet even though the in-band VPS/SPS/PPS are valid.
+            if (encoderName != "hevc_amf") {
+                args.push_back("-bsf:v");
+                args.push_back("hevc_metadata=aud=insert");
+            }
             args.push_back("-f");
             args.push_back("hevc");
         } else if (config_.codec == VideoCodec::AV1 || config_.codec == VideoCodec::VP9) {
