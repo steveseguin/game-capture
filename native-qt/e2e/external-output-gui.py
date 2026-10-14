@@ -1,5 +1,5 @@
 """Click the packaged output settings, publish, restart, and inspect saved profiles."""
-import argparse,hashlib,importlib.util,json,os,subprocess,sys,time,urllib.request
+import argparse,ctypes,hashlib,importlib.util,json,os,subprocess,sys,time,urllib.request
 from pathlib import Path
 import frida,psutil,win32api,win32con,win32gui
 from pywinauto import Application
@@ -8,9 +8,10 @@ spec=importlib.util.spec_from_file_location('desktop',Path(__file__).with_name('
 d=importlib.util.module_from_spec(spec);spec.loader.exec_module(d)
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--publisher',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--cycles',type=int,default=1);a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--publisher',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--cycles',type=int,default=1);p.add_argument('--protocols',default='whip,srt,rtmp,rtsp,rtsp-udp');a=p.parse_args()
     exe=a.publisher.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=True);native=Path(__file__).resolve().parent.parent
     assert not any(p.name()=='game-capture.exe' for p in psutil.process_iter()),'Serialize capture runs'
+    ctypes.windll.kernel32.SetThreadExecutionState(0x80000003)
     saved=d.snapshot(d.SETTINGS_KEY);children=[];logs=[];report={'publisher':str(exe),'sha256':hashlib.sha256(exe.read_bytes()).hexdigest(),'cycles':[]};window=None
     def launch(args,name):
         log=(out/(name+'.log')).open('w',encoding='utf-8');logs.append(log)
@@ -20,7 +21,10 @@ def main():
         info=json.loads(discovery.read_text());req=urllib.request.Request(info['base_url']+route,data=json.dumps(body).encode() if body else None,
             headers={'Authorization':'Bearer '+info['token'],'Content-Type':'application/json'})
         with urllib.request.urlopen(req,timeout=5) as r:return json.load(r)
-    def named(name):return next(c for c in window.descendants() if (c.element_info.automation_id or '').endswith('.'+name))
+    def named(name):
+        def find():return next((c for c in window.descendants() if (c.element_info.automation_id or '').endswith('.'+name)),None)
+        d.wait_for(lambda:find() is not None,'accessible control '+name,5)
+        return find()
     def reveal(control):
         window.set_focus();window.wheel_mouse_input(coords=(window.rectangle().width()-25,150),wheel_dist=60);time.sleep(.2)
         for _ in range(80):
@@ -59,7 +63,7 @@ def main():
             ('ui','advancedVisible','false'),('stream','target','gui-source'),('stream','room',''),('stream','password','false'),
             ('control','enabled','false'),('network','iceMode','all'),('output','protocol','vdo'),('output','profilesEncrypted','')]:d.setting(group,name,value)
         launch([sys.executable,str(Path(__file__).with_name('desktop-ui-e2e.py')),'--source-window'],'source')
-        config=out/'mediamtx.yml';config.write_text('api: true\napiAddress: 127.0.0.1:18990\nrtspAddress: 127.0.0.1:18854\nrtspTransports: [tcp]\nrtmpAddress: 127.0.0.1:19350\nwebrtcAddress: 127.0.0.1:18889\nwebrtcLocalUDPAddress: 127.0.0.1:18189\nwebrtcIPsFromInterfaces: false\nwebrtcAdditionalHosts: [127.0.0.1]\nsrtAddress: 127.0.0.1:18890\nhls: false\nmoq: false\npaths:\n  all_others:\n')
+        config=out/'mediamtx.yml';config.write_text('api: true\napiAddress: 127.0.0.1:18990\nrtspAddress: 127.0.0.1:18854\nrtspTransports: [tcp, udp]\nrtpAddress: 127.0.0.1:18000\nrtcpAddress: 127.0.0.1:18001\nrtmpAddress: 127.0.0.1:19350\nwebrtcAddress: 127.0.0.1:18889\nwebrtcLocalUDPAddress: 127.0.0.1:18189\nwebrtcIPsFromInterfaces: false\nwebrtcAdditionalHosts: [127.0.0.1]\nsrtAddress: 127.0.0.1:18890\nhls: false\nmoq: false\npaths:\n  all_others:\n')
         launch([str(native/'.cache/mediamtx-1.21.2/mediamtx.exe'),str(config)],'server')
         for restart in range(2):
             discovery=out/('control-'+str(restart)+'.json')
@@ -75,20 +79,26 @@ def main():
                 assert not named('advancedToggle').get_toggle_state()
                 shot('default')
             pick_source()
-            if not named('advancedToggle').get_toggle_state():reveal(named('advancedToggle'));named('advancedToggle').click_input()
-            for cycle,(protocol,label,url,key) in enumerate([('whip','WHIP','http://127.0.0.1:18889/gui-whip/whip',''),
-                    ('srt','SRT (caller)','srt://127.0.0.1:18890',''),('rtmp','RTMP / RTMPS','rtmp://127.0.0.1:19350/live','gui-secret-key')]*a.cycles):
+            if not named('advancedToggle').get_toggle_state():named('advancedToggle').toggle()
+            destinations=[('whip','WHIP','http://127.0.0.1:18889/gui-whip/whip',''),
+                    ('srt','SRT (caller)','srt://127.0.0.1:18890',''),('rtmp','RTMP / RTMPS','rtmp://127.0.0.1:19350/live','gui-secret-key'),
+                    ('rtsp','RTSP / VRChat (TCP)','rtspt://127.0.0.1:18854/gui-rtsp',''),
+                    ('rtsp-udp','RTSP (UDP)','rtsp://127.0.0.1:18854/gui-rtsp-udp','')]
+            destinations=[x for x in destinations if x[0] in a.protocols.split(',')]
+            assert destinations,'No output protocols selected'
+            for cycle,(protocol,label,url,key) in enumerate(destinations*a.cycles):
                 select('outputSelect',label)
                 ice_controls=[c for c in window.descendants() if (c.element_info.automation_id or '').endswith('.iceModeSelect')]
                 assert any(c.is_visible() for c in ice_controls)==(protocol=='whip'),'Incorrect ICE control visibility'
-                if restart==0 and cycle<3:
-                    text('outputUrlInput',url);text('outputSecretInput',key)
+                if restart==0 and cycle<len(destinations):
+                    text('outputUrlInput',url)
+                    if not protocol.startswith('rtsp'):text('outputSecretInput',key)
                     if protocol=='srt':text('outputStreamIdInput','publish:gui-srt')
                 else:
                     assert named('outputUrlInput').get_value()==url,'Destination profile was not restored'
                     if protocol=='srt':assert named('outputStreamIdInput').get_value()=='publish:gui-srt'
-                assert named('outputSecretInput').element_info.element.CurrentIsPassword,'Credential field is unmasked'
-                if restart==0 and cycle<3:
+                if not protocol.startswith('rtsp'):assert named('outputSecretInput').element_info.element.CurrentIsPassword,'Credential field is unmasked'
+                if restart==0 and cycle<len(destinations):
                     reveal(named('outputSelect'));shot(protocol)
                     assert not named('audioEncodingToggle').get_toggle_state(),'Audio encoding unexpectedly expanded by default'
                     named('audioEncodingToggle').toggle()
@@ -123,10 +133,10 @@ def main():
             assert 'gui-secret-key' not in encoded and '127.0.0.1:19350' not in encoded
             select('outputSelect','VDO.Ninja (default)')
             assert 'VP9' in named('codecSelect').selected_text(),'VDO video choice changed'
-            if not named('audioEncodingToggle').get_toggle_state():reveal(named('audioEncodingToggle'));named('audioEncodingToggle').click_input()
+            if not named('audioEncodingToggle').get_toggle_state():reveal(named('audioEncodingToggle'));named('audioEncodingToggle').toggle()
             assert 'PCM' in named('audioCodecSelect').selected_text(),'VDO audio choice changed'
             select('outputSelect','RTMP / RTMPS')
-            reveal(named('advancedToggle'));named('advancedToggle').click_input();shot('collapsed-external-'+str(restart))
+            reveal(named('advancedToggle'));named('advancedToggle').toggle();shot('collapsed-external-'+str(restart))
             assert 'RTMP' in named('outputSummaryLabel').window_text()
             if restart==1:
                 for width,height in [(800,600),(1280,900)]:
@@ -144,6 +154,7 @@ def main():
             except Exception:pass
         raise
     finally:
+        ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
         for child in children:
             if child.poll() is None:child.kill()
             child.wait(timeout=10)

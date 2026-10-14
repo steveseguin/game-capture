@@ -1,5 +1,6 @@
 #include "versus/output/output_session.h"
 #include "matroska_stream.h"
+#include "versus/webrtc/media_clock.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -30,8 +31,9 @@ using Clock = std::chrono::steady_clock;
 constexpr size_t kMaximumQueueBytes = 8 * 1024 * 1024;
 constexpr int64_t kMaximumQueueAge100ns = 10000000;
 struct OutputError : std::runtime_error {
-    bool permanent;
-    OutputError(const char *message, bool permanent = false) : std::runtime_error(message), permanent(permanent) {}
+    bool permanent, fresh;
+    OutputError(const char *message, bool permanent = false, bool fresh = false)
+        : std::runtime_error(message), permanent(permanent), fresh(fresh) {}
 };
 struct Packet {
     enum class Kind { Video, Opus, Pcm } kind;
@@ -289,8 +291,9 @@ struct Session::Impl {
             clearQueue(); restartRequested.store(false); requestKeyframe();
             if (!stopping.load()) setState(State::Live, "Publishing to " + destinationLabel(config));
             bool haveKeyframe = false;
-            auto lastFeedbackCheck = Clock::now(), lastMediaSent = Clock::now();
+            auto lastFeedbackCheck = Clock::now(), lastMediaSent = Clock::now(), lastVideoSent = Clock::now();
             while (!stopping.load()) {
+                if (Clock::now()-lastVideoSent > std::chrono::seconds(10)) throw OutputError("Video encoder stopped producing frames.");
                 const auto state = client.connectionState();
                 if (state == webrtc::ConnectionState::Failed || state == webrtc::ConnectionState::Closed || state == webrtc::ConnectionState::Disconnected)
                     throw OutputError("WHIP connection was lost.");
@@ -315,6 +318,7 @@ struct Session::Impl {
                 if (packet.kind == Packet::Kind::Video) {
                     if (!haveKeyframe && !packet.keyframe) continue;
                     sent = client.sendVideo({data, packet.pts, packet.keyframe});
+                    if (sent) lastVideoSent = Clock::now();
                     if (sent && packet.keyframe) haveKeyframe = true;
                 } else if (packet.kind == Packet::Kind::Opus) {
                     size_t bytes = 0;
@@ -329,7 +333,7 @@ struct Session::Impl {
         } catch (...) { cleanup(); throw; }
     }
 
-    void runMux() {
+    void runMux(bool allowStartupRefresh) {
         QProcess process;
 #ifdef _WIN32
         process.setCreateProcessArgumentsModifier([](QProcess::CreateProcessArguments *args) {
@@ -376,11 +380,14 @@ struct Session::Impl {
             args << "-max_interleave_delta" << "100000" << "-flush_packets" << "1" << "-stats_period" << "0.5"
                  << "-progress" << "pipe:1" << "-rw_timeout" << "5000000";
             if (config.protocol == Protocol::Srt) args << "-f" << "mpegts" << "-mpegts_flags" << "+resend_headers" << "-muxdelay" << "0" << "-muxpreload" << "0";
+            else if (isRtsp(config.protocol)) args << "-f" << "rtsp" << "-rtsp_transport"
+                << (config.protocol == Protocol::RtspUdp ? "udp" : "tcp") << "-muxdelay" << "0" << "-pkt_size" << "1200";
             else {
                 args << "-f" << "flv" << "-flvflags" << "no_duration_filesize";
                 if (QUrl(QString::fromStdString(config.url)).scheme() == "rtmps") args << "-tls_verify" << "1";
             }
             args << QString::fromStdString(destinationUrl(config));
+            const auto muxStarted = Clock::now();
             process.start(QString::fromStdString(media.ffmpegPath), args, QIODevice::ReadWrite);
             if (!process.waitForStarted(2000)) throw OutputError("Output FFmpeg could not start. Check the FFmpeg path.", true);
             { std::lock_guard lock(mutex); current.processId = process.processId(); }
@@ -397,13 +404,15 @@ struct Session::Impl {
             write(mux.header(codec, first.width, first.height, media.fps, media.audioChannels, media.audioEnabled));
             for (const auto &audio : initialAudio) { write(mux.audio(audio.data, audio.pts - epoch)); count(audio); }
             write(mux.video(units, first.pts - epoch, true)); count(first);
-            auto lastProgress = Clock::now();
+            auto lastProgress = Clock::now(), lastVideoInput = Clock::now();
+            bool checkedStartup = false;
             qint64 lastFrame = 0, lastOutputTime = -1;
             QByteArray progress;
             while (!stopping.load()) {
                 // This worker has no Qt event loop. Pump the child's output
                 // explicitly, including when the input pipe drains instantly.
-                process.waitForReadyRead(1);
+                // Do not add a timed wait to every audio/video packet; pop() sleeps when idle.
+                process.waitForReadyRead(0);
                 progress += process.readAllStandardOutput();
                 if (progress.size() > 65536) throw OutputError("Output FFmpeg returned excessive progress data.");
                 for (qsizetype end; (end = progress.indexOf('\n')) >= 0;) {
@@ -418,12 +427,25 @@ struct Session::Impl {
                         advanced = valid && time > lastOutputTime && lastFrame > 0;
                         if (valid) lastOutputTime = std::max(lastOutputTime, time);
                     }
+                    if (!checkedStartup && line.startsWith("progress=") && lastFrame > 0 && lastOutputTime >= 0) {
+                        checkedStartup = true;
+                        const auto ageMs = (webrtc::mediaTime100ns() - epoch - lastOutputTime*10)/10000;
+                        const auto startupMs = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now()-muxStarted).count();
+                        // A blocked SRT handshake can anchor the receiver to old
+                        // input even after FFmpeg catches up. Establish a fresh
+                        // session once the endpoint is reachable. Limit this to
+                        // one refresh, including on deliberately high-latency links.
+                        if (config.protocol == Protocol::Srt && allowStartupRefresh &&
+                            std::max(ageMs, int64_t(startupMs)) > std::max(1500, config.latencyMs + 750))
+                            throw OutputError("SRT connected with stale startup media; refreshing the live session.", false, true);
+                    }
                     if (advanced) {
                         lastProgress = Clock::now();
                         setState(State::Live, "Publishing to " + destinationLabel(config));
                     }
                 }
                 if (Clock::now() - lastProgress > std::chrono::seconds(10)) throw OutputError("Output stopped making progress.");
+                if (Clock::now() - lastVideoInput > std::chrono::seconds(10)) throw OutputError("Video encoder stopped producing frames.");
                 process.readAllStandardError();
                 if (process.state() == QProcess::NotRunning) throw OutputError("Output connection closed. Check server availability and credentials.");
                 Packet packet;
@@ -434,6 +456,7 @@ struct Session::Impl {
                     const auto nextCodec = detail::MatroskaStream::codecPrivate(units);
                     if (!nextCodec.isEmpty() && nextCodec != codec) throw OutputError("Video configuration changed; reconnecting output.");
                     write(mux.video(units, packet.pts - epoch, packet.keyframe));
+                    lastVideoInput = Clock::now();
                 } else if (packet.kind == Packet::Kind::Pcm) write(mux.audio(packet.data, packet.pts - epoch));
                 else continue;
                 count(packet);
@@ -444,25 +467,28 @@ struct Session::Impl {
 
     void run() {
         int attempt = 0;
+        bool freshRetry = false;
         while (!stopping.load()) {
             clearQueue(); restartRequested.store(false);
             setState(attempt ? State::Reconnecting : State::Connecting,
                      std::string(attempt ? "Reconnecting to " : "Connecting to ") + destinationLabel(config));
             try {
-                if (config.protocol == Protocol::Whip) runWhip(); else runMux();
+                if (config.protocol == Protocol::Whip) runWhip(); else runMux(!freshRetry);
             } catch (const OutputError &error) {
                 if (stopping.load()) break;
+                freshRetry = error.fresh;
                 if (error.permanent) { setState(State::Error, error.what()); clearQueue(); return; }
                 setState(State::Reconnecting, error.what());
             } catch (...) {
                 if (stopping.load()) break;
+                freshRetry = false;
                 // Library exception messages may contain a destination URL.
                 setState(State::Reconnecting, "Output failed; reconnecting with fresh media.");
             }
             if (stopping.load()) break;
             { std::lock_guard lock(mutex); ++current.reconnects; }
             ++attempt; clearQueue();
-            if (!pause(std::min(attempt, 5) * 1000)) break;
+            if (!pause(freshRetry ? 0 : std::min(attempt, 5) * 1000)) break;
         }
         clearQueue(); setState(State::Stopped, "Output stopped");
     }
@@ -492,7 +518,7 @@ bool Session::wantsVideo() const {
     return !impl_->stopping.load() && impl_->current.state != State::Error;
 }
 bool Session::wantsAudio() const { return impl_->media.audioEnabled && wantsVideo(); }
-bool Session::usesPcmInput() const { return impl_->config.protocol == Protocol::Rtmp || impl_->config.protocol == Protocol::Srt; }
+bool Session::usesPcmInput() const { return impl_->config.protocol == Protocol::Rtmp || impl_->config.protocol == Protocol::Srt || isRtsp(impl_->config.protocol); }
 bool Session::sendVideo(const webrtc::EncodedVideoPacket &packet, int width, int height) {
     return impl_->push({Packet::Kind::Video, QByteArray(reinterpret_cast<const char *>(packet.data.data()), packet.data.size()),
                         packet.pts, width, height, packet.isKeyframe});

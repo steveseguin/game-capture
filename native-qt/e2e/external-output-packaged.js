@@ -29,7 +29,9 @@ async function main(){
 api: true
 apiAddress: 127.0.0.1:18990
 rtspAddress: 127.0.0.1:18854
-rtspTransports: [tcp]
+rtspTransports: [tcp, udp]
+rtpAddress: 127.0.0.1:18000
+rtcpAddress: 127.0.0.1:18001
 rtmpAddress: 127.0.0.1:19350
 ${tls?`rtmpEncryption: optional\nrtmpsAddress: 127.0.0.1:19351\nrtmpServerKey: ${JSON.stringify(path.join(tls,'localhost.direct.OPEN.key'))}\nrtmpServerCert: ${JSON.stringify(path.join(tls,'localhost.direct.OPEN.crt'))}`:''}
 webrtcAddress: 127.0.0.1:18889
@@ -79,11 +81,11 @@ paths:
     await source.screenshot({path:path.join(out,'source.png')});
     if(opts.obs)obs=await require('./quality-obs-receiver').start(opts.obs,path.join(out,'obs-recordings'),{paired:true,fps:60});
     for(const id of (opts.cases||'rtmp-stereo,srt-stereo,whip-stereo').split(',')){
-      const protocol=id.startsWith('rtmps-')?'rtmp':id.split('-')[0],mono=id.includes('mono'),silent=id.includes('silent'),dir=path.join(out,id);
+      const protocol=id.startsWith('rtmps-')?'rtmp':id.startsWith('rtsp-udp-')?'rtsp-udp':id.split('-')[0],mono=id.includes('mono'),silent=id.includes('silent'),dir=path.join(out,id);
       fs.mkdirSync(dir,{recursive:true});const discovery=path.join(dir,'control.json');
       const bitrate=Number(id.match(/-(?:mono|stereo)-(\d+)$/)?.[1]||192);
       const result={id,protocol,channels:mono?1:2,silent,bitrateKbps:bitrate,phases:[]};results.cases.push(result);
-      const url=protocol==='whip'?'http://127.0.0.1:'+(turnProxy?'18888':'18889')+'/'+id+'/whip':protocol==='srt'?
+      const url=protocol.startsWith('rtsp')?(protocol==='rtspt'?'rtspt':'rtsp')+'://127.0.0.1:18854/'+id:protocol==='whip'?'http://127.0.0.1:'+(turnProxy?'18888':'18889')+'/'+id+'/whip':protocol==='srt'?
         'srt://127.0.0.1:'+(impairment?'18891':'18890')+(id==='srt-encrypted-url'?'?passphrase='+encodeURIComponent('qa:+%2B?&= pass2026'):''):
         id.startsWith('rtmps-')?'rtmps://qa.localhost.direct:19351/live':'rtmp://127.0.0.1:19350/live';
       const stream=protocol==='rtmp'?'live/'+id:id;

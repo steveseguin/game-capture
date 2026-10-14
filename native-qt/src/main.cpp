@@ -765,7 +765,7 @@ int main(int argc, char *argv[]) {
     if (outputConfig.protocol == versus::output::Protocol::VdoNinja &&
         (!outputConfig.url.empty() || !outputConfig.bearerToken.empty() || !outputConfig.streamKey.empty() ||
          !outputConfig.streamId.empty() || !outputConfig.passphrase.empty())) {
-        spdlog::error("Select --output=whip, srt or rtmp when supplying external output settings"); return 2;
+        spdlog::error("Select --output=whip, srt, rtmp, rtsp or rtsp-udp when supplying external output settings"); return 2;
     }
     if (outputConfig.protocol != versus::output::Protocol::VdoNinja) {
         if (!headless) { spdlog::error("Use advanced output settings in the GUI, or add --headless for output arguments"); return 2; }

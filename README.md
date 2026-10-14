@@ -64,6 +64,9 @@ Use the app's generated share link to preserve the selected channel mode in brow
 | WHIP | Complete HTTP(S) publishing endpoint; optional bearer token | H.264 + 48 kHz Opus, mono or stereo |
 | SRT | `srt://host:port`, optional stream ID and passphrase | H.264 + 48 kHz AAC in MPEG-TS; caller mode |
 | RTMP / RTMPS | Server URL and optional stream key, or a complete publishing URL | H.264 + 48 kHz AAC in FLV |
+| RTSP / VRChat (TCP), RTSP (UDP) | RTSP publishing URL; TCP also accepts `rtspt://` | H.264 + 48 kHz AAC over RTP |
+
+For VRChat, see the [RTSP publishing and viewing guide](docs/rtsp-vrchat-output.md). A server is required; its viewing URL can differ from its publishing URL. RTSP uses the same bounded FFmpeg output path as RTMP/SRT, preserving capture timestamps and reconnecting with fresh media.
 
 External outputs require a receiving server. They use H.264 without an alpha track; returning to VDO.Ninja restores your existing codec selections. Expand **Audio encoding** for Opus bitrate or AAC bitrate (32–320 kbps, default 192), and mono/stereo. AAC bitrate is displayed as a target. SRT latency defaults to 200 ms and can be adjusted from 20–8,000 ms. Higher latency gives SRT more time to recover lost packets. An optional SRT encryption passphrase needs 10–79 bytes.
 
@@ -77,6 +80,7 @@ Headless examples (add your normal source, resolution and audio-source arguments
 game-capture.exe --headless --output=whip --output-url=https://server.example/live/whip --output-token=TOKEN
 game-capture.exe --headless --output=srt --output-url=srt://server.example:8890 --srt-stream-id=publish:my-stream --srt-latency-ms=200 --aac-bitrate-kbps=192
 game-capture.exe --headless --output=rtmp --output-url=rtmps://server.example/live --output-key=STREAM_KEY --audio-channels=stereo
+game-capture.exe --headless --output=rtsp --output-url=rtsp://server.example:8554/live --aac-bitrate-kbps=192
 ```
 
 Use `--srt-passphrase=...` when the SRT receiver requires encryption. Command-line credentials can be visible in the local process command line; the GUI stores credentials in encrypted profiles. External outputs reject PCM, RED and non-H.264 CLI selections. Authentication or negotiation errors from WHIP stop headless publishing with exit code 3; transient network failures retry until stopped.

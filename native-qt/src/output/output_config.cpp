@@ -10,6 +10,8 @@ const char *protocolName(Protocol protocol) {
         case Protocol::Whip: return "WHIP";
         case Protocol::Srt: return "SRT";
         case Protocol::Rtmp: return "RTMP";
+        case Protocol::Rtsp: return "RTSP";
+        case Protocol::RtspUdp: return "RTSP-UDP";
         default: return "VDO.Ninja";
     }
 }
@@ -18,7 +20,9 @@ Protocol parseProtocol(const std::string &name) {
     if (name == "whip") return Protocol::Whip;
     if (name == "srt") return Protocol::Srt;
     if (name == "rtmp" || name == "rtmps") return Protocol::Rtmp;
-    throw std::invalid_argument("Output must be vdo, whip, srt or rtmp");
+    if (name == "rtsp" || name == "rtspt") return Protocol::Rtsp;
+    if (name == "rtsp-udp") return Protocol::RtspUdp;
+    throw std::invalid_argument("Output must be vdo, whip, srt, rtmp, rtsp or rtsp-udp");
 }
 
 std::string validateConfig(const Config &config) {
@@ -39,6 +43,13 @@ std::string validateConfig(const Config &config) {
     } else if (config.protocol == Protocol::Rtmp) {
         if (scheme != "rtmp" && scheme != "rtmps") return "RTMP needs an rtmp:// or rtmps:// server URL.";
         if (url.path().isEmpty() || url.path() == "/") return "Include the RTMP application path in the server URL.";
+    } else if (isRtsp(config.protocol)) {
+        if (scheme != "rtsp" && scheme != "rtspt") return "RTSP needs an rtsp:// publishing URL (rtspt:// is accepted for TCP).";
+        if (scheme == "rtspt" && config.protocol == Protocol::RtspUdp) return "An rtspt:// URL requires RTSP over TCP.";
+        if (url.path().isEmpty() || url.path() == "/") return "Include the RTSP stream path in the publishing URL.";
+        if (url.port() == 0) return "RTSP needs a valid server port.";
+        if (!config.streamKey.empty() || !config.bearerToken.empty() || !config.passphrase.empty())
+            return "RTSP credentials belong in the server URL, not the stream key or token fields.";
     } else if (config.protocol == Protocol::Srt) {
         if (scheme != "srt" || url.port() <= 0) return "SRT caller needs an srt://host:port URL.";
         if (!url.userInfo().isEmpty() || (!url.path().isEmpty() && url.path() != "/"))
@@ -55,7 +66,7 @@ std::string validateConfig(const Config &config) {
         if (streamId.size() > 512) return "An SRT stream ID must contain at most 512 bytes.";
         if (config.latencyMs < 20 || config.latencyMs > 8000) return "SRT latency must be 20 to 8000 ms.";
     }
-    if ((config.protocol == Protocol::Rtmp || config.protocol == Protocol::Srt) &&
+    if ((config.protocol == Protocol::Rtmp || config.protocol == Protocol::Srt || isRtsp(config.protocol)) &&
         (config.aacBitrateKbps < 32 || config.aacBitrateKbps > 320))
         return "AAC bitrate must be 32 to 320 kbps.";
     return {};
@@ -74,6 +85,8 @@ std::string destinationLabel(const Config &config) {
 
 std::string destinationUrl(const Config &config) {
     QUrl url(QString::fromStdString(config.url));
+    // rtspt is a player spelling for RTSP over TCP, not an FFmpeg URL scheme.
+    if (isRtsp(config.protocol)) url.setScheme("rtsp");
     if (config.protocol == Protocol::Rtmp && !config.streamKey.empty()) {
         QString path = url.path();
         if (!path.endsWith('/')) path += '/';

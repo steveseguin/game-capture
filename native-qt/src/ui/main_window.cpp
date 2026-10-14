@@ -1032,7 +1032,7 @@ void MainWindow::loadPersistedSettings() {
     outputProfiles_.clear();
     const auto profiles = QJsonDocument::fromJson(protectOutputProfiles(
         QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()), true)).object();
-    for (const auto &name : {QString("whip"), QString("srt"), QString("rtmp")}) {
+    for (const auto &name : {QString("whip"), QString("srt"), QString("rtmp"), QString("rtsp"), QString("rtsp-udp")}) {
         const auto stored = profiles.value(name).toObject();
         output::Config config; config.protocol = output::parseProtocol(name.toStdString());
         config.url = stored.value("url").toString().toStdString();
@@ -1642,6 +1642,8 @@ void MainWindow::setupUI() {
     outputSelect_->addItem("WHIP", "whip");
     outputSelect_->addItem("SRT (caller)", "srt");
     outputSelect_->addItem("RTMP / RTMPS", "rtmp");
+    outputSelect_->addItem("RTSP / VRChat (TCP)", "rtsp");
+    outputSelect_->addItem("RTSP (UDP)", "rtsp-udp");
     installComboWheelGuard(outputSelect_);
     advancedForm->addRow("Output", outputSelect_);
     outputPanel_ = new QWidget(this);
@@ -2940,7 +2942,7 @@ void MainWindow::onGoLiveClicked() {
         const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : 192;
         const int audioChannels = audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2;
         const bool externalOutput = outputSelect_->currentData().toString() != "vdo";
-        const bool muxedOutput = outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "rtmp";
+        const bool muxedOutput = outputSelect_->currentData().toString() == "srt" || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp"));
         const bool pcmAudio = !externalOutput && audioCodecSelect_->currentData().toString() == "pcm";
         const bool audioRed = !externalOutput && audioRedCheck_->isChecked() && !pcmAudio;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
@@ -3387,7 +3389,7 @@ void MainWindow::onStatsTimer() {
             updateStatus(QString::fromStdString(state.message), state.state == output::State::Live ? "live" :
                 state.state == output::State::Error ? "error" : "connecting");
             const auto protocol = outputConfigFromUi().protocol;
-            if (protocol == output::Protocol::Srt || protocol == output::Protocol::Rtmp) {
+            if (protocol == output::Protocol::Srt || protocol == output::Protocol::Rtmp || output::isRtsp(protocol)) {
                 stats.audioBitrateIsTarget = audioSourceSelect_->currentData().toString() != "none" || includeMicrophoneCheck_->isChecked();
                 stats.audioBitrate = stats.audioBitrateIsTarget ? aacBitrateSpin_->value() : 0;
             }
@@ -3519,7 +3521,7 @@ void MainWindow::switchOutputProtocol() {
 void MainWindow::updateOutputControls() {
     if (!outputSelect_ || !audioCodecSelect_ || switchingOutput_) return;
     const QString protocol = outputSelect_->currentData().toString();
-    const bool vdo = protocol == "vdo", srt = protocol == "srt", whip = protocol == "whip";
+    const bool vdo = protocol == "vdo", srt = protocol == "srt", whip = protocol == "whip", rtsp = protocol.startsWith("rtsp");
     vdoTargetPanel_->setVisible(vdo);
     setFormRowVisible(advancedForm_, outputPanel_, !vdo);
     outputSummaryLabel_->setVisible(!vdo);
@@ -3536,12 +3538,15 @@ void MainWindow::updateOutputControls() {
         : "Auto allows host, STUN/direct, and TURN relay candidates. ICE selects the working path automatically.");
     setFormRowVisible(outputForm_, outputStreamIdInput_, srt);
     setFormRowVisible(outputForm_, outputLatencySpin_, srt);
+    setFormRowVisible(outputForm_, outputSecretInput_->parentWidget() == this ? static_cast<QWidget*>(outputSecretInput_) : outputSecretInput_->parentWidget(), !rtsp && protocol != "file");
     outputSecretLabel_->setText(whip ? "Bearer token" : srt ? "Passphrase" : "Stream key");
     outputSecretInput_->setAccessibleName(whip ? "WHIP bearer token" : srt ? "SRT passphrase" : "RTMP stream key");
     outputSecretInput_->setPlaceholderText("Optional");
     outputUrlInput_->setPlaceholderText(whip ? "https://server.example/live/whip" :
-        srt ? "srt://server.example:8890" : "rtmps://server.example/live");
-    outputHelp_->setText(whip ? "H.264 video and 48 kHz Opus audio. Enter the complete WHIP publishing endpoint."
+        srt ? "srt://server.example:8890" : rtsp ? "rtsp://server.example:8554/live" : "rtmps://server.example/live");
+    outputUrlInput_->setToolTip(rtsp ? "Publishing URL from your RTSP server. Optional authentication: rtsp://user:password@host:8554/live. The VRChat viewing URL may be different." : "Publishing URL supplied by your streaming server.");
+    outputHelp_->setText(rtsp ? "H.264 video and 48 kHz AAC audio. Requires an RTSP publishing server. TCP is recommended for VRChat; use the server's rtspt:// viewing link in an AVPro player. RTMP services can also provide a separate VRChat viewing link."
+        : whip ? "H.264 video and 48 kHz Opus audio. Enter the complete WHIP publishing endpoint."
         : srt ? "H.264 video and 48 kHz AAC audio. Caller mode connects to a listening receiver. Higher latency allows more time to recover lost packets."
         : "H.264 video and 48 kHz AAC audio. Enter a server URL and stream key, or paste the complete publishing URL. RTMPS encrypts the connection.");
     updateAudioEncodingControls();
@@ -3551,7 +3556,7 @@ void MainWindow::updateOutputControls() {
 void MainWindow::updateAudioEncodingControls() {
     if (!audioCodecSelect_ || !audioRedCheck_) return;
     const auto protocol = outputSelect_ ? outputSelect_->currentData().toString() : QString("vdo");
-    const bool vdo = protocol == "vdo", aac = protocol == "srt" || protocol == "rtmp";
+    const bool vdo = protocol == "vdo", aac = protocol == "srt" || protocol == "rtmp" || protocol.startsWith("rtsp");
     const bool pcm = vdo && audioCodecSelect_->currentData().toString() == "pcm";
     setFormRowVisible(audioEncodingForm_, audioCodecSelect_, vdo);
     setFormRowVisible(audioEncodingForm_, audioRedCheck_, vdo);
@@ -3596,7 +3601,7 @@ void MainWindow::syncCodecUiState() {
     }
 
     const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
-    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "rtmp");
+    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
     const versus::video::VideoCodec selectedCodec = externalOutput ? versus::video::VideoCodec::H264 : codecFromUiValue(codecSelect_->currentData().toString());
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
@@ -3671,7 +3676,7 @@ void MainWindow::refreshFfmpegStatus() {
         ffmpegProbeTimer_->stop();
     }
     const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
-    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "rtmp");
+    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
     const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
     const auto selectedCodec = codecSelect_ && !externalOutput
         ? codecFromUiValue(codecSelect_->currentData().toString())
