@@ -79,7 +79,10 @@ def analyze(ffmpeg,case,phase):
         else:result['channelsPassed']=all(t['440']>.005 and t['880']>.005 for t in tones)
     expected_fps=case.get('configuration',{}).get('fps',60)
     result['expectedFps']=expected_fps
-    result['passed']=increasing and result['distinctSourceFramesPerSecond']>expected_fps*.90 and result['frameGapMs']['p95']<1500/expected_fps and result.get('audioPassed',True) and result.get('channelsPassed',True)
+    requested_codec=case.get('configuration',{}).get('codec','h264').lower().replace('.','').replace('hevc','h265')
+    actual_codec=case.get('lastDiagnostics',{}).get('video',{}).get('active_codec','').lower().replace('.','')
+    if actual_codec and actual_codec!=requested_codec:result['configurationError']=f'Requested {requested_codec}, actually encoded {actual_codec}'
+    result['passed']=not result.get('configurationError') and increasing and result['distinctSourceFramesPerSecond']>expected_fps*.90 and result['frameGapMs']['p95']<1500/expected_fps and result.get('audioPassed',True) and result.get('channelsPassed',True)
     return result
 
 if __name__=='__main__':

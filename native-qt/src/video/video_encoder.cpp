@@ -3561,6 +3561,15 @@ class VideoEncoder::Impl {
         externalFramesSubmitted_++;
 
         int waitBudgetMs = std::max(10, (3000 / std::max(1, config_.frameRate)));
+        // Hardware encoding and pipe IO already run asynchronously. Once the
+        // pipeline is producing packets, waiting here for a later access unit
+        // can hold up the very next input it needs and exceed a 60 fps slot.
+        // Keep the bounded input/PTS queues intact; collect ready output now
+        // and let the output pacer admit the next frame on time.
+        // Length-delimited IVF output does not need a following frame boundary;
+        // retain its existing wait to avoid adding a frame of delivery latency.
+        if (externalUsingHardware_ && config_.lowLatency && externalOutputFormat_ == ExternalOutputFormat::AnnexB &&
+            externalFirstPacketLogged_ && !externalWarmupInProgress_) waitBudgetMs = 0;
         // The first live access unit needs the following frame's AUD to close
         // it. Preparation has already proved this process healthy: waiting
         // here only delays admission of that next fresh input.

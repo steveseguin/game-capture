@@ -1,0 +1,7 @@
+[
+  {"id":"udp-nvenc-1080p60","resolution":"1920x1080","video-encoder":"nvenc","fps":60,"seconds":60},
+  {"id":"udp-ffmpeg-nvenc-1080p60","resolution":"1920x1080","video-encoder":"ffmpeg_nvenc","fps":60,"seconds":45},
+  {"id":"udp-qsv-720p60","resolution":"1280x720","video-encoder":"qsv","fps":60,"seconds":30},
+  {"id":"udp-software-720p60","resolution":"1280x720","video-encoder":"software","fps":60,"seconds":30},
+  {"id":"whip-nvenc-720p60","resolution":"1280x720","video-encoder":"nvenc","fps":60,"seconds":30}
+]

@@ -115,7 +115,7 @@ paths:
         '--duration-ms='+Math.max(1800000,(seconds+300)*1000),'--local-control','--local-control-discovery='+discovery];
       if(relayHost&&protocol==='whip')args.push('--ice-mode=relay');
       for(const key of ['video-encoder','bitrate-kbps','ffmpeg-options','codec'])
-        if(configuration[key]!==undefined||opts[key]!==undefined)args.push('--'+key+'='+(configuration[key]??opts[key]));
+        if(configuration[key]!==undefined||opts[key]!==undefined)args.push('--'+(key==='codec'?'video-codec':key)+'='+(configuration[key]??opts[key]));
       if(impairment&&protocol==='srt')args.push('--srt-latency-ms='+Number(opts['srt-latency-ms']||400));
       args.push((protocol==='whip'?'--audio-bitrate-kbps=':'--aac-bitrate-kbps=')+bitrate);
       if(protocol==='rtmp')args.push('--output-key='+id);
@@ -131,6 +131,8 @@ paths:
       let monitor,page,record,sampling=false,sampleTask,sampleFile;
       try{
         await until(async()=>{assert(app.exitCode===null,'Publisher exited with '+app.exitCode);if(!fs.existsSync(discovery))return false;const d=await api(discovery,'/diagnostics');result.lastDiagnostics=d;return d.output?.state===2;},id+' publishing',60000);
+        const requestedCodec=String(configuration.codec??opts.codec??'h264').toLowerCase().replace(/[^a-z0-9]/g,'').replace('hevc','h265');
+        assert.equal(result.lastDiagnostics.video.active_codec.toLowerCase().replace(/[^a-z0-9]/g,''),requestedCodec,'Publisher did not use the requested codec');
         monitor=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),[path.join(__dirname,'quality-resource-monitor.py'),'--pid',String(app.pid),'--output',path.join(dir,'resources.jsonl'),...(opts.matrix?['--no-hooks']:[])],id+'-monitor');
         if(!direct)await until(async()=>{const paths=await fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.json());
           result.serverPath=paths.items.find(p=>p.name===stream);return result.serverPath?.ready;},'server track discovery');

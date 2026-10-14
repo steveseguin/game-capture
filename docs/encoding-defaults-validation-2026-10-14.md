@@ -217,3 +217,25 @@ Complete candidate packages:
 - Desktop Studio: `native-qt/dist/desktop-studio-fuzz-review/`; executable SHA-256 `81fa31565b89d5f5d482741611d745bc39807e892545d633fb48c61d94be3ce2`.
 
 Limits: these are bounded, seeded workflows, not exhaustive proof of safety. This round did not repeat physical device unplug/replug, AMD/OBS, weak-machine/game-impact, overnight resource growth, trusted-HTTPS certificate cases or every protocol's loss/FEC matrix. Previously observed explicit NVENC pacing and isolated Studio local-recording gaps under large-source faults remain unresolved. Clean-machine testing remains deferred. No release or installer was published by this follow-up.
+
+## Follow-up: external hardware encoder pacing
+
+The explicit NVENC pacing issue above is fixed in the new review build. A traced reproduction with a real UDP receiver held only 56.92 encoded packets/s: the encode call waited for an access unit that could need the next input frame to complete. After hardware startup/warm-up succeeds, low-latency Annex B encoding now collects available output without blocking admission of that next input. Length-delimited IVF output retains its existing wait, avoiding an additional frame of delivery latency for AV1/VP9. Input queues and timestamp identity remain bounded. Software encoding, bitrate defaults and quality presets are unchanged.
+
+The complete `native-qt/dist/game-capture-pacing-review/` package was exercised with moving full-screen Chrome capture, stereo process audio, private localhost receivers and no injected profiling hooks. All supported cases decoded completely without errors, had increasing video timestamps, continuous expected stereo audio and no further capture drops after the first five seconds.
+
+| Requested selection | Receiver duration | Distinct decoded fps, including startup | Packet fps after startup | Mean process-tree CPU |
+|---|---:|---:|---:|---:|
+| NVENC 1080p60 / UDP | 60 s | 59.88 | 59.98 | 3.44% |
+| Advanced FFmpeg NVENC 1080p60 / UDP | 45 s | 59.89 | 60.02 | 3.30% |
+| Quick Sync 720p60 / UDP | 30 s | 59.40 | 59.97 | 2.04% |
+| Software 720p60 / UDP | 30 s | 59.92 | 59.97 | 2.63% |
+| NVENC 720p60 / WHIP | 30 s | 60.01 | 60.00 | 1.75% |
+
+CPU figures are whole-machine occupancy on this 20-logical-processor host, including encoder/muxer children. They do not establish a reduction in total CPU or gaming impact on a slower PC. Both NVIDIA selections actually used `h264_nvenc`; Quick Sync used `h264_qsv`; software used the software H264 Encoder MFT. Video remained near 4 Mbps. UDP/IPv4 traffic averaged 4.46-4.49 Mbps in the supported UDP cases. Decoded frame spacing p95 was 17 ms. Initial hardware startup still produced a few missing frames; the NVENC counters stayed at five drops after startup. This is a steady-state pacing fix, not a claim of gapless startup.
+
+An extra row in the earlier `regression-final/` matrix requested HEVC but exposed a harness mistake: `--codec` was ignored by the app, whose argument is `--video-codec`. That row actually encoded H.264 and is excluded from the table. The harness now passes the correct option and verifies the active codec; both analysis tools reject a requested/actual codec mismatch. Existing external outputs require H.264, so this round does **not** establish HEVC output support. The erroneous row remains in the earlier evidence. The final supported matrix and both analysis tools passed after correcting the harness. A further explicit H.264 selection passed a 20-second real UDP run and both decoders/analyzers; an explicit HEVC external-output request exited normally with code 2 and the H.264 requirement message. Evidence: `explicit-codec-final/results.json`, `analysis.json`, `summary.json` and `codec-guard.json`.
+
+Reports: `native-qt/e2e/reports/pacing-fixes-2026-10-14/regression-scoped-final/` (`results.json`, `summary.json`, `analysis.json`, receiver files and per-case resource samples); traced diagnosis in `nvenc-traced-wire/` and `nvenc-poll-fixed/`. The browser fixture's raw audio/light offsets are not a calibrated A/V-sync measurement; this round verifies timestamps, picture identity, audio continuity and channels. Studio's frequency-coded file fixture supplies the separate sync evidence.
+
+Reproduce supported cases with `e2e/external-output-packaged.js --publisher=PACKAGE/game-capture.exe --output=REPORT --matrix=e2e/encoder-pacing-matrix.json --motion=true --fullscreen=true --sample-ms=500 --wire-meter=true`, then run `summarize-encoder-defaults.py` and `analyze-external-output.py` against the report after the app exits. This matrix needs NVIDIA and Intel hardware for its named hardware cases. Executable SHA-256: `780602f6907454bbc75c09b5f4d5c948a4ab194772de746aec1eb3345b8419e1`. No installer or release was published by this follow-up.

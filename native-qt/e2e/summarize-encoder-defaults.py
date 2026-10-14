@@ -52,7 +52,12 @@ for case in report['cases']:
         decoded=subprocess.run(cmd,capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=120)
         row['cleanDecode']=decoded.returncode==0 and not decoded.stderr
         if decoded.stderr:row['decodeError']=decoded.stderr.decode(errors='replace')[-1000:]
-        packets=subprocess.run([a.ffmpeg,'-hide_banner','-i',str(file),'-map','0:v:0','-c','copy','-f','h264','-'],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=60)
+        codec=d.get('active_codec','H.264').lower().replace('.','')
+        requested=case.get('configuration',{}).get('codec','h264').lower().replace('.','').replace('hevc','h265')
+        if codec!=requested:row['configurationError']=f'Requested {requested}, actually encoded {codec}'
+        elementary_format='hevc' if codec in ('hevc','h265') else 'ivf' if codec in ('av1','vp8','vp9') else 'h264'
+        packets=subprocess.run([a.ffmpeg,'-hide_banner','-i',str(file),'-map','0:v:0','-c','copy','-f',elementary_format,'-'],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=60)
+        assert packets.returncode==0,packets.stderr.decode(errors='replace')[-1000:]
         duration=re.search(rb'Duration: (\d+):(\d+):([\d.]+)',packets.stderr)
         if duration:
             h,m,s=map(float,duration.groups());seconds=3600*h+60*m+s
@@ -67,4 +72,4 @@ for case in report['cases']:
     print(json.dumps(row),flush=True)
 output={'publisherSha256':report['sha256'],'cases':rows}
 (a.folder/'summary.json').write_text(json.dumps(output,indent=2))
-assert rows and all(row.get('cleanDecode') and not row.get('error') for row in rows), 'Strict decode failed; inspect summary.json'
+assert rows and all(row.get('cleanDecode') and not row.get('error') and not row.get('configurationError') for row in rows), 'Decode/configuration validation failed; inspect summary.json'
