@@ -565,9 +565,9 @@ int main(int argc, char *argv[]) {
         spdlog::info("[Main] Defaulting audio source to none for Spout video source");
     } else if (videoSourceMode == versus::app::VideoSourceMode::Camera &&
                audioSourceArg == "selected-window") {
-        audioSourceArg = "default-microphone";
-        audioSourceMode = versus::app::AudioSourceMode::DefaultMicrophone;
-        spdlog::info("[Main] Defaulting audio source to microphone for Camera video source");
+        audioSourceArg = "none";
+        audioSourceMode = versus::app::AudioSourceMode::None;
+        spdlog::info("[Main] Camera audio is off unless explicitly selected");
     }
 
     QApplication app(argc, argv);
@@ -749,8 +749,8 @@ int main(int argc, char *argv[]) {
     }
     if (bitrateKbps > 0) {
         encoderOverride.bitrate = bitrateKbps;
-        encoderOverride.minBitrate = std::max(500, bitrateKbps / 2);
-        encoderOverride.maxBitrate = std::max(bitrateKbps + 4000, (bitrateKbps * 3) / 2);
+        encoderOverride.minBitrate = std::min(bitrateKbps, std::max(500, bitrateKbps / 2));
+        encoderOverride.maxBitrate = bitrateKbps;
         hasVideoConfigOverride = true;
     }
     if (!ffmpegPathArg.empty()) {
@@ -765,7 +765,7 @@ int main(int argc, char *argv[]) {
     if (outputConfig.protocol == versus::output::Protocol::VdoNinja &&
         (!outputConfig.url.empty() || !outputConfig.bearerToken.empty() || !outputConfig.streamKey.empty() ||
          !outputConfig.streamId.empty() || !outputConfig.passphrase.empty())) {
-        spdlog::error("Select --output=whip, srt, rtmp, rtsp or rtsp-udp when supplying external output settings"); return 2;
+        spdlog::error("Select --output=whip, srt, rtmp, rtsp, rtsp-udp, udp or rist when supplying external output settings"); return 2;
     }
     if (outputConfig.protocol != versus::output::Protocol::VdoNinja) {
         if (!headless) { spdlog::error("Use advanced output settings in the GUI, or add --headless for output arguments"); return 2; }

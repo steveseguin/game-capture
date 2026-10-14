@@ -1001,7 +1001,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         config.width = 1920;
         config.height = 1080;
         config.frameRate = 60;
-        config.bitrate = 12000;
+        config.bitrate = 2500;
     }
     const video::EncoderConfig requestedConfig = config;
     const bool alphaRequested = usesVp9AlphaTrack(requestedConfig);
@@ -1255,9 +1255,21 @@ void VersusApp::setIncludeMicrophone(bool enabled) {
     includeMicrophone_ = enabled;
 }
 
+void VersusApp::setMicrophoneMuted(bool muted) {
+    microphoneMuted_.store(muted, std::memory_order_relaxed);
+    if (muted) {
+        std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+        additionalAudioBuffer_.clear();
+    }
+}
+
 void VersusApp::setMicrophoneDeviceId(const std::string &deviceId) {
     std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
-    microphoneDeviceId_ = deviceId;
+    microphoneDeviceId_ = deviceId == "none" ? std::string() : deviceId;
+    if (deviceId == "none") {
+        includeMicrophone_ = false;
+        if (audioSourceMode_ == AudioSourceMode::DefaultMicrophone) audioSourceMode_ = AudioSourceMode::None;
+    }
 }
 
 void VersusApp::setAudioMixConfig(float primaryGain, float additionalGain, bool limiterEnabled) {
@@ -2207,6 +2219,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
     root["audio"] = {
         {"source_mode", audioSourceModeName(diagnosticsAudioSourceMode)},
         {"include_microphone", diagnosticsIncludeMicrophone},
+        {"microphone_muted", microphoneMuted_.load(std::memory_order_relaxed)},
         {"active_microphone_source", diagnosticsMicrophoneSource},
         {"configured_opus_bitrate_kbps", audioEncoderBitrateKbps_.load(std::memory_order_relaxed)},
         {"preferred_opus_bitrate_kbps", configuredAudioBitrateKbps_.load(std::memory_order_relaxed)},
@@ -2587,7 +2600,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
         return activeMicrophoneSourceName_;
     };
-    setActiveMicrophoneSource(microphoneDeviceId.empty() ? "default-microphone" : "selected-microphone");
+    setActiveMicrophoneSource("none");
 
     const auto primaryCallback = [this](versus::audio::StreamChunk &&chunk) {
         handlePrimaryAudioChunk(std::move(chunk));
@@ -2626,10 +2639,17 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
 
     const auto startMicrophone = [&](const audio::WindowAudioCaptureCore::StreamCallback &callback,
                                      const char *role) {
+        // Gate the microphone before either primary or additional routing, so
+        // live mute also covers fallback-to-primary without muting game audio.
+        const auto gatedCallback = [this, callback](audio::StreamChunk &&chunk) {
+            if (microphoneMuted_.load(std::memory_order_relaxed))
+                std::fill(chunk.samples.begin(), chunk.samples.end(), 0.0f);
+            callback(std::move(chunk));
+        };
         const std::string requestedLabel = resolveMicrophoneLabel();
         audio::CaptureResult micResult;
         if (!microphoneDeviceId.empty()) {
-            micResult = microphoneAudioCapture_.StartInputDeviceStreamCapture(microphoneDeviceId, callback);
+            micResult = microphoneAudioCapture_.StartInputDeviceStreamCapture(microphoneDeviceId, gatedCallback);
             if (!micResult.success) {
                 spdlog::warn("[Audio] {} microphone capture device='{}' failed: {}; falling back to default input",
                              role,
@@ -2638,13 +2658,13 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                 emitRuntimeEvent("Selected microphone/input was unavailable; using Windows default microphone/input.", false);
                 setActiveMicrophoneSource("default-microphone");
                 micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
-                    audio::DefaultAudioEndpoint::MultimediaInput, callback);
+                    audio::DefaultAudioEndpoint::MultimediaInput, gatedCallback);
             } else {
                 setActiveMicrophoneSource(requestedLabel);
             }
         } else {
             micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
-                audio::DefaultAudioEndpoint::MultimediaInput, callback);
+                audio::DefaultAudioEndpoint::MultimediaInput, gatedCallback);
             setActiveMicrophoneSource("default-microphone");
         }
 
@@ -3824,7 +3844,7 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
         const int clamped = std::clamp(bitrateKbps, 250, 100000);
         nextConfig.bitrate = clamped;
         nextConfig.minBitrate = std::max(250, clamped / 2);
-        nextConfig.maxBitrate = std::max(nextConfig.maxBitrate, std::max(clamped + 4000, (clamped * 3) / 2));
+        nextConfig.maxBitrate = clamped;
     }
 
     const bool hasResolutionRequest = width > 0 || height > 0;

@@ -67,9 +67,9 @@ struct EncoderConfig {
     int width = 1920;
     int height = 1080;
     int frameRate = 60;
-    int bitrate = 12000;
-    int minBitrate = 8000;
-    int maxBitrate = 20000;
+    int bitrate = 2500;
+    int minBitrate = 1250;
+    int maxBitrate = 2500;
     int gopSize = 60;
     int bFrames = 0;
     bool lowLatency = true;

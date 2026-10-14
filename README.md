@@ -41,7 +41,7 @@ Updates are never downloaded or installed automatically.
 2. Choose the camera, resolution, frame rate, and `Microphone / Input` device.
 3. Paste a Stream ID or VDO.Ninja URL, then go live.
 
-Camera mode selects the chosen microphone/input as the primary audio source by default. Once live, `Selected Source Preview` shows the local camera feed seen by the publisher. Microphone inputs from 8–384 kHz, mono through multichannel, and 16/24/32-bit PCM or 32-bit float are converted to 48 kHz for mixing and Opus encoding. Advanced settings can switch to system output, disable audio, or mix the microphone with another audio source. Windows can list installed virtual cameras even when their sender is inactive; Game Capture waits for a real first frame and stops startup with an actionable error instead of publishing a blank source. The same bounded error path handles disconnected cameras and cameras already owned by another app. If a device is missing, enable desktop camera or microphone access in Windows Privacy & security settings and click Refresh.
+Camera mode starts with **No microphone**. Select an input in the main microphone dropdown to add it; **Mute / Unmute** works while live without silencing game/app audio. Returning to **No microphone** disables microphone capture on the next session. Explicit saved microphone choices are retained. Once live, `Selected Source Preview` shows the local camera feed seen by the publisher. Microphone inputs from 8–384 kHz, mono through multichannel, and 16/24/32-bit PCM or 32-bit float are converted to 48 kHz for mixing and Opus encoding. Advanced settings can switch to system output, disable audio, or mix the microphone with another audio source. Windows can list installed virtual cameras even when their sender is inactive; Game Capture waits for a real first frame and stops startup with an actionable error instead of publishing a blank source. The same bounded error path handles disconnected cameras and cameras already owned by another app. If a device is missing, enable desktop camera or microphone access in Windows Privacy & security settings and click Refresh.
 
 **Show advanced settings → Audio encoding** expands the optional audio controls. Audio encoding starts collapsed each time the app opens; the default remains **Opus, 48 kHz, stereo, 192 kbps**, with RED off. Saved encoding changes apply on the next stream, and the controls lock while live.
 
@@ -56,7 +56,7 @@ Use the app's generated share link to preserve the selected channel mode in brow
 
 ## Additional output destinations
 
-**Show advanced settings → Output** selects one destination. VDO.Ninja remains the default; WHIP, SRT and RTMP settings appear only when selected. The active external destination stays visible when advanced settings are collapsed. Each protocol remembers its own settings, and Windows protects the saved destination profiles, including URLs and credentials, with the current user's encryption key.
+**Show advanced settings → Output** selects one destination. VDO.Ninja remains the default; other output settings appear only when selected. The active external destination stays visible when advanced settings are collapsed. Each protocol remembers its own settings, and Windows protects the saved destination profiles, including URLs and credentials, with the current user's encryption key.
 
 | Output | Destination | Media |
 | --- | --- | --- |
@@ -64,11 +64,13 @@ Use the app's generated share link to preserve the selected channel mode in brow
 | WHIP | Complete HTTP(S) publishing endpoint; optional bearer token | H.264 + 48 kHz Opus, mono or stereo |
 | SRT | `srt://host:port`, optional stream ID and passphrase | H.264 + 48 kHz AAC in MPEG-TS; caller mode |
 | RTMP / RTMPS | Server URL and optional stream key, or a complete publishing URL | H.264 + 48 kHz AAC in FLV |
+| UDP / MPEG-TS (LAN) | `udp://receiver:5000` | H.264 + 48 kHz AAC in MPEG-TS; no server needed |
+| RIST | `rist://receiver:8194` | H.264 + 48 kHz AAC in MPEG-TS; Main profile with packet recovery |
 | RTSP / VRChat (TCP), RTSP (UDP) | RTSP publishing URL; TCP also accepts `rtspt://` | H.264 + 48 kHz AAC over RTP |
 
 For VRChat, see the [RTSP publishing and viewing guide](docs/rtsp-vrchat-output.md). A server is required; its viewing URL can differ from its publishing URL. RTSP uses the same bounded FFmpeg output path as RTMP/SRT, preserving capture timestamps and reconnecting with fresh media.
 
-External outputs require a receiving server. They use H.264 without an alpha track; returning to VDO.Ninja restores your existing codec selections. Expand **Audio encoding** for Opus bitrate or AAC bitrate (32–320 kbps, default 192), and mono/stereo. AAC bitrate is displayed as a target. SRT latency defaults to 200 ms and can be adjusted from 20–8,000 ms. Higher latency gives SRT more time to recover lost packets. An optional SRT encryption passphrase needs 10–79 bytes.
+WHIP, SRT, RTMP and RTSP require a receiving endpoint/server; UDP and RIST can go directly to a listening receiver. They use H.264 without an alpha track; returning to VDO.Ninja restores your existing codec selections. Expand **Audio encoding** for Opus bitrate or AAC bitrate (32–320 kbps, default 192), and mono/stereo. AAC bitrate is displayed as a target. SRT latency defaults to 200 ms and can be adjusted from 20–8,000 ms. Higher latency gives SRT more time to recover lost packets. An optional SRT encryption passphrase needs 10–79 bytes.
 
 RTMP/SRT use the bundled FFmpeg for audio encoding and output. Audio and video keep their capture timestamps through the output path. A lost connection retries automatically with fresh media and a keyframe; changing the encoded dimensions restarts an RTMP/SRT session. WHIP supports endpoint-provided ICE servers, bearer authentication, HTTP 307/308 redirects, complete ICE offers and session deletion on stop. Credentials are withheld from redirects to a different origin, and HTTPS cannot redirect to HTTP. HTTPS/RTMPS certificate validation remains enabled. Room controls and VDO.Ninja viewer links apply to VDO.Ninja output.
 
@@ -282,3 +284,22 @@ This repo is focused on the native Windows app (`native-qt`) and supporting rele
 ## License
 
 Free and open source (AGPL-3.0). See [LICENSE](LICENSE).
+
+## Streaming defaults, direct receivers and microphones
+
+New streaming sessions default to **2,500 kbps video**. The encoder ceiling follows the selected target instead of allowing an extra 4,000 kbps. Saved bitrate choices and explicit CLI/API overrides are retained. This is a video encoding target, not a total upload cap: audio, transport headers, retransmissions and extra VDO.Ninja viewers add traffic. Independent Studio recording keeps its separate quality settings. Higher streaming bitrates remain in advanced settings.
+
+**UDP / MPEG-TS (LAN)** and **RIST** are under advanced Output settings. Both carry H.264 video and AAC audio using the bundled FFmpeg worker. They also accept `--output=udp` / `--output=rist` and `--output-url=...` in headless capture. Start a receiver first, for example:
+
+```powershell
+# Sender URL: udp://RECEIVER-IP:5000
+ffplay -i "udp://0.0.0.0:5000?fifo_size=8192&overrun_nonfatal=1"
+# Sender URL: rist://RECEIVER-IP:8194; use matching 200 ms buffers
+ffplay -buffer_size 200 -i "rist://@0.0.0.0:8194"
+```
+
+OBS Media Source and VLC can receive the MPEG-TS UDP stream. UDP provides no loss recovery or delivery acknowledgement; a Live status means the sender is transmitting. RIST uses Main profile and a configurable recovery buffer (20–8,000 ms, 200 ms UI default). Match the receiving buffer to the sender. This RIST integration does not configure encryption; use a trusted link/VPN or choose SRT with a passphrase. See the [FFmpeg protocol documentation](https://ffmpeg.org/ffmpeg-protocols.html#rist) for receiver options. The receiving application can add startup buffering of its own.
+
+Standalone capture starts with **No microphone**, including when switching to Camera. Choosing a microphone enables it; the adjacent **Mute / Unmute** button stays usable while live and preserves the selected gain. Muting gates microphone samples before primary/additional routing, so it covers microphone-only audio and a microphone mixed with game audio. It does not stop the device; choose **No microphone** before the next capture to avoid opening it. Microphone selection and mute state are saved. Studio mixer microphones remain explicit sources with their existing per-track Mute buttons; the standalone microphone controls are disabled for Mixer program.
+
+**AMD AMF** now explicitly uses FFmpeg's AMD encoder instead of requiring an AMD Media Foundation encoder registration. Its defaults select low-latency CBR, balanced quality and a single queued frame; H.264 disables B-frame reordering and forces true IDR keyframes. This addresses incorrect vendor selection and prediction/timestamp hazards in receivers such as OBS. Settings follow [AMD's AMF guide](https://github.com/GPUOpen-LibrariesAndSDKs/AMF/wiki/AMF-Encoder-Settings-and-Tuning-in-FFmpeg) and the [FFmpeg AMF implementation](https://github.com/FFmpeg/FFmpeg/blob/master/libavcodec/amfenc_h264.c). Explicit AMD selection fails visibly when unavailable, rather than silently changing encoder vendors. Actual AMD GPU/driver encoding and OBS playback still require validation on AMD hardware.

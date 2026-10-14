@@ -86,7 +86,7 @@ void addSpinBoxWheelContractRows() {
     QTest::addColumn<int>("initialValue");
 
     QTest::newRow("custom-bitrate")
-        << QStringLiteral("customBitrateSpin") << 12000;
+        << QStringLiteral("customBitrateSpin") << 2500;
     QTest::newRow("max-viewers")
         << QStringLiteral("viewerLimitSpin") << 10;
     QTest::newRow("game-audio-gain")
@@ -237,7 +237,8 @@ private slots:
     void testCameraBasicOptions();
     void testPersistedCameraOptions();
     void testPersistedSpoutModeUsesNoAudio();
-    void testPersistedCameraModeUsesMicrophone();
+    void testPersistedCameraModeLeavesMicrophoneOff();
+    void testMissingSavedMicrophoneDisablesCapture();
     void testSpoutSelectionPreviewMessaging();
     void testCameraSelectionPreviewMessaging();
     void testIceModeOptions();
@@ -573,8 +574,8 @@ void TestMainWindow::testBitrateOptions() {
         QVERIFY2(found, qPrintable(QString("Bitrate %1 not found").arg(bitrate)));
     }
 
-    // Check that High (12000) is selected by default
-    QVERIFY(bitrateCombo->currentText().contains("12000"));
+    // New sessions use the conservative streaming default.
+    QCOMPARE(bitrateCombo->currentData().toInt(), 2500);
 }
 
 void TestMainWindow::testVideoSourceModeControl() {
@@ -607,7 +608,7 @@ void TestMainWindow::testVideoSourceModeControl() {
     QVERIFY(sourceCombo->itemText(cameraIndex).contains("webcam", Qt::CaseInsensitive));
     sourceCombo->setCurrentIndex(cameraIndex);
     QCOMPARE(sourceCombo->currentData().toString(), QString("camera"));
-    QCOMPARE(audioCombo->currentData().toString(), QString("default-microphone"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("none"));
 
     const int windowIndex = sourceCombo->findData("window");
     QVERIFY(windowIndex >= 0);
@@ -690,7 +691,7 @@ void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
     QCOMPARE(audioCombo->currentData().toString(), QString("none"));
 }
 
-void TestMainWindow::testPersistedCameraModeUsesMicrophone() {
+void TestMainWindow::testPersistedCameraModeLeavesMicrophoneOff() {
     delete window_;
     window_ = nullptr;
 
@@ -708,8 +709,23 @@ void TestMainWindow::testPersistedCameraModeUsesMicrophone() {
     QVERIFY(audioCombo != nullptr);
     QVERIFY(microphoneCombo != nullptr);
     QCOMPARE(sourceCombo->currentData().toString(), QString("camera"));
-    QCOMPARE(audioCombo->currentData().toString(), QString("default-microphone"));
-    QVERIFY(microphoneCombo->toolTip().contains("Camera mode", Qt::CaseInsensitive));
+    QCOMPARE(audioCombo->currentData().toString(), QString("none"));
+    QVERIFY(microphoneCombo->toolTip().contains("No microphone", Qt::CaseInsensitive));
+}
+
+void TestMainWindow::testMissingSavedMicrophoneDisablesCapture() {
+    delete window_;
+    window_ = nullptr;
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
+    settings.setValue("audio/source", "default-microphone");
+    settings.setValue("audio/includeMicrophone", true);
+    settings.setValue("audio/microphoneDeviceId", "disconnected-fixture-device");
+    settings.sync();
+    window_ = new versus::ui::MainWindow(nullptr);
+    QCOMPARE(window_->findChild<QComboBox*>("microphoneDeviceSelect")->currentData().toString(), QString("none"));
+    QCOMPARE(window_->findChild<QComboBox*>("audioSourceSelect")->currentData().toString(), QString("none"));
+    QVERIFY(!window_->findChild<QCheckBox*>("includeMicrophoneCheck")->isChecked());
+    QVERIFY(!window_->findChild<QPushButton*>("microphoneMuteButton")->isEnabled());
 }
 
 void TestMainWindow::testSpoutSelectionPreviewMessaging() {
@@ -759,7 +775,7 @@ void TestMainWindow::testCameraSelectionPreviewMessaging() {
     const int cameraIndex = sourceCombo->findData("camera");
     QVERIFY(cameraIndex >= 0);
     sourceCombo->setCurrentIndex(cameraIndex);
-    QCOMPARE(audioCombo->currentData().toString(), QString("default-microphone"));
+    QCOMPARE(audioCombo->currentData().toString(), QString("none"));
 
     std::vector<versus::video::WindowInfo> cameras;
     versus::video::WindowInfo camera;
@@ -777,7 +793,7 @@ void TestMainWindow::testCameraSelectionPreviewMessaging() {
     QVERIFY(preview->text().contains("Camera selected"));
     QVERIFY(preview->text().contains("Test Webcam"));
     QVERIFY(preview->text().contains("Microphone:"));
-    QVERIFY(preview->text().contains("primary audio"));
+    QVERIFY(preview->text().contains("Audio is disabled"));
     QVERIFY(preview->text().contains("opens when streaming starts"));
 }
 
@@ -863,7 +879,17 @@ void TestMainWindow::testAudioSourceOptions() {
     auto *microphoneCombo = window_->findChild<QComboBox*>("microphoneDeviceSelect");
     QVERIFY(microphoneCombo != nullptr);
     QVERIFY(microphoneCombo->count() >= 1);
-    QCOMPARE(microphoneCombo->itemData(0).toString(), QString());
+    QCOMPARE(microphoneCombo->itemData(0).toString(), QString("none"));
+    auto *mute = window_->findChild<QPushButton*>("microphoneMuteButton");
+    QVERIFY(mute && !mute->isEnabled());
+    microphoneCombo->setCurrentIndex(microphoneCombo->findData(QString()));
+    QVERIFY(includeMicCheck->isChecked());
+    QVERIFY(mute->isEnabled());
+    mute->click();
+    QVERIFY(mute->isChecked());
+    microphoneCombo->setCurrentIndex(0);
+    QVERIFY(!includeMicCheck->isChecked());
+    QVERIFY(!mute->isEnabled());
 }
 
 void TestMainWindow::testAudioEncodingPersistenceAndReset() {

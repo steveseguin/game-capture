@@ -124,3 +124,19 @@ startup case remains a limitation, not a claim that every RTMP join is smooth.
 Not verified here: playback inside VRChat/Quest, a particular hosted streaming
 service, internet/NAT connectivity, encrypted RTSPS, or RTSP-over-HTTP tunnels.
 No GitHub release was published for these development artifacts.
+
+
+## Follow-up: UDP/RIST, streaming defaults and microphone control
+
+Packaged follow-up builds were exercised on the same Windows desktop. Local validation artifacts are under `native-qt/e2e/reports/output-defaults/` (ignored by Git).
+
+- Game Capture executable SHA-256: `052ec0d39eb098356ee6ac442d2c1a5a09136886c7da79ac5795e83c9046f97a`.
+- Desktop Studio executable SHA-256: `46de76561cdbdb3733c4c6db7fdb267ad74fa8884ca49db9446aeaeb1ce03553`.
+- Game Capture: the real camera/UDP GUI workflow produced video without an audio track when No microphone was selected; live mute produced digital silence, and unmute restored captured input audio. Both additional-microphone and primary-microphone routing were exercised. Settings survived restart and the original user settings were restored afterward.
+- Desktop Studio: actual GUI selection of UDP and RIST, decoded moving video and 731 Hz audio, forced output-worker termination and recovery for both protocols, and concurrent independent recording. All received clips and the complete recording decoded cleanly. The user show was unchanged and owned workers exited on shutdown.
+- Default streaming configuration was 2500 kbps. Explicit API bitrate selection still selected Custom. Malformed UDP/RIST endpoints and unsupported credentials were rejected.
+- Earlier in this follow-up, Game Capture's animated-window UDP, RIST, RTMP and SRT streams each passed decoded cadence and stereo continuity checks at approximately 60 fps (`transports/analysis.json`).
+- Explicit AMD selection reached `h264_amf`, then failed cleanly with the absent AMD runtime on this non-AMD machine. AMD GPU encoding and playback in OBS remain unverified; no AMD success claim is made.
+- Unit/build gates are separate from the above application testing: each app's UI gate completed 93 checks with no failures; one system-tray check was skipped by the offscreen platform. The normal Windows unit harness could not position wheel targets reliably; the packaged GUI workflows used the real Windows interface.
+
+New safeguards disable a missing saved microphone when the dropdown resolves to No microphone, gate microphone samples before audio routing, and preserve gain across mute/unmute. RIST recovery-buffer and camera-audio labels were checked visually. No GitHub release or clean-machine installation was performed for this follow-up.

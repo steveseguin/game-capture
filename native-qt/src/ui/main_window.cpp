@@ -926,7 +926,7 @@ void MainWindow::loadPersistedSettings() {
         advancedToggle_->setChecked(settings.value("ui/advancedVisible", false).toBool());
     }
     if (customBitrateSpin_) {
-        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", 12000).toInt());
+        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", 2500).toInt());
     }
     if (viewerLimitSpin_) {
         viewerLimitSpin_->setValue(settings.value("stream/maxViewers", 10).toInt());
@@ -971,7 +971,7 @@ void MainWindow::loadPersistedSettings() {
         cameraResolutionSelect_,
         settings.value("camera/resolution", "1920x1080"));
     restoreComboByData(cameraFpsSelect_, settings.value("camera/fps", 30));
-    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 12000));
+    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 2500));
     const bool hasStoredIceMode = settings.contains("network/iceMode");
     const QString storedIceMode = settings.value("network/iceMode", "all").toString();
     restoreComboByData(iceModeSelect_, storedIceMode);
@@ -998,7 +998,7 @@ void MainWindow::loadPersistedSettings() {
         if (sourceMode == "spout" && audioMode == "selected-window") {
             restoreComboByData(audioSourceSelect_, QString("none"));
         } else if (sourceMode == "camera" && audioMode == "selected-window") {
-            restoreComboByData(audioSourceSelect_, QString("default-microphone"));
+            restoreComboByData(audioSourceSelect_, QString("none"));
         }
         previousSourceMode_ = sourceMode;
         if (sourceMode == "window") {
@@ -1006,7 +1006,10 @@ void MainWindow::loadPersistedSettings() {
                 audioSourceSelect_->currentData().toString();
         }
     }
-    refreshMicrophoneDevices(settings.value("audio/microphoneDeviceId").toString());
+    const bool microphoneSelected = includeMicrophoneCheck_->isChecked() || audioSourceSelect_->currentData().toString() == "default-microphone";
+    refreshMicrophoneDevices(microphoneSelected ? settings.value("audio/microphoneDeviceId", "").toString() : QString("none"));
+    microphoneMuteButton_->setChecked(settings.value("audio/microphoneMuted", false).toBool());
+    microphoneMuteButton_->setEnabled(microphoneDeviceSelect_->currentData().toString() != "none");
 
     if (remoteControlCheck_) {
         remoteControlCheck_->setChecked(settings.value("control/enabled", false).toBool());
@@ -1032,7 +1035,7 @@ void MainWindow::loadPersistedSettings() {
     outputProfiles_.clear();
     const auto profiles = QJsonDocument::fromJson(protectOutputProfiles(
         QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()), true)).object();
-    for (const auto &name : {QString("whip"), QString("srt"), QString("rtmp"), QString("rtsp"), QString("rtsp-udp")}) {
+    for (const auto &name : {QString("whip"), QString("srt"), QString("rtmp"), QString("rtsp"), QString("rtsp-udp"), QString("udp"), QString("rist")}) {
         const auto stored = profiles.value(name).toObject();
         output::Config config; config.protocol = output::parseProtocol(name.toStdString());
         config.url = stored.value("url").toString().toStdString();
@@ -1071,8 +1074,8 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
     settings.setValue("camera/resolution", cameraResolutionSelect_ ? cameraResolutionSelect_->currentData().toString() : QString("1920x1080"));
     settings.setValue("camera/fps", cameraFpsSelect_ ? cameraFpsSelect_->currentData().toInt() : 30);
-    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 12000);
-    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 12000);
+    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 2500);
+    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 2500);
     settings.setValue("video/sourceMode", sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window"));
     settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
     settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
@@ -1084,6 +1087,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
     settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
     settings.setValue("audio/windowSource", preferredWindowAudioSource_);
+    settings.setValue("audio/microphoneMuted", microphoneMuteButton_ && microphoneMuteButton_->isChecked());
     settings.setValue("audio/includeMicrophone", includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false);
     settings.setValue("audio/microphoneDeviceId", microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentData().toString() : QString());
     settings.setValue("audio/primaryGainPercent", primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100);
@@ -1433,7 +1437,7 @@ void MainWindow::setupUI() {
                 }
             } else if (sourceMode == "camera" &&
                        (audioMode == "selected-window" || audioMode == "none")) {
-                const int microphoneIndex = audioSourceSelect_->findData("default-microphone");
+                const int microphoneIndex = audioSourceSelect_->findData("none");
                 if (microphoneIndex >= 0) {
                     audioSourceSelect_->setCurrentIndex(microphoneIndex);
                 }
@@ -1511,13 +1515,25 @@ void MainWindow::setupUI() {
     microphoneDeviceSelect_->setObjectName("microphoneDeviceSelect");
     microphoneDeviceSelect_->setAccessibleName("Microphone or input device");
     microphoneDeviceSelect_->setToolTip(
-        "Choose the microphone/input used by Camera mode, the microphone audio source, or the additional audio mix. "
-        "If the selected device is unavailable, capture falls back to the Windows default input.");
+        "No microphone is captured by default. Select an input to add it to your audio; mute it live with the adjacent button.");
     refreshMicrophoneDevices();
     installComboWheelGuard(microphoneDeviceSelect_);
     microphoneLabel->setBuddy(microphoneDeviceSelect_);
     microphoneLayout->addWidget(microphoneLabel);
     microphoneLayout->addWidget(microphoneDeviceSelect_, 1);
+    microphoneMuteButton_ = new QPushButton("Mute", this);
+    microphoneMuteButton_->setObjectName("microphoneMuteButton");
+    microphoneMuteButton_->setAccessibleName("Mute microphone");
+    microphoneMuteButton_->setCheckable(true);
+    microphoneMuteButton_->setEnabled(false);
+    microphoneMuteButton_->setToolTip("Mute or unmute only the microphone while live. Game/app audio continues.");
+    microphoneLayout->addWidget(microphoneMuteButton_);
+    connect(microphoneMuteButton_, &QPushButton::toggled, this, [this](bool muted) {
+        microphoneMuteButton_->setText(muted ? "Unmute" : "Mute");
+        microphoneMuteButton_->setAccessibleName(muted ? "Unmute microphone" : "Mute microphone");
+        if (core_) core_->setMicrophoneMuted(muted);
+        savePersistedSettings();
+    });
     layout->addLayout(microphoneLayout);
 
     auto *captureSplitter = new QSplitter(Qt::Horizontal, this);
@@ -1644,6 +1660,8 @@ void MainWindow::setupUI() {
     outputSelect_->addItem("RTMP / RTMPS", "rtmp");
     outputSelect_->addItem("RTSP / VRChat (TCP)", "rtsp");
     outputSelect_->addItem("RTSP (UDP)", "rtsp-udp");
+    outputSelect_->addItem("UDP / MPEG-TS (LAN)", "udp");
+    outputSelect_->addItem("RIST", "rist");
     installComboWheelGuard(outputSelect_);
     advancedForm->addRow("Output", outputSelect_);
     outputPanel_ = new QWidget(this);
@@ -1707,8 +1725,9 @@ void MainWindow::setupUI() {
     bitrateSelect_->addItem("High (12000 kbps)", QVariant(12000));
     bitrateSelect_->addItem("Medium (6000 kbps)", QVariant(6000));
     bitrateSelect_->addItem("Low (3000 kbps)", QVariant(3000));
+    bitrateSelect_->addItem("Standard (2500 kbps)", QVariant(2500));
     bitrateSelect_->addItem("Custom", QVariant(-1));
-    bitrateSelect_->setCurrentIndex(1);
+    bitrateSelect_->setCurrentIndex(bitrateSelect_->findData(2500));
     installComboWheelGuard(bitrateSelect_);
     connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBitratePresetChanged);
@@ -1717,7 +1736,7 @@ void MainWindow::setupUI() {
     customBitrateSpin_ = new QSpinBox(this);
     customBitrateSpin_->setObjectName("customBitrateSpin");
     customBitrateSpin_->setRange(500, 50000);
-    customBitrateSpin_->setValue(12000);
+    customBitrateSpin_->setValue(2500);
     customBitrateSpin_->setSuffix(" kbps");
     customBitrateSpin_->setEnabled(false);
     installSpinWheelGuard(customBitrateSpin_);
@@ -1848,7 +1867,21 @@ void MainWindow::setupUI() {
     includeMicrophoneCheck_->setChecked(false);
     includeMicrophoneCheck_->setToolTip(
         "Mixes the selected microphone/input into the selected audio source so game/app audio and the on-screen player's mic are sent together.");
-    advancedForm->addRow("Additional Audio", includeMicrophoneCheck_);
+    includeMicrophoneCheck_->hide();
+    connect(microphoneDeviceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        const bool enabled = microphoneDeviceSelect_->currentData().toString() != "none";
+        includeMicrophoneCheck_->setChecked(enabled);
+        if (!enabled && audioSourceSelect_->currentData().toString() == "default-microphone")
+            audioSourceSelect_->setCurrentIndex(audioSourceSelect_->findData("none"));
+        microphoneMuteButton_->setEnabled(enabled);
+        refreshSelectedWindowPreview();
+        savePersistedSettings();
+    });
+    connect(audioSourceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        if (audioSourceSelect_->currentData().toString() == "default-microphone" &&
+            microphoneDeviceSelect_->currentData().toString() == "none")
+            microphoneDeviceSelect_->setCurrentIndex(microphoneDeviceSelect_->findData(QString()));
+    });
 
     primaryAudioGainSpin_ = new QSpinBox(this);
     primaryAudioGainSpin_->setObjectName("primaryAudioGainSpin");
@@ -2627,13 +2660,14 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
     }
 
     const QString preferred = preferredDeviceId.isNull()
-        ? microphoneDeviceSelect_->currentData().toString()
+        ? (microphoneDeviceSelect_->count() ? microphoneDeviceSelect_->currentData().toString() : QString("none"))
         : preferredDeviceId;
     QSignalBlocker blocker(microphoneDeviceSelect_);
     microphoneDeviceSelect_->clear();
+    microphoneDeviceSelect_->addItem("No microphone", QVariant(QString("none")));
     microphoneDeviceSelect_->addItem("Windows default microphone/input", QVariant(QString()));
     microphoneDeviceSelect_->setItemData(
-        0,
+        1,
         "Uses the current Windows default input device at the moment capture starts.",
         Qt::ToolTipRole);
 
@@ -2671,8 +2705,17 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
         }
     }
 
-    const int preferredIndex = preferred.isEmpty() ? 0 : microphoneDeviceSelect_->findData(preferred);
+    const int preferredIndex = microphoneDeviceSelect_->findData(preferred);
     microphoneDeviceSelect_->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
+    // Refresh blocks combo signals. A disconnected selected device can now
+    // resolve to None, so also clear the routing state instead of accidentally
+    // opening the Windows default mic behind a "No microphone" label.
+    if (microphoneDeviceSelect_->currentData().toString() == "none") {
+        if (includeMicrophoneCheck_) includeMicrophoneCheck_->setChecked(false);
+        if (audioSourceSelect_ && audioSourceSelect_->currentData().toString() == "default-microphone")
+            audioSourceSelect_->setCurrentIndex(audioSourceSelect_->findData("none"));
+        if (microphoneMuteButton_) microphoneMuteButton_->setEnabled(false);
+    }
 }
 
 bool MainWindow::alphaWorkflowEffectiveForSelectedCodec() const {
@@ -2696,9 +2739,9 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     config.width = width;
     config.height = height;
     config.frameRate = fps > 0 ? fps : 60;
-    config.bitrate = bitrate > 0 ? bitrate : 12000;
+    config.bitrate = bitrate > 0 ? bitrate : 2500;
     config.minBitrate = std::max(500, config.bitrate / 2);
-    config.maxBitrate = std::max(config.bitrate + 4000, (config.bitrate * 3) / 2);
+    config.maxBitrate = config.bitrate;
     config.ffmpegPath = ffmpegPathInput_
         ? ffmpegPathInput_->text().trimmed().toStdString()
         : std::string();
@@ -2942,7 +2985,7 @@ void MainWindow::onGoLiveClicked() {
         const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : 192;
         const int audioChannels = audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2;
         const bool externalOutput = outputSelect_->currentData().toString() != "vdo";
-        const bool muxedOutput = outputSelect_->currentData().toString() == "srt" || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp"));
+        const bool muxedOutput = (outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "udp" || outputSelect_->currentData().toString() == "rist") || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp"));
         const bool pcmAudio = !externalOutput && audioCodecSelect_->currentData().toString() == "pcm";
         const bool audioRed = !externalOutput && audioRedCheck_->isChecked() && !pcmAudio;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
@@ -2958,7 +3001,7 @@ void MainWindow::onGoLiveClicked() {
 
         const bool requiresFfmpeg =
             muxedOutput || codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
-            (config.explicitEncoderSelection && config.preferredHardware == versus::video::HardwareEncoder::QuickSync);
+            (config.explicitEncoderSelection && (config.preferredHardware == versus::video::HardwareEncoder::QuickSync || config.preferredHardware == versus::video::HardwareEncoder::AMF));
 
         const QString streamTargetRaw = externalOutput ? QString() : streamIdInput_->text().trimmed();
         const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
@@ -3389,7 +3432,7 @@ void MainWindow::onStatsTimer() {
             updateStatus(QString::fromStdString(state.message), state.state == output::State::Live ? "live" :
                 state.state == output::State::Error ? "error" : "connecting");
             const auto protocol = outputConfigFromUi().protocol;
-            if (protocol == output::Protocol::Srt || protocol == output::Protocol::Rtmp || output::isRtsp(protocol)) {
+            if (protocol == output::Protocol::Srt || protocol == output::Protocol::Udp || protocol == output::Protocol::Rist || protocol == output::Protocol::Rtmp || output::isRtsp(protocol)) {
                 stats.audioBitrateIsTarget = audioSourceSelect_->currentData().toString() != "none" || includeMicrophoneCheck_->isChecked();
                 stats.audioBitrate = stats.audioBitrateIsTarget ? aacBitrateSpin_->value() : 0;
             }
@@ -3537,15 +3580,21 @@ void MainWindow::updateOutputControls() {
         ? "WHIP uses the ICE servers advertised by its endpoint. Relay Only requires an advertised TURN server."
         : "Auto allows host, STUN/direct, and TURN relay candidates. ICE selects the working path automatically.");
     setFormRowVisible(outputForm_, outputStreamIdInput_, srt);
-    setFormRowVisible(outputForm_, outputLatencySpin_, srt);
-    setFormRowVisible(outputForm_, outputSecretInput_->parentWidget() == this ? static_cast<QWidget*>(outputSecretInput_) : outputSecretInput_->parentWidget(), !rtsp && protocol != "file");
+    setFormRowVisible(outputForm_, outputLatencySpin_, srt || protocol == "rist");
+    const QString latencyLabel = protocol == "rist" ? "RIST recovery buffer" : "SRT latency";
+    if (auto *label = qobject_cast<QLabel*>(outputForm_->labelForField(outputLatencySpin_))) label->setText(latencyLabel);
+    outputLatencySpin_->setAccessibleName(latencyLabel);
+    setFormRowVisible(outputForm_, outputSecretInput_->parentWidget() == this ? static_cast<QWidget*>(outputSecretInput_) : outputSecretInput_->parentWidget(), !rtsp && protocol != "file" && protocol != "udp" && protocol != "rist");
     outputSecretLabel_->setText(whip ? "Bearer token" : srt ? "Passphrase" : "Stream key");
     outputSecretInput_->setAccessibleName(whip ? "WHIP bearer token" : srt ? "SRT passphrase" : "RTMP stream key");
     outputSecretInput_->setPlaceholderText("Optional");
     outputUrlInput_->setPlaceholderText(whip ? "https://server.example/live/whip" :
+        protocol == "udp" ? "udp://receiver.example:5000" : protocol == "rist" ? "rist://receiver.example:8194" :
         srt ? "srt://server.example:8890" : rtsp ? "rtsp://server.example:8554/live" : "rtmps://server.example/live");
     outputUrlInput_->setToolTip(rtsp ? "Publishing URL from your RTSP server. Optional authentication: rtsp://user:password@host:8554/live. The VRChat viewing URL may be different." : "Publishing URL supplied by your streaming server.");
-    outputHelp_->setText(rtsp ? "H.264 video and 48 kHz AAC audio. Requires an RTSP publishing server. TCP is recommended for VRChat; use the server's rtspt:// viewing link in an AVPro player. RTMP services can also provide a separate VRChat viewing link."
+    outputHelp_->setText(protocol == "udp" ? "H.264/AAC MPEG-TS for OBS or VLC on a trusted LAN. Start a UDP receiver first. No delivery acknowledgement or loss recovery."
+        : protocol == "rist" ? "H.264/AAC MPEG-TS using RIST Main profile. Start a RIST receiver first. Latency sets the packet recovery buffer. This output is unencrypted; use a trusted link or VPN."
+        : rtsp ? "H.264 video and 48 kHz AAC audio. Requires an RTSP publishing server. TCP is recommended for VRChat; use the server's rtspt:// viewing link in an AVPro player. RTMP services can also provide a separate VRChat viewing link."
         : whip ? "H.264 video and 48 kHz Opus audio. Enter the complete WHIP publishing endpoint."
         : srt ? "H.264 video and 48 kHz AAC audio. Caller mode connects to a listening receiver. Higher latency allows more time to recover lost packets."
         : "H.264 video and 48 kHz AAC audio. Enter a server URL and stream key, or paste the complete publishing URL. RTMPS encrypts the connection.");
@@ -3556,7 +3605,7 @@ void MainWindow::updateOutputControls() {
 void MainWindow::updateAudioEncodingControls() {
     if (!audioCodecSelect_ || !audioRedCheck_) return;
     const auto protocol = outputSelect_ ? outputSelect_->currentData().toString() : QString("vdo");
-    const bool vdo = protocol == "vdo", aac = protocol == "srt" || protocol == "rtmp" || protocol.startsWith("rtsp");
+    const bool vdo = protocol == "vdo", aac = protocol == "srt" || protocol == "udp" || protocol == "rist" || protocol == "rtmp" || protocol.startsWith("rtsp");
     const bool pcm = vdo && audioCodecSelect_->currentData().toString() == "pcm";
     setFormRowVisible(audioEncodingForm_, audioCodecSelect_, vdo);
     setFormRowVisible(audioEncodingForm_, audioRedCheck_, vdo);
@@ -3601,12 +3650,12 @@ void MainWindow::syncCodecUiState() {
     }
 
     const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
-    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
+    const bool muxedOutput = outputSelect_ && ((outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "udp" || outputSelect_->currentData().toString() == "rist") || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
     const versus::video::VideoCodec selectedCodec = externalOutput ? versus::video::VideoCodec::H264 : codecFromUiValue(codecSelect_->currentData().toString());
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
     const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
-    const bool enableFfmpegFields = muxedOutput || mode == "ffmpeg_nvenc" || mode == "qsv" || usesExternalFfmpeg || alphaWorkflowSelected;
+    const bool enableFfmpegFields = muxedOutput || mode == "ffmpeg_nvenc" || mode == "qsv" || mode == "amf" || usesExternalFfmpeg || alphaWorkflowSelected;
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
@@ -3676,7 +3725,7 @@ void MainWindow::refreshFfmpegStatus() {
         ffmpegProbeTimer_->stop();
     }
     const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
-    const bool muxedOutput = outputSelect_ && (outputSelect_->currentData().toString() == "srt" || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
+    const bool muxedOutput = outputSelect_ && ((outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "udp" || outputSelect_->currentData().toString() == "rist") || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
     const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
     const auto selectedCodec = codecSelect_ && !externalOutput
         ? codecFromUiValue(codecSelect_->currentData().toString())
@@ -3685,7 +3734,7 @@ void MainWindow::refreshFfmpegStatus() {
         codecSelect_ &&
         (muxedOutput || codecUsesExternalFfmpeg(selectedCodec) ||
          (encoderSelect_ && (encoderSelect_->currentData().toString() == "ffmpeg_nvenc" ||
-                             encoderSelect_->currentData().toString() == "qsv")) ||
+                             (encoderSelect_->currentData().toString() == "qsv" || encoderSelect_->currentData().toString() == "amf"))) ||
          alphaWorkflowSelected);
     if (!needsFfmpeg) {
         ffmpegStatusLabel_->setText("Needed for VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, or OBS alpha.");
@@ -3807,6 +3856,7 @@ QString MainWindow::audioSourceSummaryText() const {
 }
 
 QString MainWindow::microphoneSourceSummaryText() const {
+    if (microphoneMuteButton_ && microphoneMuteButton_->isEnabled() && microphoneMuteButton_->isChecked()) return "Mic/input: Muted";
     const QString primarySource = audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString();
     if (primarySource == QStringLiteral("default-microphone")) {
         return QStringLiteral("Mic/input: Primary source");
@@ -4132,11 +4182,12 @@ void MainWindow::refreshSelectedWindowPreview() {
         if (audioMode == "default-microphone") {
             lines << "Selected microphone/input will be the primary audio";
         } else if (audioMode == "none") {
-            lines << "Audio is disabled";
+            lines << (includeMicrophoneCheck_ && includeMicrophoneCheck_->isChecked()
+                ? "Selected microphone/input will be sent" : "Audio is disabled");
         } else if (includeMicrophoneCheck_ && includeMicrophoneCheck_->isChecked()) {
             lines << "Selected microphone/input will be mixed with the primary audio";
         } else {
-            lines << "Choose microphone/input as Audio Source to send this mic";
+            lines << "Select a microphone/input above to add microphone audio";
         }
 
         if (core_) {

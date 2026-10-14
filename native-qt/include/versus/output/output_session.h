@@ -9,7 +9,7 @@
 
 namespace versus::output {
 
-enum class Protocol { VdoNinja, Whip, Srt, Rtmp, Rtsp, RtspUdp };
+enum class Protocol { VdoNinja, Whip, Srt, Rtmp, Rtsp, RtspUdp, Udp, Rist };
 const char *protocolName(Protocol protocol);
 Protocol parseProtocol(const std::string &name);
 inline bool isRtsp(Protocol protocol) { return protocol == Protocol::Rtsp || protocol == Protocol::RtspUdp; }

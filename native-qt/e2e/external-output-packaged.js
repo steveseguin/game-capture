@@ -85,7 +85,8 @@ paths:
       fs.mkdirSync(dir,{recursive:true});const discovery=path.join(dir,'control.json');
       const bitrate=Number(id.match(/-(?:mono|stereo)-(\d+)$/)?.[1]||192);
       const result={id,protocol,channels:mono?1:2,silent,bitrateKbps:bitrate,phases:[]};results.cases.push(result);
-      const url=protocol.startsWith('rtsp')?(protocol==='rtspt'?'rtspt':'rtsp')+'://127.0.0.1:18854/'+id:protocol==='whip'?'http://127.0.0.1:'+(turnProxy?'18888':'18889')+'/'+id+'/whip':protocol==='srt'?
+      const direct=protocol==='udp'||protocol==='rist';
+      const url=protocol==='udp'?'udp://127.0.0.1:18892':protocol==='rist'?'rist://127.0.0.1:18894':protocol.startsWith('rtsp')?(protocol==='rtspt'?'rtspt':'rtsp')+'://127.0.0.1:18854/'+id:protocol==='whip'?'http://127.0.0.1:'+(turnProxy?'18888':'18889')+'/'+id+'/whip':protocol==='srt'?
         'srt://127.0.0.1:'+(impairment?'18891':'18890')+(id==='srt-encrypted-url'?'?passphrase='+encodeURIComponent('qa:+%2B?&= pass2026'):''):
         id.startsWith('rtmps-')?'rtmps://qa.localhost.direct:19351/live':'rtmp://127.0.0.1:19350/live';
       const stream=protocol==='rtmp'?'live/'+id:id;
@@ -98,12 +99,16 @@ paths:
       if(protocol==='rtmp')args.push('--output-key='+id);
       if(protocol==='srt')args.push('--srt-stream-id=publish:'+id);
       if(id.startsWith('srt-encrypted')&&id!=='srt-encrypted-url')args.push('--srt-passphrase=qa:+%2B?&= pass2026');
+      const directInput=protocol==='udp'?['-i','udp://127.0.0.1:18892?fifo_size=8192&overrun_nonfatal=1']:['-i','rist://@127.0.0.1:18894'];
+      const directRecording=path.join(dir,'steady.mkv');
+      const directReceiver=direct?launch(ffmpeg,['-hide_banner','-y',...directInput,'-map','0','-c','copy','-t',opts.seconds||'75',directRecording],id+'-steady-record'):null;
+      if(direct)await sleep(500);
       const app=launch(exe,args,id+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1'});
       let monitor,page,record,sampling=false,sampleTask,sampleFile;
       try{
         await until(async()=>{assert(app.exitCode===null,'Publisher exited with '+app.exitCode);if(!fs.existsSync(discovery))return false;const d=await api(discovery,'/diagnostics');result.lastDiagnostics=d;return d.output?.state===2;},id+' publishing',60000);
         monitor=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),[path.join(__dirname,'quality-resource-monitor.py'),'--pid',String(app.pid),'--output',path.join(dir,'resources.jsonl')],id+'-monitor');
-        await until(async()=>{const paths=await fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.json());
+        if(!direct)await until(async()=>{const paths=await fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.json());
           result.serverPath=paths.items.find(p=>p.name===stream);return result.serverPath?.ready;},'server track discovery');
         if(protocol==='whip'){
           receiverBrowser=await chromium.launch({channel:'chrome',headless:true,args:['--autoplay-policy=no-user-gesture-required']});
@@ -143,9 +148,9 @@ paths:
             if(page){await page.reload();await page.waitForFunction(()=>document.querySelector('video')?.currentTime>1,{},{timeout:30000});}
           }
           const recording=path.join(dir,phase+'.mkv');
-          const input=protocol==='rtmp'?['-i','rtmp://127.0.0.1:19350/'+stream]:protocol==='srt'?
+          const input=direct?directInput:protocol==='rtmp'?['-i','rtmp://127.0.0.1:19350/'+stream]:protocol==='srt'?
             ['-i','srt://127.0.0.1:18890?mode=caller&streamid=read:'+stream]:['-rtsp_transport','tcp','-i','rtsp://127.0.0.1:'+(rtspTrace?'18855':'18854')+'/'+stream];
-          record=launch(ffmpeg,['-hide_banner','-y',...input,'-map','0','-c','copy','-t',opts.seconds||'75',recording],id+'-'+phase+'-record');
+          record=direct?directReceiver:launch(ffmpeg,['-hide_banner','-y',...input,'-map','0','-c','copy','-t',opts.seconds||'75',recording],id+'-'+phase+'-record');
           const frames=[];
           const end=Date.now()+(Number(opts.seconds||75)+20)*1000;
           while(record.exitCode===null&&Date.now()<end){

@@ -1570,11 +1570,13 @@ class VideoEncoder::Impl {
         lastEncodeFailureKind_.store(EncodeFailureKind::None, std::memory_order_relaxed);
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
 
-        // Use the bundled QSV pipeline for explicit Intel selection: the Intel
-        // asynchronous MFT can fail warmup in this synchronous MF pipeline.
+        // Use the vendor FFmpeg pipeline for explicit Intel/AMD selection.
+        // The generic Windows H.264 MFT is not proof of a vendor encoder;
+        // AMD AMF is exposed by FFmpeg even when no AMD MFT is registered.
         const bool requireExternalFfmpeg =
             config_.forceFfmpegNvenc || config_.codec != VideoCodec::H264 ||
-            (config_.explicitEncoderSelection && config_.preferredHardware == HardwareEncoder::QuickSync);
+            (config_.explicitEncoderSelection &&
+             (config_.preferredHardware == HardwareEncoder::QuickSync || config_.preferredHardware == HardwareEncoder::AMF));
         if (requireExternalFfmpeg && initializeExternalFfmpegNvenc()) {
             initialized_ = true;
             usingHardware_ = externalUsingHardware_;
@@ -2466,6 +2468,19 @@ class VideoEncoder::Impl {
             args.insert(args.end(), {"-bf", "0", "-async_depth", "1"});
             if (config_.codec == VideoCodec::H264 || config_.codec == VideoCodec::H265) {
                 args.insert(args.end(), {"-forced_idr", "1"});
+            }
+        } else if (encoderName.find("_amf") != std::string::npos) {
+            // Elementary packets are matched to input timestamps in FIFO order.
+            // AMF's transcoding defaults can reorder/delay frames and ordinary
+            // forced I frames do not reset a receiver's prediction chain.
+            args.insert(args.end(), {"-usage", "lowlatency", "-quality", "balanced",
+                "-rc", "cbr", "-enforce_hrd", "1", "-async_depth", "1"});
+            if (config_.codec == VideoCodec::H264) {
+                args.insert(args.end(), {"-bf", "0", "-forced_idr", "1", "-aud", "1",
+                    "-header_spacing", "1"});
+            } else if (config_.codec == VideoCodec::H265) {
+                args.insert(args.end(), {"-forced_idr", "1", "-aud", "1",
+                    "-header_insertion_mode", "idr"});
             }
         } else if (encoderName == "libx264") {
             args.push_back("-preset");
