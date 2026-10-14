@@ -75,6 +75,14 @@ int64_t steadyNowMs() {
         .count();
 }
 
+float currentAudioMeter(const std::atomic<float> &level, const std::atomic<int64_t> &lastChunk) {
+    const auto last = lastChunk.load(std::memory_order_relaxed);
+    // A dead device does not deliver zero-valued samples. Expire its last
+    // reading so the UI/API never present a frozen meter as live audio.
+    return last > 0 && steadyNowMs() - last <= kPrimaryAudioActiveWindowMs
+        ? level.load(std::memory_order_relaxed) : 0.0f;
+}
+
 struct PeerCallbackSchedule {
     GenerationTaggedPeerOperationExecutor::Priority priority =
         GenerationTaggedPeerOperationExecutor::Priority::Ordinary;
@@ -859,6 +867,8 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     additionalAudioLevelRms_.store(0.0f, std::memory_order_relaxed);
     additionalAudioPeak_.store(0.0f, std::memory_order_relaxed);
     lastPrimaryAudioChunkMs_.store(0, std::memory_order_relaxed);
+    lastAdditionalAudioChunkMs_.store(0, std::memory_order_relaxed);
+    lastMixedAudioChunkMs_.store(0, std::memory_order_relaxed);
     videoBytesSent_.store(0, std::memory_order_relaxed);
     audioBytesSent_.store(0, std::memory_order_relaxed);
     videoFramesCaptured_.store(0, std::memory_order_relaxed);
@@ -1195,6 +1205,8 @@ void VersusApp::stopCapture() {
     additionalAudioLevelRms_.store(0.0f, std::memory_order_relaxed);
     additionalAudioPeak_.store(0.0f, std::memory_order_relaxed);
     lastPrimaryAudioChunkMs_.store(0, std::memory_order_relaxed);
+    lastAdditionalAudioChunkMs_.store(0, std::memory_order_relaxed);
+    lastMixedAudioChunkMs_.store(0, std::memory_order_relaxed);
     videoTrackActive_.store(false);
     pendingGlobalKeyframe_.store(false);
     captureBackendFailureNotified_.store(false, std::memory_order_relaxed);
@@ -1610,27 +1622,27 @@ bool VersusApp::isHardwareVideoEncoder() const {
 }
 
 float VersusApp::getAudioLevelRms() const {
-    return audioLevelRms_.load(std::memory_order_relaxed);
+    return currentAudioMeter(audioLevelRms_, lastMixedAudioChunkMs_);
 }
 
 float VersusApp::getAudioPeak() const {
-    return audioPeak_.load(std::memory_order_relaxed);
+    return currentAudioMeter(audioPeak_, lastMixedAudioChunkMs_);
 }
 
 float VersusApp::getPrimaryAudioLevelRms() const {
-    return primaryAudioLevelRms_.load(std::memory_order_relaxed);
+    return currentAudioMeter(primaryAudioLevelRms_, lastPrimaryAudioChunkMs_);
 }
 
 float VersusApp::getPrimaryAudioPeak() const {
-    return primaryAudioPeak_.load(std::memory_order_relaxed);
+    return currentAudioMeter(primaryAudioPeak_, lastPrimaryAudioChunkMs_);
 }
 
 float VersusApp::getAdditionalAudioLevelRms() const {
-    return additionalAudioLevelRms_.load(std::memory_order_relaxed);
+    return currentAudioMeter(additionalAudioLevelRms_, lastAdditionalAudioChunkMs_);
 }
 
 float VersusApp::getAdditionalAudioPeak() const {
-    return additionalAudioPeak_.load(std::memory_order_relaxed);
+    return currentAudioMeter(additionalAudioPeak_, lastAdditionalAudioChunkMs_);
 }
 
 void VersusApp::resetMetricsWindow(int64_t nowMs) {
@@ -2230,13 +2242,15 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"primary_gain", primaryAudioGain_.load(std::memory_order_relaxed)},
         {"additional_gain", additionalAudioGain_.load(std::memory_order_relaxed)},
         {"limiter_enabled", audioLimiterEnabled_.load(std::memory_order_relaxed)},
-        {"level_rms", audioLevelRms_.load(std::memory_order_relaxed)},
-        {"peak", audioPeak_.load(std::memory_order_relaxed)},
-        {"primary_level_rms", primaryAudioLevelRms_.load(std::memory_order_relaxed)},
-        {"primary_peak", primaryAudioPeak_.load(std::memory_order_relaxed)},
-        {"additional_level_rms", additionalAudioLevelRms_.load(std::memory_order_relaxed)},
-        {"additional_peak", additionalAudioPeak_.load(std::memory_order_relaxed)},
+        {"level_rms", getAudioLevelRms()},
+        {"peak", getAudioPeak()},
+        {"primary_level_rms", getPrimaryAudioLevelRms()},
+        {"primary_peak", getPrimaryAudioPeak()},
+        {"additional_level_rms", getAdditionalAudioLevelRms()},
+        {"additional_peak", getAdditionalAudioPeak()},
         {"last_primary_audio_chunk_ms", lastPrimaryAudioChunkMs_.load(std::memory_order_relaxed)},
+        {"last_additional_audio_chunk_ms", lastAdditionalAudioChunkMs_.load(std::memory_order_relaxed)},
+        {"last_mixed_audio_chunk_ms", lastMixedAudioChunkMs_.load(std::memory_order_relaxed)},
         {"send_failures", audioSendFailures_.load(std::memory_order_relaxed)}
     };
     {
@@ -2758,6 +2772,7 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
     }
     applyAudioGain(normalizedSamples, additionalAudioGain_.load(std::memory_order_relaxed));
     updateAudioLevelMeters(normalizedSamples, additionalAudioLevelRms_, additionalAudioPeak_);
+    lastAdditionalAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
 
     std::vector<float> standaloneSamples;
     const int64_t lastPrimaryMs = lastPrimaryAudioChunkMs_.load(std::memory_order_relaxed);
@@ -2813,14 +2828,13 @@ void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
     if (!live_) {
         return;
     }
-    lastPrimaryAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
-
     std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &primaryAudioResampler_);
     if (normalizedSamples.empty()) {
         return;
     }
     applyAudioGain(normalizedSamples, primaryAudioGain_.load(std::memory_order_relaxed));
     updateAudioLevelMeters(normalizedSamples, primaryAudioLevelRms_, primaryAudioPeak_);
+    lastPrimaryAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
     mixAdditionalAudioInto(normalizedSamples, 48000, 2);
 
     encodeNormalizedAudio(normalizedSamples, chunk.captureTime100ns);
@@ -2904,6 +2918,7 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
 
     applyAudioLimiter(normalizedSamples);
     updateAudioLevelMeters(normalizedSamples, audioLevelRms_, audioPeak_);
+    lastMixedAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
 
     constexpr uint32_t kOpusSampleRate = 48000;
     constexpr uint32_t kOpusChannels = 2;

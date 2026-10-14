@@ -494,6 +494,8 @@ class VersusApp {
     std::atomic<bool> captureBackendFailureNotified_{false};
     std::atomic<int64_t> lastKeyframeSendMs_{0};
     std::atomic<int64_t> lastPrimaryAudioChunkMs_{0};
+    std::atomic<int64_t> lastAdditionalAudioChunkMs_{0};
+    std::atomic<int64_t> lastMixedAudioChunkMs_{0};
     GenerationTaggedPeerOperationExecutor peerOperationExecutor_;
     std::atomic<int64_t> lastPeerOperationOverloadLogMs_{0};
     mutable std::mutex peerCallbackTestHookMutex_;

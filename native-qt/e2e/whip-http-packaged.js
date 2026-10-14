@@ -45,7 +45,7 @@ function handler(origin){return(req,res)=>{
 };}
 async function main(){
   const config=path.join(out,'mediamtx.yml');fs.writeFileSync(config,'api: true\napiAddress: 127.0.0.1:18990\nrtsp: false\nrtmp: false\nsrt: false\nhls: false\nmoq: false\nwebrtcAddress: 127.0.0.1:18889\nwebrtcLocalUDPAddress: 127.0.0.1:18189\nwebrtcIPsFromInterfaces: false\nwebrtcAdditionalHosts: [127.0.0.1]\npaths:\n  all_others:\n');
-  launch(path.join(native,'.cache/mediamtx-1.21.2/mediamtx.exe'),[config],'server');
+  launch(opts.mediamtx ? path.resolve(opts.mediamtx) : path.join(native,'.cache/mediamtx-1.21.2/mediamtx.exe'),[config],'server');
   proxy1=http.createServer(handler(1));proxy2=http.createServer(handler(2));await listen(proxy1);await listen(proxy2);
   stun=require('dgram').createSocket('udp4');
   stun.on('message',(request,remote)=>{
@@ -67,6 +67,7 @@ async function main(){
   const report={sha256:crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),cases:[]};
   try{
     const source=await browser.newPage({viewport:null});await source.goto('http://127.0.0.1:'+fixture.address().port);await source.getByRole('button').click();await source.waitForFunction(()=>quality.ready);
+    const sourceTitle=await source.title();
     for(mode of ['authenticated','redirect','ice-link-token','ice-link-list','unauthorized','malformed','oversized','invalid-tls','cancel','rtmps-invalid-tls','relay-no-turn',
       ...(trustedTls?['https-authenticated','https-proxy-location','https-insecure-location','https-downgrade-redirect']:[])]){
       const dir=path.join(out,mode);fs.mkdirSync(dir);const discovery=path.join(dir,'control.json'),result={mode};report.cases.push(result);
@@ -74,7 +75,7 @@ async function main(){
       const endpoint=mode.startsWith('https-')?'https://qa.localhost.direct:'+trustedTls.address().port+'/'+mode+'/whip':
         (secure?(rtmps?'rtmps':'https'):'http')+'://127.0.0.1:'+(secure?tls:proxy1).address().port+'/'+mode+'/whip';
       const publisher=launch(exe,['--headless','--output='+(rtmps?'rtmp':'whip'),'--output-url='+endpoint,...(rtmps?[]:['--output-token='+token]),...(mode==='relay-no-turn'?['--ice-mode=relay']:[]),
-        '--window=Game Capture Quality Source','--resolution=960x540','--fps=30','--audio-source=selected-window','--local-control','--local-control-discovery='+discovery],mode+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1'});
+        '--window='+sourceTitle,'--resolution=960x540','--fps=30','--audio-source=selected-window','--local-control','--local-control-discovery='+discovery],mode+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1'});
       let receiver;
       try{
         if(['unauthorized','malformed','oversized','invalid-tls','https-insecure-location','https-downgrade-redirect','relay-no-turn'].includes(mode)){
