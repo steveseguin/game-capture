@@ -2430,9 +2430,19 @@ class VideoEncoder::Impl {
             args.push_back("-force_key_frames");
             // The first post-preparation input must start a new prediction
             // chain. Preparation frames are never sent to a receiver.
-            args.push_back(handoverPrimingFrames_ > 0
-                ? "expr:eq(n,8)+gte(t,n_forced*2.5)"
-                : "expr:gte(t,n_forced*2.5)");
+            if (encoderName == "h264_amf") {
+                // AMF's periodic I frames are not necessarily IDRs. External
+                // encoders cannot service PLI without restarting the process,
+                // so force independently decodable frames at the requested
+                // GOP interval (at most one second in low-latency mode).
+                args.push_back(std::string(handoverPrimingFrames_ > 0
+                    ? "expr:eq(n,8)+eq(mod(n," : "expr:eq(mod(n,") +
+                    std::to_string(gop) + "),0)");
+            } else {
+                args.push_back(handoverPrimingFrames_ > 0
+                    ? "expr:eq(n,8)+gte(t,n_forced*2.5)"
+                    : "expr:gte(t,n_forced*2.5)");
+            }
         }
         if (encoderName.find("_nvenc") != std::string::npos) {
             args.push_back("-preset");
@@ -2589,7 +2599,14 @@ class VideoEncoder::Impl {
         }
         if (config_.codec == VideoCodec::H264) {
             args.push_back("-bsf:v");
-            args.push_back("h264_metadata=aud=insert,dump_extra=freq=keyframe");
+            // AMF emits its live SPS/PPS after the AUD (-header_spacing 1).
+            // Its initialization extradata can have different VUI metadata.
+            // dump_extra prepends that stale SPS before the AUD, attaching it
+            // to the preceding access unit in our pipe parser. External
+            // outputs then reconnect on every GOP as the SPS alternates.
+            args.push_back(encoderName == "h264_amf"
+                ? "h264_metadata=aud=insert"
+                : "h264_metadata=aud=insert,dump_extra=freq=keyframe");
             args.push_back("-f");
             args.push_back("h264");
         } else if (config_.codec == VideoCodec::H265) {

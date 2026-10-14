@@ -961,7 +961,7 @@ void MainWindow::loadPersistedSettings() {
     }
     restoreComboByData(audioChannelsSelect_, settings.value("audio/channels", 2));
     restoreComboByData(audioCodecSelect_, settings.value("audio/codec", "opus"));
-    if (audioRedCheck_) audioRedCheck_->setChecked(settings.value("audio/red", false).toBool());
+    if (audioRedCheck_) audioRedCheck_->setChecked(settings.value("audio/red", true).toBool());
     if (audioEncodingToggle_) audioEncodingToggle_->setChecked(false);
     updateAudioEncodingControls();
 

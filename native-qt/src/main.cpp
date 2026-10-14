@@ -211,6 +211,7 @@ int main(int argc, char *argv[]) {
     int audioChannels = 2;
     bool pcmAudio = false;
     bool audioRed = false;
+    bool audioRedSpecified = false;
     int durationMs = 120000;
     int maxViewers = 10;
     bool remoteControlEnabled = false;
@@ -323,6 +324,10 @@ int main(int argc, char *argv[]) {
             pcmAudio = codec == "pcm";
         } else if (arg == "--audio-red") {
             audioRed = true;
+            audioRedSpecified = true;
+        } else if (arg == "--no-audio-red") {
+            audioRed = false;
+            audioRedSpecified = true;
         } else if (arg.find("--audio-bitrate-kbps=") == 0) {
             const auto parsed = parsePositiveInteger(arg.substr(21));
             if (!parsed || *parsed < 6 || *parsed > 510) {
@@ -792,6 +797,12 @@ int main(int argc, char *argv[]) {
         core.setVideoConfig(encoderOverride);
     }
     core.setAudioSourceMode(audioSourceMode);
+    // Protect ordinary Opus publishing against isolated loss. External
+    // protocols and PCM retain their own transport/negotiation contracts.
+    if (!audioRedSpecified && !pcmAudio &&
+        outputConfig.protocol == versus::output::Protocol::VdoNinja) {
+        audioRed = true;
+    }
     if (pcmAudio && audioRed) {
         spdlog::error("--audio-red currently supports Opus only; PCM RED is not negotiated by the viewer");
         return 2;

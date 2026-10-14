@@ -31,7 +31,7 @@ function setIni(text,section,key,value){
   if(!regex.test(text))return text+'\n['+section+']\n'+key+'='+value+'\n';
   return text.replace(regex,(_,heading,body)=>heading+(new RegExp('^'+key+'=.*$','m').test(body)?body.replace(new RegExp('^'+key+'=.*$','m'),key+'='+value):body+'\n'+key+'='+value));
 }
-async function start(root,output,{paired=false,fps=30}={}){
+async function start(root,output,{paired=false,fps=30,requireNinjaPlugin=true}={}){
   root=path.resolve(root);fs.mkdirSync(output,{recursive:true});
   const config=path.join(root,'config/obs-studio'),configFile=path.join(config,'plugin_config/obs-websocket/config.json');
   // This helper only owns the disposable portable copy under the QA report.
@@ -50,17 +50,37 @@ async function start(root,output,{paired=false,fps=30}={}){
     ['SimpleOutput','RecQuality','HQ'],['SimpleOutput','RecEncoder','x264'],['SimpleOutput','ABitrate',320],
     ['SimpleOutput','RecTracks',paired?3:1]])ini=setIni(ini,s,k,v);
   fs.writeFileSync(profile,ini);
+  const profileName=ini.match(/^Name=(.*)$/m)?.[1]?.trim();
+  if(!profileName)throw Error('Portable OBS profile has no name');
+  // OBS 32 stores first-run state in user.ini; older versions use global.ini.
+  for(const name of ['user.ini','global.ini']){
+    const file=path.join(config,name);
+    let settings=fs.existsSync(file)?fs.readFileSync(file,'utf8'):'';
+    // FirstRun means the first-run wizard has already been offered.
+    settings=setIni(settings,'General','FirstRun','true');
+    settings=setIni(settings,'General','ConfirmOnExit','false');
+    fs.writeFileSync(file,settings);
+  }
   const exe=path.join(root,'bin/64bit/obs64.exe'),log=fs.createWriteStream(path.join(output,'obs-process.log'));
-  const proc=spawn(exe,['--portable','--disable-shutdown-check','--disable-updater'],{cwd:path.dirname(exe),windowsHide:true,stdio:['ignore','pipe','pipe']});
+  const proc=spawn(exe,['--portable','--profile',profileName,'--disable-shutdown-check','--disable-updater'],{cwd:path.dirname(exe),windowsHide:true,stdio:['ignore','pipe','pipe']});
   proc.stdout.pipe(log);proc.stderr.pipe(log);const closed=new Promise(r=>proc.once('close',r));
   let client;
   try{
-    for(let i=0;i<40;i++){try{client=new Obs('ws://127.0.0.1:'+port,password);await client.connect();break;}catch(e){client?.close();if(proc.exitCode!==null)throw Error('OBS exited '+proc.exitCode);if(i===39)throw e;await sleep(500);}}
+    // A freshly extracted OBS can spend tens of seconds loading/scanning its
+    // modules before obs-websocket starts. Keep the wait bounded by wall time.
+    const startupDeadline=Date.now()+90000;
+    for(;;){try{client=new Obs('ws://127.0.0.1:'+port,password);await client.connect();break;}catch(e){client?.close();if(proc.exitCode!==null)throw Error('OBS exited '+proc.exitCode);if(Date.now()>=startupDeadline)throw e;await sleep(500);}}
     const version=await client.request('GetVersion');
+    const readyDeadline=Date.now()+60000;
+    for(;;){try{await client.request('GetSceneList');break;}catch(e){
+      if(!String(e).includes('"code":207')||Date.now()>=readyDeadline)throw e;
+      await sleep(250);
+    }}
     await client.request('SetRecordDirectory',{recordDirectory:output});
     const modules=JSON.parse(execFileSync('powershell.exe',['-NoProfile','-Command',`(Get-Process -Id ${proc.pid}).Modules | Where-Object { $_.ModuleName -match 'obs-vdoninja|obs.dll|obs64|obs-browser' } | Select-Object ModuleName,FileName | ConvertTo-Json`],{encoding:'utf8',windowsHide:true}));
-    const plugin=modules.find(m=>m.ModuleName==='obs-vdoninja.dll');if(!plugin||!plugin.FileName.toLowerCase().startsWith(root.toLowerCase()))throw Error('Wrong OBS plugin module path');
-    fs.writeFileSync(path.join(output,'obs-identity.json'),JSON.stringify({pid:proc.pid,exe,version,modules,pluginSha256:crypto.createHash('sha256').update(fs.readFileSync(plugin.FileName)).digest('hex')},null,2));
+    const plugin=modules.find(m=>m.ModuleName==='obs-vdoninja.dll');
+    if((requireNinjaPlugin&&!plugin)||(plugin&&!plugin.FileName.toLowerCase().startsWith(root.toLowerCase())))throw Error('Wrong OBS plugin module path');
+    fs.writeFileSync(path.join(output,'obs-identity.json'),JSON.stringify({pid:proc.pid,exe,version,modules,pluginSha256:plugin?crypto.createHash('sha256').update(fs.readFileSync(plugin.FileName)).digest('hex'):null},null,2));
     // Silence unrelated global OBS inputs in this disposable profile. Monitoring
     // stays off so the receiver cannot feed back into publisher loopback audio.
     const inputs=await client.request('GetInputList');for(const input of inputs.inputs)await client.request('SetInputMute',{inputName:input.inputName,inputMuted:true}).catch(()=>{});
@@ -77,8 +97,12 @@ async function receive(obs,c,dir,url,seconds,source){
     await client.request('CreateScene',{sceneName:scene});await client.request('SetCurrentProgramScene',{sceneName:scene});
     // Retain actual viewer startup as well as steady playback in the recording.
     r.before=await client.request('GetStats');r.recordStart=Date.now();r.recordingIncludesInputStartup=true;
-    await client.request('StartRecord');await sleep(500);
-    if(!(await client.request('GetRecordStatus')).outputActive)throw Error('OBS recording did not remain active');
+    await client.request('StartRecord');
+    const recordDeadline=Date.now()+15000;
+    while(!(await client.request('GetRecordStatus')).outputActive){
+      if(Date.now()>=recordDeadline)throw Error('OBS recording did not become active');
+      await sleep(250);
+    }
     const settings=c.direct?{method:2,capture_cursor:false,capture_audio:!!c.processAudio}:c.external&&!c.obsBrowser?
       {input:url,is_local_file:false,restart_on_activate:true,close_when_inactive:true,reconnect_delay_sec:1,buffering_mb:1}:
       c.obsBrowser?{url:c.external?url+'?muted=false&controls=false':url+'&autostart&cleanoutput',width:1280,height:720,reroute_audio:true,shutdown:true}:

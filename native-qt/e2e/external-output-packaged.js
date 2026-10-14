@@ -88,7 +88,7 @@ paths:
       assert(Math.abs(size.width/size.height-16/9)<.04,'Source is not a full widescreen window: '+JSON.stringify(size));
     }
     await source.screenshot({path:path.join(out,'source.png')});
-    if(opts.obs)obs=await require('./quality-obs-receiver').start(opts.obs,path.join(out,'obs-recordings'),{paired:true,fps:60});
+    if(opts.obs)obs=await require('./quality-obs-receiver').start(opts.obs,path.join(out,'obs-recordings'),{paired:true,fps:60,requireNinjaPlugin:false});
     const matrix=opts.matrix?JSON.parse(fs.readFileSync(path.resolve(opts.matrix))):
       (opts.cases||'rtmp-stereo,srt-stereo,whip-stereo').split(',').map(id=>({id}));
     for(const configuration of matrix){
@@ -198,7 +198,12 @@ paths:
           assert(turnDiscovery.deletes>=1,'Discovery session was not cleaned up');}
         if(impairment){result.impairment={...impairment.stats};assert(result.impairment.dropped>100,'Impairment fixture did not drop real packets');}
         result.transportPassed=true;
-      }catch(e){result.error=String(e);console.error(id,e);}
+      }catch(e){result.error=String(e);console.error(id,e);
+        // Preserve the publisher's reason too: a receiver EOF can be caused by
+        // a publisher reconnect, not a receiver codec/probing failure.
+        await sleep(300);
+        result.failureDiagnostics=await api(discovery,'/diagnostics').catch(()=>null);
+      }
       finally{
         sampling=false;if(sampleTask)await sampleTask;if(sampleFile)sampleFile.end();
         if(record&&record.exitCode===null){record.kill();await record.closed;}
@@ -216,12 +221,14 @@ paths:
       }
     }
   }finally{
-    if(obs)await require('./quality-obs-receiver').stop(obs);
+    let cleanupError;
+    if(obs)try{await require('./quality-obs-receiver').stop(obs);}catch(e){cleanupError=e;}
     if(sourceBrowser)await sourceBrowser.close();if(receiverBrowser)await receiverBrowser.close();fixture.close();
     if(impairment)impairment.close();
     if(turnProxy){turnProxy.closeAllConnections();turnProxy.close();}
     if(rtspTrace){await rtspTrace.close();fs.writeFileSync(path.join(out,'rtsp-trace-summary.json'),JSON.stringify(rtspTrace.summary,null,2));}
     for(const child of children)if(child.exitCode===null)child.kill();await Promise.all(children.map(c=>c.closed));for(const log of logs)log.end();
+    if(cleanupError)throw cleanupError;
   }
   assert(results.cases.every(c=>c.transportPassed&&!c.shutdown.forced&&c.shutdown.exitCode===0),'One or more output workflows failed');
 }

@@ -108,7 +108,16 @@ async function receiver(browser,c,dir,url,seconds,source){
       await page.screenshot({path:path.join(dir,name+'.png')});
     };
     await takePhase('clean',seconds);
-    if(c.loss){await takePhase('loss-10',25,10);await takePhase('loss-30-delay-100',20,30,100);await takePhase('outage',4,100);await takePhase('recovered',25);}
+    if(c.loss){
+      const moderate=Number(opts['packet-loss']||10),severe=Number(opts['severe-loss']||30);
+      await takePhase('loss-'+moderate,25,moderate);
+      await takePhase('loss-'+severe+'-delay-100',20,severe,100);
+      await takePhase('outage',4,100);await takePhase('recovered',25);
+      const impaired=result.phases.filter(p=>p.loss>0&&p.loss<100);
+      assert(impaired.some(p=>p.after.stats.some(a=>a.type==='inbound-rtp'&&
+        p.before.stats.some(b=>b.id===a.id&&((a.packetsLost||0)>(b.packetsLost||0)||(a.nackCount||0)>(b.nackCount||0))))),
+        'Requested packet loss was not observed at the receiver');
+    }
     result.finish=await stats();
     result.source=await source.evaluate(()=>({epoch:quality.epoch,calibrations:quality.calibrations,screen:[innerWidth,innerHeight]}));
     assert(frames.filter(f=>f.valid).length>seconds*10,'Too few valid decoded video frames');
@@ -145,10 +154,10 @@ async function main(){
       c.publisher=exe;c.sha256=crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex');
       const stream='quality'+crypto.randomBytes(8).toString('hex');
       const args=['--headless','--stream='+stream,'--password=false','--source=window','--window=Game Capture Quality Source',
-        '--resolution='+(opts.resolution||'1280x720'),'--fps='+(opts.fps||'30'),'--audio-source=default-output','--duration-ms=1800000','--local-control','--local-control-discovery='+discovery];
+        '--resolution='+(opts.resolution||'1280x720'),'--fps='+(opts.fps||'30'),'--audio-source='+(opts['audio-source']||'selected-window'),'--duration-ms=1800000','--local-control','--local-control-discovery='+discovery];
       if(opts['video-encoder'])args.push('--video-encoder='+opts['video-encoder']);
       if(opts['video-codec'])args.push('--video-codec='+opts['video-codec']);
-      if(!c.baseline)args.push('--audio-codec='+(c.pcm?'pcm':'opus'),'--audio-channels='+(c.mono?'1':'2'),'--audio-bitrate-kbps=192',...(c.red?['--audio-red']:[]));
+      if(!c.baseline)args.push('--audio-codec='+(c.pcm?'pcm':'opus'),'--audio-channels='+(c.mono?'1':'2'),'--audio-bitrate-kbps=192',...(c.red?['--audio-red']:opts['default-protection']==='true'?[]:['--no-audio-red']));
       const app=launch(exe,args,c.id+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1'});
       let browser,monitor;
       try{

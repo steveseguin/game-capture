@@ -19,7 +19,9 @@ def analyze(ffmpeg,case,phase):
     frames=np.frombuffer(raw,np.uint8).reshape(-1,90,160,3)
     times=np.array([float(x) for x in re.findall(r'Parsed_showinfo[^\n]*?\bn:\s*\d+\s+pts:.*?pts_time:([-\d.]+)',log)])
     assert len(times)==len(frames) and len(frames)>300,'No continuous decoded video'
-    assert np.all(np.diff(times)>0),'Non-monotonic video timestamps'
+    increasing=bool(np.all(np.diff(times)>0))
+    # Keep cadence/audio evidence when timestamp validation fails. A bare
+    # assertion used to discard every other measurement for the recording.
     pic=frames[len(frames)//2];cyan=(pic[:,:,0]<80)&(pic[:,:,1]>140)&(pic[:,:,2]>140);magenta=(pic[:,:,0]>140)&(pic[:,:,1]<80)&(pic[:,:,2]>140)
     geometry=None
     for y in range(45):
@@ -36,7 +38,9 @@ def analyze(ffmpeg,case,phase):
     vtimes=times[np.flatnonzero(lights & ~np.roll(lights,1))]
     elapsed=times[-1]-times[0];changes=np.count_nonzero(np.diff(barcode.astype(np.int64))>0)
     result={'recording':str(recording),'videoFrames':len(frames),'seconds':float(elapsed),'decodedFps':float((len(frames)-1)/elapsed),
-            'distinctSourceFramesPerSecond':float(changes/elapsed),'frameGapMs':distribution(np.diff(times)*1000),'videoPulses':len(vtimes),'fixtureGeometry':geometry}
+            'distinctSourceFramesPerSecond':float(changes/elapsed),'frameGapMs':distribution(np.diff(times)*1000),'videoPulses':len(vtimes),'fixtureGeometry':geometry,
+            'strictlyIncreasingVideoTimestamps':increasing,'duplicateVideoTimestamps':int(np.count_nonzero(np.diff(times)==0)),
+            'backwardsVideoTimestamps':int(np.count_nonzero(np.diff(times)<0))}
     if not case['silent']:
         raw,_=decode(['-map','0:a:0','-vn','-af','aresample=48000:async=1:first_pts=0','-ac','2','-ar','48000','-f','f32le'],'audio')
         pcm=np.frombuffer(raw,'<f4').reshape(-1,2);n=len(pcm)//480*480;pcm=pcm[:n]
@@ -60,6 +64,8 @@ def analyze(ffmpeg,case,phase):
         result.update(audioSeconds=len(pcm)/48000,compressedAudioKbps=len(compressed)*8/(len(pcm)/48000)/1000,
             requestedAudioKbps=case.get('bitrateKbps',192),audioMinusVideoMs=distribution(offsets),audioPulses=len(atimes),tones=tones,
             unexpectedLowEnergy10ms=int(np.count_nonzero(np.max(rms,axis=1)[active_expected]<.001)),
+            unexpectedLowEnergyAtSeconds=at[active_expected & (np.max(rms,axis=1)<.001)][:100].tolist(),
+            unexpectedLowEnergySourceMs=source_ms[active_expected & (np.max(rms,axis=1)<.001)][:100].tolist(),
             clippedSamples=int(np.count_nonzero(abs(pcm)>=.999)),highFrequencyPeak=float(np.max(abs(high[valid]))),
             highFrequencyWindowsAbove002=int(np.count_nonzero(np.max(abs(high[valid]),axis=(1,2))>.02)),
             intentionalSilencePeak=float(np.max(abs(blocks[intended_silence&valid]))) if np.any(intended_silence&valid) else None)
@@ -73,7 +79,7 @@ def analyze(ffmpeg,case,phase):
         else:result['channelsPassed']=all(t['440']>.005 and t['880']>.005 for t in tones)
     expected_fps=case.get('configuration',{}).get('fps',60)
     result['expectedFps']=expected_fps
-    result['passed']=result['distinctSourceFramesPerSecond']>expected_fps*.90 and result['frameGapMs']['p95']<1500/expected_fps and result.get('audioPassed',True) and result.get('channelsPassed',True)
+    result['passed']=increasing and result['distinctSourceFramesPerSecond']>expected_fps*.90 and result['frameGapMs']['p95']<1500/expected_fps and result.get('audioPassed',True) and result.get('channelsPassed',True)
     return result
 
 if __name__=='__main__':
