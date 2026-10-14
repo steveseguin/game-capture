@@ -8,9 +8,120 @@ recordings, and public-stream session details are not committed.
 
 **Outcome:** the AMD H.264 reconnect failure is fixed, and final-package playback
 works across the exercised transports/codecs. Full quality sign-off is **not**
-achieved: this host's 60-fps window-capture cadence, audio continuity and strict
-maximum sync checks still have failures. The supplied Meshcast stream also
-remains unverified. The successful runs below do not supersede those failures.
+achieved: audio continuity and strict maximum sync checks still have failures.
+The later follow-up reproduced 60-fps window capture and verified WebRTC playback
+on the supplied Meshcast stream, but its RTMP/HLS pulls failed. Repeated Windows
+kernel crashes now block further capture qualification. See the follow-up below;
+the successful runs do not supersede the remaining failures.
+
+## Follow-up and host crash interruption
+
+Evidence for this follow-up is under the ignored
+`native-qt/qa/reports/amd-followup-20261014/` directory. Publishing credentials,
+raw event records and recordings remain local. The observations below distinguish
+completed application workflows from changes that have only passed build gates.
+
+### Actual Meshcast stream
+
+Using the supplied WHIP publishing credentials, the complete final package above
+published AMD H.264 and selected-window audio to the requested Meshcast stream.
+Its supplied embed watch page played real video and audio in Chrome for the
+90-second observation. Steady-window receiver counter deltas were:
+
+| Measurement | Result |
+| --- | --- |
+| Decoded video frames | 5,497 |
+| Receiver video drops / lost video packets | 17 / 0 |
+| Receiver freezes | 2, totaling 0.405 seconds |
+| Lost audio packets | 8 |
+| Concealed audio samples | 71,200 / 4,421,760 (1.61%) |
+| Publisher shutdown | Normal, exit 0, 938 ms |
+
+The simultaneous RTMP pull failed with an I/O error and HLS returned HTTP 503.
+The overall run therefore failed, despite working WebRTC playback. The pulls
+started immediately; startup delay or service-side output availability remains
+an unproven explanation. Delayed retries were subsequently added to the public
+runner, but have not yet been exercised end to end. Actual RTMP publishing with
+the supplied publishing key remains unverified. Evidence: `meshcast-exact/`.
+
+### Window cadence and capture audio
+
+The later 90-second AMD RTMP run with moving window content decoded 5,342 frames
+over 89.017 seconds: 60.00 distinct source frames/second, strictly increasing
+video timestamps and no duplicate video timestamps. It still contained three
+unexpected low-energy 10-ms audio windows at recording offsets 22.445, 48.525
+and 74.595 seconds, so audio quality failed. This used a complete local Release
+package with opt-in capture tracing, executable SHA-256
+`fd54d8bab9c190e431e2484db6fb7c5ea22197de7f03ef983230a62f7813a0c2`.
+Evidence: `audio-motion/` and `audio-motion-analysis.log`.
+
+A separate owned-process timer probe measured approximately 60 fps before,
+during and after a temporary 1-ms timer request. The original timer/power policy
+was restored. That experiment did not demonstrate a timer-related improvement;
+the earlier 43–45 fps limitation was not reproduced in these later runs. The
+host/session difference responsible is unknown. No timer policy change was
+added to the application. Evidence: `timer-probe-data.json`.
+
+The opt-in WASAPI trace recorded 9,430 buffers, each 488 frames at 48 kHz, all
+with flags zero. Isolated all-zero input buffers occurred roughly every 26
+seconds before encoding, apart from the fixture's deliberate silence. The
+physical render endpoint used 44.1 kHz. Rounded conversion between the render
+period and capture rate is a hypothesis, not an established cause.
+
+Commit `1c579f6` includes a fallback that queries the default render endpoint's
+sample rate when the virtual process-loopback client cannot provide its mix
+format. The existing stateful converter then normalizes capture to 48 kHz.
+The fallback change passed a Release build gate before interruption, but has
+**not** been tested through an application workflow. Neither the trace-only
+recording nor the earlier final package validates this change. Validation must
+cover both 44.1-kHz and 48-kHz endpoints, unavailable/default-device changes, and
+audio continuity and sync over multiple 26-second intervals.
+
+### Windows crashes: qualification remains incomplete
+
+After two user reports that the computer froze, read-only event inspection found
+the following System event 1001 bugcheck reports on October 14. Times are report
+times in local EDT, not necessarily the instant of the failure:
+
+| Report time | Bugcheck |
+| --- | --- |
+| 00:57:54 | `0x0000000a` |
+| 11:16:12 | `0x00000133` |
+| 12:03:14 | `0x00000139` |
+| 14:51:46 | `0x0000013a` |
+| 14:54:12 | `0x0000000a` |
+| 15:07:23 | `0x0000003b` |
+| 15:18:57 | `0x0000003b` |
+
+The last report records exception `0xc0000005` and dump
+`C:\Windows\Minidump\101426-10421-01.dmp`. Microsoft documents
+[`0x3B` as SYSTEM_SERVICE_EXCEPTION](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-0x3b--system-service-exception)
+and recommends dump analysis to identify the faulting code. The event records
+alone do not establish an AMD-driver, application, memory or storage root cause.
+Windows denied this session access to both the minidump directory and the
+individual WER report directories; no access controls were changed.
+
+At the 15:54 inspection, Game Capture, FFmpeg, OBS, MediaMTX and Node were not
+running. This does not establish what was running at the time of each crash.
+The AMD driver remained 32.0.21030.2001. Earlier events also contained disk
+controller errors for disk indices 1 and 2; the current disk query exposed only
+disk 0. Those events do not establish the cause of either the crashes or the
+repository damage described next. No WHEA or display-driver errors were found
+in the reviewed one-day warning/error event subset.
+
+The local Git remote-tracking file for `origin/main` contained 41 zero bytes.
+It was backed up under `crash-review/`, removed, and reconstructed by fetching
+the verified remote branch. Git connectivity checks then passed with one
+dangling commit and no missing-object errors. No working-tree files or local
+commits were discarded. The relationship between this damage and the crashes
+is unknown.
+
+No capture workload, driver update, reboot or stress run was started during this
+crash-review continuation. The next requirement is a readable local copy of the
+crash dumps for diagnosis, followed by stable-host packaged verification of the
+audio-rate fallback, public RTMP/HLS outputs, and remaining sync/loss checks.
+**Testing is incomplete; this report does not certify freeze-free, loss-free
+or synchronized operation.**
 
 ## Machine and package
 
