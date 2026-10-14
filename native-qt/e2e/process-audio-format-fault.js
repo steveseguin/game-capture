@@ -14,6 +14,7 @@ function processClient(client){
   if(!processClients.has(self.toString()))return original(self,share,flags,buffer,period,format,session);
   const rate=format.add(4).readU32();let injected=0;
   if(FAULT==='reject-rate'&&rate!==48000)injected=0x88890008|0;
+  if(FAULT==='invalid-rate'&&rate!==48000)injected=0x80070057|0;
   if(FAULT==='reject-all')injected=0x88890008|0;
   if(FAULT==='invalidated')injected=0x88890004|0;
   const result=injected||original(self,share,flags,buffer,period,format,session);

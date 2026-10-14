@@ -32,6 +32,16 @@ async function start({port,targetPort,output}){
     const ssrc=packet.readUInt32BE(8),timestamp=packet.readUInt32BE(4),key=connection+':'+channel+':'+ssrc;
     const stream=summary.streams[key]||(summary.streams[key]={ssrc,channel,connection,payloadType:packet[1]&127,packets:0,timestamps:0,backwardTimestamps:0});
     stream.packets++;
+    // Video marker packets delimit complete frames. Timestamp-change logs
+    // alone cannot distinguish two frames incorrectly sharing one timestamp.
+    if(packet[1]&128){
+     const delta=stream.lastMarkerTimestamp===undefined?null:(timestamp-stream.lastMarkerTimestamp)|0;
+     stream.frameMarkers=(stream.frameMarkers||0)+1;
+     stream.duplicateMarkerTimestamps=(stream.duplicateMarkerTimestamps||0)+(delta===0?1:0);
+     stream.backwardMarkerTimestamps=(stream.backwardMarkerTimestamps||0)+(delta!==null&&delta<0?1:0);
+     stream.lastMarkerTimestamp=timestamp;
+     log.write(JSON.stringify({kind:'frame-marker',wall:Date.now(),connection,channel,ssrc,timestamp,delta,sequence:packet.readUInt16BE(2)})+'\n');
+    }
     if(timestamp!==stream.lastTimestamp){
      const delta=stream.lastTimestamp===undefined?null:(timestamp-stream.lastTimestamp)|0;
      if(delta!==null&&delta<0)stream.backwardTimestamps++;

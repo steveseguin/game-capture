@@ -5,7 +5,7 @@ This verifies negotiation/recovery; it cannot reproduce a particular AMD driver.
 """
 from pathlib import Path
 helpers=Path(__file__).with_name('device-failure-packaged.py').read_text().split('\ntry:\n    t=')[0]
-helpers=helpers.replace('a=p.parse_args()',"p.add_argument('--rate',type=int)\np.add_argument('--fault',choices=['none','reject-rate','reject-all','invalidated','missing-endpoint'],default='none')\np.add_argument('--seconds',type=int,default=90)\na=p.parse_args()")
+helpers=helpers.replace('a=p.parse_args()',"p.add_argument('--rate',type=int)\np.add_argument('--fault',choices=['none','reject-rate','invalid-rate','reject-all','invalidated','missing-endpoint'],default='none')\np.add_argument('--seconds',type=int,default=90)\na=p.parse_args()")
 exec(helpers)
 import frida,re
 assert 5<=a.seconds<=600 and (a.rate is None or 0<=a.rate<=1000000)
@@ -44,10 +44,10 @@ try:
     assert receiver.poll()==0,'Receiver did not finish'
     final=api();assert final['output']['state']==2 and final['output']['reconnects']==0,final['output']
     init=[e for e in events if e.get('kind')=='process-initialize'];assert init,'No observed process-loopback initialization'
-    expected=48000 if a.fault=='missing-endpoint' or a.rate is not None and not 8000<=a.rate<=384000 else a.rate
+    expected=48000 if a.fault=='missing-endpoint' or a.rate is not None and (not 8000<=a.rate<=384000 or a.rate%100) else a.rate
     if expected is not None:assert init[0]['rate']==expected,init
     silent=a.fault in ('reject-all','invalidated')
-    if a.fault=='reject-rate' and expected!=48000:assert len(init)==2 and init[-1]['rate']==48000 and init[-1]['result']==0,init
+    if a.fault in ('reject-rate','invalid-rate') and expected!=48000:assert len(init)==2 and init[-1]['rate']==48000 and init[-1]['result']==0,init
     if a.fault=='reject-all':assert len(init)==(1 if expected==48000 else 2) and all(e['injected'] for e in init),init
     if a.fault=='invalidated':assert len(init)==1 and init[0]['injected'],init
     if not silent:assert final['audio']['primary_peak']>.01,final['audio']
@@ -60,6 +60,8 @@ try:
     assert raw.returncode==0
     pcm=np.frombuffer(raw.stdout,np.float32).reshape(-1,2)[48000:-48000];assert np.isfinite(pcm).all() and len(pcm)>48000
     windows=pcm[:len(pcm)//480*480].reshape(-1,480,2);levels=np.sqrt(np.mean(windows**2,axis=1));quiet=int(np.sum(levels.min(axis=1)<.005))
+    report.update(cleanDecode=True,unexpectedQuiet10ms=quiet,minimum10msRms=float(levels.min()),silent=silent,
+                  quiet10msAtSeconds=(np.flatnonzero(levels.min(axis=1)<.005)*.01+1).tolist()[:100])
     if silent:assert np.abs(pcm).max()<1e-6
     else:assert quiet==0,{'unexpectedQuietWindows':quiet,'minimum10msRms':float(levels.min())}
     timestamps={}

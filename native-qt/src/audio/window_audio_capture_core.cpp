@@ -54,8 +54,19 @@ DWORD defaultRenderSampleRate() {
     const HRESULT hr = client->GetMixFormat(&raw);
     const std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> format(raw, CoTaskMemFree);
     if (FAILED(hr) || !format) return kDefaultSampleRate;
-    return raw->nSamplesPerSec >= kMinSupportedSampleRate && raw->nSamplesPerSec <= kMaxSupportedSampleRate
-        ? raw->nSamplesPerSec : kDefaultSampleRate;
+    const DWORD rate = raw->nSamplesPerSec;
+    if (rate < kMinSupportedSampleRate || rate > kMaxSupportedSampleRate) return kDefaultSampleRate;
+    // The virtual process client can round fractional 10 ms buffers up on
+    // every callback (221 frames at 22050 Hz), introducing periodic silent
+    // input buffers. This endpoint format is only a hint: use 48 kHz when
+    // the requested period cannot contain a whole number of audio frames.
+    // Native endpoint/microphone formats still use the normal converter.
+    if ((uint64_t(rate) * kDefaultBufferDuration) % 10000000 != 0) {
+        spdlog::info("[Audio] Default render rate {} Hz has fractional capture-period frames; using {} Hz for process loopback",
+                     rate, kDefaultSampleRate);
+        return kDefaultSampleRate;
+    }
+    return rate;
 }
 
 using ActivateAudioInterfaceAsyncFn = HRESULT (WINAPI *)(LPCWSTR, REFIID, PROPVARIANT *,

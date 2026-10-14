@@ -1,0 +1,6 @@
+[
+  {"id":"rtmp-stereo-reconnect","resolution":"1280x720","video-encoder":"software","fps":30,"seconds":30},
+  {"id":"srt-stereo-reconnect","resolution":"1280x720","video-encoder":"software","fps":30,"seconds":30},
+  {"id":"rtspt-stereo","resolution":"1280x720","video-encoder":"software","fps":30,"seconds":30},
+  {"id":"whip-stereo","resolution":"1280x720","video-encoder":"software","fps":30,"seconds":30}
+]
