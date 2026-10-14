@@ -1,5 +1,6 @@
 ﻿#include <QApplication>
 #include <QIcon>
+#include <QScreen>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLockFile>
@@ -1024,7 +1025,14 @@ int main(int argc, char *argv[]) {
     // Normal GUI mode
     versus::ui::MainWindow window(&core);
     guiWindow = &window;
-    window.show();
+    // Keep first launch usable on small screens and at high display scaling.
+    // The content already scrolls; maximize rather than shrink its controls.
+    const auto *screen = window.screen();
+    const auto available = screen ? screen->availableGeometry().size() - QSize(16, 48) : QSize();
+    if (screen && (window.width() > available.width() || window.height() > available.height()))
+        window.showMaximized();
+    else
+        window.show();
     const int result = app.exec();
     if (app.property("force_exit_without_shutdown").toBool()) {
         forceExitProcess(result);

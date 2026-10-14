@@ -404,7 +404,33 @@ struct Session::Impl {
                 process.readAllStandardError();
             };
             write(mux.header(codec, first.width, first.height, media.fps, media.audioChannels, media.audioEnabled));
-            for (const auto &audio : initialAudio) { write(mux.audio(audio.data, audio.pts - epoch)); count(audio); }
+            const int bytesPerAudioFrame = media.audioChannels * int(sizeof(float));
+            int64_t audioEnd = epoch, silenceThrough = epoch;
+            auto lastRealAudio = Clock::now();
+            auto writeAudio = [&](const Packet &audio) {
+                write(mux.audio(audio.data, audio.pts - epoch));
+                audioEnd = std::max(audioEnd, audio.pts + int64_t(audio.data.size() / bytesPerAudioFrame) * 10000000 / 48000);
+                count(audio);
+            };
+            for (const auto &audio : initialAudio) writeAudio(audio);
+            const QByteArray silentAudio(480 * bytesPerAudioFrame, char(0)); // 10 ms at 48 kHz.
+            auto fillMissingAudio = [&](int64_t videoPts) {
+                if (!media.audioEnabled || Clock::now() - lastRealAudio < std::chrono::milliseconds(250)) return;
+                {
+                    std::lock_guard lock(mutex);
+                    // A blocked pipe can leave real audio queued. Drain it first.
+                    if (std::any_of(queue.begin(), queue.end(), [](const Packet &p) { return p.kind == Packet::Kind::Pcm; })) return;
+                }
+                // FFmpeg waits for every declared track. A missing/unplugged
+                // input must not stall video or select a different microphone.
+                // Bound catch-up work, and never advance beyond live video.
+                audioEnd = std::max(audioEnd, videoPts - 10000000);
+                while (!stopping.load() && audioEnd + 100000 <= videoPts) {
+                    Packet silence{Packet::Kind::Pcm, silentAudio, audioEnd};
+                    writeAudio(silence);
+                    silenceThrough = audioEnd;
+                }
+            };
             write(mux.video(units, first.pts - epoch, true)); count(first);
             auto lastProgress = Clock::now(), lastVideoInput = Clock::now();
             bool checkedStartup = false;
@@ -457,9 +483,22 @@ struct Session::Impl {
                     units = detail::MatroskaStream::nals(std::vector<uint8_t>(packet.data.begin(), packet.data.end()));
                     const auto nextCodec = detail::MatroskaStream::codecPrivate(units);
                     if (!nextCodec.isEmpty() && nextCodec != codec) throw OutputError("Video configuration changed; reconnecting output.");
+                    fillMissingAudio(packet.pts);
                     write(mux.video(units, packet.pts - epoch, packet.keyframe));
                     lastVideoInput = Clock::now();
-                } else if (packet.kind == Packet::Kind::Pcm) write(mux.audio(packet.data, packet.pts - epoch));
+                } else if (packet.kind == Packet::Kind::Pcm) {
+                    lastRealAudio = Clock::now();
+                    // On recovery, do not replay samples already replaced by
+                    // silence or create backwards/overlapping audio timestamps.
+                    if (packet.pts < silenceThrough) {
+                        const int64_t trimFrames = std::min<int64_t>(packet.data.size() / bytesPerAudioFrame,
+                            ((silenceThrough - packet.pts) * 48000 + 9999999) / 10000000);
+                        packet.data.remove(0, qsizetype(trimFrames * bytesPerAudioFrame));
+                        packet.pts += trimFrames * 10000000 / 48000;
+                    }
+                    if (!packet.data.isEmpty()) writeAudio(packet);
+                    continue;
+                }
                 else continue;
                 count(packet);
             }

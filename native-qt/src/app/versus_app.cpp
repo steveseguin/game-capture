@@ -2651,14 +2651,14 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         if (!microphoneDeviceId.empty()) {
             micResult = microphoneAudioCapture_.StartInputDeviceStreamCapture(microphoneDeviceId, gatedCallback);
             if (!micResult.success) {
-                spdlog::warn("[Audio] {} microphone capture device='{}' failed: {}; falling back to default input",
+                spdlog::warn("[Audio] {} microphone capture device='{}' failed: {}; selected input remains off",
                              role,
                              requestedLabel,
                              micResult.error.empty() ? "unknown error" : micResult.error);
-                emitRuntimeEvent("Selected microphone/input was unavailable; using Windows default microphone/input.", false);
-                setActiveMicrophoneSource("default-microphone");
-                micResult = microphoneAudioCapture_.StartDefaultEndpointStreamCapture(
-                    audio::DefaultAudioEndpoint::MultimediaInput, gatedCallback);
+                // A saved device disappearing is not consent to capture another
+                // microphone. Keep video and other audio running, but never
+                // substitute the Windows default for an explicit selection.
+                emitRuntimeEvent("Selected microphone/input is unavailable. Microphone audio is off; reconnect it or select another input.", false);
             } else {
                 setActiveMicrophoneSource(requestedLabel);
             }
