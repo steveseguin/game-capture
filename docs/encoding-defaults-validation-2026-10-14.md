@@ -92,3 +92,64 @@ node e2e/external-output-packaged.js --publisher=dist/game-capture-encoder-final
 Studio uses `e2e/mixer-encoder-defaults-e2e.py --package dist/desktop-studio-encoder-final --report e2e/reports/my-run`; `--transport-only` exercises seeks/EOF/restart. The helper uses the sibling Game Capture QA environment/resource sampler. Both UI gates passed 93 checks with one platform-specific skip; these are gates, separate from the packaged workflows above.
 
 Not covered by this round: low-core-count hardware, a demanding game's own frame-time impact, GPU/VRAM saturation, AMD hardware, alternate external x264 builds/presets, long-duration memory growth, or an exhaustive rerun of every network protocol and loss-recovery mode. A clean-machine run remains deferred. Existing preferences and user shows were restored; no GitHub release or installer was published.
+
+## Extended validation later on October 14
+
+This follow-up used the same complete portable packages above, private local receivers and isolated shows. Profiling and decoding remained sequential. Reports are under `native-qt/e2e/reports/extended-validation-2026-10-14/` in each checkout.
+
+### Ten-minute Studio recording and software publishing
+
+The visible Studio published 720p30 / 4 Mbps software video while independently recording Program. A looping 12-second H.264/AAC source exercised about 50 loop boundaries. Sixteen bounded CPU workers ran for 90 seconds partway through the session.
+
+- Received video: 29.99997 fps over 599.9 seconds; 34 ms p95 and maximum frame spacing. Local recording: 29.99588 fps over 601.8 seconds, 34 ms p95 and one maximum interval of 116 ms.
+- Total-system CPU averaged 88.0% during contention. Studio's process tree averaged 4.85% before, 4.70% during and 4.98% after contention.
+- Recording drops remained at the startup count of 14. All nine child PIDs remained unchanged. Both complete files decoded cleanly; the minimum 10 ms audio RMS stayed above 0.027, including loop boundaries.
+- Main-process private memory grew 4.32 MiB between early and recovered windows; process-tree RSS grew 8.56 MiB. Median main-process handles decreased by 12. These are finite observations, not proof of no leaks.
+- Control API p95 was 24.0 ms, maximum 28.7 ms. An actual application screenshot during 89% system CPU showed publishing, recording and active audio meters; the screenshot API returned in 40 ms.
+
+Evidence: `software-recording-soak/results.json`, `soak-analysis.json` and `active-load.png`. The driver now supports `--soak-seconds 600 --load-workers 16`; run `e2e/analyze-studio-encoder-soak.py REPORT --ffmpeg FFMPEG` only after the app exits.
+
+### Fault isolation, sync, recoverable recordings and logs
+
+The headless fault workflow ran healthy frame-identified video and matching audio pulses alongside a browser source and RTMP publishing. It injected browser CPU overload, browser process termination/hang, 35 seconds of network starvation followed by recovery without closing sockets, publishing worker termination, and simultaneous browser/publisher faults.
+
+The healthy media worker never restarted. Recording drops stayed at their startup count of nine. Browser audio was detected before and after recovery. Local and received files decoded cleanly. Local A/V offset p95 was 26 ms; received p95 was 24–30 ms. Post-recovery received pictures were about 0.20–0.23 seconds behind the live source. API p95/max were 28/38 ms. Five bounded worker-failure log entries were recorded.
+
+Separate tests verified:
+
+- A real app access violation (`0xC0000005`) during MKV recording produced a playable, fully decodable recording, crash JSON, minidump and log snapshot. Owned workers exited. Relaunch restored the source without automatically restarting recording or publishing, and a new recording decoded cleanly.
+- Five sessions of log rotation retained at most four log files and preserved the crash snapshot. A synthetic private key was absent from logs and the generated issue report. Making the logging directory unavailable did not prevent launching or recording.
+- Killing the Program recording writer did not stop four independent source recordings. Their files remained decodable; off-screen recording, mute/private-break routing, and black/silent output after removing a source passed.
+
+Evidence: `fault-quality/fault-quality.json`, `crash-recovery/diagnostics-fault.json`, `recording-isolation/recording-isolation.json`.
+
+### Headless frame-timing fix
+
+The fault test exposed uneven headless frame timing: approximately 30 fps on average, but 47 ms p95 intervals and phase-dependent duplicate/skip pairs. A controlled 60-second recording changed Windows timer handling midway through the same owned app process; p95 intervals fell from 47 to 35 ms.
+
+Windows can ignore timer-resolution requests for invisible/inaudible windows. Headless Studio now requests a 1 ms clock and explicitly keeps that request honored. The change is limited to `--studio-headless`, leaves process priority and CPU execution-speed policy alone, and balances the timer request on normal teardown. Older Windows can still use the timer request when the newer policy is unavailable. See Microsoft's [timer-resolution documentation](https://learn.microsoft.com/en-us/windows/win32/api/timeapi/nf-timeapi-timebeginperiod) and [process policy documentation](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-setprocessinformation).
+
+A complete rebuilt package, `dist/desktop-studio-timing-review`, passed a fresh 60-second recording without instrumentation: 30 fps, 34–35 ms p95 intervals, 36 ms maximum interval and no duplicate pictures in the two measured 23-second windows. Process-tree CPU averaged 2.45% for this simpler media-plus-recording workload. This CPU number is not comparable to the multi-output soak.
+
+Executable SHA-256: `f921fdc70011315b213af8f544bc33d9a62a6886c59266ab9d18eb098caf2880`. Evidence: `headless-timer-probe/cadence.json`, `headless-timing-fixed/cadence.json`. Reproduce with `e2e/mixer-headless-cadence-e2e.py --package PACKAGE --report REPORT --fixture FRAME_CLOCK_MP4`; the optional `--timer-experiment` is diagnostic only.
+
+The full failure sequence also passed on this rebuilt package (`fault-timing-fixed/fault-quality.json`): 30.00 fps over 6,689 frames, 34 ms p95 and 45 ms maximum frame interval, eight duplicate/skip pairs, local A/V offset p95/max 22 ms, and received A/V p95 6–11.5 ms. Recording drops stayed at nine, healthy source restarts stayed at zero, and browser audio returned after recovery. API p95/max were 26/41 ms. The visible app's paused seeking, held position, EOF, restart and loop-boundary cue checks also passed (`visible-timing-fixed/results.json`).
+
+### Longer Game Capture encoder/protocol runs
+
+All cases used fresh 4 Mbps defaults, a moving full-screen source and real stereo audio. All seven received files decoded cleanly and passed audio-continuity checks. CPU percentages are whole-machine process-tree occupancy on this 20-logical-processor host.
+
+| Selection / output | Recorded duration | Mean CPU | Distinct fps | Capture queue drops |
+|---|---:|---:|---:|---:|
+| FFmpeg NVENC 1080p60 / UDP | 90 s | 3.19% | 58.28 | 158 |
+| Explicit NVENC 1080p60 / UDP | 60 s | 3.02% | 58.75 | 77 |
+| Auto 1080p60 / UDP | 90 s | 5.17% | 60.00 | 0 |
+| Software 720p60 / UDP | 90 s | 2.56% | 60.00 | 0 |
+| Auto 720p60 / WHIP | 30 s | 3.25% | 60.00 | 0 |
+| Auto 720p60 / SRT | 20 s before + 20 s after receiver restart | 2.17% | 60.00 | 0 |
+
+SRT returned to publishing 3.8 seconds after the receiver restart; this is reconnect time, not steady playback latency. UDP+IPv4 traffic averaged 4.35–4.48 Mbps, with one-second peaks no higher than 4.79 Mbps. Both explicit NVENC and the advanced FFmpeg choice selected FFmpeg `h264_nvenc` on this host; the below-60-fps limitation therefore affects both selections. Auto selected a hardware Media Foundation encoder and held 60 fps.
+
+Evidence: Game's `encoder-and-protocols/results.json`, `summary.json` and `analysis.json`. The matrix accepts per-case `seconds` to mix long encoder runs and shorter reconnect cases.
+
+Remaining coverage: actual AMD hardware/OBS, weaker CPUs, demanding-game frame times, GPU/VRAM saturation, overnight memory growth, and a clean machine. This round did not repeat every protocol's packet-loss/FEC matrix or claim calibrated absolute lip sync from the browser-generated Game fixture. Explicit NVENC pacing remains unresolved. No release or installer was published by this follow-up.

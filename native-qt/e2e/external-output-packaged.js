@@ -93,6 +93,8 @@ paths:
       (opts.cases||'rtmp-stereo,srt-stereo,whip-stereo').split(',').map(id=>({id}));
     for(const configuration of matrix){
       const {id}=configuration;
+      const seconds=Number(configuration.seconds??opts.seconds??75);
+      assert(Number.isFinite(seconds)&&seconds>0&&seconds<=86400,'Invalid case duration');
       const protocol=id.startsWith('rtmps-')?'rtmp':id.startsWith('rtsp-udp-')?'rtsp-udp':id.split('-')[0],mono=id.includes('mono'),silent=id.includes('silent'),dir=path.join(out,id);
       fs.mkdirSync(dir,{recursive:true});const discovery=path.join(dir,'control.json');
       const bitrate=Number(id.match(/-(?:mono|stereo)-(\d+)$/)?.[1]||192);
@@ -105,12 +107,12 @@ paths:
       let contention;
       if(opts['load-workers']){
         contention=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),
-          [path.join(__dirname,'encoder-contention.py'),'--workers',opts['load-workers'],'--seconds',String(Number(opts.seconds||30)+20)],id+'-load');
+          [path.join(__dirname,'encoder-contention.py'),'--workers',opts['load-workers'],'--seconds',String(seconds+20)],id+'-load');
         await sleep(1500);
       }
       const args=['--headless','--output='+protocol,'--output-url='+url,'--source=window','--window=Game Capture Quality Source',
         '--resolution='+(configuration.resolution||opts.resolution||'1280x720'),'--fps='+(configuration.fps||opts.fps||60),'--audio-source='+(silent?'none':'selected-window'),'--audio-channels='+(mono?1:2),
-        '--duration-ms='+Math.max(1800000,(Number(opts.seconds||75)+300)*1000),'--local-control','--local-control-discovery='+discovery];
+        '--duration-ms='+Math.max(1800000,(seconds+300)*1000),'--local-control','--local-control-discovery='+discovery];
       if(relayHost&&protocol==='whip')args.push('--ice-mode=relay');
       for(const key of ['video-encoder','bitrate-kbps','ffmpeg-options','codec'])
         if(configuration[key]!==undefined||opts[key]!==undefined)args.push('--'+key+'='+(configuration[key]??opts[key]));
@@ -122,7 +124,7 @@ paths:
       const meter=protocol==='udp'&&opts['wire-meter']?await require('./quality-udp-proxy').start({port:18892,targetPort:18893}):null;
       const directInput=protocol==='udp'?['-i','udp://127.0.0.1:'+(meter?18893:18892)+'?fifo_size=8192&overrun_nonfatal=1']:['-i','rist://@127.0.0.1:18894'];
       const directRecording=path.join(dir,'steady.mkv');
-      const directReceiver=direct?launch(ffmpeg,['-hide_banner','-y',...directInput,'-map','0','-c','copy','-t',opts.seconds||'75',directRecording],id+'-steady-record'):null;
+      const directReceiver=direct?launch(ffmpeg,['-hide_banner','-y',...directInput,'-map','0','-c','copy','-t',String(seconds),directRecording],id+'-steady-record'):null;
       if(direct)await sleep(500);
       const app=launch(exe,args,id+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1',
         ...(opts.trace?{VERSUS_FRAME_TRACE:path.join(dir,'frame-trace.csv'),VERSUS_FRAME_TRACE_PATTERN:'alpha-moving-edge'}:{})});
@@ -155,7 +157,7 @@ paths:
         if(obs){
           const obsBrowser=protocol==='whip'&&opts['obs-browser']!=='false';
           result.obs=await require('./quality-obs-receiver').receive(obs,{id,external:true,processAudio:true,obsBrowser,obsRenderDelayMs:Number(opts['obs-render-delay-ms']||0)},dir,
-            obsBrowser?'http://127.0.0.1:18889/'+stream+'/':'rtsp://127.0.0.1:18854/'+stream,Number(opts.seconds||75),source);
+            obsBrowser?'http://127.0.0.1:18889/'+stream+'/':'rtsp://127.0.0.1:18854/'+stream,seconds,source);
         }
         if(!obs)
         for(const phase of phases){
@@ -172,9 +174,9 @@ paths:
           const recording=path.join(dir,phase+'.mkv');
           const input=direct?directInput:protocol==='rtmp'?['-i','rtmp://127.0.0.1:19350/'+stream]:protocol==='srt'?
             ['-i','srt://127.0.0.1:18890?mode=caller&streamid=read:'+stream]:['-rtsp_transport','tcp','-i','rtsp://127.0.0.1:'+(rtspTrace?'18855':'18854')+'/'+stream];
-          record=direct?directReceiver:launch(ffmpeg,['-hide_banner','-y',...input,'-map','0','-c','copy','-t',opts.seconds||'75',recording],id+'-'+phase+'-record');
+          record=direct?directReceiver:launch(ffmpeg,['-hide_banner','-y',...input,'-map','0','-c','copy','-t',String(seconds),recording],id+'-'+phase+'-record');
           const frames=[];
-          const end=Date.now()+(Number(opts.seconds||75)+20)*1000;
+          const end=Date.now()+(seconds+20)*1000;
           while(record.exitCode===null&&Date.now()<end){
             const d=await api(discovery,'/diagnostics');frames.push({wall:Date.now(),output:d.output,metrics:d.stream});
             assert(d.output.state===2,'Output lost publishing state');
