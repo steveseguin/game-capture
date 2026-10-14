@@ -18,6 +18,25 @@ async function until(fn,label,ms=45000){const end=Date.now()+ms;while(Date.now()
 async function api(file,route,body){const d=JSON.parse(fs.readFileSync(file));const r=await fetch(d.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+d.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok);return r.json();}
 // Meshcast's public CORS policy explicitly allows this official viewer origin.
 const viewerUrl=opts.viewer||'https://vdo.ninja/?whepplay='+encodeURIComponent(opts.whep||base+'/whep/'+id)+'&autostart&cleanoutput&stereo=1';
+async function receivePull(protocol){
+ const recording=path.join(out,protocol+'-receiver.mkv'),attempts=[];
+ const seconds=Math.min(60,Number(opts.seconds||75));
+ // HLS and audio-compatibility outputs can start after WHIP is already live.
+ // Preserve every failed attempt instead of treating connection acceptance as playback.
+ await sleep(10000);
+ for(let attempt=1;attempt<=3;attempt++){
+  const proc=launch(path.join(path.dirname(exe),'ffmpeg/bin/ffmpeg.exe'),
+   ['-hide_banner','-y','-rw_timeout','15000000','-i',opts[protocol+'-pull'],'-map','0','-c','copy','-t',String(seconds),recording],protocol+'-receiver-'+attempt);
+  await Promise.race([proc.closed,sleep((seconds+25)*1000)]);
+  const timedOut=proc.exitCode===null;
+  if(timedOut){proc.kill();await proc.closed;}
+  const passed=!timedOut&&proc.exitCode===0&&fs.existsSync(recording)&&fs.statSync(recording).size>100000;
+  attempts.push({attempt,exitCode:proc.exitCode,timedOut,passed});
+  if(passed)return {protocol,recording,attempts,passed:true};
+  if(attempt<3)await sleep(5000);
+ }
+ return {protocol,recording,attempts,passed:false};
+}
 async function main(){
  const server=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(fs.readFileSync(path.join(__dirname,'quality-source.html')));});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -33,9 +52,7 @@ async function main(){
   await until(async()=>{assert(app.exitCode===null,'Publisher exited '+app.exitCode);return fs.existsSync(discovery)&&(await api(discovery,'/diagnostics')).output?.state===2;},'public '+protocol+' publishing',60000);
   report.initialDiagnostics=await api(discovery,'/diagnostics');save();
   monitor=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),[path.join(__dirname,'quality-resource-monitor.py'),'--pid',String(app.pid),'--output',path.join(out,'resources.jsonl'),'--no-hooks'],'monitor');
-  for(const protocol of ['rtmp','hls'].filter(p=>opts[p+'-pull']))pulls.push({protocol,
-    recording:path.join(out,protocol+'-receiver.mkv'),
-    process:launch(path.join(path.dirname(exe),'ffmpeg/bin/ffmpeg.exe'),['-hide_banner','-y','-rw_timeout','15000000','-i',opts[protocol+'-pull'],'-map','0','-c','copy','-t',String(Math.min(60,Number(opts.seconds||75))),path.join(out,protocol+'-receiver.mkv')],protocol+'-receiver')});
+  for(const protocol of ['rtmp','hls'].filter(p=>opts[p+'-pull']))pulls.push(receivePull(protocol));
   receiverBrowser=await chromium.launch({channel:'chrome',headless:true,args:['--autoplay-policy=no-user-gesture-required']});page=await receiverBrowser.newPage({viewport:{width:1280,height:720}});
   report.receiverErrors=[];page.on('pageerror',e=>report.receiverErrors.push(String(e)));page.on('requestfailed',r=>report.receiverErrors.push(r.url()+': '+r.failure()?.errorText));
   await page.addInitScript(()=>{window.qualityPeers=[];const Native=window.RTCPeerConnection;window.RTCPeerConnection=class extends Native{constructor(...args){super(...args);window.qualityPeers.push(this);}};
@@ -49,12 +66,7 @@ async function main(){
     window.qualityRecording=new MediaRecorder(v.srcObject,{mimeType:'video/webm;codecs=vp8,opus',videoBitsPerSecond:8000000});qualityRecording.ondataavailable=e=>{if(e.data.size)qualityChunks.push(e.data);};qualityRecording.start(1000);});
   for(let i=0;i<Number(opts.seconds||75);i+=5){await sleep(5000);report.samples.push({wall:Date.now(),stats:await page.evaluate(()=>qualityStats()),output:(await api(discovery,'/diagnostics')).output});save();}
   if(recording)report.obs=await recording;
-  report.pulls=[];
-  for(const pull of pulls){
-    await Promise.race([pull.process.closed,sleep(20000)]);
-    const passed=pull.process.exitCode===0&&fs.existsSync(pull.recording)&&fs.statSync(pull.recording).size>100000;
-    report.pulls.push({protocol:pull.protocol,recording:pull.recording,exitCode:pull.process.exitCode,passed});
-  }
+  report.pulls=await Promise.all(pulls);
   if(remote){report.browserstack=await remote;assert(report.browserstack.passed,'BrowserStack playback failed');}
   const encoded=await page.evaluate(()=>new Promise(resolve=>{qualityRecording.onstop=()=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.readAsDataURL(new Blob(qualityChunks));};qualityRecording.stop();}));fs.writeFileSync(path.join(out,'receiver.webm'),Buffer.from(encoded,'base64'));
   report.after=await page.evaluate(()=>qualityStats());report.finalDiagnostics=await api(discovery,'/diagnostics');
@@ -67,11 +79,7 @@ async function main(){
     videos:[...document.querySelectorAll('video')].map(v=>({time:v.currentTime,width:v.videoWidth,paused:v.paused}))})).catch(error=>({error:String(error)}));
   throw e;}
  finally{
-  if(!report.pulls){report.pulls=[];for(const pull of pulls){
-    await Promise.race([pull.process.closed,sleep(20000)]);
-    report.pulls.push({protocol:pull.protocol,recording:pull.recording,exitCode:pull.process.exitCode,
-      passed:pull.process.exitCode===0&&fs.existsSync(pull.recording)&&fs.statSync(pull.recording).size>100000});
-  }}
+  if(!report.pulls)report.pulls=await Promise.all(pulls);
   if(remote)report.browserstack=await remote;
   if(page)await page.evaluate(()=>{for(const pc of qualityPeers)pc.close();}).catch(()=>{});
   let cleanupError;

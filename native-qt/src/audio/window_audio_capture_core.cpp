@@ -1,6 +1,7 @@
 #include "versus/audio/window_audio_capture_core.h"
 
 #include "versus/audio/audio_format_converter.h"
+#include "versus/audio/capture_trace.h"
 
 #include <algorithm>
 #include <exception>
@@ -37,6 +38,24 @@ constexpr uint32_t kMaxSupportedChannelCount = 32;
 constexpr REFERENCE_TIME kDefaultBufferDuration = 100000;
 constexpr wchar_t kProcessLoopbackDevice[] = L"VAD\\Process_Loopback";
 constexpr wchar_t kProcessLoopbackLegacyId[] = L"{B8EC8EE7-E1B3-48BB-B91C-A93EE8AC6274}";
+
+DWORD defaultRenderSampleRate() {
+    ComPtr<IMMDeviceEnumerator> enumerator;
+    ComPtr<IMMDevice> endpoint;
+    ComPtr<IAudioClient> client;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                IID_PPV_ARGS(&enumerator))) ||
+        FAILED(enumerator->GetDefaultAudioEndpoint(eRender, eMultimedia, &endpoint)) ||
+        FAILED(endpoint->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr,
+                                  reinterpret_cast<void **>(client.GetAddressOf())))) {
+        return kDefaultSampleRate;
+    }
+    WAVEFORMATEX *raw = nullptr;
+    if (FAILED(client->GetMixFormat(&raw)) || !raw) return kDefaultSampleRate;
+    const std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> format(raw, CoTaskMemFree);
+    return raw->nSamplesPerSec >= kMinSupportedSampleRate && raw->nSamplesPerSec <= kMaxSupportedSampleRate
+        ? raw->nSamplesPerSec : kDefaultSampleRate;
+}
 
 using ActivateAudioInterfaceAsyncFn = HRESULT (WINAPI *)(LPCWSTR, REFIID, PROPVARIANT *,
     IActivateAudioInterfaceCompletionHandler *, IActivateAudioInterfaceAsyncOperation **);
@@ -682,7 +701,12 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
     if (FAILED(hr) || !mixFormatRaw) {
         fallbackFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
         fallbackFormat.Format.nChannels = kDefaultChannelCount;
-        fallbackFormat.Format.nSamplesPerSec = kDefaultSampleRate;
+        // The virtual process-loopback client can leave GetMixFormat unimplemented.
+        // Match the render clock's sample rate instead of forcing Windows to
+        // round fractional frame counts on every capture period. Our stateful
+        // converter normalizes the captured audio to 48 kHz afterward.
+        fallbackFormat.Format.nSamplesPerSec = defaultRenderSampleRate();
+        spdlog::info("[Audio] Process loopback fallback sample rate: {} Hz", fallbackFormat.Format.nSamplesPerSec);
         fallbackFormat.Format.wBitsPerSample = 32;
         fallbackFormat.Format.nBlockAlign = (fallbackFormat.Format.nChannels * fallbackFormat.Format.wBitsPerSample) / 8;
         fallbackFormat.Format.nAvgBytesPerSec = fallbackFormat.Format.nSamplesPerSec * fallbackFormat.Format.nBlockAlign;
@@ -1129,6 +1153,7 @@ CaptureResult WindowAudioCaptureCore::StartInputDevice(const std::string &device
 }
 
 void WindowAudioCaptureCore::CaptureLoop() {
+    detail::CaptureTrace trace(GetCurrentThreadId());
     HANDLE waitHandles[2] = {static_cast<HANDLE>(sampleReadyEvent_), static_cast<HANDLE>(stopEvent_)};
 
     while (true) {
@@ -1152,7 +1177,8 @@ void WindowAudioCaptureCore::CaptureLoop() {
             UINT32 frameCount = 0;
             DWORD flags = 0;
             UINT64 captureTime100ns = 0;
-            hr = captureClient->GetBuffer(&data, &frameCount, &flags, nullptr, &captureTime100ns);
+            UINT64 devicePosition = 0;
+            hr = captureClient->GetBuffer(&data, &frameCount, &flags, &devicePosition, &captureTime100ns);
             if (FAILED(hr)) {
                 break;
             }
@@ -1180,6 +1206,7 @@ void WindowAudioCaptureCore::CaptureLoop() {
                     }
                 }
 
+                trace.record(captureTime100ns, devicePosition, frameCount, flags, sampleRate_, channels_, converted);
                 AppendSamples(converted.data(), converted.size(),
                     (flags & AUDCLNT_BUFFERFLAGS_TIMESTAMP_ERROR) ? 0 : static_cast<int64_t>(captureTime100ns));
             } catch (const std::exception &e) {
