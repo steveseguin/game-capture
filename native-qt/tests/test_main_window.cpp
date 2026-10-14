@@ -86,7 +86,7 @@ void addSpinBoxWheelContractRows() {
     QTest::addColumn<int>("initialValue");
 
     QTest::newRow("custom-bitrate")
-        << QStringLiteral("customBitrateSpin") << 2500;
+        << QStringLiteral("customBitrateSpin") << 4000;
     QTest::newRow("max-viewers")
         << QStringLiteral("viewerLimitSpin") << 10;
     QTest::newRow("game-audio-gain")
@@ -449,7 +449,7 @@ void TestMainWindow::testResetDefaultsRestoresFreshInstallState() {
     QVERIFY(!advancedToggle->isChecked());
     QCOMPARE(codec->currentData().toString(), QString("h264"));
     QCOMPARE(encoder->currentData().toString(), QString("auto"));
-    QCOMPARE(resolution->currentData().toString(), QString("1920x1080"));
+    QCOMPARE(resolution->currentData().toString(), QString("1280x720"));
     QCOMPARE(fps->currentData().toInt(), 60);
     QCOMPARE(viewerLimit->value(), 10);
     QVERIFY(!remoteControl->isChecked());
@@ -575,7 +575,7 @@ void TestMainWindow::testBitrateOptions() {
     }
 
     // New sessions use the conservative streaming default.
-    QCOMPARE(bitrateCombo->currentData().toInt(), 2500);
+    QCOMPARE(bitrateCombo->currentData().toInt(), 4000);
 }
 
 void TestMainWindow::testVideoSourceModeControl() {

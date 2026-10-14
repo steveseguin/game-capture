@@ -3982,6 +3982,27 @@ class VideoEncoder::Impl {
             spdlog::debug("[VideoEncoder] AVLowLatencyMode unsupported hr=0x{:08x}", static_cast<unsigned>(hr));
         }
 
+        // An average target alone leaves the Windows encoder in unconstrained
+        // VBR. Select CBR explicitly so motion cannot spend an unbounded burst.
+        if (!setCodecApiUi4(CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_CBR)) {
+            spdlog::warn("[VideoEncoder] Encoder does not accept CBR rate control");
+        }
+        // A one-second reservoir accommodates keyframes; this is not a network
+        // pacer and transport/audio overhead is additional to the video target.
+        setCodecApiUi4(CODECAPI_AVEncCommonBufferSize,
+                       static_cast<ULONG>(std::max(1, config_.bitrate) * 1000 / 8));
+        if (!usingHardware_) {
+            // Favor the game over exhaustive motion search. MF uses a numeric
+            // complexity control, not x264 presets. Keep slice workers bounded
+            // on high-core-count hosts, and leave capacity on smaller machines.
+            const unsigned cores = std::max(1u, std::thread::hardware_concurrency());
+            const ULONG workers = std::clamp(cores / 2, 1u, 4u);
+            const bool speedSet = setCodecApiUi4(CODECAPI_AVEncCommonQualityVsSpeed, 0);
+            const bool threadsSet = setCodecApiUi4(CODECAPI_AVEncNumWorkerThreads, workers);
+            spdlog::info("[VideoEncoder] Software realtime complexity=0 accepted={} workers={} accepted={}",
+                         speedSet, workers, threadsSet);
+        }
+
         setCodecApiUi4(CODECAPI_AVEncCommonMeanBitRate, static_cast<ULONG>(std::max(1, config_.bitrate) * 1000));
         const int maxKbps = std::max(config_.maxBitrate, config_.bitrate);
         setCodecApiUi4(CODECAPI_AVEncCommonMaxBitRate, static_cast<ULONG>(std::max(1, maxKbps) * 1000));

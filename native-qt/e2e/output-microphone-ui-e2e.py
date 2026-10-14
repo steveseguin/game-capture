@@ -64,7 +64,7 @@ def main():
             if restart:
                 assert ui('microphoneDeviceSelect').selected_text()=='No microphone'
                 assert not ui('microphoneMuteButton').is_enabled()
-                assert ui('bitrateSelect').selected_text()=='Standard (2500 kbps)'
+                assert ui('bitrateSelect').selected_text()=='Standard (4000 kbps)'
                 assert ui('outputUrlInput').get_value()=='rist://127.0.0.1:18894'
                 report['persisted']=True
                 api('/commands',{'command':'quit'});assert proc.wait(timeout=15)==0;break
@@ -78,12 +78,20 @@ def main():
             assert ui('microphoneDeviceSelect').selected_text()=='No microphone'
             ui('advancedToggle').toggle()
             assert ui('audioSourceSelect').selected_text()=='No audio'
-            assert ui('bitrateSelect').selected_text()=='Standard (2500 kbps)'
+            assert ui('bitrateSelect').selected_text()=='Standard (4000 kbps)'
+            assert ui('resolutionSelect').selected_text()=='1280x720'
+            assert ui('fpsSelect').selected_text()=='60'
+            select('bitrateSelect','Economy (2500 kbps)')
+            select('bitrateSelect','Standard (4000 kbps)')
             select('outputSelect','UDP / MPEG-TS (LAN)');ui('outputUrlInput').set_edit_text('udp://127.0.0.1:18896')
             shot('udp-settings')
             receiver=start_receive('no-microphone');ui('goLiveButton').invoke()
             d.wait_for(lambda:api().get('output',{}).get('state')==2,'camera publishing',45)
-            assert api()['video']['configured_bitrate_kbps']==2500
+            assert api()['video']['configured_bitrate_kbps']==4000
+            # Camera has its own format selectors; the window-capture controls
+            # are disabled in this mode and must not override the device mode.
+            assert api()['video']['configured_width']==1920 and api()['video']['configured_height']==1080
+            assert api()['video']['configured_fps']==30
             receiver.wait(timeout=30);assert receiver.returncode==0
             assert api()['audio']['codec']=='none'
             report['cases'].append({'name':'no-microphone',**check_clip('no-microphone',False)})

@@ -71,7 +71,9 @@ def analyze(ffmpeg,case,phase):
         result['audioPassed']=bool(result['unexpectedLowEnergy10ms']==0 and result['clippedSamples']==0 and result['highFrequencyWindowsAbove002']==0)
         if case['channels']==2:result['channelsPassed']=tones[0]['440']>tones[0]['880']*10 and tones[1]['880']>tones[1]['440']*10
         else:result['channelsPassed']=all(t['440']>.005 and t['880']>.005 for t in tones)
-    result['passed']=result['distinctSourceFramesPerSecond']>55 and result['frameGapMs']['p95']<25 and result.get('audioPassed',True) and result.get('channelsPassed',True)
+    expected_fps=case.get('configuration',{}).get('fps',60)
+    result['expectedFps']=expected_fps
+    result['passed']=result['distinctSourceFramesPerSecond']>expected_fps*.90 and result['frameGapMs']['p95']<1500/expected_fps and result.get('audioPassed',True) and result.get('channelsPassed',True)
     return result
 
 if __name__=='__main__':

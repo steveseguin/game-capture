@@ -534,8 +534,8 @@ class WindowCapture::Impl {
                      height,
                      fps,
                      preserveAlpha);
-        if (capturing_.load(std::memory_order_acquire)) {
-            spdlog::info("[Capture::Impl] Already capturing, stopping first");
+        if (capturing_.load(std::memory_order_acquire) || framePool_ || captureSession_ || captureThread_.joinable()) {
+            spdlog::info("[Capture::Impl] Retiring previous capture session before restart");
             stopCapture();
         }
         targetHwnd_ = hwnd;
@@ -560,6 +560,15 @@ class WindowCapture::Impl {
         if (captureThread_.joinable()) {
             captureThread_.join();
         }
+        // Drain resource access before Close() or releasing D3D textures.
+        // The guard also outlives Impl when a queued WinRT callback arrives
+        // late. Do not hold its mutex during Close(): queued callbacks must be
+        // able to enter, observe the retired owner, and return.
+        if (frameCallbackState_) {
+            std::lock_guard<std::mutex> callbackBarrier(frameCallbackState_->mutex);
+            frameCallbackState_->owner = nullptr;
+        }
+        frameCallbackState_.reset();
         // Retire the frame pool before releasing resources used by its callbacks.
         if (framePool_) {
             framePool_.Close();
@@ -694,9 +703,14 @@ class WindowCapture::Impl {
             spdlog::info("[Capture::Impl] CreateForWindow succeeded");
 
             captureItem_ = itemUnk.as<winrt::Windows::Graphics::Capture::GraphicsCaptureItem>();
-            captureItemClosedToken_ = captureItem_.Closed([this](auto const &, auto const &) {
+            auto callbackState = std::make_shared<FrameCallbackState>();
+            callbackState->owner = this;
+            frameCallbackState_ = callbackState;
+            captureItemClosedToken_ = captureItem_.Closed([callbackState](auto const &, auto const &) {
+                std::lock_guard<std::mutex> callbackLock(callbackState->mutex);
+                if (!callbackState->owner) return;
                 spdlog::warn("[Capture::Impl] Graphics capture item closed");
-                capturing_.store(false, std::memory_order_release);
+                callbackState->owner->capturing_.store(false, std::memory_order_release);
             });
             captureItemClosedTokenSet_ = true;
 
@@ -726,7 +740,10 @@ class WindowCapture::Impl {
                 kFramePoolBufferCount,
                 size);
 
-            framePool_.FrameArrived([this](auto const &sender, auto const &) { onFrameArrived(sender); });
+            framePool_.FrameArrived([callbackState](auto const &sender, auto const &) {
+                std::lock_guard<std::mutex> callbackLock(callbackState->mutex);
+                if (callbackState->owner) callbackState->owner->onFrameArrived(sender);
+            });
             captureSession_ = framePool_.CreateCaptureSession(captureItem_);
             captureSession_.IsCursorCaptureEnabled(false);
             applyCaptureUpdateInterval(targetFps_);
@@ -1367,6 +1384,11 @@ class WindowCapture::Impl {
     LONG desktopBottom_ = 0;
     bool desktopCropWarningLogged_ = false;
 
+    struct FrameCallbackState {
+        std::mutex mutex;
+        Impl *owner = nullptr;
+    };
+    std::shared_ptr<FrameCallbackState> frameCallbackState_;
     std::mutex processFrameMutex_;
     FrameCallback frameCallback_;
     FrameAdmissionCallback frameAdmissionCallback_;

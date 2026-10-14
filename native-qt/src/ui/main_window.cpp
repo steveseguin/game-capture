@@ -926,7 +926,7 @@ void MainWindow::loadPersistedSettings() {
         advancedToggle_->setChecked(settings.value("ui/advancedVisible", false).toBool());
     }
     if (customBitrateSpin_) {
-        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", 2500).toInt());
+        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", 4000).toInt());
     }
     if (viewerLimitSpin_) {
         viewerLimitSpin_->setValue(settings.value("stream/maxViewers", 10).toInt());
@@ -965,13 +965,13 @@ void MainWindow::loadPersistedSettings() {
     if (audioEncodingToggle_) audioEncodingToggle_->setChecked(false);
     updateAudioEncodingControls();
 
-    restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1920x1080"));
+    restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1280x720"));
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
     restoreComboByData(
         cameraResolutionSelect_,
         settings.value("camera/resolution", "1920x1080"));
     restoreComboByData(cameraFpsSelect_, settings.value("camera/fps", 30));
-    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 2500));
+    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 4000));
     const bool hasStoredIceMode = settings.contains("network/iceMode");
     const QString storedIceMode = settings.value("network/iceMode", "all").toString();
     restoreComboByData(iceModeSelect_, storedIceMode);
@@ -1070,12 +1070,12 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("stream/roomModeLqEnabled", roomModeLqPreference_);
     settings.setValue("ui/advancedVisible", advancedToggle_ ? advancedToggle_->isChecked() : false);
     settings.setValue("ui/minimizeToTrayOnClose", minimizeToTrayOnClose_);
-    settings.setValue("video/resolution", resolutionSelect_ ? resolutionSelect_->currentData().toString() : QString("1920x1080"));
+    settings.setValue("video/resolution", resolutionSelect_ ? resolutionSelect_->currentData().toString() : QString("1280x720"));
     settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
     settings.setValue("camera/resolution", cameraResolutionSelect_ ? cameraResolutionSelect_->currentData().toString() : QString("1920x1080"));
     settings.setValue("camera/fps", cameraFpsSelect_ ? cameraFpsSelect_->currentData().toInt() : 30);
-    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 2500);
-    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 2500);
+    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 4000);
+    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 4000);
     settings.setValue("video/sourceMode", sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window"));
     settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
     settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
@@ -1709,6 +1709,7 @@ void MainWindow::setupUI() {
     resolutionSelect_->addItem("1920x1080", QVariant("1920x1080"));
     resolutionSelect_->addItem("1280x720", QVariant("1280x720"));
     resolutionSelect_->addItem("960x540", QVariant("960x540"));
+    resolutionSelect_->setCurrentIndex(resolutionSelect_->findData("1280x720"));
     installComboWheelGuard(resolutionSelect_);
     advancedForm->addRow("Resolution", resolutionSelect_);
 
@@ -1724,10 +1725,11 @@ void MainWindow::setupUI() {
     bitrateSelect_->addItem("Ultra (20000 kbps)", QVariant(20000));
     bitrateSelect_->addItem("High (12000 kbps)", QVariant(12000));
     bitrateSelect_->addItem("Medium (6000 kbps)", QVariant(6000));
+    bitrateSelect_->addItem("Standard (4000 kbps)", QVariant(4000));
     bitrateSelect_->addItem("Low (3000 kbps)", QVariant(3000));
-    bitrateSelect_->addItem("Standard (2500 kbps)", QVariant(2500));
+    bitrateSelect_->addItem("Economy (2500 kbps)", QVariant(2500));
     bitrateSelect_->addItem("Custom", QVariant(-1));
-    bitrateSelect_->setCurrentIndex(bitrateSelect_->findData(2500));
+    bitrateSelect_->setCurrentIndex(bitrateSelect_->findData(4000));
     installComboWheelGuard(bitrateSelect_);
     connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBitratePresetChanged);
@@ -1736,7 +1738,7 @@ void MainWindow::setupUI() {
     customBitrateSpin_ = new QSpinBox(this);
     customBitrateSpin_->setObjectName("customBitrateSpin");
     customBitrateSpin_->setRange(500, 50000);
-    customBitrateSpin_->setValue(2500);
+    customBitrateSpin_->setValue(4000);
     customBitrateSpin_->setSuffix(" kbps");
     customBitrateSpin_->setEnabled(false);
     installSpinWheelGuard(customBitrateSpin_);
@@ -2739,7 +2741,7 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     config.width = width;
     config.height = height;
     config.frameRate = fps > 0 ? fps : 60;
-    config.bitrate = bitrate > 0 ? bitrate : 2500;
+    config.bitrate = bitrate > 0 ? bitrate : 4000;
     config.minBitrate = std::max(500, config.bitrate / 2);
     config.maxBitrate = config.bitrate;
     config.ffmpegPath = ffmpegPathInput_

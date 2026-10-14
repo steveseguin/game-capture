@@ -77,37 +77,59 @@ paths:
     await until(async()=>fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.ok).catch(()=>false),'server');
     sourceBrowser=await chromium.launch({channel:'chrome',headless:false,args:['--autoplay-policy=no-user-gesture-required','--disable-backgrounding-occluded-windows','--disable-renderer-backgrounding']});
     const source=await sourceBrowser.newPage({viewport:null});
-    await source.goto('http://127.0.0.1:'+fixture.address().port);await source.getByRole('button').click();await source.waitForFunction(()=>quality.ready);
+    await source.goto('http://127.0.0.1:'+fixture.address().port+(opts.motion?'/?motion=1':''));await source.getByRole('button').click();await source.waitForFunction(()=>quality.ready);
+    if(opts.fullscreen){
+      const cdp=await source.context().newCDPSession(source);
+      const {windowId}=await cdp.send('Browser.getWindowForTarget');
+      await cdp.send('Browser.setWindowBounds',{windowId,bounds:{windowState:'fullscreen'}});
+      await sleep(500);
+      const size=await source.evaluate(()=>({width:innerWidth,height:innerHeight,dpr:devicePixelRatio,outerWidth,outerHeight,screenWidth:screen.width,screenHeight:screen.height}));
+      fs.writeFileSync(path.join(out,'source-size.json'),JSON.stringify(size,null,2));
+      assert(Math.abs(size.width/size.height-16/9)<.04,'Source is not a full widescreen window: '+JSON.stringify(size));
+    }
     await source.screenshot({path:path.join(out,'source.png')});
     if(opts.obs)obs=await require('./quality-obs-receiver').start(opts.obs,path.join(out,'obs-recordings'),{paired:true,fps:60});
-    for(const id of (opts.cases||'rtmp-stereo,srt-stereo,whip-stereo').split(',')){
+    const matrix=opts.matrix?JSON.parse(fs.readFileSync(path.resolve(opts.matrix))):
+      (opts.cases||'rtmp-stereo,srt-stereo,whip-stereo').split(',').map(id=>({id}));
+    for(const configuration of matrix){
+      const {id}=configuration;
       const protocol=id.startsWith('rtmps-')?'rtmp':id.startsWith('rtsp-udp-')?'rtsp-udp':id.split('-')[0],mono=id.includes('mono'),silent=id.includes('silent'),dir=path.join(out,id);
       fs.mkdirSync(dir,{recursive:true});const discovery=path.join(dir,'control.json');
       const bitrate=Number(id.match(/-(?:mono|stereo)-(\d+)$/)?.[1]||192);
-      const result={id,protocol,channels:mono?1:2,silent,bitrateKbps:bitrate,phases:[]};results.cases.push(result);
+      const result={id,configuration,protocol,channels:mono?1:2,silent,bitrateKbps:bitrate,phases:[]};results.cases.push(result);
       const direct=protocol==='udp'||protocol==='rist';
       const url=protocol==='udp'?'udp://127.0.0.1:18892':protocol==='rist'?'rist://127.0.0.1:18894':protocol.startsWith('rtsp')?(protocol==='rtspt'?'rtspt':'rtsp')+'://127.0.0.1:18854/'+id:protocol==='whip'?'http://127.0.0.1:'+(turnProxy?'18888':'18889')+'/'+id+'/whip':protocol==='srt'?
         'srt://127.0.0.1:'+(impairment?'18891':'18890')+(id==='srt-encrypted-url'?'?passphrase='+encodeURIComponent('qa:+%2B?&= pass2026'):''):
         id.startsWith('rtmps-')?'rtmps://qa.localhost.direct:19351/live':'rtmp://127.0.0.1:19350/live';
       const stream=protocol==='rtmp'?'live/'+id:id;
+      let contention;
+      if(opts['load-workers']){
+        contention=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),
+          [path.join(__dirname,'encoder-contention.py'),'--workers',opts['load-workers'],'--seconds',String(Number(opts.seconds||30)+20)],id+'-load');
+        await sleep(1500);
+      }
       const args=['--headless','--output='+protocol,'--output-url='+url,'--source=window','--window=Game Capture Quality Source',
-        '--resolution=1280x720','--fps=60','--audio-source='+(silent?'none':'selected-window'),'--audio-channels='+(mono?1:2),
+        '--resolution='+(configuration.resolution||opts.resolution||'1280x720'),'--fps='+(configuration.fps||opts.fps||60),'--audio-source='+(silent?'none':'selected-window'),'--audio-channels='+(mono?1:2),
         '--duration-ms='+Math.max(1800000,(Number(opts.seconds||75)+300)*1000),'--local-control','--local-control-discovery='+discovery];
       if(relayHost&&protocol==='whip')args.push('--ice-mode=relay');
+      for(const key of ['video-encoder','bitrate-kbps','ffmpeg-options','codec'])
+        if(configuration[key]!==undefined||opts[key]!==undefined)args.push('--'+key+'='+(configuration[key]??opts[key]));
       if(impairment&&protocol==='srt')args.push('--srt-latency-ms='+Number(opts['srt-latency-ms']||400));
       args.push((protocol==='whip'?'--audio-bitrate-kbps=':'--aac-bitrate-kbps=')+bitrate);
       if(protocol==='rtmp')args.push('--output-key='+id);
       if(protocol==='srt')args.push('--srt-stream-id=publish:'+id);
       if(id.startsWith('srt-encrypted')&&id!=='srt-encrypted-url')args.push('--srt-passphrase=qa:+%2B?&= pass2026');
-      const directInput=protocol==='udp'?['-i','udp://127.0.0.1:18892?fifo_size=8192&overrun_nonfatal=1']:['-i','rist://@127.0.0.1:18894'];
+      const meter=protocol==='udp'&&opts['wire-meter']?await require('./quality-udp-proxy').start({port:18892,targetPort:18893}):null;
+      const directInput=protocol==='udp'?['-i','udp://127.0.0.1:'+(meter?18893:18892)+'?fifo_size=8192&overrun_nonfatal=1']:['-i','rist://@127.0.0.1:18894'];
       const directRecording=path.join(dir,'steady.mkv');
       const directReceiver=direct?launch(ffmpeg,['-hide_banner','-y',...directInput,'-map','0','-c','copy','-t',opts.seconds||'75',directRecording],id+'-steady-record'):null;
       if(direct)await sleep(500);
-      const app=launch(exe,args,id+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1'});
+      const app=launch(exe,args,id+'-publisher',{LOCALAPPDATA:dir,GAME_CAPTURE_SUPPRESS_FIREWALL_WARNING:'1',
+        ...(opts.trace?{VERSUS_FRAME_TRACE:path.join(dir,'frame-trace.csv'),VERSUS_FRAME_TRACE_PATTERN:'alpha-moving-edge'}:{})});
       let monitor,page,record,sampling=false,sampleTask,sampleFile;
       try{
         await until(async()=>{assert(app.exitCode===null,'Publisher exited with '+app.exitCode);if(!fs.existsSync(discovery))return false;const d=await api(discovery,'/diagnostics');result.lastDiagnostics=d;return d.output?.state===2;},id+' publishing',60000);
-        monitor=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),[path.join(__dirname,'quality-resource-monitor.py'),'--pid',String(app.pid),'--output',path.join(dir,'resources.jsonl')],id+'-monitor');
+        monitor=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),[path.join(__dirname,'quality-resource-monitor.py'),'--pid',String(app.pid),'--output',path.join(dir,'resources.jsonl'),...(opts.matrix?['--no-hooks']:[])],id+'-monitor');
         if(!direct)await until(async()=>{const paths=await fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.json());
           result.serverPath=paths.items.find(p=>p.name===stream);return result.serverPath?.ready;},'server track discovery');
         if(protocol==='whip'){
@@ -185,6 +207,8 @@ paths:
         result.shutdown={forced:app.exitCode===null,exitCode:app.exitCode,elapsedMs:Date.now()-start};
         if(app.exitCode===null){app.kill();await app.closed;}
         if(monitor)await Promise.race([monitor.closed,sleep(5000)]);
+        if(contention)await contention.closed;
+        if(meter){result.wireMeter=meter.stats;meter.close();}
         fs.writeFileSync(path.join(dir,'result.json'),JSON.stringify(result,null,2));
         fs.writeFileSync(path.join(out,'results.json'),JSON.stringify(results,null,2));
       }

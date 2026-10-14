@@ -998,10 +998,10 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         config = videoConfig_;
     }
     if (config.width == 0 || config.height == 0) {
-        config.width = 1920;
-        config.height = 1080;
+        config.width = 1280;
+        config.height = 720;
         config.frameRate = 60;
-        config.bitrate = 2500;
+        config.bitrate = 4000;
     }
     const video::EncoderConfig requestedConfig = config;
     const bool alphaRequested = usesVp9AlphaTrack(requestedConfig);

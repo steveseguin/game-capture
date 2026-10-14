@@ -4,6 +4,16 @@
 <script>
 const canvas=document.querySelector('canvas'), g=canvas.getContext('2d');
 window.quality={ready:false, frames:0, calibrations:[]};
+// Reproducible moving detail for encoding stress. Generated once so fixture
+// JavaScript does not itself saturate the CPU being measured.
+const detailed=new URLSearchParams(location.search).has('motion');
+const terrain=document.createElement('canvas');terrain.width=terrain.height=1024;
+if(detailed){const c=terrain.getContext('2d');let seed=37;
+  const random=()=>((seed=Math.imul(seed,1664525)+1013904223|0)>>>0)/4294967296;
+  c.fillStyle='#273c24';c.fillRect(0,0,1024,1024);
+  for(let i=0;i<24000;i++){const v=30+Math.floor(random()*85);c.fillStyle=`rgb(${v},${v+20},${v>>1})`;
+    c.fillRect(random()*1024,random()*1024,2+random()*22,2+random()*9);}
+}
 document.querySelector('button').onclick=async function(){
   await document.documentElement.requestFullscreen(); this.remove();
   const ctx=new AudioContext({sampleRate:48000}); await ctx.resume();
@@ -28,6 +38,8 @@ document.querySelector('button').onclick=async function(){
     const elapsed=Math.max(0,Math.floor(audible*1000));
     window.quality.epoch=performance.timeOrigin+stamp.performanceTime+(start-stamp.contextTime)*1000;
     g.fillStyle='#183042';g.fillRect(0,0,1920,1080);
+    if(detailed){const dx=(elapsed*.15)%1024,dy=(elapsed*.07)%1024;
+      for(let y=-1;y<2;y++)for(let x=-1;x<3;x++)g.drawImage(terrain,x*1024+dx,y*1024+dy);}
     const colors=['#fff','#ff0','#0ff','#0f0','#f0f','#f00','#00f','#111'];
     colors.forEach((c,i)=>{g.fillStyle=c;g.fillRect(i*240,600,240,200)});
     // Frame timestamp: 32 binary cells, plus two fixed calibration sentinels.

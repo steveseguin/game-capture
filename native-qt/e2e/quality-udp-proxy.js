@@ -1,13 +1,14 @@
 /* Owned UDP impairment fixture; no firewall, routes or unrelated traffic change. */
 const dgram=require('dgram');
 async function start({port,targetPort,loss=0,delayMs=0,jitterMs=0,burstMs=0,burstEveryMs=10000}){
- const socket=dgram.createSocket('udp4'),timers=new Set(),stats={received:0,forwarded:0,dropped:0,burstDropped:0};
+ const socket=dgram.createSocket('udp4'),timers=new Set(),stats={received:0,forwarded:0,dropped:0,burstDropped:0,uploadSeconds:{}};
  let client,seed=0x19c041,started=Date.now(),closed=false;
  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
  socket.on('error',e=>{stats.error=String(e);});
  socket.on('message',(data,remote)=>{
   if(closed)return;stats.received++;
   const fromServer=remote.port===targetPort&&remote.address==='127.0.0.1';
+  if(!fromServer){const second=Math.floor(Date.now()/1000);stats.uploadSeconds[second]=(stats.uploadSeconds[second]||0)+data.length+28;}
   if(!fromServer)client={port:remote.port,address:remote.address};
   if(fromServer&&!client)return;
   // SRT control packets retain their high-bit marker. Impair data only, in
@@ -21,6 +22,10 @@ async function start({port,targetPort,loss=0,delayMs=0,jitterMs=0,burstMs=0,burs
   if(wait){const timer=setTimeout(()=>{timers.delete(timer);forward();},wait);timers.add(timer);}else forward();
  });
  await new Promise(r=>socket.bind(port,'127.0.0.1',r));
+ // A software encoder's first IDR can arrive as a burst larger than Winsock's
+ // default receive buffer. The fixture must not introduce unrequested loss.
+ socket.setRecvBufferSize(4*1024*1024);socket.setSendBufferSize(4*1024*1024);
+ stats.receiveBufferBytes=socket.getRecvBufferSize();stats.sendBufferBytes=socket.getSendBufferSize();
  return {stats,close:()=>{closed=true;for(const t of timers)clearTimeout(t);socket.close();}};
 }
 module.exports={start};

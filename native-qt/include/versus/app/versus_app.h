@@ -829,7 +829,7 @@ class VersusApp {
     versus::video::EncoderConfig videoConfig_{};
     mutable std::mutex captureErrorMutex_;
     std::string lastCaptureError_;
-    std::atomic<int> configuredVideoBitrateKbps_{12000};
+    std::atomic<int> configuredVideoBitrateKbps_{4000};
     mutable std::mutex videoSendMutex_;
     // Serialize remote preparations without blocking the output worker.
     std::mutex runtimeVideoControlMutex_;

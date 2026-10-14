@@ -64,12 +64,12 @@ struct EncoderConfig {
     uint8_t alphaBackgroundRed = 0;
     uint8_t alphaBackgroundGreen = 255;
     uint8_t alphaBackgroundBlue = 0;
-    int width = 1920;
-    int height = 1080;
+    int width = 1280;
+    int height = 720;
     int frameRate = 60;
-    int bitrate = 2500;
-    int minBitrate = 1250;
-    int maxBitrate = 2500;
+    int bitrate = 4000;
+    int minBitrate = 2000;
+    int maxBitrate = 4000;
     int gopSize = 60;
     int bFrames = 0;
     bool lowLatency = true;
