@@ -51,8 +51,9 @@ DWORD defaultRenderSampleRate() {
         return kDefaultSampleRate;
     }
     WAVEFORMATEX *raw = nullptr;
-    if (FAILED(client->GetMixFormat(&raw)) || !raw) return kDefaultSampleRate;
+    const HRESULT hr = client->GetMixFormat(&raw);
     const std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> format(raw, CoTaskMemFree);
+    if (FAILED(hr) || !format) return kDefaultSampleRate;
     return raw->nSamplesPerSec >= kMinSupportedSampleRate && raw->nSamplesPerSec <= kMaxSupportedSampleRate
         ? raw->nSamplesPerSec : kDefaultSampleRate;
 }
@@ -660,31 +661,27 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
     activationParams.ProcessLoopbackParams.TargetProcessId = processId;
     activationParams.ProcessLoopbackParams.ProcessLoopbackMode = PROCESS_LOOPBACK_MODE_INCLUDE_TARGET_PROCESS_TREE;
 
-    ScopedPropVariant prop;
-    prop.value.vt = VT_BLOB;
-    prop.value.blob.cbSize = sizeof(activationParams);
-    prop.value.blob.pBlobData = reinterpret_cast<BYTE *>(&activationParams);
-
-    auto clearActivationBlob = [&]() {
+    auto activateClient = [&]() -> HRESULT {
+        // A failed Initialize may leave the client unusable. Each retry gets
+        // its own activation/handler rather than reusing that COM object.
+        client.Reset();
+        ScopedPropVariant prop;
+        prop.value.vt = VT_BLOB;
+        prop.value.blob.cbSize = sizeof(activationParams);
+        prop.value.blob.pBlobData = reinterpret_cast<BYTE *>(&activationParams);
+        ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
+        ComPtr<ActivateAudioInterfaceHandler> handler = Microsoft::WRL::Make<ActivateAudioInterfaceHandler>();
+        HRESULT activationHr = activateFn(kProcessLoopbackDevice, __uuidof(IAudioClient), prop.get(), handler.Get(), &operation);
+        if (FAILED(activationHr)) {
+            activationHr = activateFn(kProcessLoopbackLegacyId, __uuidof(IAudioClient), prop.get(), handler.Get(), &operation);
+        }
+        if (SUCCEEDED(activationHr)) activationHr = handler->GetActivateResult(client.GetAddressOf(), 10000);
         prop.value.blob.pBlobData = nullptr;
         prop.value.blob.cbSize = 0;
         prop.value.vt = VT_EMPTY;
+        return activationHr;
     };
-
-    ComPtr<IActivateAudioInterfaceAsyncOperation> operation;
-    ComPtr<ActivateAudioInterfaceHandler> handler = Microsoft::WRL::Make<ActivateAudioInterfaceHandler>();
-    HRESULT hr = activateFn(kProcessLoopbackDevice, __uuidof(IAudioClient), prop.get(), handler.Get(), &operation);
-    if (FAILED(hr)) {
-        hr = activateFn(kProcessLoopbackLegacyId, __uuidof(IAudioClient), prop.get(), handler.Get(), &operation);
-    }
-    if (FAILED(hr)) {
-        clearActivationBlob();
-        result.error = "Process loopback activation failed";
-        return result;
-    }
-
-    hr = handler->GetActivateResult(client.GetAddressOf(), 10000);
-    clearActivationBlob();
+    HRESULT hr = activateClient();
     if (FAILED(hr)) {
         result.error = "Process loopback activation failed";
         return result;
@@ -694,17 +691,19 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
 
     WAVEFORMATEX *mixFormatRaw = nullptr;
     hr = client->GetMixFormat(&mixFormatRaw);
-    std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> mixFormat(nullptr, CoTaskMemFree);
+    std::unique_ptr<WAVEFORMATEX, decltype(&CoTaskMemFree)> mixFormat(mixFormatRaw, CoTaskMemFree);
     WAVEFORMATEXTENSIBLE fallbackFormat = {};
     WAVEFORMATEX *format = nullptr;
 
-    if (FAILED(hr) || !mixFormatRaw) {
+    const bool usingFallbackFormat = FAILED(hr) || !mixFormat;
+    if (usingFallbackFormat) {
         fallbackFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
         fallbackFormat.Format.nChannels = kDefaultChannelCount;
         // The virtual process-loopback client can leave GetMixFormat unimplemented.
-        // Match the render clock's sample rate instead of forcing Windows to
-        // round fractional frame counts on every capture period. Our stateful
-        // converter normalizes the captured audio to 48 kHz afterward.
+        // Prefer the default render rate to avoid unnecessary conversion in
+        // Windows. Process audio can span endpoints, so this is only a hint;
+        // retry our established 48 kHz format if the virtual client rejects it.
+        // The stateful converter normalizes captured PCM to 48 kHz afterward.
         fallbackFormat.Format.nSamplesPerSec = defaultRenderSampleRate();
         spdlog::info("[Audio] Process loopback fallback sample rate: {} Hz", fallbackFormat.Format.nSamplesPerSec);
         fallbackFormat.Format.wBitsPerSample = 32;
@@ -721,7 +720,6 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
         isFloatFormat_ = true;
         hr = S_OK;
     } else {
-        mixFormat.reset(mixFormatRaw);
         format = mixFormat.get();
         sampleRate_ = format->nSamplesPerSec;
         channels_ = format->nChannels;
@@ -765,15 +763,28 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
 
     maxBufferSamples_ = std::max<size_t>(maxBufferSamples_, static_cast<size_t>(sampleRate_) * channels_ * 4);
 
-    hr = client->Initialize(
-        AUDCLNT_SHAREMODE_SHARED,
-        AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_LOOPBACK,
-        kDefaultBufferDuration,
-        0,
-        format,
-        nullptr);
+    auto initializeClient = [&]() {
+        return client->Initialize(AUDCLNT_SHAREMODE_SHARED,
+            AUDCLNT_STREAMFLAGS_EVENTCALLBACK | AUDCLNT_STREAMFLAGS_LOOPBACK,
+            kDefaultBufferDuration, 0, format, nullptr);
+    };
+    hr = initializeClient();
+    if (usingFallbackFormat && sampleRate_ != kDefaultSampleRate &&
+        (hr == AUDCLNT_E_UNSUPPORTED_FORMAT || hr == E_INVALIDARG)) {
+        spdlog::warn("[Audio] Process loopback rejected {} Hz (0x{:08X}); retrying {} Hz",
+                     sampleRate_, static_cast<uint32_t>(hr), kDefaultSampleRate);
+        hr = activateClient();
+        if (SUCCEEDED(hr)) {
+            fallbackFormat.Format.nSamplesPerSec = kDefaultSampleRate;
+            fallbackFormat.Format.nAvgBytesPerSec = kDefaultSampleRate * fallbackFormat.Format.nBlockAlign;
+            sampleRate_ = kDefaultSampleRate;
+            hr = initializeClient();
+        }
+    }
     if (FAILED(hr)) {
-        result.error = "IAudioClient::Initialize failed";
+        spdlog::warn("[Audio] Process loopback initialization failed at {} Hz (0x{:08X})",
+                     sampleRate_, static_cast<uint32_t>(hr));
+        result.error = "Process audio initialization failed at " + std::to_string(sampleRate_) + " Hz";
         return result;
     }
 

@@ -14,6 +14,8 @@ on the supplied Meshcast stream, but its RTMP/HLS pulls failed. Repeated Windows
 kernel crashes now block further capture qualification. See the follow-up below;
 the successful runs do not supersede the remaining failures.
 
+The later [completion on the Intel/NVIDIA host](#completion-on-the-intelnvidia-host) hardens and exercises the audio fallback and ports the encoder corrections to Desktop Studio. It does not establish the cause of the AMD host's kernel crashes or certify its remaining audio/sync failures.
+
 ## Follow-up and host crash interruption
 
 Evidence for this follow-up is under the ignored
@@ -390,3 +392,56 @@ node native-qt/e2e/media-quality-packaged.js --publisher=PACKAGE/game-capture.ex
 Run decoding/quality analysis after capture, separately from resource profiling.
 The runners' successful playback exit status does not replace the quality
 analyzers or certify the absence of the limitations listed above.
+
+## Completion on the Intel/NVIDIA host
+
+The remote changes through `36d2c98` were integrated with the local pacing/audio-meter fixes without discarding either set of work. This host has Intel Graphics and a TITAN RTX; it cannot execute AMD hardware encoding. The application changes here are:
+
+- **Bounded audio-rate fallback:** when the virtual process-loopback client cannot report its format, query the default render endpoint's rate. Missing/invalid information falls back to 48 kHz. If a different rate fails with `AUDCLNT_E_UNSUPPORTED_FORMAT` or `E_INVALIDARG`, activate a fresh process-loopback client and try 48 kHz once. Device invalidation and other errors are not treated as format rejection. Failure logs include rate and HRESULT. This follows Microsoft's [IAudioClient initialization contract](https://learn.microsoft.com/en-us/windows/win32/api/audioclient/nf-audioclient-iaudioclient-initialize); a rejected initialization can require a new client. No Windows endpoint setting or global timer policy changes.
+- **Studio parity:** port Game Capture's AMD H.264 live-header fix and periodic true-IDR policy, plus the AMD HEVC metadata-filter workaround, to Desktop Studio. Preserve Studio's encoder isolation and optimized pixel conversion. Port the audio fallback and opt-in capture trace while retaining Studio's COM lifetime and device-failure supervision.
+- **Useful failure evidence:** the optional `VERSUS_AUDIO_CAPTURE_TRACE` writes bounded timing/rate/energy CSVs, not PCM recordings. It stays disabled unless requested. The public-service QA runner now keeps separate recordings/logs for each delayed RTMP/HLS attempt, handles child launch errors, cancels pending attempts when the viewer fails, clears timeout timers, and stops its in-memory browser recording before waiting for potentially slow pull retries.
+
+The rate preference is a compatibility measure, not a demonstrated explanation for the AMD machine's approximately 26-second dropouts. No arbitrary publisher-wide A/V offset or fake replacement audio was added to hide those failures.
+
+### Packaged audio negotiation results
+
+Both complete packages passed eight scenarios each: 44.1 kHz and 48 kHz capture, rejection of the 44.1 kHz hint followed by a successful 48 kHz retry, unavailable default-render metadata, zero and out-of-range rate hints, rejection of both format attempts, and device invalidation at initialization. The last two deliberately left audio unavailable; video kept publishing with silence and no publisher reconnect. A format rejection caused exactly two initialization attempts; device invalidation caused one. No unrelated device or microphone was selected.
+
+Each normal-rate run lasted 90 seconds, spanning more than three of the previously reported 26-second intervals. All four complete receiver recordings strictly decoded with continuous stereo tones and zero unexpected low-energy 10 ms windows:
+
+| App / negotiated capture rate | Minimum 10 ms audio RMS |
+| --- | ---: |
+| Game Capture / 44.1 kHz | 0.02470 |
+| Game Capture / 48 kHz | 0.02706 |
+| Desktop Studio / 44.1 kHz | 0.02242 |
+| Desktop Studio / 48 kHz | 0.02706 |
+
+The trace contained 441-frame or 480-frame input buffers respectively, with zero-energy input only during the first approximately 30 ms of startup. Windows performed actual process capture and the app performed actual conversion, encoding and publishing. Frida changed only the owned app's endpoint-format hint or selected initialization return codes; the physical render endpoint stayed at 48 kHz. Therefore these results validate negotiation and conversion on this host, **not** the physical 44.1 kHz AMD endpoint or its kernel driver.
+
+Evidence: each checkout's `native-qt/e2e/reports/amd-completion-2026-10-14/audio-*/`; Game's first successful 44.1 kHz report is `audio-44100-v2/`. The initial `audio-44100/` attempt stopped on a runner startup-diagnostics assumption, which was corrected before the complete run. `audio-suite.json` lists the other fifteen serialized runs. `process-audio-format-packaged.py` and `process-audio-format-fault.js` in Game's `native-qt/e2e/` drive either executable. For example:
+
+```powershell
+python native-qt/e2e/process-audio-format-packaged.py --publisher PACKAGE/game-capture.exe --report REPORT --rate 44100 --seconds 90
+python native-qt/e2e/process-audio-format-packaged.py --publisher PACKAGE/game-capture.exe --report REPORT --rate 44100 --fault reject-rate --seconds 12
+```
+
+### Private compatibility receivers
+
+The delayed-output runner now requires both an audio and a video track to decode completely after publishing/profiling ends. This caught a weakness in the earlier check: MediaMTX could return H.264-only RTMP from a WHIP H.264/Opus stream, and a nonempty video-only file satisfied the old assertion. The private fixture now models a compatibility rendition by copying video and converting Opus to AAC in a separate FFmpeg service process; this is fixture behavior, not a new transcoder bundled into the app.
+
+With that rendition, both RTMP and HLS failed their first deliberately rejected attempt, succeeded on the second, and produced strictly decodable audio/video recordings. Simultaneous WebRTC playback also received both tracks. Publisher shutdown was normal in 273 ms. A separate refused-viewer run cancelled both delayed pulls before either started, completed in about seven seconds and shut the publisher down normally in 308 ms. Evidence: `private-retries-av/` and `private-cancellation-final/`. The older `private-retries/` result is retained as the insufficient video-only check; it is not an audio/video pass. Reproduce using `public-output-local-e2e.py --publisher EXE --report REPORT`, adding `--viewer-failure` for cancellation. This is a private localhost fixture, **not** verification of Meshcast's supplied public URLs.
+
+### Encoder selection, timing and final scope
+
+Explicit AMD H.264 and HEVC selections were exercised in both packages on the non-AMD host. Each failed normally with exit 3 in about 1.5-1.6 seconds, explained that the requested AMD encoder could not start, and left no encoder child running. The owned FFmpeg command lines verified H.264's live-header/IDR options and HEVC's absence of the incompatible metadata filter. This is startup/failure-path and argument validation, **not hardware encoding**. Evidence: Game `amd-unavailable-final/`, Studio `amd-unavailable/`, and both `amd-hevc-unavailable/`; reproduce with `amd-unavailable-packaged.py --publisher EXE --report REPORT [--codec h265]` on a host without AMF.
+
+All sixteen audio-scenario recordings also had strictly increasing decoded audio/video timestamps. Maximum audio frame spacing was 21.334 ms and maximum video spacing was 38 ms. Analysis uses separate audio/video decoder invocations: an initial combined `showinfo`/`ashowinfo` pass interleaved log lines and falsely appeared to omit frames. Its summary is retained as `audio-quality-summary-interleaved-log.json`; the corrected `audio-quality-summary.json` is the result used here. This measures file cadence, not calibrated end-to-end A/V synchronization.
+
+Studio's complete package additionally passed visible 1080p60 NVENC streaming plus independent recording, and simultaneous software publishing/recording through large sources, 45 seconds limited to two logical CPUs and source-worker failures. Those results are detailed in Studio's encoding-defaults validation document.
+
+Complete local packages:
+
+- Game Capture: `native-qt/dist/game-capture-amd-completion-review/`; executable SHA-256 `866c5203f1cb1d1a0fda8ffa0ea78fb787c288e6a8608b2e08ba6d98819f8617`.
+- Desktop Studio: `native-qt/dist/desktop-studio-amd-completion-review/`; executable SHA-256 `0b5cfe34634213f47526244290c711bae302b3fb28d40343a6b702ecc0ea81b8`.
+
+Release compilation, JavaScript/Python parsing and whitespace checks passed as gates. Actual workflows used the complete packages and private receivers; builds, media runs and post-run decoding were serialized. The AMD machine's physical 44.1 kHz endpoint, live default-device changes, AMD/OBS receiver sync/loss behavior, public Meshcast URLs and kernel-crash cause still need qualification on a stable AMD host. No AMD-driver fix, clean-machine certification, installer or GitHub release is claimed by this continuation.
