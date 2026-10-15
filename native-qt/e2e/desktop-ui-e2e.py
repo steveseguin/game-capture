@@ -287,13 +287,15 @@ def main():
             return named("ffmpegStatusLabel").window_text()
 
         def choose_combo(combo, text):
-            # Changing source mode can move controls. Re-resolve UIA geometry
-            # after the layout settles before issuing another click.
+            # Source changes and asynchronous probe results can move controls.
+            # Focus the real control and use Qt's popup shortcut so layout
+            # changes cannot redirect a coordinate click to a different row.
             automation_id = combo.element_info.automation_id
             time.sleep(.4)
             combo = next(c for c in window.descendants()
                          if c.element_info.automation_id == automation_id)
-            combo.click_input()
+            combo.set_focus()
+            combo.type_keys("%{DOWN}")
             # Qt's popup is a separate window. Wait for its actual option and
             # click it instead of sending navigation keys before it has focus.
             def option():

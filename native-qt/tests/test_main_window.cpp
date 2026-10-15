@@ -923,9 +923,10 @@ void TestMainWindow::testAudioEncodingPersistenceAndReset() {
     QVERIFY(bitrate && channels);
     QCOMPARE(bitrate->value(), 192);
     QCOMPARE(channels->currentData().toInt(), 2);
+    QVERIFY(red->isChecked());
     bitrate->setValue(320);
     channels->setCurrentIndex(channels->findData(1));
-    red->setChecked(true);
+    red->setChecked(false);
     codec->setCurrentIndex(codec->findData("pcm"));
     QVERIFY(!bitrate->isEnabled() && !red->isEnabled());
     delete window_;
@@ -935,7 +936,7 @@ void TestMainWindow::testAudioEncodingPersistenceAndReset() {
     codec = window_->findChild<QComboBox *>("audioCodecSelect");
     red = window_->findChild<QCheckBox *>("audioRedCheck");
     QCOMPARE(codec->currentData().toString(), QString("pcm"));
-    QVERIFY(red->isChecked() && !red->isEnabled());
+    QVERIFY(!red->isChecked() && !red->isEnabled());
     QVERIFY(!window_->findChild<QCheckBox *>("audioEncodingToggle")->isChecked());
     codec->setCurrentIndex(codec->findData("opus"));
     QCOMPARE(bitrate->value(), 320);
@@ -948,7 +949,7 @@ void TestMainWindow::testAudioEncodingPersistenceAndReset() {
     QCOMPARE(bitrate->value(), 192);
     QCOMPARE(channels->currentData().toInt(), 2);
     QCOMPARE(codec->currentData().toString(), QString("opus"));
-    QVERIFY(!red->isChecked());
+    QVERIFY(red->isChecked());
 }
 
 void TestMainWindow::testAudioMixControls() {
