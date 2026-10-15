@@ -15,7 +15,13 @@ async function start({port,targetPort,output}){
     if(pending[0]!==36){
      const end=pending.indexOf('\r\n\r\n');if(end<0)return;
      const header=pending.subarray(0,end).toString();const length=Number(header.match(/content-length:\s*(\d+)/i)?.[1]||0);
-     if(pending.length<end+4+length)return;pending=pending.subarray(end+4+length);continue;
+     if(pending.length<end+4+length)return;
+     // Preserve the announced time origins too: monotonic RTP alone cannot
+     // explain a receiver switching from RTP-Info to its first RTCP mapping.
+     log.write(JSON.stringify({kind:'rtsp-response',wall:Date.now(),connection,
+      status:header.split('\r\n')[0],cseq:header.match(/cseq:\s*([^\r\n]+)/i)?.[1],
+      rtpInfo:header.match(/rtp-info:\s*([^\r\n]+)/i)?.[1],range:header.match(/range:\s*([^\r\n]+)/i)?.[1]})+'\n');
+     pending=pending.subarray(end+4+length);continue;
     }
     if(pending.length<4)return;const channel=pending[1],length=pending.readUInt16BE(2);
     if(pending.length<length+4)return;const packet=pending.subarray(4,length+4);pending=pending.subarray(length+4);
@@ -54,4 +60,27 @@ async function start({port,targetPort,output}){
  await new Promise(resolve=>server.listen(port,'127.0.0.1',resolve));
  return {summary,close:async()=>{for(const socket of sockets)socket.destroy();await new Promise(resolve=>server.close(resolve));await new Promise(resolve=>log.end(resolve));}};
 }
-module.exports={start};
+// Explicit diagnostic/workaround for MediaMTX's on-demand RTSP stream: allow
+// it to observe both tracks before the recorder asks for RTP-Info. No RTP or
+// timestamps are altered. Keep this opt-in so ordinary starts remain covered.
+async function warmup(url,ms=500){
+ const target=new URL(url);
+ if(target.protocol!=='rtsp:'||target.hostname!=='127.0.0.1'||target.username||target.password||!Number.isFinite(ms)||ms<0||ms>5000)
+  throw Error('RTSP warm-up requires a private loopback fixture and a bounded delay');
+ await new Promise((resolve,reject)=>{
+  const socket=net.connect(Number(target.port||554),target.hostname);let pending=Buffer.alloc(0),complete=false;
+  socket.setTimeout(5000,()=>socket.destroy(Error('RTSP DESCRIBE timed out')));
+  socket.on('connect',()=>socket.write(`DESCRIBE ${url} RTSP/1.0\r\nCSeq: 1\r\nAccept: application/sdp\r\n\r\n`));
+  socket.on('error',reject);socket.on('close',()=>{if(!complete)reject(Error('RTSP DESCRIBE closed early'));});
+  socket.on('data',chunk=>{
+   if(complete)return;pending=Buffer.concat([pending,chunk]);
+   if(pending.length>1024*1024){socket.destroy(Error('RTSP response too large'));return;}
+   const end=pending.indexOf('\r\n\r\n');if(end<0)return;
+   const header=pending.subarray(0,end).toString(),length=Number(header.match(/content-length:\s*(\d+)/i)?.[1]||0);
+   if(!header.startsWith('RTSP/1.0 200 ')){socket.destroy(Error('RTSP DESCRIBE failed'));return;}
+   if(pending.length<end+4+length)return;complete=true;socket.destroy();resolve();
+  });
+ });
+ await new Promise(resolve=>setTimeout(resolve,ms));
+}
+module.exports={start,warmup};

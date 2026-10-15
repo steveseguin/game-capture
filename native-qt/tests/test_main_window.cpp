@@ -210,6 +210,7 @@ private slots:
     void cleanup();
 
     void testInitialState();
+    void testCustomResolutionPersistence();
     void testDarkThemeApplied();
     void testGoLiveButtonDisabledInitially();
     void testGoLiveButtonEnabledAfterSelection();
@@ -314,6 +315,25 @@ void TestMainWindow::testInitialState() {
     QCOMPARE(window_->windowTitle(), QString("Game Capture - Powered by VDO.Ninja"));
     QVERIFY(window_->width() >= 900);
     QVERIFY(window_->height() <= 760);
+}
+
+void TestMainWindow::testCustomResolutionPersistence() {
+    auto *resolution = window_->findChild<QComboBox *>("resolutionSelect");
+    QVERIFY(resolution && resolution->isEditable());
+    QVERIFY(resolution->findData("3840x2160") >= 0);
+    QCOMPARE(resolution->currentText(), QString("1280x720"));
+    resolution->setEditText(" 3440 X 1440 ");
+    QSettings settings(QSettings::IniFormat, QSettings::UserScope, "VDO.Ninja", "Game Capture");
+    QCOMPARE(settings.value("video/resolution").toString(), QString("3440x1440"));
+    for (const auto &invalid : {"", "1921x1080", "8192x8192", "0x0", "-1920x1080", "1920x", "160x89"}) {
+        resolution->setEditText(QString::fromLatin1(invalid));
+        QCOMPARE(settings.value("video/resolution").toString(), QString("3440x1440"));
+    }
+    delete window_; window_ = new versus::ui::MainWindow(nullptr);
+    resolution = window_->findChild<QComboBox *>("resolutionSelect");
+    QCOMPARE(resolution->currentText(), QString("3440x1440"));
+    QVERIFY(versus::ui::MainWindowTestAccess::resetPersistedSettingsToDefaults(*window_));
+    QCOMPARE(resolution->currentText(), QString("1280x720"));
 }
 
 void TestMainWindow::testDarkThemeApplied() {

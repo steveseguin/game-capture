@@ -48,6 +48,10 @@ struct PeerConfig {
     int audioChannels = 2;
     bool pcmAudio = false;
     bool audioRed = false;
+    // Native WHIP only; VDO.Ninja retains its existing transport policy.
+    int videoBitrateKbps = 0;
+    int recoveryHistoryMs = 1500;
+    int playoutDelayMs = 500;
     bool initialAlpha = false;
     // Keep an inactive alpha m-line before data until the receiver opts in.
     bool reserveAlphaTrack = false;
@@ -77,6 +81,9 @@ struct ReceiverFeedbackStatus {
     int64_t ageMs = -1;
     int64_t timeoutMs = 0;
     uint64_t reports = 0;
+    int videoPlayoutMs = 0;
+    bool videoNack = false, videoPli = false, videoRtx = false, audioRed = false;
+    uint64_t retransmitted = 0, repairMisses = 0;
 };
 
 struct MediaPlanChange {

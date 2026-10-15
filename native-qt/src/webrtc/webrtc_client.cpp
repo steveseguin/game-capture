@@ -1,6 +1,8 @@
 #include "versus/webrtc/webrtc_client.h"
 #include "versus/audio/red_packet.h"
 #include "capture_sr_reporter.h"
+#include "video_recovery.h"
+#include "video_pacer.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -179,6 +181,9 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         std::shared_ptr<rtc::RtpPacketizationConfig> videoRtpConfig;
         std::shared_ptr<rtc::RtpPacketizationConfig> alphaVideoRtpConfig;
         std::shared_ptr<rtc::RtpPacketizationConfig> audioRtpConfig;
+        std::atomic<int64_t> lastRecoveryKeyframe{0};
+        std::shared_ptr<VideoRecovery> videoRecovery;
+        std::shared_ptr<VideoPacer> videoPacer;
         bool usePcm = false;
         bool useRed = false;
         bool audioNegotiated = false;
@@ -215,6 +220,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
 
         void close() noexcept {
             if (closed.exchange(true, std::memory_order_acq_rel)) return;
+            if (videoPacer) videoPacer->stop();
 
             try {
                 if (videoTrack) videoTrack->resetCallbacks();
@@ -305,6 +311,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     int configuredAudioChannels = 2;
     bool configuredPcmAudio = false;
     bool configuredAudioRed = false;
+    int configuredVideoBitrateKbps = 0, configuredHistoryMs = 1500, configuredPlayoutMs = 500;
 
     std::mutex callbackMutex;
     IceCandidateCallback iceCallback;
@@ -697,6 +704,12 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             }
         }
         video.addSSRC(target->videoSsrc, target->mediaIdentity, target->mediaIdentity, "video");
+        if (configuredVideoBitrateKbps > 0) {
+            if (configuredPlayoutMs > 0) video.addAttribute("extmap:4 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay");
+            video.addRtxCodec(98, kVideoPayloadType, kVideoClockRate);
+            video.addSSRC(5555555, target->mediaIdentity, target->mediaIdentity, "video");
+            video.addAttribute("ssrc-group:FID " + std::to_string(target->videoSsrc) + " 5555555");
+        }
         auto track = target->pc->addTrack(video);
         if (!track) return false;
 
@@ -743,11 +756,24 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
                 auto self = weakSelf.lock();
                 auto state = weakTarget.lock();
                 if (!self || !state || !self->isCurrentTransport(state)) return;
+                if (state->videoRecovery) {
+                    if (!state->videoRecovery->usesPli()) return;
+                    const auto now = mediaTime100ns();
+                    auto previous = state->lastRecoveryKeyframe.load();
+                    if (now-previous < 2500000 || !state->lastRecoveryKeyframe.compare_exchange_strong(previous, now)) return;
+                }
                 self->invokeCallback(generation, &Impl::keyframeCallback, generation);
             });
             packetizer->addToChain(reporter);
-            packetizer->addToChain(nack);
+            if (configuredVideoBitrateKbps > 0) {
+                target->videoRecovery = std::make_shared<VideoRecovery>(target->videoSsrc, 5555555, configuredHistoryMs, configuredVideoBitrateKbps, target->mediaClock, target->mediaIdentity);
+                packetizer->addToChain(target->videoRecovery);
+            } else packetizer->addToChain(nack);
             packetizer->addToChain(pli);
+            if (configuredVideoBitrateKbps > 0) {
+                target->videoPacer = std::make_shared<VideoPacer>(configuredVideoBitrateKbps);
+                packetizer->addToChain(target->videoPacer);
+            }
             track->setMediaHandler(packetizer);
         } else if (codec == PeerConfig::VideoCodec::VP9) {
             // Manual VP9 already supplies complete RTP packets. Cache those
@@ -1056,6 +1082,9 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         impl_->configuredAudioChannels = config.audioChannels == 1 ? 1 : 2;
         impl_->configuredPcmAudio = config.pcmAudio;
         impl_->configuredAudioRed = config.audioRed && !config.pcmAudio;
+        impl_->configuredVideoBitrateKbps = std::clamp(config.videoBitrateKbps, 0, 100000);
+        impl_->configuredHistoryMs = std::clamp(config.recoveryHistoryMs, 250, 3000);
+        impl_->configuredPlayoutMs = std::clamp(config.playoutDelayMs, 0, 1000);
         replacement = impl_->buildTransport(
             rtcConfig, config.iceMode, config.initialVideo, config.initialAudio, config.initialAlpha);
         if (replacement) {
@@ -1222,7 +1251,18 @@ bool WebRtcClient::setRemoteDescription(const std::string &sdp, const std::strin
         return false;
     }
     if (!impl_->isCurrentTransport(target)) return false;
-    if (type == "answer") configureAudioFromDescription(sdp);
+    if (type == "answer") {
+        configureAudioFromDescription(sdp);
+        if (target->videoRecovery) {
+            target->videoRecovery->negotiate(sdp);
+            std::lock_guard lock(target->videoSendMutex);
+            if (target->videoRtpConfig && target->videoRecovery->usesPlayoutDelay() && impl_->configuredPlayoutMs > 0) {
+                target->videoRtpConfig->playoutDelayId = 4;
+                target->videoRtpConfig->playoutDelayMin = uint16_t((impl_->configuredPlayoutMs+9)/10);
+                target->videoRtpConfig->playoutDelayMax = uint16_t(std::max(500, impl_->configuredPlayoutMs+250)/10);
+            }
+        }
+    }
     {
         std::lock_guard<std::mutex> lock(target->remoteCandidateMutex);
         target->remoteDescriptionSet = true;
@@ -1282,7 +1322,19 @@ std::string WebRtcClient::createOffer() {
 
 ReceiverFeedbackStatus WebRtcClient::receiverFeedback() const {
     auto target = impl_->transportSnapshot();
-    return target ? target->receiverFeedback->status() : ReceiverFeedbackStatus{};
+    auto status = target ? target->receiverFeedback->status() : ReceiverFeedbackStatus{};
+    if (target) {
+        if (target->videoRecovery) {
+            status.videoPlayoutMs = target->videoRecovery->usesPlayoutDelay() ? impl_->configuredPlayoutMs : 0;
+            status.videoNack = target->videoRecovery->usesNack();
+            status.videoPli = target->videoRecovery->usesPli();
+            status.videoRtx = target->videoRecovery->usesRtx();
+            status.retransmitted = target->videoRecovery->retransmitted();
+            status.repairMisses = target->videoRecovery->missed();
+        }
+        std::lock_guard lock(target->audioSendMutex); status.audioRed = target->useRed;
+    }
+    return status;
 }
 
 bool WebRtcClient::iceGatheringComplete() const {
@@ -1585,7 +1637,7 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
                                kVideoPayloadType,
                                packet.data);
     }
-    if (!target->videoRtpConfig) return false;
+    if (!target->videoRtpConfig || (target->videoPacer && target->videoPacer->failed())) return false;
     target->videoRtpConfig->timestamp = timestamp;
     try {
         target->videoTrack->send(toBinary(packet.data));

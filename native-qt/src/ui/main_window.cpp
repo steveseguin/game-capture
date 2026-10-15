@@ -34,6 +34,7 @@
 #include <QPainter>
 #include <QPointer>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QToolTip>
 #include <QScrollArea>
@@ -85,6 +86,15 @@ static const QString APP_TRAY_LIVE = "Game Capture - LIVE";
 static const QString APP_VERSION_TEXT = QStringLiteral(APP_VERSION);
 static const QString APP_SETTINGS_ORG = "VDO.Ninja";
 static const QString APP_SETTINGS_NAME = "Game Capture";
+
+static QString canonicalResolution(const QString &text) {
+    static const QRegularExpression pattern(QStringLiteral("^\\s*([0-9]{1,4})\\s*[xX\\x{00d7}]\\s*([0-9]{1,4})\\s*$"));
+    const auto match = pattern.match(text);
+    if (!match.hasMatch()) return {};
+    const int width = match.captured(1).toInt(), height = match.captured(2).toInt();
+    if (width < 160 || width > 3840 || height < 90 || height > 2160 || width % 2 || height % 2) return {};
+    return QString::number(width) + 'x' + QString::number(height);
+}
 
 // Output URLs can contain credentials too. Protect the whole profile with the
 // current Windows user's key, rather than persisting just the token securely.
@@ -965,7 +975,10 @@ void MainWindow::loadPersistedSettings() {
     if (audioEncodingToggle_) audioEncodingToggle_->setChecked(false);
     updateAudioEncodingControls();
 
-    restoreComboByData(resolutionSelect_, settings.value("video/resolution", "1280x720"));
+    const auto savedResolution = canonicalResolution(settings.value("video/resolution", "1280x720").toString());
+    restoreComboByData(resolutionSelect_, savedResolution.isEmpty() ? QString("1280x720") : savedResolution);
+    if (resolutionSelect_)
+        resolutionSelect_->setEditText(savedResolution.isEmpty() ? QString("1280x720") : savedResolution);
     restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
     restoreComboByData(
         cameraResolutionSelect_,
@@ -1070,7 +1083,9 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("stream/roomModeLqEnabled", roomModeLqPreference_);
     settings.setValue("ui/advancedVisible", advancedToggle_ ? advancedToggle_->isChecked() : false);
     settings.setValue("ui/minimizeToTrayOnClose", minimizeToTrayOnClose_);
-    settings.setValue("video/resolution", resolutionSelect_ ? resolutionSelect_->currentData().toString() : QString("1280x720"));
+    const auto resolution = canonicalResolution(resolutionSelect_ ? resolutionSelect_->currentText() : QString("1280x720"));
+    // Do not replace the last valid setting while a custom value is incomplete.
+    if (!resolution.isEmpty()) settings.setValue("video/resolution", resolution);
     settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
     settings.setValue("camera/resolution", cameraResolutionSelect_ ? cameraResolutionSelect_->currentData().toString() : QString("1920x1080"));
     settings.setValue("camera/fps", cameraFpsSelect_ ? cameraFpsSelect_->currentData().toInt() : 30);
@@ -1207,6 +1222,7 @@ void MainWindow::connectPersistedSettingSignals() {
     }
     if (resolutionSelect_) {
         connect(resolutionSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+        connect(resolutionSelect_, &QComboBox::editTextChanged, this, saveNow);
     }
     if (fpsSelect_) {
         connect(fpsSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
@@ -1706,9 +1722,19 @@ void MainWindow::setupUI() {
 
     resolutionSelect_ = new QComboBox(this);
     resolutionSelect_->setObjectName("resolutionSelect");
+    resolutionSelect_->setAccessibleName("Stream resolution");
+    resolutionSelect_->setEditable(true);
+    resolutionSelect_->setInsertPolicy(QComboBox::NoInsert);
+    resolutionSelect_->lineEdit()->setMaxLength(24);
+    resolutionSelect_->lineEdit()->setAccessibleName("Custom stream resolution");
+    resolutionSelect_->setToolTip("Choose a preset or type width x height, such as 2560x1440 or 3440x1440. Use even dimensions: width 160–3840, height 90–2160. Higher resolutions need more encoder capacity.");
+    resolutionSelect_->addItem("3840x2160", QVariant("3840x2160"));
+    resolutionSelect_->addItem("2560x1440", QVariant("2560x1440"));
     resolutionSelect_->addItem("1920x1080", QVariant("1920x1080"));
     resolutionSelect_->addItem("1280x720", QVariant("1280x720"));
     resolutionSelect_->addItem("960x540", QVariant("960x540"));
+    resolutionSelect_->addItem("1080x1920", QVariant("1080x1920"));
+    resolutionSelect_->addItem("720x1280", QVariant("720x1280"));
     resolutionSelect_->setCurrentIndex(resolutionSelect_->findData("1280x720"));
     installComboWheelGuard(resolutionSelect_);
     advancedForm->addRow("Resolution", resolutionSelect_);
@@ -2951,9 +2977,14 @@ void MainWindow::onGoLiveClicked() {
             cameraMode && cameraFpsSelect_
                 ? cameraFpsSelect_
                 : fpsSelect_;
-        const QString resolutionText = activeResolutionSelect
-            ? activeResolutionSelect->currentData().toString()
-            : QString("1920x1080");
+        const QString resolutionText = canonicalResolution(activeResolutionSelect
+            ? (cameraMode ? activeResolutionSelect->currentData().toString() : activeResolutionSelect->currentText())
+            : QString("1920x1080"));
+        if (resolutionText.isEmpty()) {
+            updateStatus("Enter an even resolution: width 160–3840, height 90–2160 (for example 2560x1440).", "error");
+            if (resolutionSelect_) resolutionSelect_->setFocus();
+            return;
+        }
         const QStringList parts = resolutionText.split('x');
         const int width = parts.size() > 0 ? parts[0].toInt() : 1920;
         const int height = parts.size() > 1 ? parts[1].toInt() : 1080;

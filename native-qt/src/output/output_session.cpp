@@ -220,6 +220,7 @@ struct Session::Impl {
             webrtc::PeerConfig peer;
             peer.enableDataChannel = false; peer.initialVideo = true; peer.initialAudio = media.audioEnabled;
             peer.audioChannels = media.audioChannels;
+            peer.videoBitrateKbps = media.videoBitrateKbps;
             peer.iceMode = media.iceMode;
             peer.videoWidth = media.width; peer.videoHeight = media.height; peer.videoFps = media.fps;
             peer.iceServers = iceServers(options.links);
@@ -303,6 +304,10 @@ struct Session::Impl {
                     {
                         std::lock_guard lock(mutex);
                         current.receiverReports = feedback.reports;
+                        current.videoPlayoutMs = feedback.videoPlayoutMs;
+                        current.videoNack = feedback.videoNack; current.videoPli = feedback.videoPli;
+                        current.videoRtx = feedback.videoRtx;
+                        current.retransmitted = feedback.retransmitted; current.repairMisses = feedback.repairMisses;
                         current.receiverReportAgeMs = feedback.ageMs;
                         current.receiverReportTimeoutMs = feedback.timeoutMs;
                         current.icePath = webrtc::selectedIcePathName(client.selectedIcePath());

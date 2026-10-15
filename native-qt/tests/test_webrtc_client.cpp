@@ -18,7 +18,10 @@
 #include "versus/webrtc/webrtc_client.h"
 #include "versus/webrtc/media_clock.h"
 #include "../src/webrtc/capture_sr_reporter.h"
+#include "../src/webrtc/video_recovery.h"
+#include "../src/webrtc/video_pacer.h"
 #include <set>
+#include <rtc/h264rtppacketizer.hpp>
 #include "versus/app/versus_app.h"
 
 namespace versus::webrtc {
@@ -919,6 +922,9 @@ class TestWebRtcClient : public QObject {
     void testRemoteCandidateQueuesBeforeRemoteDescription();
     void testInitialOfferCompletesPromptlyAfterBootstrapTracks();
     void testSenderReportClockIgnoresEncoderDelay();
+    void testWhipRepairNegotiationAndRtx();
+    void testWhipRepairBoundsAndMalformedFeedback();
+    void testWhipPacerBackpressureAndShutdown();
     void testVp9AlphaOfferUsesPluginDualTrackContract();
     void testAlphaMlineOrderSurvivesResetAndCodecFallback();
     void testReservedAlphaIsInactiveUntilCapability();
@@ -1267,6 +1273,141 @@ void TestWebRtcClient::testSenderReportClockIgnoresEncoderDelay() {
                 uint32_t(mediaRtpTimestamp(after, rate) - mediaRtpTimestamp(before, rate)));
         QVERIFY(uint32_t(sr->rtpTimestamp() - header->timestamp()) >= rate / 4);
     }
+}
+
+namespace {
+rtc::message_ptr recoveryPacket(uint16_t seq, size_t bytes = 20) {
+    auto packet = rtc::make_message(bytes);
+    std::fill(packet->begin(), packet->end(), std::byte{0x37});
+    std::fill(packet->begin(), packet->begin()+12, std::byte{0});
+    auto *header = reinterpret_cast<rtc::RtpHeader *>(packet->data());
+    header->preparePacket(); header->setSsrc(1234); header->setSeqNumber(seq);
+    header->setPayloadType(96); header->setTimestamp(900000); header->setMarker(true);
+    return packet;
+}
+rtc::message_ptr recoveryNack(uint16_t seq, uint16_t mask = 0, uint32_t ssrc = 1234) {
+    auto message = rtc::make_message(16, rtc::Message::Control);
+    auto *p = reinterpret_cast<uint8_t *>(message->data());
+    std::fill(p, p+16, 0); p[0]=0x81; p[1]=205; p[3]=3;
+    for (int i=0; i<4; ++i) p[8+i]=uint8_t(ssrc >> ((3-i)*8));
+    p[12]=uint8_t(seq>>8); p[13]=uint8_t(seq); p[14]=uint8_t(mask>>8); p[15]=uint8_t(mask);
+    return message;
+}
+const std::string recoverySdp = "m=video 9 UDP/TLS/RTP/SAVPF 96 98\r\n"
+    "a=rtpmap:98 rtx/90000\r\na=fmtp:98 apt=96\r\na=rtcp-fb:96 nack\r\na=rtcp-fb:96 nack pli\r\n";
+}
+
+void TestWebRtcClient::testWhipRepairNegotiationAndRtx() {
+    using namespace versus::webrtc;
+    VideoRecovery recovery(1234, 5678, 1500, 3500, std::make_shared<MediaClock>(), "qa-clock");
+    rtc::message_vector packets{recoveryPacket(65535), recoveryPacket(0)};
+    recovery.outgoing(packets, {});
+    rtc::message_vector feedback{recoveryNack(65535, 1)};
+    rtc::message_vector sent;
+    const auto send = [&](rtc::message_ptr packet) { sent.push_back(packet); };
+    recovery.incoming(feedback, send); QVERIFY(sent.empty());
+    recovery.negotiate("m=audio 9 UDP/TLS/RTP/SAVPF 96 98\r\na=rtcp-fb:96 nack\r\n");
+    QVERIFY(!recovery.usesNack()); QVERIFY(!recovery.usesRtx());
+    recovery.negotiate(recoverySdp+"a=extmap:4/recvonly http://www.webrtc.org/experiments/rtp-hdrext/playout-delay\r\n");
+    QVERIFY(recovery.usesPlayoutDelay());
+    QVERIFY(recovery.usesNack()); QVERIFY(recovery.usesPli()); QVERIFY(recovery.usesRtx());
+    recovery.incoming(feedback, send);
+    QCOMPARE(recovery.retransmitted(), uint64_t(2));
+    std::set<uint16_t> originalSequences; std::vector<uint16_t> rtxSequences; bool senderReport=false;
+    for (const auto &packet : sent) {
+        if (packet->type == rtc::Message::Control) {
+            const auto *sr = reinterpret_cast<const rtc::RtcpSr *>(packet->data());
+            QCOMPARE(sr->senderSSRC(), uint32_t(5678)); QCOMPARE(sr->packetCount(), uint32_t(2));
+            senderReport=true; continue;
+        }
+        const auto *h = reinterpret_cast<const rtc::RtpHeader *>(packet->data());
+        QCOMPARE(h->ssrc(), uint32_t(5678)); QCOMPARE(h->timestamp(), uint32_t(900000));
+        QCOMPARE(h->payloadType(), uint8_t(98)); QVERIFY(h->marker());
+        QCOMPARE(packet->size(), size_t(22));
+        const auto *body=reinterpret_cast<const uint8_t *>(packet->data())+12;
+        originalSequences.insert(uint16_t(body[0]*256+body[1])); rtxSequences.push_back(h->seqNumber());
+        for (int i=2; i<10; ++i) QCOMPARE(body[i], uint8_t(0x37));
+    }
+    QVERIFY(senderReport); QCOMPARE(originalSequences, (std::set<uint16_t>{0,65535}));
+    QCOMPARE(uint16_t(rtxSequences[1]-rtxSequences[0]), uint16_t(1));
+    recovery.incoming(feedback, send); QCOMPARE(recovery.retransmitted(), uint64_t(2)); // duplicate NACK bound
+    auto badMapping=recoverySdp; badMapping.replace(badMapping.find("apt=96"),6,"apt=97");
+    recovery.negotiate(badMapping); QVERIFY(!recovery.usesPlayoutDelay()); QVERIFY(!recovery.usesRtx()); QVERIFY(recovery.usesNack());
+    VideoRecovery extensionRecovery(1234,5678,1500,3500,std::make_shared<MediaClock>(),"ext");
+    extensionRecovery.negotiate(recoverySdp);
+    auto config=std::make_shared<rtc::RtpPacketizationConfig>(1234,"ext",96,90000);
+    config->sequenceNumber=100; config->timestamp=900000;
+    config->playoutDelayId=4; config->playoutDelayMin=15; config->playoutDelayMax=50;
+    rtc::H264RtpPacketizer packetizer(rtc::NalUnit::Separator::StartSequence,config);
+    auto frame=rtc::make_message(12); std::fill(frame->begin(),frame->end(),std::byte{0x55});
+    auto *f=reinterpret_cast<uint8_t *>(frame->data()); f[0]=0;f[1]=0;f[2]=0;f[3]=1;f[4]=0x65;
+    packets={frame};packetizer.outgoing(packets,{});
+    QVERIFY(!packets.empty());
+    extensionRecovery.outgoing(packets,{});sent.clear();feedback={recoveryNack(100)};
+    extensionRecovery.incoming(feedback,send);
+    QVERIFY2(extensionRecovery.retransmitted()==1,qPrintable(QByteArray(reinterpret_cast<const char *>(packets[0]->data()),int(packets[0]->size())).toHex()));
+    const auto repaired=std::find_if(sent.begin(),sent.end(),[](const auto &p){ return p->type != rtc::Message::Control; });
+    QVERIFY(repaired!=sent.end());
+    const auto *extHeader=reinterpret_cast<const rtc::RtpHeader *>((*repaired)->data());
+    QCOMPARE(extHeader->getExtensionHeaderSize(),size_t(8));
+    const auto *rtxBody=reinterpret_cast<const uint8_t *>(extHeader->getBody());
+    QCOMPARE(rtxBody[0],uint8_t(0));QCOMPARE(rtxBody[1],uint8_t(100));QCOMPARE(rtxBody[2],uint8_t(0x65));
+
+}
+
+void TestWebRtcClient::testWhipRepairBoundsAndMalformedFeedback() {
+    using namespace versus::webrtc;
+    VideoRecovery recovery(1234,5678,250,128,std::make_shared<MediaClock>(),"bounds");
+    recovery.negotiate(recoverySdp);
+    rtc::message_vector packets;
+    for (uint16_t i=0; i<4097; ++i) packets.push_back(recoveryPacket(i));
+    recovery.outgoing(packets, {});
+    rtc::message_vector sent, feedback{recoveryNack(0), recoveryNack(4096,0,999)};
+    const auto send=[&](rtc::message_ptr p) { if (p->type != rtc::Message::Control) sent.push_back(p); };
+    recovery.incoming(feedback, send); QVERIFY(sent.empty()); QCOMPARE(recovery.missed(),uint64_t(1));
+    for (size_t length=0; length<16; ++length) {
+        auto broken=recoveryNack(4096); broken->resize(length); feedback={broken}; recovery.incoming(feedback,send);
+    }
+    auto padded=recoveryNack(4096); reinterpret_cast<uint8_t *>(padded->data())[0]|=0x20;
+    feedback={padded}; recovery.incoming(feedback,send); QVERIFY(sent.empty()); // zero padding is invalid
+    feedback={recoveryNack(4096)}; recovery.incoming(feedback,send); QCOMPARE(sent.size(),size_t(1));
+    QTest::qSleep(275); feedback={recoveryNack(4095)}; recovery.incoming(feedback,send);
+    QCOMPARE(sent.size(),size_t(1)); QCOMPARE(recovery.missed(),uint64_t(2));
+    VideoRecovery budget(1234,5678,1500,128,std::make_shared<MediaClock>(),"budget");
+    budget.negotiate(recoverySdp); packets.clear(); feedback.clear(); sent.clear();
+    for (uint16_t i=0; i<400; ++i) packets.push_back(recoveryPacket(i,1100));
+    for (uint16_t i=0; i<400; i+=17) feedback.push_back(recoveryNack(i,65535));
+    budget.outgoing(packets,{}); budget.incoming(feedback,send);
+    QVERIFY(!sent.empty()); QVERIFY(sent.size()*1102<=65536);
+    const auto initiallyRepaired = budget.retransmitted();
+    // A new loss must be repairable shortly after a reorder burst exhausts
+    // the allowance, without waiting for an arbitrary one-second boundary.
+    QTest::qSleep(100);
+    feedback = {recoveryNack(399)};
+    budget.incoming(feedback, send);
+    QCOMPARE(budget.retransmitted(), initiallyRepaired + uint64_t(1));
+    // Malformed RTP extension size must not read beyond a short packet.
+    auto shortExtension=recoveryPacket(450,12); reinterpret_cast<uint8_t *>(shortExtension->data())[0]|=0x10;
+    packets={shortExtension}; budget.outgoing(packets,{});
+}
+
+void TestWebRtcClient::testWhipPacerBackpressureAndShutdown() {
+    using namespace versus::webrtc;
+    VideoPacer overloaded(128);
+    rtc::message_vector packets;
+    for (int i=0; i<100; ++i) packets.push_back(recoveryPacket(uint16_t(i),1200));
+    overloaded.outgoing(packets,[](rtc::message_ptr){});
+    QVERIFY(overloaded.failed()); QVERIFY(packets.empty()); overloaded.stop(); overloaded.stop();
+    VideoPacer paced(3500); std::mutex mutex; std::vector<uint16_t> delivered;
+    for (int i=0; i<5; ++i) packets.push_back(recoveryPacket(uint16_t(i),120));
+    paced.outgoing(packets,[&](rtc::message_ptr packet) {
+        std::lock_guard lock(mutex); delivered.push_back(reinterpret_cast<const rtc::RtpHeader *>(packet->data())->seqNumber());
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(([&] { std::lock_guard lock(mutex); return delivered.size()==5; })(),1000);
+    paced.stop(); QCOMPARE(delivered,(std::vector<uint16_t>{0,1,2,3,4})); QVERIFY(!paced.failed());
+    VideoPacer broken(3500); packets={recoveryPacket(1)};
+    broken.outgoing(packets,[](rtc::message_ptr){ throw std::runtime_error("transport failure"); });
+    QTRY_VERIFY_WITH_TIMEOUT(broken.failed(),1000); broken.stop();
 }
 
 void TestWebRtcClient::testVp9AlphaOfferUsesPluginDualTrackContract() {

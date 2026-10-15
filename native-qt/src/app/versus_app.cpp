@@ -1369,6 +1369,7 @@ bool VersusApp::goLive(const StartOptions &options) {
         const auto lifecycle = lifecycleStateSnapshot();
         output::MediaConfig media;
         media.width = videoState.config.width; media.height = videoState.config.height; media.fps = videoState.config.frameRate;
+        media.videoBitrateKbps = videoState.config.bitrate;
         media.audioChannels = audioOutputChannels_.load();
         media.audioEnabled = lifecycle.audioSourceMode != AudioSourceMode::None || lifecycle.includeMicrophone;
         media.iceMode = options.iceMode;
@@ -2480,6 +2481,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"ice_path", status.icePath}, {"receiver_reports", status.receiverReports},
             {"receiver_report_age_ms", status.receiverReportAgeMs},
             {"receiver_report_timeout_ms", status.receiverReportTimeoutMs},
+            {"video_nack", status.videoNack}, {"video_pli", status.videoPli},
+            {"video_playout_ms", status.videoPlayoutMs}, {"video_rtx", status.videoRtx},
+            {"retransmitted_packets", status.retransmitted}, {"repair_cache_misses", status.repairMisses},
             {"audio_codec", audioEnabled ? (external->usesPcmInput() ? "AAC" : "Opus") : "none"},
             {"configured_aac_bitrate_kbps", config.aacBitrateKbps}};
     }

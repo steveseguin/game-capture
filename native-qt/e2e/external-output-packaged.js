@@ -174,9 +174,14 @@ paths:
             if(page){await page.reload();await page.waitForFunction(()=>document.querySelector('video')?.currentTime>1,{},{timeout:30000});}
           }
           const recording=path.join(dir,phase+'.mkv');
+          if(protocol==='whip'&&opts['rtsp-warmup-ms']){
+            const warmupMs=Number(opts['rtsp-warmup-ms']);
+            await require('./quality-rtsp-trace').warmup('rtsp://127.0.0.1:18854/'+stream,warmupMs);
+            result.rtspWarmupMs=warmupMs;
+          }
           const input=direct?directInput:protocol==='rtmp'?['-i','rtmp://127.0.0.1:19350/'+stream]:protocol==='srt'?
             ['-i','srt://127.0.0.1:18890?mode=caller&streamid=read:'+stream]:['-rtsp_transport','tcp','-i','rtsp://127.0.0.1:'+(rtspTrace?'18855':'18854')+'/'+stream];
-          record=direct?directReceiver:launch(ffmpeg,['-hide_banner','-y',...input,'-map','0','-c','copy','-t',String(seconds),recording],id+'-'+phase+'-record');
+          record=direct?directReceiver:launch(ffmpeg,['-hide_banner','-y',...(opts['receiver-debug']==='true'?['-debug_ts']:[]),...input,'-map','0','-c','copy','-t',String(seconds),recording],id+'-'+phase+'-record');
           const frames=[];
           const end=Date.now()+(seconds+20)*1000;
           while(record.exitCode===null&&Date.now()<end){

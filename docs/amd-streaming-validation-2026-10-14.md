@@ -492,3 +492,109 @@ The rebuilt Studio package passed the browser-audio suspension workflow: after 1
 Evidence: Studio's `native-qt/e2e/reports/audio-rate-final-2026-10-14/browser-idle/`, `recording-isolation/` and `mixer-final-suite.json`. The five-minute contention files were also checked separately for cadence: local/received had 9,057 / 8,999 frames at 30 fps, increasing timestamps, maximum spacing 34 ms, and zero intervals over 50 ms (`amd-followup-soak-2026-10-14/file-cadence.json`). All media runs, builds and post-run decoding were serialized; no owned app/media workers remained after cleanup.
 
 Remaining qualifications: the retained WHIP receiver/remux startup timestamp failures and combined-loss/jitter freeze; physical AMD encoding/OBS behavior and crash diagnosis; actual endpoint rate/device switches; overnight resource stability and the deferred clean-machine run. The audio-rate fix is verified on the available Intel/NVIDIA host and does not certify those remaining cases.
+
+### WHIP repair follow-up (2026-10-14)
+
+The sender's fixed one-second repair budget could run out after a burst of
+reordering-induced NACKs, refusing subsequent genuine-loss repairs until the
+next window. Both apps now replenish that budget continuously. Its average
+allowance, burst ceiling, cache limits and 50 ms duplicate-request suppression
+remain bounded. No extra video FEC or guaranteed loss-free delivery is claimed.
+Game Capture also receives Studio's negotiated RTX/NACK/PLI and video pacing
+implementation, enabled only for native WHIP; VDO.Ninja transport is unchanged.
+Game Capture diagnostics now report the negotiated recovery capabilities,
+retransmitted packet count and repair cache misses.
+
+Instrumentation observes aiortc's unchanged jitter-buffer behavior and NACKs.
+The old Studio package produced 44 buffer resets, one non-increasing decoded
+timestamp and a failed quality result in `whip-fixes-2026-10-14/observed-baseline`.
+With continuous replenishment, two complete mixer/recording/publishing runs
+passed: combined 1% loss plus random 0–25 ms packet delay/reordering delivered
+29.97/29.98 fps, maximum video PTS spacing 33.4 ms, zero buffer resets, strictly
+increasing timestamps and clean full raw H.264 decode. The receiver does not
+negotiate RED or the playout-delay hint. Independent recordings stayed at 30 fps,
+maximum spacing 34 ms, measured maximum A/V offsets 18/28 ms, and unchanged
+recording drop counters. API maxima were 26.5/28.4 ms. These are repeat
+observations under actual scheduling, not an identical packet-loss replay.
+
+Game Capture's packaged software encoder also passed real window/process-audio
+capture through the same receiver: 10 seconds clean, 20 seconds at 1% loss,
+60 seconds of combined loss/jitter, and 10 seconds restored. The impaired phase
+delivered 29.97 fps, maximum spacing 37.7 ms, no buffer resets or non-increasing
+PTS, audible audio and clean full H.264 decode. No reconnects or cache misses;
+maximum diagnostics request time 27.4 ms. Evidence:
+`game-capture/native-qt/e2e/reports/whip-fixes-2026-10-14/software/results.json`.
+Reproduction harness: `e2e/whip-recovery-packaged.py`, with `--receiver-root`
+pointing at Desktop Studio's `native-qt` directory containing the private
+aiortc dependencies, and `--fixture` pointing at the frame-clock MP4.
+
+**Chromium qualification remains open.** The same Studio candidate was tested
+with combined A/V playback and negotiated RED both on and off. Ordinary Opus
+passed (30.03 impaired displayed fps, 67 ms maximum gap). RED enabled delivered
+29.20 fps but had a 335 ms gap, failing the unchanged <250 ms gate. Sender RTP
+continued through that interval. The independent local recording stayed clean
+at 30 fps with no new recording drops and maximum measured A/V offset 13 ms.
+Retain `browser-continuous/udp-fault.json` as failed; the independent decoder
+passes do not certify every browser/service/link.
+
+### MediaMTX-to-FFmpeg startup: verified receiver workaround
+
+The new trace retains RTSP `RTP-Info` origins alongside RTP frame markers and
+RTCP sender reports; FFmpeg `-debug_ts` retains its demuxer timeline. In the
+unmodified MediaMTX 1.21.2 path, an on-demand RTSP stream can return an initialized
+video origin and no audio origin. FFmpeg's shared RTCP clock initialization
+then replaces that partial mapping. One of three new ordinary starts had a
+73.155 ms backward demuxer step when the initial video sender report arrived,
+despite monotonic input RTP. See `startup-debug/`.
+
+An explicit private-receiver warm-up (RTSP DESCRIBE, wait 500 ms, then start
+the recorder) lets MediaMTX observe both tracks before its PLAY response.
+Six starts then had complete RTP-Info, strictly increasing recorded timestamps,
+30 fps and maximum frame spacing 34 ms; all six full files decoded cleanly.
+No media timestamps were regenerated, rewritten or filtered. The normal
+unwarmed path is still covered and still fails intermittently: this is a
+receiver workaround, not a publisher timestamp fix.
+
+Use Game Capture's existing external-output harness with
+`--rtsp-trace=true --receiver-debug=true --rtsp-warmup-ms=500` to reproduce.
+The warm-up is opt-in and restricted to the private loopback fixture.
+Evidence: Studio's `whip-fixes-2026-10-14/startup-warm/timestamp-verification.json`.
+Five clips also passed the complete pulse/audio/cadence analysis; the sixth
+15-second clip had too few matching fixture A/V pulses, so the aggregate
+`analysis.json` remains failed. Its separate timestamp/full-decode check passed.
+Do not represent the six timestamp checks as six complete A/V quality passes.
+
+Relevant implementation references:
+[FFmpeg RTP clock mapping](https://github.com/FFmpeg/FFmpeg/blob/n8.1.2/libavformat/rtpdec.c)
+and [RTSP shared sender-report origin](https://github.com/FFmpeg/FFmpeg/blob/n8.1.2/libavformat/rtsp.c).
+
+
+### GitHub issue #3: custom resolutions
+
+The open [custom-resolution request](https://github.com/steveseguin/game-capture/issues/3)
+is implemented in the existing Advanced resolution control. It accepts typed
+even dimensions (width 160–3840, height 90–2160) and adds 1440p, 4K and portrait
+presets. Valid custom sizes persist across restart; incomplete, odd and
+out-of-range values preserve the previous saved setting and are blocked at
+start. The default remains 1280x720; no new always-visible settings panel.
+
+The complete packaged GUI was operated through its actual source list,
+Advanced controls, resolution text entry and Start/Stop buttons. Private RTMP
+reception produced 240 decoded frames each at 2560x1440, custom 2560x1080,
+3840x2160 and 720x1280. Every clip had approximately 30 fps, strictly increasing
+timestamps and maximum interval 34 ms. The active encoder was the hardware
+H.264 MFT on the available Intel/NVIDIA host. The GUI blocked 1921x1080 and
+restored custom 2560x1080 after restart; the original user registry was restored.
+Evidence: `native-qt/e2e/reports/open-issues-2026-10-14/custom-resolution-6/`.
+Earlier harness attempts and their setup failures remain retained. This is
+not a claim that every GPU or encoder supports 4K, or that a 4K stream will
+have the same resource cost as 720p.
+
+Artifacts: GUI package `dist/game-capture-open-issues-review/game-capture.exe`
+SHA-256 `6a51c7e7a28614e81a4a0dcfddd5c955031f5a95c78fb360bada828bcd70a8ae`;
+WHIP software run package `dist/game-capture-whip-recovery-review/game-capture.exe`
+SHA-256 `6a81a546f97dd1885b14bea199a195708fd14d3ea0da14a0066ec8d6ddbc1c27`.
+The GUI candidate adds only the resolution UI changes to that verified
+WHIP transport implementation. Studio's tested candidate is
+`dist/desktop-studio-whip-recovery-review/desktop-studio.exe`, SHA-256
+`f77b5fa9196828dad55ca60097deb65699bb92804276acfa02f487465375a64b`.
