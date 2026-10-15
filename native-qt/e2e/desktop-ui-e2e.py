@@ -288,21 +288,42 @@ def main():
 
         def choose_combo(combo, text):
             # Source changes and asynchronous probe results can move controls.
-            # Focus the real control and use Qt's popup shortcut so layout
-            # changes cannot redirect a coordinate click to a different row.
+            # Scroll the actual control into view and re-resolve its geometry;
+            # UIA focus alone does not reliably scroll Qt controls into view.
             automation_id = combo.element_info.automation_id
-            time.sleep(.4)
-            combo = next(c for c in window.descendants()
-                         if c.element_info.automation_id == automation_id)
-            combo.set_focus()
-            combo.type_keys("%{DOWN}")
             # Qt's popup is a separate window. Wait for its actual option and
             # click it instead of sending navigation keys before it has focus.
             def option():
                 return next((c for w in app.windows() for c in w.descendants(control_type="ListItem")
                              if c.window_text() == text and c.is_visible()), None)
+            for attempt in range(3):
+                previous = None
+                for _ in range(40):
+                    combo = next(c for c in window.descendants()
+                                 if c.element_info.automation_id == automation_id)
+                    rect = combo.rectangle()
+                    bounds = window.rectangle()
+                    if bounds.top + 35 < rect.top and rect.bottom < bounds.bottom - 25:
+                        if rect == previous:
+                            break
+                        previous = rect
+                    else:
+                        previous = None
+                        window.wheel_mouse_input(coords=(bounds.width() - 25, 150),
+                                                 wheel_dist=2 if rect.top <= bounds.top + 35 else -2)
+                    time.sleep(.2)
+                else:
+                    raise AssertionError("Combo not reachable: " + automation_id)
+                combo.click_input()
+                deadline = time.monotonic() + 2
+                while time.monotonic() < deadline and option() is None:
+                    time.sleep(.1)
+                if option() is not None:
+                    break
+                window.type_keys("{ESC}")
             wait_for(lambda: option() is not None, "combo option: " + text)
             option().click_input()
+            wait_for(lambda: combo.selected_text() == text, "selected combo option: " + text)
 
         check("sound-observers-attached", {"PlaySoundW", "MessageBeep", "Beep", "QAccessible::updateAccessibility"}
               <= {e.get("api") for e in events if e.get("kind") == "hook"})
