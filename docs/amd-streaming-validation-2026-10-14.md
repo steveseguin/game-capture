@@ -125,6 +125,62 @@ audio-rate fallback, public RTMP/HLS outputs, and remaining sync/loss checks.
 **Testing is incomplete; this report does not certify freeze-free, loss-free
 or synchronized operation.**
 
+### Copied dump analysis and another crash
+
+The user subsequently supplied five readable minidumps in the ignored reports
+directory. Microsoft's signed debugger was extracted into the local tools cache
+from its official WinDbg 1.2610.1001.0 distribution. Analysis used Microsoft
+symbols; dumps were not uploaded. The following are dump timestamps in EDT:
+
+| Dump | Crash time | Code | Fault context and finding |
+| --- | --- | --- | --- |
+| `101426-10687-01.dmp` | 13:06:22 | `0x7E` | System; access violation at `Netwtw14+0x3d9fd6`, in the Intel Wi-Fi driver |
+| `101426-10796-01.dmp` | 14:51:26 | `0x13A` | LSASS; kernel heap error detected while freeing a security token, `nt!ExFreePoolWithTag` / `nt!SepTokenDeleteMethod` |
+| `101426-10359-01.dmp` | 14:53:51 | `0xA` | SearchIndexer; invalid read at address 4 in `nt!MiLockLeafPage`, during image-section creation |
+| `101426-10406-01.dmp` | 15:07:02 | `0x3B` | SearchIndexer; illegal-instruction exception in `FLTMGR!FltpGetFileName`, reached through `fileinfo!FIStreamGetInfo` during file creation |
+| `101426-10421-01.dmp` | 15:18:36 | `0x3B` | SearchIndexer; access violation in `Ntfs!NtfsCopyWriteA` during a file write |
+
+The last four dumps occurred approximately 2–4 minutes after their respective
+boots. Faulting process names identify execution context, not necessarily the
+component that originally damaged state. The debugger's automated module blame
+also does not establish root cause. The file-information stack was re-analyzed
+with its matching Microsoft driver image and symbols; a read-only `!chkimg -d
+FLTMGR` check reported zero errors for the image bytes it could check. This is
+not a RAM diagnostic or proof of complete system integrity.
+
+The Wi-Fi dump is a concrete lead: the installed AX210 adapter reports driver
+package 24.70.0.3, while its active `Netwtw14.sys` binary reports 23.50.23.1 and
+Intel as the vendor, with a valid Microsoft hardware-compatibility signature.
+Those are distinct package/binary version observations, not a claim that their
+difference proves a broken installation. No AMD encoder frame appears in the
+reported fault stacks, but these small dumps cannot exclude an earlier driver
+write or hardware corruption. There is no single established cause across all
+five crashes.
+
+During initial debugger analysis the user reported another crash. Windows
+rebooted at 18:24:15 and recorded `0xFD` at 18:24:25, with parameters
+`(1, 0x1a, 3, 0xffffffffc000009a)`, saving
+`C:\Windows\Minidump\101426-10546-01.dmp`. No Game Capture/FFmpeg/OBS/MediaMTX
+workload had been restarted by this session. Microsoft documents
+[`0xFD` as DIRTY_NOWRITE_PAGES_CONGESTION](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-0xfd---dirty-nowrite-pages-congestion):
+no free pages remain for basic system operations, usually because a driver has
+not written out modified non-writeable pages. This does not identify that driver.
+The new dump has not yet been supplied in the readable reports directory.
+
+After reboot, the pagefile was system-managed (2,560 MiB currently allocated),
+C: had approximately 937 GB free, and a memory snapshot showed approximately
+6.8 GB committed against a 16.4 GB limit. These are post-reboot observations;
+they cannot reconstruct memory pressure at the failure. Disk reliability
+counters were unavailable. Ethernet was disconnected and Wi-Fi was active.
+
+The remaining copied dumps were analyzed serially with below-normal priority,
+cached symbols and a 45-second limit per process; all four completed normally.
+Raw analysis, dump hashes and the newest event records are retained locally in
+`amd-followup-20261014/crash-review/`. No driver, network configuration, Windows
+Search service, pagefile or firmware setting was changed. No capture testing was
+resumed. Next steps are analysis of `101426-10546-01.dmp` and host-level isolation
+of the Wi-Fi/kernel-memory failures before further encoder qualification.
+
 ## Machine and package
 
 Ryzen 7 7840HS (8 cores, 16 logical processors), Radeon 780M, AMD driver
