@@ -2548,6 +2548,14 @@ class VideoEncoder::Impl {
             // limits the frame target, not the exact encoded packet size.
             args.push_back("-max-intra-rate");
             args.push_back("100");
+            if (config_.requireEveryFrameKeyframe) {
+                // libvpx's cold-start CBR quantizer can shift even a solid color
+                // by 13 channel levels before its rate control settles. Bound
+                // that loss for synchronized color/alpha tracks without adding
+                // buffered frames or weakening the existing intra-rate budget.
+                args.push_back("-qmax");
+                args.push_back("56");
+            }
         }
 
         if (config_.codec == VideoCodec::AV1) {
