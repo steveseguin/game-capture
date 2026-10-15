@@ -33,9 +33,11 @@ if '--fixture' in sys.argv:
     raise SystemExit()
 
 p=argparse.ArgumentParser();p.add_argument('--publisher',type=Path,required=True);p.add_argument('--report',type=Path,required=True)
+p.add_argument('--fps',type=int,choices=(30,60),default=30);p.add_argument('--encoder',choices=('software','auto'),default='software')
 a=p.parse_args();exe=a.publisher.resolve();out=a.report.resolve();out.mkdir(parents=True,exist_ok=True)
 ffmpeg=exe.parent/'ffmpeg/bin/ffmpeg.exe';discovery=out/'control.json';movie=out/'resize-and-load.mkv'
-report={'sha256':hashlib.sha256(exe.read_bytes()).hexdigest(),'phases':[]};owned=[];logs=[];app=None
+report={'sha256':hashlib.sha256(exe.read_bytes()).hexdigest(),'fps':a.fps,'requestedEncoder':a.encoder,'phases':[]};owned=[];logs=[];app=None
+cpu_previous={}
 def launch(args,name):
     log=(out/(name+'.log')).open('wb');logs.append(log)
     proc=subprocess.Popen([str(v) for v in args],stdin=subprocess.PIPE,stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW,
@@ -54,12 +56,25 @@ def phase(name,seconds=8):
         tick=time.perf_counter();d=api();latency=(time.perf_counter()-tick)*1000
         assert app.poll() is None,'App exited while capturing'
         assert d['output']['state']==2,d['output']
-        samples.append({'seconds':time.monotonic()-start,'apiMs':latency,'video':d['video'],'privateMiB':root.memory_info().private/2**20})
+        private=0;cores=0;now=time.monotonic()
+        for process in [root,*root.children(recursive=True)]:
+            try:
+                private+=process.memory_info().private/2**20
+                cpu=process.cpu_times();total=cpu.user+cpu.system;key=(process.pid,process.create_time())
+                if key in cpu_previous:
+                    previous,when=cpu_previous[key]
+                    cores+=max(0,total-previous)/max(.001,now-when)
+                cpu_previous[key]=(total,now)
+            except psutil.NoSuchProcess:pass
+        samples.append({'seconds':now-start,'apiMs':latency,'video':d['video'],
+                        'privateMiB':root.memory_info().private/2**20,'treePrivateMiB':private,'treeLogicalCores':cores})
         time.sleep(.3)
     before,after=samples[0],samples[-1]
     row={'name':name,'samples':samples,'fps':(after['video']['frames_sent']-before['video']['frames_sent'])/(after['seconds']-before['seconds']),
          'captureSize':[after['video']['last_capture_width'],after['video']['last_capture_height']],
          'drops':after['video']['frames_dropped']-before['video']['frames_dropped'],'maxApiMs':max(s['apiMs'] for s in samples)}
+    row.update(meanLogicalCores=float(np.mean([s['treeLogicalCores'] for s in samples[1:]])),
+               maxTreePrivateMiB=max(s['treePrivateMiB'] for s in samples))
     report['phases'].append(row);print(json.dumps({k:v for k,v in row.items() if k!='samples'}),flush=True)
 try:
     t=np.arange(96000)/48000;pcm=np.stack([.04*np.sin(2*np.pi*f*t) for f in (440,880)],axis=1)
@@ -69,7 +84,7 @@ try:
     receiver=launch([ffmpeg,'-v','warning','-i',f'udp://127.0.0.1:{port}?fifo_size=8192&overrun_nonfatal=1','-map','0','-c','copy',movie],'receiver')
     time.sleep(.4)
     app=launch([exe,'--headless','--output=udp',f'--output-url=udp://127.0.0.1:{port}','--source=window','--window=Game Capture Resilience Fixture',
-        '--resolution=1280x720','--fps=30','--video-encoder=software','--audio-source=selected-window','--bitrate-kbps=4000',
+        '--resolution=1280x720',f'--fps={a.fps}',f'--video-encoder={a.encoder}','--audio-source=selected-window','--bitrate-kbps=4000',
         '--duration-ms=1800000','--local-control','--local-control-discovery='+str(discovery)],'app')
     root=psutil.Process(app.pid);deadline=time.monotonic()+45
     while time.monotonic()<deadline:
@@ -101,6 +116,13 @@ try:
     report['exitCode']=app.wait(timeout=30);assert report['exitCode'] in (0,1,2,3),report['exitCode']
     decoded=subprocess.run([str(ffmpeg),'-v','error','-xerror','-i',str(movie),'-fps_mode','passthrough','-enc_time_base','1:1000000','-f','null','-'],capture_output=True,timeout=180)
     assert decoded.returncode==0 and not decoded.stderr,decoded.stderr
+    timing=subprocess.run([str(ffmpeg),'-v','info','-i',str(movie),'-map','0:v:0','-vf','showinfo','-fps_mode','passthrough',
+        '-enc_time_base','1:1000000','-f','null','-'],capture_output=True,timeout=180)
+    assert timing.returncode==0,timing.stderr[-2000:]
+    pts=np.array([float(s) for s in re.findall(r'\bn:\s*\d+\s+pts:\s*\S+\s+pts_time:([-\d.e+]+)',timing.stderr.decode(errors='replace'))])
+    assert len(pts)>100 and np.all(np.diff(pts)>0),'Non-monotonic or missing recorded video'
+    report['videoTiming']={'frames':len(pts),'averageFps':float((len(pts)-1)/(pts[-1]-pts[0])),
+        'maxFrameGapMs':float(np.diff(pts).max()*1000),'p95FrameGapMs':float(np.percentile(np.diff(pts),95)*1000)}
     raw=subprocess.run([str(ffmpeg),'-v','error','-i',str(movie),'-map','0:a:0','-ar','48000','-ac','2','-f','f32le','-'],capture_output=True,timeout=60)
     assert raw.returncode==0
     pcm=np.frombuffer(raw.stdout,np.float32).reshape(-1,2);assert np.isfinite(pcm).all()
@@ -108,7 +130,7 @@ try:
     tones=[float(abs(np.sum(segment[:,ch]*np.exp(-2j*np.pi*hz*np.arange(len(segment))/48000)))*2/len(segment)) for ch,hz in enumerate((440,880))]
     assert min(tones)>.01,tones
     report['recording']={'cleanDecode':True,'audioTones':tones,'bytes':movie.stat().st_size}
-    assert report['phases'][0]['fps']>25 and report['phases'][-1]['fps']>25
+    assert report['phases'][0]['fps']>a.fps-5 and report['phases'][-1]['fps']>a.fps-5
     assert max(p['maxApiMs'] for p in report['phases'])<1000
     # Diagnostics describe the GPU-scaled readback, not the original WGC texture.
     text=(out/'app.log').read_text(errors='replace')

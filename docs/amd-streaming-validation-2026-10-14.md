@@ -598,3 +598,32 @@ The GUI candidate adds only the resolution UI changes to that verified
 WHIP transport implementation. Studio's tested candidate is
 `dist/desktop-studio-whip-recovery-review/desktop-studio.exe`, SHA-256
 `f77b5fa9196828dad55ca60097deb65699bb92804276acfa02f487465375a64b`.
+
+### Additional capture and CPU-limit testing
+
+The same `game-capture-open-issues-review` package passed two real UDP
+capture/receive/decode runs at 720p, 4,000 kbps, using the native **software
+H.264 MFT** at 30 and 60 fps. These are not FFmpeg/x264 or AMD hardware results.
+The source resized through 4K, 8K, ultrawide and odd dimensions, then 24 rapid
+size changes. The app and its children were restricted to two logical CPUs,
+the source was hidden and restored, and finally closed. Logs confirm actual
+8K capture textures; output remained GPU-scaled to 720p. Closing the source
+ended the headless job with the expected source-unavailable exit code 3.
+
+| Software output | Whole received file | Largest PTS gap | Two-CPU phase | Maximum API time |
+| --- | --- | --- | --- | --- |
+| 720p30 | 29.97 fps | 38 ms | 30.00 fps | 26.2 ms |
+| 720p60 | 59.72 fps | 22 ms | 59.92 fps | 27.0 ms |
+
+Both complete files decoded cleanly with strictly increasing video timestamps
+and the expected left/right audio tones. Settled phases reported no additional
+video drops. Maximum app-tree private memory was below 198 MiB. Phase-average
+CPU was 0.20-0.43 logical cores on this 20-logical-CPU host. The synthetic moving
+window is a resize/recovery fixture, not a demanding game's motion-complexity
+benchmark; encoded cadence does not establish 60 unique captured pictures/s.
+
+Evidence: `native-qt/e2e/reports/followup-2026-10-14/capture-resilience/` and
+`capture-resilience-60/`. Reproduce with `e2e/capture-resilience-packaged.py`
+and `--publisher PACKAGE/game-capture.exe --report REPORT --fps 30` or
+`--fps 60 --encoder software`. The harness now retains full-file video timing,
+app-tree CPU/private-memory measurements and the selected frame rate/encoder.
