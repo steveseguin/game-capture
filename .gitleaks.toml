@@ -1,0 +1,20 @@
+title = "Local secret protection"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Windows GraphicsCaptureAccess COM interface identifier"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^native\-qt/e2e/capture\-session\-compatibility\.js$''']
+regexTarget = "match"
+regexes = ["""^accessStatics:\\ '70d33e74ec064050a58a901f0f757095'$"""]
+
+[[allowlists]]
+description = "Mock TURN probe using the reserved round10.example.test hostname"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^native\-qt/e2e/signaling\-media\-fixture\-regression\.js$''']
+regexTarget = "match"
+regexes = ["""^credential:\\ 'round10\\-secret'$"""]

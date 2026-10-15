@@ -315,3 +315,9 @@ In **Advanced → Resolution**, select 1440p, 4K or portrait presets, or type a 
 Native WHIP publishing now uses negotiated video RTX/NACK/PLI, bounded repair history and paced video packets. Its repair bandwidth allowance replenishes continuously, avoiding one-second repair blackouts after reordered-packet bursts. Ordinary VDO.Ninja calls retain their existing transport policy. The local diagnostics API exposes negotiated recovery capabilities and retransmission/cache-miss counts. See [validation and receiver limitations](docs/amd-streaming-validation-2026-10-14.md).
 
 Packaged measurements, CPU contention results and remaining hardware limits: [encoding defaults validation](docs/encoding-defaults-validation-2026-10-14.md).
+
+## Developer security and QA cost controls
+
+[Install the local commit/push secret guards](docs/development-security.md) in each clone.
+GitHub QA workflows are manual-only on self-hosted Windows runners, with optional
+one-day artifact uploads. Routine changes do not start hosted QA jobs or nightly soaks.

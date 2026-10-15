@@ -103,7 +103,10 @@ script against an existing frozen package, including OBS coverage and both
 30-minute soaks. The runner must provide `GAME_CAPTURE_RELEASE_PACKAGE` (package
 directory), `GAME_CAPTURE_RELEASE_MANIFEST_SHA256` (the independently recorded
 manifest digest), `NINJA_PLUGIN_REPO` (an OBS-ready checkout), and
-`GAME_CAPTURE_FIREFOX_PATH`. Use `runner_label` to select that prepared runner.
+`GAME_CAPTURE_FIREFOX_PATH`. Dispatch requires a self-hosted runner with the
+`Windows` and `X64` labels. QA runs are manual-only; artifact uploads default off
+and expire after one day when explicitly enabled. See [local security and QA
+cost controls](development-security.md).
 The normal fast-gate mode continues to build and validate its own package.
 
 ## 2.5) Configure VirusTotal key (optional but recommended)

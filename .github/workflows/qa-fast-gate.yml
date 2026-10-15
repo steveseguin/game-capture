@@ -1,56 +1,56 @@
 name: QA Fast Gate
 
 on:
-  pull_request:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/qa-fast-gate.yml"
-      - ".github/workflows/qa-nightly-soak.yml"
-      - "README.md"
-      - "native-qt/**"
   workflow_dispatch:
     inputs:
-      runner_label:
-        description: "Optional label for a prepared, single-use Windows runner"
-        type: string
-        required: false
       validate_release_package:
         description: "Run full readiness on the runner's frozen release package, including OBS and both 30-minute soaks"
         type: boolean
         default: false
+      upload_reports:
+        description: "Upload QA reports/screenshots to GitHub for one day (may contain test session details)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-media-qa
+  cancel-in-progress: false
 
 jobs:
   fast-gate:
-    runs-on: ${{ inputs.runner_label || fromJSON('["self-hosted", "Windows", "X64"]') }}
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 180
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Checkout ninja-plugin
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           repository: steveseguin/ninja-plugin
           ref: main
           path: ninja-plugin
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-          cache: "npm"
-          cache-dependency-path: native-qt/package-lock.json
 
       - name: Install npm dependencies
         shell: pwsh
-        run: npm ci --prefix native-qt
+        run: npm ci --ignore-scripts --no-audit --no-fund --prefix native-qt
 
       - name: Install browser runtimes
         shell: pwsh
         working-directory: native-qt
-        run: npx playwright install msedge firefox
+        run: npx --no-install playwright install msedge firefox
 
       - name: Prepare pinned FFmpeg bundle
         shell: powershell
@@ -109,24 +109,26 @@ jobs:
           }
 
       - name: Upload QA Reports
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.upload_reports }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: qa-fast-gate-reports
           path: native-qt/qa/reports/*.md
           if-no-files-found: warn
+          retention-days: 1
 
       - name: Upload E2E Screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.upload_reports }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: qa-fast-gate-screenshots
           path: .playwright-mcp/**/*.png
           if-no-files-found: warn
+          retention-days: 1
 
       - name: Upload packaged reliability results
-        if: always()
-        uses: actions/upload-artifact@v4
+        if: ${{ always() && inputs.upload_reports }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packaged-reliability-results
           path: |
@@ -137,3 +139,4 @@ jobs:
             native-qt/qa/reports/desktop-ui-*/**/results.json
             native-qt/qa/reports/update-check-*/results.json
           if-no-files-found: warn
+          retention-days: 1
