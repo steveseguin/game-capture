@@ -1,6 +1,22 @@
 cmake_minimum_required(VERSION 3.24)
+
+# Set Apple defaults before compiler detection, without changing cross builds
+# that explicitly target another system from a Mac host.
+if(CMAKE_HOST_APPLE AND (NOT DEFINED CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STREQUAL "Darwin"))
+    set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.2" CACHE STRING "Minimum supported macOS version")
+endif()
 project(game-capture-native-qt VERSION 0.2.62 LANGUAGES CXX)
 
+if(APPLE)
+    if(NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+        message(FATAL_ERROR "The macOS port supports arm64 only. Configure with -DCMAKE_OSX_ARCHITECTURES=arm64.")
+    endif()
+    if(CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "14.2")
+        message(FATAL_ERROR "The macOS port requires CMAKE_OSX_DEPLOYMENT_TARGET >= 14.2.")
+    endif()
+    enable_language(OBJCXX)
+endif()
 # CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
 # declares a 3.1 minimum, so give bundled dependencies the modern floor
 # without requiring developers to pass an extra configure flag.
@@ -10,6 +26,10 @@ endif()
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(APPLE)
+    set(CMAKE_OBJCXX_STANDARD 20)
+    set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+endif()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -26,12 +46,15 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 
-option(VERSUS_USE_NVENC "Enable NVIDIA NVENC hardware encoding" ON)
-option(VERSUS_USE_GRAPHICS_CAPTURE "Enable Windows Graphics Capture API (requires WinRT)" ON)
-option(VERSUS_USE_SPOUT "Enable Spout2 source support on Windows" ON)
+option(VERSUS_USE_NVENC "Enable NVIDIA NVENC hardware encoding" ${WIN32})
+option(VERSUS_USE_GRAPHICS_CAPTURE "Enable Windows Graphics Capture API (requires WinRT)" ${WIN32})
+option(VERSUS_USE_SPOUT "Enable Spout2 source support on Windows" ${WIN32})
 
 find_package(Threads REQUIRED)
-find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network Concurrent)
+if(APPLE AND Qt6_VERSION VERSION_LESS "6.9.3")
+    message(FATAL_ERROR "The Mac port requires Qt >= 6.9.3 for Cocoa accessibility ownership fixes. See cmake/build-qt-macos.cmake for the pinned dependency build.")
+endif()
 
 include(FetchContent)
 
@@ -63,6 +86,16 @@ if(NOT TARGET MbedTLS::mbedx509)
 endif()
 if(NOT TARGET MbedTLS::mbedcrypto)
     add_library(MbedTLS::mbedcrypto ALIAS mbedcrypto)
+endif()
+if(APPLE)
+    # libdatachannel's finder also uses these names and appends properties to
+    # them. Forward to the actual bundled targets without probing not-yet-built
+    # libraries with otool (ALIAS targets cannot accept the finder's properties).
+    foreach(component TLS X509 Crypto)
+        string(TOLOWER "mbed${component}" bundled_target)
+        add_library(MbedTLS::Mbed${component} INTERFACE IMPORTED GLOBAL)
+        target_link_libraries(MbedTLS::Mbed${component} INTERFACE ${bundled_target})
+    endforeach()
 endif()
 
 FetchContent_Declare(
@@ -106,6 +139,12 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
     GIT_TAG v1.13.0
 )
+if(APPLE)
+    # The pinned bundled fmt rejects valid format strings with AppleClang 21.
+    # Use spdlog's supported C++20 formatter on macOS, retaining compile-time
+    # format checking and the existing Windows dependency/configuration.
+    set(SPDLOG_USE_STD_FORMAT ON CACHE BOOL "Use std::format on macOS" FORCE)
+endif()
 FetchContent_MakeAvailable(spdlog)
 
 FetchContent_Declare(
@@ -122,7 +161,18 @@ FetchContent_Declare(
 )
 set(OPUS_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(OPUS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+if(APPLE)
+    # arm64 Apple CPUs have NEON; Opus 1.4 only recognizes the aarch64 spelling
+    # for this default and has no macOS runtime CPU detection implementation.
+    set(OPUS_MAY_HAVE_NEON OFF CACHE BOOL "No runtime NEON probing on Apple Silicon" FORCE)
+    set(OPUS_PRESUME_NEON ON CACHE BOOL "Apple Silicon has NEON" FORCE)
+endif()
 FetchContent_MakeAvailable(opus)
+if(APPLE AND NOT OPUS_DISABLE_INTRINSICS)
+    # Opus 1.4 gates NEON declarations on MAY_HAVE even for a PRESUME_NEON
+    # build. Supply the declarations without enabling its Linux-only ARM probe.
+    target_compile_definitions(opus PRIVATE OPUS_ARM_MAY_HAVE_NEON OPUS_ARM_MAY_HAVE_NEON_INTR)
+endif()
 
 if(WIN32 AND VERSUS_USE_SPOUT)
     set(SPOUT_BUILD_LIBRARY ON CACHE BOOL "" FORCE)
@@ -151,8 +201,34 @@ if(WIN32 AND VERSUS_USE_SPOUT)
     endif()
 endif()
 
-set(VERSUS_SOURCES
-    src/main.cpp
+# These files retain their Windows implementations and non-Windows stubs until
+# each Mac backend is introduced. Select replacements here, once, so the app
+# and versus-lib always compile the same platform implementations.
+set(VERSUS_PLATFORM_SOURCES
+    src/platform/capabilities.cpp
+    src/video/camera_capture.cpp
+    src/video/spout_capture.cpp
+    src/video/window_capture.cpp
+    src/video/video_encoder.cpp
+    src/audio/window_audio_capture_core.cpp
+)
+if(APPLE)
+    include(cmake/x264-macos.cmake)
+    include(cmake/syphon-macos.cmake)
+    list(REMOVE_ITEM VERSUS_PLATFORM_SOURCES src/video/window_capture.cpp src/video/camera_capture.cpp src/audio/window_audio_capture_core.cpp)
+    list(APPEND VERSUS_PLATFORM_SOURCES src/platform/macos/media_activity.mm src/platform/macos/syphon_capture.mm src/platform/macos/app_paths.cpp src/platform/macos/window_capture.mm
+        src/platform/macos/source_list.cpp include/versus/platform/macos_source_list.h
+        src/platform/macos/audio_choices.cpp include/versus/platform/macos_audio_choices.h
+        src/platform/macos/video_encoder.cpp src/platform/macos/ffmpeg_encoder.cpp src/platform/macos/ffmpeg.cpp src/platform/macos/system_resources.cpp src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm)
+    set_source_files_properties(src/platform/macos/media_activity.mm src/platform/macos/syphon_capture.mm src/platform/macos/window_capture.mm src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm
+        PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+    set(VERSUS_PLATFORM_LIBRARIES "-framework ScreenCaptureKit" "-framework CoreMedia"
+        "-framework CoreVideo" "-framework CoreGraphics" "-framework Foundation"
+        "-framework VideoToolbox" "-framework CoreAudio" "-framework AVFoundation" "-framework Security" "-framework LocalAuthentication" versus-x264 versus-syphon)
+endif()
+
+set(VERSUS_COMMON_SOURCES
+    src/video/window_capture_common.cpp
     src/app/alpha_frame_pairer.cpp
     src/app/peer_operation_executor.cpp
     src/app/versus_app.cpp
@@ -168,13 +244,9 @@ set(VERSUS_SOURCES
     src/output/output_config.cpp
     src/output/output_session.cpp
     src/webrtc/ice_config.cpp
-    src/video/camera_capture.cpp
-    src/video/spout_capture.cpp
-    src/video/window_capture.cpp
-    src/video/video_encoder.cpp
     src/audio/audio_format_converter.cpp
     src/audio/opus_encoder.cpp
-    src/audio/window_audio_capture_core.cpp
+    ${VERSUS_PLATFORM_SOURCES}
 )
 
 set(VERSUS_HEADERS
@@ -211,7 +283,7 @@ if(WIN32)
     set(APP_ICON_RC ${CMAKE_CURRENT_SOURCE_DIR}/resources/app.rc)
 endif()
 
-add_executable(game-capture WIN32 ${VERSUS_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES} ${APP_ICON_RC})
+add_executable(game-capture WIN32 src/main.cpp ${VERSUS_COMMON_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES} ${APP_ICON_RC})
 
 set_target_properties(game-capture PROPERTIES AUTOMOC ON)
 
@@ -224,9 +296,11 @@ target_include_directories(game-capture PRIVATE
 )
 
 target_link_libraries(game-capture PRIVATE
+    ${VERSUS_PLATFORM_LIBRARIES}
     Threads::Threads
     Qt6::Widgets
     Qt6::Network
+    Qt6::Concurrent
     spdlog::spdlog
     cxxopts::cxxopts
     datachannel-static
@@ -290,12 +364,16 @@ if(WIN32)
     endif()
 endif()
 
-if(VERSUS_USE_NVENC)
+if(WIN32 AND VERSUS_USE_NVENC)
     target_compile_definitions(game-capture PRIVATE VERSUS_USE_NVENC)
 endif()
 
-if(VERSUS_USE_GRAPHICS_CAPTURE)
+if(WIN32 AND VERSUS_USE_GRAPHICS_CAPTURE)
     target_compile_definitions(game-capture PRIVATE VERSUS_USE_GRAPHICS_CAPTURE)
+endif()
+
+if(APPLE)
+    include(cmake/platform-macos.cmake)
 endif()
 
 # WebSocket test executable
@@ -370,41 +448,18 @@ if(VERSUS_BUILD_TESTS)
     endfunction()
 
     # Library target for testable code (without main.cpp)
-    set(VERSUS_LIB_SOURCES
-        src/app/alpha_frame_pairer.cpp
-        src/app/peer_operation_executor.cpp
-        src/app/versus_app.cpp
-        src/app/dual_stream_policy.cpp
-        src/control/local_control_server.cpp
-        src/diagnostics/crash_reporter.cpp
-        src/ui/main_window.cpp
-        src/ui/update_checker.cpp
-        src/ui/window_list_widget.cpp
-        src/ui/stats_panel.cpp
-        src/signaling/vdo_signaling.cpp
-        src/webrtc/webrtc_client.cpp
-        src/output/output_config.cpp
-        src/output/output_session.cpp
-        src/webrtc/ice_config.cpp
-        src/video/camera_capture.cpp
-        src/video/spout_capture.cpp
-        src/video/window_capture.cpp
-        src/video/video_encoder.cpp
-        src/audio/audio_format_converter.cpp
-        src/audio/opus_encoder.cpp
-        src/audio/window_audio_capture_core.cpp
-    )
-
-    add_library(versus-lib STATIC ${VERSUS_LIB_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES})
+    add_library(versus-lib STATIC ${VERSUS_COMMON_SOURCES} ${VERSUS_HEADERS} ${VERSUS_RESOURCES})
     set_target_properties(versus-lib PROPERTIES AUTOMOC ON)
     target_compile_definitions(versus-lib PUBLIC
         APP_VERSION="${PROJECT_VERSION}"
     )
     target_include_directories(versus-lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
     target_link_libraries(versus-lib PUBLIC
+        ${VERSUS_PLATFORM_LIBRARIES}
         Threads::Threads
         Qt6::Widgets
         Qt6::Network
+        Qt6::Concurrent
         spdlog::spdlog
         datachannel-static
         mbedtls
@@ -427,11 +482,88 @@ if(VERSUS_BUILD_TESTS)
             dbghelp runtimeobject mf mfplat mfreadwrite mfuuid
         )
     endif()
-    if(VERSUS_USE_NVENC)
+    if(WIN32 AND VERSUS_USE_NVENC)
         target_compile_definitions(versus-lib PUBLIC VERSUS_USE_NVENC)
     endif()
-    if(VERSUS_USE_GRAPHICS_CAPTURE)
+    if(WIN32 AND VERSUS_USE_GRAPHICS_CAPTURE)
         target_compile_definitions(versus-lib PUBLIC VERSUS_USE_GRAPHICS_CAPTURE)
+    endif()
+
+    add_executable(test_platform_capabilities tests/test_platform_capabilities.cpp)
+    set_target_properties(test_platform_capabilities PROPERTIES AUTOMOC ON)
+    target_link_libraries(test_platform_capabilities PRIVATE versus-lib Qt6::Test)
+    add_test(NAME PlatformCapabilitiesGate COMMAND test_platform_capabilities)
+    versus_set_qt_test_environment(PlatformCapabilitiesGate)
+    if(APPLE)
+        # Native texture-transfer gate and owned sender fixture.
+        add_executable(macos_syphon_fixture e2e/macos-syphon-fixture.mm)
+        set_target_properties(macos_syphon_fixture PROPERTIES OUTPUT_NAME "macos-syphon-fixture")
+        set_source_files_properties(e2e/macos-syphon-fixture.mm src/platform/macos/syphon_capture.mm
+            PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(macos_syphon_fixture PRIVATE versus-syphon "-framework AppKit")
+        add_executable(test_macos_syphon tests/test_macos_syphon.cpp src/platform/macos/syphon_capture.mm
+            src/video/window_capture_common.cpp)
+        set_target_properties(test_macos_syphon PROPERTIES AUTOMOC ON)
+        target_include_directories(test_macos_syphon PRIVATE include)
+        target_link_libraries(test_macos_syphon PRIVATE versus-syphon Qt6::Gui Qt6::Test "-framework Foundation")
+        add_dependencies(test_macos_syphon macos_syphon_fixture)
+        add_test(NAME MacSyphonGate COMMAND test_macos_syphon)
+        set_tests_properties(MacSyphonGate PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=cocoa" TIMEOUT 120)
+        # ScreenCaptureKit requires an initialized WindowServer connection;
+        # offscreen Qt intentionally does not establish one.
+        set_tests_properties(PlatformCapabilitiesGate PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=cocoa")
+        add_executable(test_macos_encoder tests/test_macos_encoder.cpp)
+        set_target_properties(test_macos_encoder PROPERTIES AUTOMOC ON)
+        target_link_libraries(test_macos_encoder PRIVATE versus-lib Qt6::Test)
+        add_test(NAME MacEncoderGate COMMAND test_macos_encoder)
+        versus_set_qt_test_environment(MacEncoderGate)
+        add_executable(macos_audio_tone e2e/macos-audio-tone.mm)
+        set_target_properties(macos_audio_tone PROPERTIES OUTPUT_NAME "macos-audio-tone")
+        add_executable(macos_audio_input_fixture e2e/macos-audio-input-fixture.mm)
+        set_target_properties(macos_audio_input_fixture PROPERTIES OUTPUT_NAME "macos-audio-input-fixture")
+        set_source_files_properties(e2e/macos-audio-input-fixture.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(macos_audio_input_fixture PRIVATE "-framework Foundation" "-framework CoreAudio")
+        set_source_files_properties(e2e/macos-audio-tone.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(macos_audio_tone PRIVATE "-framework Foundation" "-framework AVFoundation" "-framework CoreAudio" "-framework AudioUnit")
+        add_executable(macos_ui_control e2e/macos-ui-control.mm)
+        set_target_properties(macos_ui_control PROPERTIES OUTPUT_NAME "macos-ui-control")
+        set_source_files_properties(e2e/macos-ui-control.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(macos_ui_control PRIVATE "-framework Foundation" "-framework AppKit" "-framework ApplicationServices")
+        add_executable(macos_camera_fixture e2e/macos-camera-fixture.mm)
+        add_executable(macos_alpha_fixture e2e/macos-alpha-fixture.mm)
+        set_target_properties(macos_alpha_fixture PROPERTIES OUTPUT_NAME "macos-alpha-fixture")
+        set_source_files_properties(e2e/macos-alpha-fixture.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(macos_alpha_fixture PRIVATE Qt6::Widgets "-framework AppKit")
+        set_target_properties(macos_camera_fixture PROPERTIES OUTPUT_NAME "macos-camera-fixture")
+        set_source_files_properties(e2e/macos-camera-fixture.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(macos_camera_fixture PRIVATE "-framework Foundation" "-framework CoreMediaIO" "-framework CoreMedia" "-framework CoreVideo")
+        add_executable(test_macos_camera tests/test_macos_camera.cpp)
+        add_dependencies(test_macos_camera macos_camera_fixture)
+        set_target_properties(test_macos_camera PROPERTIES AUTOMOC ON)
+        target_link_libraries(test_macos_camera PRIVATE versus-lib Qt6::Test)
+        add_test(NAME MacCameraGate COMMAND test_macos_camera)
+        set_tests_properties(MacCameraGate PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=cocoa")
+        add_executable(test_macos_output_profiles tests/test_macos_output_profiles.cpp)
+        set_target_properties(test_macos_output_profiles PROPERTIES AUTOMOC ON)
+        target_link_libraries(test_macos_output_profiles PRIVATE versus-lib Qt6::Test)
+        add_test(NAME MacOutputProfileGate COMMAND test_macos_output_profiles)
+        add_executable(test_macos_ffmpeg tests/test_macos_ffmpeg.cpp)
+        set_target_properties(test_macos_ffmpeg PROPERTIES AUTOMOC ON)
+        target_link_libraries(test_macos_ffmpeg PRIVATE versus-lib Qt6::Test)
+        add_test(NAME MacFfmpegGate COMMAND test_macos_ffmpeg)
+        add_executable(test_macos_audio tests/test_macos_audio.mm)
+        add_dependencies(test_macos_audio macos_audio_tone)
+        set_target_properties(test_macos_audio PROPERTIES AUTOMOC ON)
+        set_source_files_properties(tests/test_macos_audio.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(test_macos_audio PRIVATE versus-lib Qt6::Test "-framework AVFoundation")
+        add_test(NAME MacAudioGate COMMAND test_macos_audio)
+        set_tests_properties(MacAudioGate PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=cocoa")
+        add_executable(test_macos_capture tests/test_macos_capture.mm)
+        set_target_properties(test_macos_capture PROPERTIES AUTOMOC ON)
+        set_source_files_properties(tests/test_macos_capture.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(test_macos_capture PRIVATE versus-lib Qt6::Test "-framework AppKit")
+        add_test(NAME MacCaptureGate COMMAND test_macos_capture)
+        set_tests_properties(MacCaptureGate PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=cocoa")
     endif()
 
     add_executable(test_video_control_snapshot
@@ -546,6 +678,10 @@ if(VERSUS_BUILD_TESTS)
         mbedtls
         mbedx509
         mbedcrypto)
+    if(APPLE)
+        target_sources(test_vdo_signaling_lifecycle PRIVATE src/platform/macos/network.mm)
+        target_link_libraries(test_vdo_signaling_lifecycle PRIVATE Qt6::Network "-framework Foundation")
+    endif()
     add_test(NAME VdoSignalingLifecycleGate COMMAND test_vdo_signaling_lifecycle)
     versus_set_qt_test_environment(VdoSignalingLifecycleGate)
     # The child finish bounds total 25.4s when every deliberately broken

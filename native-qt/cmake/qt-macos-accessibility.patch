@@ -1,0 +1,12 @@
+--- a/src/plugins/platforms/cocoa/qcocoaaccessibility.mm
++++ b/src/plugins/platforms/cocoa/qcocoaaccessibility.mm
+@@ -327,7 +327,8 @@
+ QString translateAction(NSString *nsAction, QAccessibleInterface *interface)
+ {
+     if ([nsAction compare: NSAccessibilityPressAction] == NSOrderedSame) {
+-        if (interface->role() == QAccessible::CheckBox || interface->role() == QAccessible::RadioButton)
++        if (interface->role() == QAccessible::CheckBox || interface->role() == QAccessible::RadioButton
++            || interface->role() == QAccessible::ListItem)
+             return QAccessibleActionInterface::toggleAction();
+         return QAccessibleActionInterface::pressAction();
+     } else if ([nsAction compare: NSAccessibilityIncrementAction] == NSOrderedSame)

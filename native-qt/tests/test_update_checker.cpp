@@ -1,6 +1,7 @@
 #include "versus/ui/update_checker.h"
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
@@ -20,6 +21,17 @@ static QByteArray release(const QString &tag, bool pre = false, bool draft = fal
         .toJson(QJsonDocument::Compact);
 }
 
+static QJsonObject macAsset() {
+    return {{"name", "game-capture-macos-arm64-0.2.59.dmg"}, {"state", "uploaded"}, {"size", 1000},
+            {"browser_download_url", "https://github.com/steveseguin/Game-capture/releases/download/v0.2.59/game-capture-macos-arm64-0.2.59.dmg"}};
+}
+
+static QByteArray macRelease(const QJsonObject &asset) {
+    auto metadata = QJsonDocument::fromJson(release("v0.2.59")).object();
+    metadata["assets"] = QJsonArray{asset};
+    return QJsonDocument(metadata).toJson(QJsonDocument::Compact);
+}
+
 class FakeRequest : public ReleaseRequest {
   public:
     int requests = 0;
@@ -32,6 +44,89 @@ class FakeRequest : public ReleaseRequest {
 class UpdateCheckerTest : public QObject {
     Q_OBJECT
   private slots:
+    void platformDownloads() {
+        QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58", UpdatePlatform::VersionOnly).status,
+                 UpdateStatus::Available);
+        QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58", UpdatePlatform::MacArm64).status,
+                 UpdateStatus::NoCompatibleDownload);
+        for (const char *extension : {"dmg", "zip"}) {
+            auto asset = macAsset();
+            const auto name = QString("game-capture-macos-arm64-0.2.59.%1").arg(extension);
+            asset["name"] = name;
+            asset["browser_download_url"] = "https://github.com/steveseguin/Game-capture/releases/download/v0.2.59/" + name;
+            QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", UpdatePlatform::MacArm64).status,
+                     UpdateStatus::Available);
+            QCOMPARE(evaluateRelease(macRelease(asset), "0.2.59", UpdatePlatform::MacArm64).status,
+                     UpdateStatus::UpToDate);
+        }
+        const QList<QPair<QString, QJsonValue>> invalid{
+            {"name", "game-capture-macos-x64-0.2.59.dmg"},
+            {"name", "game-capture-windows-arm64-0.2.59.zip"},
+            {"name", "game-capture-macos-arm64-0.2.59-source.zip"},
+            {"name", "game-capture-macos-arm64-0.2.58.dmg"},
+            {"size", 0}, {"size", "1000"}, {"state", "starter"},
+            {"browser_download_url", "https://example.com/game-capture-macos-arm64-0.2.59.dmg"},
+            {"browser_download_url", "http://github.com/steveseguin/Game-capture/releases/download/v0.2.59/game-capture-macos-arm64-0.2.59.dmg"},
+            {"browser_download_url", "https://github.com/steveseguin/other/releases/download/v0.2.59/game-capture-macos-arm64-0.2.59.dmg"},
+            {"browser_download_url", "https://github.com/steveseguin/Game-capture/releases/download/v0.2.58/game-capture-macos-arm64-0.2.59.dmg"},
+            {"browser_download_url", macAsset()["browser_download_url"].toString() + "?other=1"},
+            {"browser_download_url", macAsset()["browser_download_url"].toString() + "#other"},
+            {"browser_download_url", QJsonValue{}}
+        };
+        for (const auto &[key, value] : invalid) {
+            auto asset = macAsset(); asset[key] = value;
+            QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", UpdatePlatform::MacArm64).status,
+                     UpdateStatus::NoCompatibleDownload);
+        }
+#ifdef __APPLE__
+        QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58").status, UpdateStatus::NoCompatibleDownload);
+#else
+        QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58").status, UpdateStatus::Available);
+#endif
+    }
+    void macCacheAndPlatformMigration() {
+        for (bool hasDownload : {false, true}) {
+            QTemporaryDir dir;
+            const auto path = dir.filePath("update.ini");
+            const auto expected = hasDownload ? UpdateStatus::Available : UpdateStatus::NoCompatibleDownload;
+            FakeRequest network;
+            {
+                UpdateChecker checker("0.2.58", path, nullptr, &network, UpdatePlatform::MacArm64);
+                checker.checkForUpdates();
+                network.finish(200, hasDownload ? macRelease(macAsset()) : release("v0.2.59"));
+                QCOMPARE(checker.result().status, expected);
+                QCOMPARE(QSettings(path, QSettings::IniFormat).value("LastAttemptSucceeded").toBool(), true);
+                QVERIFY(QFileInfo(path).size() < 16 * 1024);
+            }
+            {
+                UpdateChecker checker("0.2.58", path, nullptr, &network, UpdatePlatform::MacArm64);
+                QCOMPARE(checker.result().status, expected);
+                checker.checkForUpdates();
+                QCOMPARE(network.requests, 1);
+            }
+            if (hasDownload) {
+                UpdateChecker upgraded("0.2.59", path, nullptr, &network, UpdatePlatform::MacArm64);
+                QCOMPARE(upgraded.result().status, UpdateStatus::UpToDate);
+            }
+            // The Windows policy still compares versions, including a cache
+            // produced by Mac when the release has no matching download.
+            {
+                UpdateChecker checker("0.2.58", path, nullptr, &network, UpdatePlatform::VersionOnly);
+                QCOMPARE(checker.result().status, UpdateStatus::Available);
+            }
+        }
+        QTemporaryDir dir;
+        const auto path = dir.filePath("update.ini");
+        FakeRequest network;
+        {
+            UpdateChecker previous("0.2.58", path, nullptr, &network, UpdatePlatform::VersionOnly);
+            previous.checkForUpdates(); network.finish(200, release("v0.2.59"));
+        }
+        UpdateChecker migrated("0.2.58", path, nullptr, &network, UpdatePlatform::MacArm64);
+        QCOMPARE(migrated.result().status, UpdateStatus::NoCompatibleDownload);
+        migrated.checkForUpdates();
+        QCOMPARE(network.requests, 1);
+    }
     void versions_data() {
         QTest::addColumn<QString>("installed");
         QTest::addColumn<QString>("tag");
@@ -60,7 +155,7 @@ class UpdateCheckerTest : public QObject {
         QFETCH(QString, installed);
         QFETCH(QString, tag);
         QFETCH(int, expected);
-        QCOMPARE(int(evaluateRelease(release(tag), installed).status), expected);
+        QCOMPARE(int(evaluateRelease(release(tag), installed, UpdatePlatform::VersionOnly).status), expected);
     }
     void untrustedMetadata() {
         for (const auto &body : {release("9.0.0", true), release("9.0.0", false, true),
@@ -69,7 +164,7 @@ class UpdateCheckerTest : public QObject {
                                  QByteArray(R"({"tag_name":900,"prerelease":false,"draft":false})"),
                                  QByteArray(R"({"tag_name":"9.0.0","draft":false})"),
                                  QByteArray(1024 * 1024 + 1, ' ')}) {
-            QCOMPARE(evaluateRelease(body, "0.2.59").status, UpdateStatus::Unavailable);
+            QCOMPARE(evaluateRelease(body, "0.2.59", UpdatePlatform::VersionOnly).status, UpdateStatus::Unavailable);
         }
     }
     void cacheAndUpgrade() {
@@ -77,7 +172,7 @@ class UpdateCheckerTest : public QObject {
         const auto path = dir.filePath("update.ini");
         FakeRequest network;
         {
-            UpdateChecker checker("0.2.58", path, nullptr, &network);
+            UpdateChecker checker("0.2.58", path, nullptr, &network, UpdatePlatform::VersionOnly);
             QCOMPARE(network.requests, 0);
             checker.checkForUpdates();
             QCOMPARE(QSettings(path, QSettings::IniFormat).value("LastAttemptSucceeded").toBool(), false);
@@ -90,7 +185,7 @@ class UpdateCheckerTest : public QObject {
             QCOMPARE(network.requests, 1);
         }
         for (const char *version : {"0.2.58", "0.2.59", "0.3.0-dev.1"}) {
-            UpdateChecker checker(version, path, nullptr, &network);
+            UpdateChecker checker(version, path, nullptr, &network, UpdatePlatform::VersionOnly);
             checker.checkForUpdates();
             QCOMPARE(checker.result().status, QString(version) == "0.2.58" ? UpdateStatus::Available : UpdateStatus::UpToDate);
             QCOMPARE(network.requests, 1);
@@ -101,12 +196,12 @@ class UpdateCheckerTest : public QObject {
             cache.setValue("LastAttempt", QDateTime::currentSecsSinceEpoch() - 86401);
         }
         {
-            UpdateChecker checker("0.2.59", path, nullptr, &network);
+            UpdateChecker checker("0.2.59", path, nullptr, &network, UpdatePlatform::VersionOnly);
             checker.checkForUpdates();
             network.finish(429, release("v0.2.59"));
             QCOMPARE(checker.result().status, UpdateStatus::Unavailable);
         }
-        UpdateChecker restarted("0.2.59", path, nullptr, &network);
+        UpdateChecker restarted("0.2.59", path, nullptr, &network, UpdatePlatform::VersionOnly);
         restarted.checkForUpdates();
         QCOMPARE(restarted.result().status, UpdateStatus::Unavailable);
         QCOMPARE(network.requests, 2);
@@ -115,13 +210,13 @@ class UpdateCheckerTest : public QObject {
     void errorsAndShutdown() {
         for (int status : {0, 301, 403, 404, 429, 500}) {
             FakeRequest network;
-            UpdateChecker checker("0.2.59", {}, nullptr, &network);
+            UpdateChecker checker("0.2.59", {}, nullptr, &network, UpdatePlatform::VersionOnly);
             checker.checkForUpdates();
             network.finish(status, release("v0.2.59"));
             QCOMPARE(checker.result().status, UpdateStatus::Unavailable);
         }
         FakeRequest network;
-        UpdateChecker checker("0.2.59", {}, nullptr, &network);
+        UpdateChecker checker("0.2.59", {}, nullptr, &network, UpdatePlatform::VersionOnly);
         checker.checkForUpdates();
         QSignalSpy changes(&checker, &UpdateChecker::statusChanged);
         checker.shutdown();
@@ -142,7 +237,7 @@ class UpdateCheckerTest : public QObject {
             oversized.write(QByteArray(1024 * 1024, 'x'));
         }
         FakeRequest network;
-        UpdateChecker checker("0.2.59", path, nullptr, &network);
+        UpdateChecker checker("0.2.59", path, nullptr, &network, UpdatePlatform::VersionOnly);
         QElapsedTimer elapsed;
         elapsed.start();
         checker.checkForUpdates();
@@ -151,7 +246,7 @@ class UpdateCheckerTest : public QObject {
         QVERIFY(elapsed.elapsed() < 1000);
         QVERIFY(QFileInfo(path).size() < 16 * 1024);
         QCOMPARE(checker.result().status, UpdateStatus::UpToDate);
-        UpdateChecker restarted("0.2.59", path, nullptr, &network);
+        UpdateChecker restarted("0.2.59", path, nullptr, &network, UpdatePlatform::VersionOnly);
         QCOMPARE(restarted.result().status, UpdateStatus::UpToDate);
         restarted.checkForUpdates();
         QCOMPARE(network.requests, 1);
@@ -165,7 +260,7 @@ class UpdateCheckerTest : public QObject {
             cache.setValue("LastAttempt", QDateTime::currentSecsSinceEpoch() + 86400);
         }
         {
-            UpdateChecker checker("0.2.59", path, nullptr, &network);
+            UpdateChecker checker("0.2.59", path, nullptr, &network, UpdatePlatform::VersionOnly);
             checker.checkForUpdates();
             QCOMPARE(network.requests, 1);
         }
@@ -173,13 +268,13 @@ class UpdateCheckerTest : public QObject {
             QSettings cache(path, QSettings::IniFormat);
             cache.setValue("LastAttempt", QDateTime::currentSecsSinceEpoch() - 86399);
         }
-        UpdateChecker checker("0.2.59", path, nullptr, &network);
+        UpdateChecker checker("0.2.59", path, nullptr, &network, UpdatePlatform::VersionOnly);
         QCOMPARE(network.requests, 1);
         QTRY_COMPARE_WITH_TIMEOUT(network.requests, 2, 7500);
     }
     void absoluteTimeout() {
         FakeRequest network;
-        UpdateChecker checker("0.2.59", {}, nullptr, &network);
+        UpdateChecker checker("0.2.59", {}, nullptr, &network, UpdatePlatform::VersionOnly);
         QElapsedTimer elapsed;
         elapsed.start();
         checker.checkForUpdates();
@@ -214,7 +309,7 @@ class UpdateCheckerTest : public QObject {
             });
         });
         if (mode == 0) server.close();
-        UpdateChecker checker("0.2.59", {});
+        UpdateChecker checker("0.2.59", {}, nullptr, nullptr, UpdatePlatform::VersionOnly);
         QElapsedTimer elapsed;
         elapsed.start();
         int heartbeats = 0;

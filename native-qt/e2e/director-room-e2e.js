@@ -3353,6 +3353,25 @@ if (require.main === module) {
 }
 
 module.exports = {
+  // Shared real-browser controls for packaged platform workflows. Importing
+  // these helpers does not launch a publisher or relax this suite's checks.
+  buildDirectorUrl,
+  collectDirectorState,
+  waitForDirectorPeer,
+  waitForDecodedDirectorVideo,
+  installMessageProbe,
+  sendDirectorRequest,
+  waitForStatsInfo,
+  changeDirectorResolutionThroughUi,
+  closeDirectorVideoSettings,
+  clickDirectorQualityButton,
+  waitForProbeMessage,
+  settleUnsupportedAlerts,
+  requestVdoKeyframe,
+  clickSceneStatsButton,
+  waitForSceneStatsUi,
+  clickStatsBitrateControl,
+  runRemoteControlContract,
   parseArgs,
   prepareDirectorArtifacts,
   validatePackagedPublisherArtifact,

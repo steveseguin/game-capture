@@ -1,0 +1,211 @@
+'use strict';
+// Shared real browser receiver observations for packaged Mac workflows.
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function waitFor(check, timeout, message) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) { const value = await check(); if (value) return value; await sleep(200); }
+  throw Error(message);
+}
+async function receiver(browser, stream, publisher) {
+  return receiverAt(browser, `https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput&stereo=1&ab=510&audiocodec=red`, publisher);
+}
+async function installReceiverProbe(page) {
+  await page.addInitScript(() => {
+    window.reviewPCs = [];
+    window.RTCPeerConnection = new Proxy(window.RTCPeerConnection, {construct(target, args) {
+      const pc = new target(...args); window.reviewPCs.push(pc); return pc;
+    }});
+  });
+}
+async function receiverAt(browser, url, publisher) {
+  const page = await browser.newPage();
+  await installReceiverProbe(page);
+  await page.goto(url,
+    {waitUntil:'domcontentloaded', timeout:45000});
+  await waitFor(async () => {
+    if (publisher && (publisher.exitCode !== null || publisher.signalCode))
+      throw Error('Publisher exited before receiver decoded media; inspect publisher log');
+    return page.evaluate(async () => {
+    for (const pc of window.reviewPCs) {
+      for (const value of (await pc.getStats()).values())
+        if (value.type === 'inbound-rtp' && value.kind === 'video' && value.framesDecoded > 15) return true;
+    }
+    return false;
+    });
+  }, 35000, 'Receiver did not decode video');
+  return page;
+}
+async function observe(page, milliseconds, peerUuid = null) {
+  return page.evaluate(async ({milliseconds, peerUuid}) => {
+    const peers = peerUuid ? [window.session?.rpcs?.[peerUuid]] : window.reviewPCs;
+    if (peers.some(pc => !pc)) throw Error('Requested receiver peer is absent');
+    const video = [...document.querySelectorAll('video')].find(v => v.videoWidth && !v.paused &&
+      (!peerUuid || v.dataset.sid === peers[0].streamID || v.id === `videosource_${peerUuid}`));
+    if (!video) throw Error('No playing video');
+    const canvas = document.createElement('canvas'), context = canvas.getContext('2d', {willReadFrequently:true});
+    const observations = [];
+    let callback, stopped = false;
+    function frame(now, metadata) {
+      if (stopped) return;
+      // Read only the identity scanline. Copying a full 1080p frame on every
+      // callback would make the observer itself a substantial rendering load.
+      canvas.width = video.videoWidth; canvas.height = 1;
+      context.drawImage(video, 0, Math.floor(video.videoHeight / 2), video.videoWidth, 1,
+        0, 0, canvas.width, 1);
+      const row = context.getImageData(0, 0, canvas.width, 1).data;
+      let cyan = -1, magenta = -1;
+      for (let x = 0; x < canvas.width; ++x) {
+        const [r,g,b] = row.slice(x*4, x*4+3);
+        if (cyan < 0 && r < 70 && g > 170 && b > 170) cyan = x;
+        if (magenta < 0 && r > 170 && g < 70 && b > 170) magenta = x;
+      }
+      if (cyan >= 0 && magenta > cyan) {
+        const width = (magenta - cyan) / .75, left = cyan - width * .1;
+        let id = 0;
+        for (let bit = 0; bit < 16; ++bit) {
+          const x = Math.round(left + width * (.2 + (bit + .5) * .6 / 16));
+          if (x < 0 || x >= canvas.width) return;
+          if (row[x*4] > 127) id |= 1 << bit;
+        }
+        observations.push({id, time:performance.now(), mediaTime:metadata.mediaTime,
+          presentedFrames:metadata.presentedFrames});
+      }
+      callback = video.requestVideoFrameCallback(frame);
+    }
+    const started = performance.timeOrigin + performance.now();
+    callback = video.requestVideoFrameCallback(frame);
+    await new Promise(resolve => setTimeout(resolve, milliseconds));
+    stopped = true; video.cancelVideoFrameCallback(callback);
+    const ended = performance.timeOrigin + performance.now();
+    const tracks = [];
+    for (const pc of peers) {
+      const stats = await pc.getStats();
+      for (const item of stats.values()) if (item.type === 'inbound-rtp')
+        tracks.push({...item, codec:stats.get(item.codecId)?.mimeType});
+    }
+    return {observations, tracks, width:video.videoWidth, height:video.videoHeight, started, ended};
+  }, {milliseconds, peerUuid});
+}
+function requireMoving(observation, label, expectedCodec = 'video/h264') {
+  const unique = new Set(observation.observations.map(frame => frame.id));
+  if (unique.size < 20) throw Error(`${label}: only ${unique.size} distinct decoded fixture identities`);
+  for (let index = 1; index < observation.observations.length; ++index) {
+    const step = (observation.observations[index].id - observation.observations[index - 1].id + 65536) % 65536;
+    if (step > 90) throw Error(`${label}: reversed/corrupt fixture identity or a gap exceeding three seconds`);
+  }
+  if (!observation.tracks.some(track => track.codec?.toLowerCase() === expectedCodec.toLowerCase()))
+    throw Error(`${label}: expected received ${expectedCodec}`);
+  return unique.size;
+}
+
+// Observe actual decoded track frames independently of the HTML video's
+// display/compositor cadence. Keep the visible player running alongside it.
+// Requires the API provided by the pinned Chromium receiver; no silent fallback
+// to presentation callbacks when a decoded-output measurement was requested.
+async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout = 'camera') {
+  if (!['camera', 'syphon'].includes(fixtureLayout)) throw Error('Unknown fixture layout');
+  return page.evaluate(async ({milliseconds, peerUuid, fixtureLayout}) => {
+    const peers = peerUuid ? [window.session?.rpcs?.[peerUuid]] : window.reviewPCs;
+    if (peers.some(pc => !pc)) throw Error('Requested receiver peer is absent');
+    if (typeof MediaStreamTrackProcessor !== 'function') throw Error('Decoded-frame observation requires MediaStreamTrackProcessor');
+    const received = peers.filter(pc=>pc.connectionState==='connected')
+      .flatMap(pc=>pc.getReceivers()).map(r=>r.track).find(t=>t?.kind==='video'&&t.readyState==='live');
+    if (!received) throw Error('No received video track');
+    const track=received.clone(),observations=[];
+    let reader,timer,width=0,height=0,started,ended;
+    try {
+      reader=new MediaStreamTrackProcessor({track,maxBufferSize:4}).readable.getReader();
+      const canvas=new OffscreenCanvas(1,1),context=canvas.getContext('2d',{willReadFrequently:true});
+      started=performance.timeOrigin+performance.now();
+      timer=setTimeout(()=>reader.cancel().catch(()=>{}),milliseconds);
+      while(true) {
+        const {done,value:frame}=await reader.read();if(done) break;
+        try {
+          width=frame.displayWidth;height=frame.displayHeight;
+          canvas.width=width;
+          context.drawImage(frame,0,Math.floor(fixtureLayout==='syphon'?height*20/360:height/2),width,1,0,0,width,1);
+          const row=context.getImageData(0,0,width,1).data;
+          // The Syphon fixture uses an opaque sixteen-bit strip across its top.
+          // Camera/window fixtures use the anchored middle scanline below.
+          if(fixtureLayout==='syphon') {
+            let id=0;
+            for(let bit=0;bit<16;bit++)if(row[Math.floor(width*(bit+.5)/16)*4]>127)id|=1<<bit;
+            observations.push({id,time:performance.now(),mediaTime:frame.timestamp/1000000});
+            continue;
+          }
+          let cyan=-1,magenta=-1;
+          for(let x=0;x<width;x++) {
+            const r=row[x*4],g=row[x*4+1],b=row[x*4+2];
+            if(cyan<0&&r<70&&g>170&&b>170)cyan=x;
+            if(magenta<0&&r>170&&g<70&&b>170)magenta=x;
+          }
+          if(cyan>=0&&magenta>cyan) {
+            const markerWidth=(magenta-cyan)/.75,left=cyan-markerWidth*.1;let id=0,valid=true;
+            for(let bit=0;bit<16;bit++) {
+              const x=Math.round(left+markerWidth*(.2+(bit+.5)*.6/16));
+              if(x<0||x>=width){valid=false;break;}
+              if(row[x*4]>127)id|=1<<bit;
+            }
+            if(valid)observations.push({id,time:performance.now(),mediaTime:frame.timestamp/1000000});
+          }
+        } finally {frame.close();}
+      }
+      ended=performance.timeOrigin+performance.now();
+    } finally {
+      clearTimeout(timer);if(reader){await reader.cancel().catch(()=>{});reader.releaseLock();}track.stop();
+    }
+    const tracks=[];
+    for(const pc of peers)if(pc.connectionState==='connected') {
+      const stats=await pc.getStats();
+      for(const item of stats.values())if(item.type==='inbound-rtp')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType});
+    }
+    return {observations,tracks,width,height,started,ended,method:'MediaStreamTrackProcessor'};
+  },{milliseconds, peerUuid, fixtureLayout});
+}
+
+async function observeAudio(page, peerUuid = null) {
+  return page.evaluate(async peerUuid => {
+    const peers = peerUuid ? [window.session?.rpcs?.[peerUuid]] : window.reviewPCs;
+    if (peers.some(pc => !pc)) throw Error('Requested receiver peer is absent');
+    // A player can retry before its publisher is ready. Retired peer tracks
+    // produce silence even when a later connection is receiving real audio.
+    const track = peers.filter(pc => pc.connectionState === 'connected')
+      .flatMap(pc => pc.getReceivers()).map(r => r.track).find(t => t?.kind === 'audio' && t.readyState === 'live');
+    if (!track) throw Error('No received audio track');
+    const context = new AudioContext({sampleRate:48000});
+    const source = context.createMediaStreamSource(new MediaStream([track]));
+    const analyser = context.createAnalyser(); analyser.fftSize = 8192; analyser.smoothingTimeConstant = 0;
+    const splitter = context.createChannelSplitter(2), channels = [context.createAnalyser(), context.createAnalyser()];
+    source.connect(splitter);
+    for (let i=0;i<2;i++) { channels[i].fftSize=8192; channels[i].smoothingTimeConstant=0; splitter.connect(channels[i],i); }
+    const mute = context.createGain(); mute.gain.value = 0;
+    source.connect(analyser); analyser.connect(mute);
+    channels.forEach(channel => channel.connect(mute)); mute.connect(context.destination);
+    await context.resume();
+    const spectra = [], pcm = new Float32Array(analyser.fftSize);
+    for (let i = 0; i < 30; ++i) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const bins = new Float32Array(analyser.frequencyBinCount); analyser.getFloatFrequencyData(bins);
+      const level = (hz, spectrum = bins) => {
+        const bin = Math.round(hz * analyser.fftSize / context.sampleRate);
+        return Math.max(...spectrum.slice(bin - 2, bin + 3));
+      };
+      const channelLevels = channels.map(channel => {
+        const spectrum = new Float32Array(channel.frequencyBinCount); channel.getFloatFrequencyData(spectrum);
+        return {tone440:level(440,spectrum),tone880:level(880,spectrum)};
+      });
+      analyser.getFloatTimeDomainData(pcm);
+      spectra.push({channels:channelLevels,tone440:level(440),tone880:level(880),microphone1200:level(1200),excluded2000:level(2000),
+        rms:Math.sqrt(pcm.reduce((sum,value) => sum + value * value,0) / pcm.length)});
+    }
+    const tracks = [];
+    for (const pc of peers) {
+      const stats = await pc.getStats();
+      for (const value of stats.values()) if (value.type === 'inbound-rtp' && value.kind === 'audio')
+        tracks.push({...value,codec:stats.get(value.codecId)?.mimeType,
+          negotiatedCodecs:[...stats.values()].filter(item => item.type === 'codec' && /audio\//i.test(item.mimeType))});
+    }
+    await context.close(); return {spectra,tracks};
+  }, peerUuid);
+}
+module.exports = {sleep, waitFor, receiver, receiverAt, installReceiverProbe, observe, observeDecoded, requireMoving, observeAudio};

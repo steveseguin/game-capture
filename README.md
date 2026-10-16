@@ -167,6 +167,94 @@ cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scr
 ninja
 ```
 
+## macOS development
+
+An experimental Apple Silicon port is in progress. The Mac development build
+implements ScreenCaptureKit window video with Apple VideoToolbox H.264/HEVC and
+x264 H.264 for VDO.Ninja, plus Core Audio application/system capture feeding Opus.
+HEVC requires a compatible receiver; packaged playback is qualified with the
+recorded Google Chrome version. x264 remains H.264-only. Software VP9 now uses
+the bundled FFmpeg/libvpx helper; the controlled 720p60 window/audio/browser workflow
+passes. Experimental software AV1 uses the bundled libaom encoder. Controlled CLI
+window/audio playback passes at 360p30 and 720p60; the short M1 720p60 observation
+delivered 57.6 distinct fps, so sustained full-rate performance remains unqualified.
+AV1 requires a compatible receiver, Software or Auto encoding, and does not support
+the paired-alpha workflow. Controlled AV1 native GUI publishing, hide/restore and
+same-process source-loss recovery now pass; broader GUI and sustained coverage remain open.
+Transparent window capture and paired alpha reception now pass controlled
+CLI and GUI workflows with H.264/VP9 and the native OBS receiver, including actual
+OBS scene composition over black and white. Broader alpha recovery, resize and
+sustained qualification remain in progress. Chroma and solid-color window backgrounds
+also pass decoded browser checks with VT, x264, HEVC and VP9; GUI coverage includes actual mode selection, native color-panel accept/cancel,
+decoded custom colors and restoration after relaunch.
+AV1 chroma/solid backgrounds pass controlled CLI pixel checks with screen-content
+tuning and a quality floor; custom opaque backgrounds also pass the native GUI workflow.
+Higher-resolution performance remains unqualified.
+The Mac source list can now be filtered
+by source or app name. Minimizing or hiding a captured window pauses capture while
+viewers keep receiving the last image; restoring it resumes live video automatically.
+The latest Mac capture fix prevents the native hide animation from replacing that
+held image with a transparent frame. Packaged VT/VP9 GUI workflows verify correct
+OBS scene pixels through hide/restore and same-process source replacement. New
+viewers can also receive the held image while the source is suspended.
+Controlled selected-application audio workflows also continue stereo playback
+through this pause, including viewers connecting before video resumes.
+Destroying the native source window stops publishing and allows a replacement
+source to be selected in the same app process. An application that retains its
+closed window offscreen leaves capture paused until restored or explicitly stopped.
+AVFoundation microphone capture and app/input mixing work; packaged workflows cover
+both encoders and GUI live mute/unmute. AVFoundation camera capture now supports
+explicit device selection, preview, and publishing through both encoders; controlled
+virtual-camera workflows pass. WHIP publishing and recovery also work, with output
+profiles saved in macOS Keychain. A pinned Mac FFmpeg helper now supplies SRT,
+RTMP/RTMPS, RTSP, UDP and RIST integration. Local RTMP, encrypted SRT, both RTSP
+transports, UDP and RIST playback pass with both encoders; trusted RTMPS and broader
+qualification remain outstanding.
+Room workflows reuse the shared Windows routing and controls: director previews use
+x264 at 640×360 while scenes receive the selected encoder at full resolution.
+Packaged browser workflows cover both encoders, live resize/bitrate controls,
+independent preview mute, scene rejoining, token authorization and disabled remote
+controls. Native CPU/memory diagnostics are available. A Mac capture-cadence fix brings the
+controlled 720p60 workflow to about 60 decoded fps on M1 with both encoders,
+including selected-application audio. Controlled 30-minute VT and x264 workflows passed on their recorded development
+bundles; room long-run qualification remains outstanding. Both encoders also passed
+native-detail recovery after increasing resolution and portrait/landscape resizing.
+The update/notice bundle passed twenty launch/resize/stop workflows and twenty
+same-process GUI start/stop cycles, split equally between VT and x264.
+A Mac source-list accessibility adapter exposes stable, checked source choices as
+windows appear and disappear. Controlled workflows cover filtered and unfiltered
+selection; complete VoiceOver qualification remains outstanding. Closing to the menu
+bar and reopening the app now restores the same window without interrupting video;
+the optional close-to-quit preference remains supported.
+The Mac update footer now checks for a compatible Apple Silicon download. Development
+packaging includes a verified native dependency notice inventory and a source/build
+archive candidate. Rebuilding the app and all dependencies from those exported sources
+passed selected packaged media workflows; distribution review, clean-machine/minimum-OS
+validation, signing and notarization remain outstanding.
+Syphon texture sharing is now integrated on Mac, with explicit sender selection and straight/premultiplied input alpha. Packaged VT/x264 background playback and source lifecycle, plus H.264/VP9 paired-alpha reception in native OBS, pass controlled workflows. Controlled native Syphon GUI selection, sender loss/reselection, paired-alpha and background Go Live/Stop workflows pass; broader advanced-control coverage and external interoperability remain unqualified.
+Controlled 1080p60 Syphon output with stereo virtual input passes with VT and x264, including a five-minute x264 observation on M1. Notification-driven capture and bounded replay timing keep fresh frames moving while preserving paused textures; external-sender interoperability and calibrated A/V synchronization remain unqualified.
+Physical cameras and release qualification remain unfinished. Windows encoders and Spout are not offered on Mac.
+See the [Mac architecture and build instructions](docs/macos-arm64-architecture.md)
+for the implementation stages, build commands, and remaining qualification work.
+The Windows build and release packaging remain separate.
+
+To create a local Mac download candidate from a deployed app and its matching
+source export, run:
+
+```sh
+python3 native-qt/qa/package-macos-download.py \
+  --app 'native-qt/build-macos-arm64/package/Game Capture.app' \
+  --source-archive /path/to/matching-source.tar.gz \
+  --output /path/to/new-delivery-directory
+```
+
+The output includes a `-development.zip`, source archive, dependency audit and
+checksums. The packager verifies the source payload and its hashes for every
+bundled binary. Development archives are excluded from the Mac update footer.
+The optional `--distribution` mode requires an existing Developer ID signature,
+successful Gatekeeper assessment and stapled notarization ticket; it does not sign,
+notarize or publish the app. That positive distribution path remains unqualified.
+
 ## Testing
 
 Primary QA plans and gates live in `native-qt/qa/`.
