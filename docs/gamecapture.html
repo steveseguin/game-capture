@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Game Capture for VDO.Ninja | Windows, OBS &amp; Spout2</title>
+    <title>Game Capture for VDO.Ninja | Windows &amp; macOS Beta</title>
     <meta
       name="description"
-      content="Free Windows app to stream games, webcams, and Spout2 avatars to VDO.Ninja and OBS. Download Game Capture with hardware encoding and optional transparency."
+      content="Stream games, app windows, and webcams to VDO.Ninja and OBS. Download the stable Windows app or experimental macOS beta for Apple Silicon."
     />
     <meta name="author" content="Steve Seguin" />
     <meta name="robots" content="index,follow,max-image-preview:large" />
@@ -15,10 +15,10 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Game Capture" />
-    <meta property="og:title" content="Game Capture for VDO.Ninja | Windows, OBS &amp; Spout2" />
+    <meta property="og:title" content="Game Capture for VDO.Ninja | Windows &amp; macOS Beta" />
     <meta
       property="og:description"
-      content="Publish games, app windows, or Spout2 VTuber avatars from Windows to VDO.Ninja and OBS, with optional alpha transparency."
+      content="Stream games, app windows, and webcams to VDO.Ninja and OBS. Download the stable Windows app or experimental macOS beta for Apple Silicon."
     />
     <meta property="og:url" content="https://steveseguin.github.io/game-capture/gamecapture.html" />
     <meta property="og:image" content="https://steveseguin.github.io/game-capture/app-screenshot.png" />
@@ -28,10 +28,10 @@
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:creator" content="@SteveSeguin" />
-    <meta name="twitter:title" content="Game Capture for VDO.Ninja | Windows, OBS &amp; Spout2" />
+    <meta name="twitter:title" content="Game Capture for VDO.Ninja | Windows &amp; macOS Beta" />
     <meta
       name="twitter:description"
-      content="Windows-native game, window, and Spout2 publishing for low-latency VDO.Ninja and transparent OBS workflows."
+      content="Stream games, app windows, and webcams to VDO.Ninja and OBS. Download the stable Windows app or experimental macOS beta for Apple Silicon."
     />
     <meta name="twitter:image" content="https://steveseguin.github.io/game-capture/app-screenshot.png" />
     <meta name="twitter:image:alt" content="Game Capture Windows app with source selection and streaming controls" />
@@ -43,14 +43,14 @@
         "@type": "SoftwareApplication",
         "name": "Game Capture",
         "applicationCategory": "MultimediaApplication",
-        "operatingSystem": "Windows",
+        "operatingSystem": ["Windows", "macOS (Apple Silicon; experimental beta)"],
         "isAccessibleForFree": true,
         "license": "https://github.com/steveseguin/game-capture/blob/main/LICENSE",
         "screenshot": "https://steveseguin.github.io/game-capture/app-screenshot.png",
         "offers": { "@type": "Offer", "price": 0, "priceCurrency": "USD" },
-        "description": "Game Capture is a native Windows app for publishing games, app windows, webcams, and Spout2 VTuber avatars to VDO.Ninja and OBS, with optional alpha transparency.",
+        "description": "Game Capture publishes games, app windows, and webcams to VDO.Ninja and OBS. Available as a stable Windows app and an experimental Apple Silicon macOS beta.",
         "url": "https://steveseguin.github.io/game-capture/gamecapture.html",
-        "downloadUrl": "https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe",
+        "downloadUrl": ["https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe", "https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.62-beta.1/game-capture-macos-arm64-0.2.62-beta.1.zip"],
         "publisher": {
           "@type": "Person",
           "name": "Steve Seguin"
@@ -157,10 +157,28 @@
         max-width: 62ch;
       }
 
+      .platform-downloads {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+        margin-top: 1rem;
+      }
+
+      .release-label {
+        display: inline-block;
+        vertical-align: middle;
+        font: 700 0.75rem "IBM Plex Sans", sans-serif;
+        letter-spacing: normal;
+        color: var(--accent-2);
+      }
+
+      .beta-label { color: var(--danger); }
+      @media (max-width: 760px) { .platform-downloads { grid-template-columns: minmax(0, 1fr); } }
+
       .download-grid {
         margin-top: 1rem;
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(205px, 1fr));
+        grid-template-columns: minmax(0, 1fr);
         gap: 0.7rem;
       }
 
@@ -300,47 +318,46 @@
       </nav>
       <section class="hero" id="downloads" aria-labelledby="page-title">
 
-        <span class="kicker">Free &amp; open source &middot; Windows 64-bit</span>
+        <span class="kicker">Free &amp; open source &middot; Windows + macOS beta</span>
         <h1 id="page-title">Game Capture for VDO.Ninja</h1>
         <p class="sub">
-          Stream games, app windows, webcams, or Spout2 avatars from Windows to VDO.Ninja and OBS.
-          Share a viewer link, join a production room, or send transparent video to the OBS native receiver.
+          Stream games, app windows, and webcams to VDO.Ninja and OBS.
+          Share a viewer link or join a production room, with a stable Windows app and a new Apple Silicon Mac beta.
         </p>
 
-        <div class="download-grid">
-          <a
-            class="btn btn-main"
-            href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe"
-            >Download Installer (.exe)</a
-          >
-          <a
-            class="btn btn-alt"
-            href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-portable.exe"
-            >Download Portable (.exe)</a
-          >
-          <a
-            class="btn btn-plain"
-            href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-win64.zip"
-            >Download ZIP (.zip)</a
-          >
+        <div class="platform-downloads">
+          <section class="card" aria-labelledby="windows-download">
+            <h2 id="windows-download">Windows <span class="release-label">Stable</span></h2>
+            <p>64-bit &middot; Production release</p>
+            <div class="download-grid">
+              <a class="btn btn-main" href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe">Download Windows Installer</a>
+              <a class="btn btn-plain" href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-portable.exe">Windows Portable (.exe)</a>
+              <a class="btn btn-plain" href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-win64.zip">Windows ZIP</a>
+            </div>
+            <p class="meta"><a href="https://github.com/steveseguin/game-capture/releases/latest">Windows release notes</a></p>
+          </section>
+          <section class="card" aria-labelledby="macos-download">
+            <h2 id="macos-download">macOS <span class="release-label beta-label">Experimental Beta</span></h2>
+            <p>Apple Silicon only &middot; 0.2.62 Beta 1</p>
+            <div class="download-grid">
+              <a class="btn btn-alt" href="https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.62-beta.1/game-capture-macos-arm64-0.2.62-beta.1.zip">Download macOS Beta (.zip)</a>
+            </div>
+            <p class="meta">Apple VideoToolbox + x264. Signed and notarized. Extract the ZIP and move Game Capture.app to Applications.</p>
+            <p class="meta">Built for macOS 14.2+; tested on macOS 26.4.1. Minimum-OS and clean-machine compatibility are still unverified.</p>
+            <p class="meta"><span class="warn">Known issue: RTMP audio.</span> Feature parity is still in progress.</p>
+            <p class="meta"><a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1">Mac beta notes, source &amp; checksums</a></p>
+          </section>
         </div>
-
-        <p class="meta">
-          Release notes and all downloads:
-          <a href="https://github.com/steveseguin/game-capture/releases/latest"
-            >View the latest release</a
-          >
-        </p>
 
         <figure class="preview">
           <img
             src="./app-screenshot.png"
-            alt="Game Capture app window showing window selection and go live controls"
+            alt="Game Capture on Windows showing window selection and go live controls"
             width="983" height="755"
             fetchpriority="high"
             decoding="async"
           />
-          <figcaption>Game Capture: choose a source, set your stream details, and go live.</figcaption>
+          <figcaption>Windows app shown: choose a source, set your stream details, and go live.</figcaption>
         </figure>
       </section>
 
@@ -348,8 +365,8 @@
         <article class="card">
           <h2 id="setup">Quick Start</h2>
           <ol class="list">
-            <li>Download and open Game Capture on Windows.</li>
-            <li>Select a game window, webcam, or Spout2 sender, then choose audio if needed.</li>
+            <li>Download the version for your computer and open Game Capture. Grant capture permissions when prompted.</li>
+            <li>Select a window or webcam, then choose audio if needed. Windows also supports Spout2 sources.</li>
             <li>Enter a stream ID or paste a VDO.Ninja link, then click Go Live.</li>
             <li>Open the generated viewer link in a browser or OBS. For transparency, follow the alpha setup below.</li>
           </ol>
@@ -364,12 +381,12 @@
             <li>Native Qt app without an Electron runtime.</li>
             <li>Simple alternative to OBS for guest-side game feed publishing.</li>
             <li>Optional camera/webcam publishing with a selectable microphone and local publisher preview.</li>
-            <li>Direct Spout2 input for VTuber avatars and transparent graphics.</li>
+            <li>Spout2 input on Windows for VTuber avatars and transparent graphics.</li>
             <li>Built for VDO.Ninja compatibility and link workflows.</li>
           </ul>
         </article>
         <article class="card">
-          <h2 id="spout">Spout2 &amp; VTuber Sources</h2>
+          <h2 id="spout">Spout2 &amp; VTuber Sources (Windows)</h2>
           <ul class="list">
             <li>Receive local Spout2 video from VTube Studio, Warudo, VSeeFace, VNyan, and similar Windows apps.</li>
             <li>Enable Spout output in the avatar app, choose <strong>Spout2 (avatar apps)</strong>, and select its sender.</li>
@@ -384,7 +401,7 @@
           </p>
         </article>
         <article class="card">
-          <h2 id="alpha">Transparency in OBS</h2>
+          <h2 id="alpha">Transparency in OBS (Windows)</h2>
           <ul class="list">
             <li>Use <strong>VP9 (OBS Alpha Preview)</strong> with alpha enabled for transparent OBS playback.</li>
             <li>VP9 alpha requires the bundled LGPL FFmpeg/libvpx VP9 encoder and is CPU-encoded.</li>
@@ -399,9 +416,9 @@
         <article class="card">
           <h2>Compatibility &amp; Performance</h2>
           <ul class="list">
-            <li><span class="warn">Windows only</span> right now.</li>
+            <li>Windows is stable. The <a href="#macos-download">Apple Silicon Mac beta</a> is experimental; Intel Macs are not supported.</li>
             <li>The OBS plugin v1.1.68 native receiver accepts H.264 and VP9; HEVC/AV1 are not supported by that receiver.</li>
-            <li>Explicit NVENC/QSV can fall below 30 FPS at 4K. Lower resolution or frame rate if playback falls behind.</li>
+            <li>On Windows, explicit NVENC/QSV can fall below 30 FPS at 4K. Lower resolution or frame rate if playback falls behind.</li>
             <li>Room roles are not an access-control boundary; share production links with trusted participants.</li>
             <li>Limit max connections to protect publisher performance.</li>
             <li>

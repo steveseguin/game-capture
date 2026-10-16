@@ -139,7 +139,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\submit-virust
 
 ## 3) Upload assets to the release
 
-The preferred command above handles upload after readiness passes. For a manual upload, first complete the packaged release-readiness workflow in the [README](../README.md#testing). Replace `<tag>` and `<version>`.
+The preferred command above handles upload after readiness passes. For a manual upload, first complete the packaged release-readiness workflow in the [developer guide](developer-guide.md#testing). Replace `<tag>` and `<version>`.
 
 ```powershell
 gh release upload <tag> `
