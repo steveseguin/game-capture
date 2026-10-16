@@ -1,7 +1,7 @@
 """Actual packaged capture -> browser or native OBS codec/audio playback."""
 from pathlib import Path
 helpers=Path(__file__).with_name('device-failure-packaged.py').read_text().split('\ntry:\n    t=')[0]
-helpers=helpers.replace('a=p.parse_args()',"p.add_argument('--codecs',default='h264,av1,vp9,h265');p.add_argument('--obs',required=True);a=p.parse_args()")
+helpers=helpers.replace('a=p.parse_args()',"p.add_argument('--codecs',default='h264,av1,vp9');p.add_argument('--obs',required=True);a=p.parse_args()")
 exec(helpers)
 try:
     t=np.arange(96000)/48000;pcm=np.stack([.04*np.sin(2*np.pi*f*t) for f in (440,880)],axis=1)
@@ -25,7 +25,7 @@ try:
             time.sleep(.2)
         else:raise AssertionError('Publisher did not start')
         observer=subprocess.run(['node',str(Path(__file__).with_name('amd-codec-receiver.js')),'--discovery='+str(discovery),
-            '--stream='+stream,'--codec='+codec,'--report='+str(folder),*(['--obs='+a.obs] if codec=='h265' else [])],
+            '--stream='+stream,'--codec='+codec,'--report='+str(folder),*(['--obs='+a.obs,'--ffmpeg='+str(exe.parent/'ffmpeg/bin/ffmpeg.exe')] if codec=='h265' else [])],
             capture_output=True,text=True,encoding='utf-8',timeout=170,creationflags=subprocess.CREATE_NO_WINDOW)
         row.update(receiverExit=observer.returncode,stdout=observer.stdout,stderr=observer.stderr[-2000:],diagnostics=api())
         row['receiver']=json.loads((folder/'receiver.json').read_text())

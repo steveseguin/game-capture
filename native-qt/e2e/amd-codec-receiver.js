@@ -2,6 +2,8 @@
 // Observe an already-running packaged publisher; no encoder settings are changed.
 const fs=require('fs'),path=require('path'),assert=require('assert/strict');
 const {chromium}=require('playwright');
+const {execFile}=require('child_process');
+const exec=require('util').promisify(execFile);
 const obsHelper=require('./quality-obs-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(s=>{const i=s.indexOf('=');return [s.slice(2,i),s.slice(i+1)];}));
 const out=path.resolve(opts.report);fs.mkdirSync(out,{recursive:true});
@@ -30,6 +32,19 @@ let browser,obs;
         const end=Date.now()+30000;while((await c.request('GetRecordStatus')).outputActive){assert(Date.now()<end);await sleep(100);}
         await c.request('SaveSourceScreenshot',{sourceName:scene,imageFormat:'png',imageFilePath:path.join(out,'received.png'),imageWidth:1280,imageHeight:720});
         result.obsStats=await c.request('GetStats');
+        assert(opts.ffmpeg,'--ffmpeg is required to verify native receiver media');
+        const common={windowsHide:true,timeout:90000,maxBuffer:32*1024*1024,encoding:'buffer'};
+        const decoded=await exec(opts.ffmpeg,['-v','error','-xerror','-i',result.recording,'-fps_mode','passthrough','-enc_time_base','1:1000000','-f','null','-'],common);
+        assert(!decoded.stderr.length,'Native receiver decode errors');
+        const pictures=await exec(opts.ffmpeg,['-v','error','-i',result.recording,'-an','-vf','fps=2,scale=32:18','-pix_fmt','rgb24','-f','rawvideo','pipe:1'],common);
+        const frameBytes=32*18*3,unique=new Set();
+        assert(pictures.stdout.length%frameBytes===0);
+        for(let n=0;n<pictures.stdout.length;n+=frameBytes)unique.add(pictures.stdout.subarray(n,n+frameBytes).toString('base64'));
+        assert(unique.size>=10,'Native receiver video is frozen or blank');
+        const audio=await exec(opts.ffmpeg,['-v','error','-i',result.recording,'-vn','-ac','1','-ar','48000','-f','f32le','pipe:1'],common);
+        let energy=0;for(let n=0;n<audio.stdout.length;n+=4)energy+=audio.stdout.readFloatLE(n)**2;
+        const rms=Math.sqrt(energy/(audio.stdout.length/4));assert(audio.stdout.length>48000*4&&rms>.005,'Native receiver audio is silent');
+        result.decodedRecording={uniqueSamples:unique.size,audioRms:rms};
       }finally{await c.request('RemoveInput',{inputName:input}).catch(()=>{});await c.request('RemoveScene',{sceneName:scene}).catch(()=>{});}
     }else{
       browser=await chromium.launch({channel:'msedge',headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
