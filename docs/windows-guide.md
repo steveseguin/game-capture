@@ -152,3 +152,5 @@ In **Advanced → Resolution**, select 1440p, 4K or portrait presets, or type a 
 Native WHIP publishing now uses negotiated video RTX/NACK/PLI, bounded repair history and paced video packets. Its repair bandwidth allowance replenishes continuously, avoiding one-second repair blackouts after reordered-packet bursts. Ordinary VDO.Ninja calls retain their existing transport policy. The local diagnostics API exposes negotiated recovery capabilities and retransmission/cache-miss counts. See [validation and receiver limitations](amd-streaming-validation-2026-10-14.md).
 
 Packaged measurements, CPU contention results and remaining hardware limits: [encoding defaults validation](encoding-defaults-validation-2026-10-14.md).
+
+Auto also tries AMD AMF before software when an AMD adapter is present but no usable hardware Media Foundation encoder is available. Select **AMD AMF** in Advanced to choose AMD specifically on a mixed-GPU system. See the [RX 9060 XT application and fallback validation](radeon-rx9060xt-validation-2026-10-16.md).

@@ -1,0 +1,6 @@
+[
+  {"id":"rtmp-amf-1080p60-reconnect","resolution":"1920x1080","video-encoder":"amf","fps":60,"seconds":30},
+  {"id":"srt-amf-720p60-reconnect","resolution":"1280x720","video-encoder":"amf","fps":60,"seconds":30},
+  {"id":"whip-amf-720p60","resolution":"1280x720","video-encoder":"amf","fps":60,"seconds":30},
+  {"id":"rtspt-amf-720p30","resolution":"1280x720","video-encoder":"amf","fps":30,"seconds":30}
+]

@@ -70,9 +70,9 @@ async function start(root,output,{paired=false,fps=30,requireNinjaPlugin=true}={
     // modules before obs-websocket starts. Keep the wait bounded by wall time.
     const startupDeadline=Date.now()+90000;
     for(;;){try{client=new Obs('ws://127.0.0.1:'+port,password);await client.connect();break;}catch(e){client?.close();if(proc.exitCode!==null)throw Error('OBS exited '+proc.exitCode);if(Date.now()>=startupDeadline)throw e;await sleep(500);}}
-    const version=await client.request('GetVersion');
+    let version;
     const readyDeadline=Date.now()+60000;
-    for(;;){try{await client.request('GetSceneList');break;}catch(e){
+    for(;;){try{version=await client.request('GetVersion');await client.request('GetSceneList');break;}catch(e){
       if(!String(e).includes('"code":207')||Date.now()>=readyDeadline)throw e;
       await sleep(250);
     }}

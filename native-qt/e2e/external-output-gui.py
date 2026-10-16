@@ -8,7 +8,8 @@ spec=importlib.util.spec_from_file_location('desktop',Path(__file__).with_name('
 d=importlib.util.module_from_spec(spec);spec.loader.exec_module(d)
 
 def main():
-    p=argparse.ArgumentParser();p.add_argument('--publisher',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--cycles',type=int,default=1);p.add_argument('--protocols',default='whip,srt,rtmp,rtsp,rtsp-udp');a=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--publisher',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--cycles',type=int,default=1);p.add_argument('--protocols',default='whip,srt,rtmp,rtsp,rtsp-udp')
+    p.add_argument('--encoder',choices=['auto','amf'],default='auto');a=p.parse_args()
     exe=a.publisher.resolve();out=a.output.resolve();out.mkdir(parents=True,exist_ok=True);native=Path(__file__).resolve().parent.parent
     assert not any(p.name()=='game-capture.exe' for p in psutil.process_iter()),'Serialize capture runs'
     ctypes.windll.kernel32.SetThreadExecutionState(0x80000003)
@@ -88,6 +89,7 @@ def main():
             assert destinations,'No output protocols selected'
             for cycle,(protocol,label,url,key) in enumerate(destinations*a.cycles):
                 select('outputSelect',label)
+                if a.encoder=='amf':select('encoderSelect','AMD AMF')
                 ice_controls=[c for c in window.descendants() if (c.element_info.automation_id or '').endswith('.iceModeSelect')]
                 assert any(c.is_visible() for c in ice_controls)==(protocol=='whip'),'Incorrect ICE control visibility'
                 if restart==0 and cycle<len(destinations):
@@ -107,6 +109,9 @@ def main():
                 named('goLiveButton').invoke()
                 d.wait_for(lambda:api().get('output',{}).get('state')==2,'publishing '+protocol,40)
                 diag=api();assert diag['output']['protocol'].lower()==protocol
+                if a.encoder=='amf':
+                    assert diag['video']['active_encoder_category']=='AMD' and diag['video']['hardware_encoder'],diag['video']['active_encoder']
+                    reveal(named('encoderSelect'));shot(protocol+'-amd-live-'+str(restart)+'-'+str(cycle))
                 assert diag['output']['audio_codec']=='none' and diag['audio']['codec']=='none','Video-only diagnostics advertise an audio codec'
                 d.wait_for(lambda:'No audio' in named('connectionMediaLabel').window_text(),'video-only status')
                 assert not named('outputSelect').is_enabled(),'Output changes remain active while publishing'

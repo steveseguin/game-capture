@@ -133,6 +133,10 @@ paths:
         await until(async()=>{assert(app.exitCode===null,'Publisher exited with '+app.exitCode);if(!fs.existsSync(discovery))return false;const d=await api(discovery,'/diagnostics');result.lastDiagnostics=d;return d.output?.state===2;},id+' publishing',60000);
         const requestedCodec=String(configuration.codec??opts.codec??'h264').toLowerCase().replace(/[^a-z0-9]/g,'').replace('hevc','h265');
         assert.equal(result.lastDiagnostics.video.active_codec.toLowerCase().replace(/[^a-z0-9]/g,''),requestedCodec,'Publisher did not use the requested codec');
+        if((configuration['video-encoder']??opts['video-encoder'])==='amf'){
+          assert.equal(result.lastDiagnostics.video.active_encoder_category,'AMD','Publisher bypassed the requested AMD encoder');
+          assert.equal(result.lastDiagnostics.video.hardware_encoder,true,'AMD publishing fell back to software');
+        }
         monitor=launch(path.join(native,'.cache/desktop-ui-python/Scripts/python.exe'),[path.join(__dirname,'quality-resource-monitor.py'),'--pid',String(app.pid),'--output',path.join(dir,'resources.jsonl'),...(opts.matrix?['--no-hooks']:[])],id+'-monitor');
         if(!direct)await until(async()=>{const paths=await fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.json());
           result.serverPath=paths.items.find(p=>p.name===stream);return result.serverPath?.ready;},'server track discovery');
@@ -158,8 +162,11 @@ paths:
         const phases=id.includes('reconnect')?['initial','reconnected']:['steady'];
         if(obs){
           const obsBrowser=protocol==='whip'&&opts['obs-browser']!=='false';
+          if(opts['obs-direct-rtmp']==='true')assert.equal(protocol,'rtmp','Direct OBS RTMP requires an RTMP case');
+          result.obsReceiverUrl=obsBrowser?'http://127.0.0.1:18889/'+stream+'/':
+            opts['obs-direct-rtmp']==='true'?'rtmp://127.0.0.1:19350/'+stream:'rtsp://127.0.0.1:18854/'+stream;
           result.obs=await require('./quality-obs-receiver').receive(obs,{id,external:true,processAudio:true,obsBrowser,obsRenderDelayMs:Number(opts['obs-render-delay-ms']||0)},dir,
-            obsBrowser?'http://127.0.0.1:18889/'+stream+'/':'rtsp://127.0.0.1:18854/'+stream,seconds,source);
+            result.obsReceiverUrl,seconds,source);
         }
         if(!obs)
         for(const phase of phases){

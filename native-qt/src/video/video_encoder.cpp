@@ -47,6 +47,7 @@ extern "C" {
 #include <codecapi.h>
 #include <mferror.h>
 #include <d3d11.h>
+#include <dxgi1_2.h>
 #include <strmif.h>  // For ICodecAPI
 #include <wrl/client.h>
 
@@ -54,6 +55,7 @@ extern "C" {
 #pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "mf.lib")
 #pragma comment(lib, "d3d11.lib")
+#pragma comment(lib, "dxgi.lib")
 #endif
 #endif
 
@@ -1622,7 +1624,14 @@ class VideoEncoder::Impl {
         mfStarted_ = true;
 
         const auto candidates = orderedEncoderCandidates();
+        bool autoAmfAttempted = false;
+        const auto tryAutoAmf = [&]() {
+            if (autoAmfAttempted) return false;
+            autoAmfAttempted = true;
+            return initializeAutoAmfFallback(prepareHandover);
+        };
         if (candidates.empty()) {
+            if (tryAutoAmf()) return true;
             spdlog::error("[VideoEncoder] No H264 encoder found");
             shutdownMf();
             releaseCom();
@@ -1631,6 +1640,9 @@ class VideoEncoder::Impl {
 
         HRESULT lastHr = E_FAIL;
         for (const auto &candidate : candidates) {
+            // AMD drivers can provide AMF without registering a hardware MFT.
+            // Preserve working MFTs, but try AMF before spending CPU in software.
+            if (!candidate.hardware && tryAutoAmf()) return true;
             resetCurrentTransform();
             shutdownCurrentActivation();
             spdlog::info("[VideoEncoder] Trying {} encoder: {}",
@@ -1745,6 +1757,7 @@ class VideoEncoder::Impl {
             lastHr = E_FAIL;
         }
 
+        if (tryAutoAmf()) return true;
         spdlog::error("[VideoEncoder] Failed to initialize any encoder candidate (last hr=0x{:08x})",
                       static_cast<unsigned>(lastHr));
         resetCurrentTransform();
@@ -1754,6 +1767,55 @@ class VideoEncoder::Impl {
         activeCodec_.store(VideoCodec::H264, std::memory_order_relaxed);
         shutdownMf();
         releaseCom();
+        return false;
+    }
+
+    bool initializeAutoAmfFallback(bool prepareHandover) {
+        if (prepareHandover || config_.explicitEncoderSelection ||
+            config_.preferredHardware == HardwareEncoder::None ||
+            config_.codec != VideoCodec::H264) return false;
+
+        // Avoid probing missing vendor runtimes on non-AMD computers. Enumerate
+        // every physical adapter: AMD need not own the primary display.
+        ComPtr<IDXGIFactory1> factory;
+        if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(factory.GetAddressOf())))) return false;
+        bool hasAmd = false;
+        for (UINT index = 0; ; ++index) {
+            ComPtr<IDXGIAdapter1> adapter;
+            if (FAILED(factory->EnumAdapters1(index, adapter.GetAddressOf()))) break;
+            DXGI_ADAPTER_DESC1 description{};
+            if (SUCCEEDED(adapter->GetDesc1(&description)) && description.VendorId == 0x1002 &&
+                !(description.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)) {
+                hasAmd = true;
+                break;
+            }
+        }
+        if (!hasAmd) return false;
+
+        resetCurrentTransform();
+        shutdownCurrentActivation();
+        const auto previousHardware = config_.preferredHardware;
+        config_.preferredHardware = HardwareEncoder::AMF;
+        spdlog::info("[VideoEncoder] Auto: no usable hardware MFT; trying AMD AMF before software");
+        if (initializeExternalFfmpegNvenc()) {
+            initialized_ = true;
+            usingHardware_ = externalUsingHardware_;
+            setActiveEncoderName(externalEncoderName_);
+            activeCodec_.store(config_.codec, std::memory_order_relaxed);
+            // Retain AMD in the backend configuration through the fresh-process
+            // reset, bitrate changes and restarts. The public request stays Auto.
+            if (runWarmupProbeAndPrepareLivePipeline()) {
+                frameCount_ = 0;
+                spdlog::info("[VideoEncoder] Auto selected hardware encoder: {}", activeEncoderName());
+                return true;
+            }
+        }
+        shutdownExternalFfmpegNvenc();
+        initialized_ = false;
+        usingHardware_ = false;
+        setActiveEncoderName("");
+        config_.preferredHardware = previousHardware;
+        spdlog::warn("[VideoEncoder] AMD AMF unavailable or unhealthy; Auto will continue with software");
         return false;
     }
 
