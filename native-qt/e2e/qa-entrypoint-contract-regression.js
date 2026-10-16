@@ -22,9 +22,9 @@ function powershellBlockContaining(markdown, command) {
   return blocks.find((block) => block.includes(command)) || '';
 }
 
-const readme = fs.readFileSync(path.join(repoRoot, 'README.md'), 'utf8');
-const fastGateBlock = powershellBlockContaining(readme, 'run-fast-gate.ps1');
-const readinessBlock = powershellBlockContaining(readme, 'run-release-readiness.ps1');
+const developerGuide = fs.readFileSync(path.join(repoRoot, 'docs/developer-guide.md'), 'utf8');
+const fastGateBlock = powershellBlockContaining(developerGuide, 'run-fast-gate.ps1');
+const readinessBlock = powershellBlockContaining(developerGuide, 'run-release-readiness.ps1');
 const readinessParameters = [
   '-PublisherPath',
   '-ArtifactManifestPath',
@@ -39,7 +39,7 @@ check(
     readinessParameters.every((parameter) => readinessBlock.includes(parameter)) &&
     !!versionMatch &&
     readinessBlock.includes(`game-capture-${versionMatch[1]}-win64`),
-  'README gate commands must include every mandatory parameter and the current package version'
+  'Developer guide commands must include every mandatory parameter and the current package version'
 );
 
 const packageJson = JSON.parse(
