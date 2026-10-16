@@ -46,6 +46,9 @@ class LocalControlServer : public QObject {
     void setWindowSourcesProvider(SourcesProvider provider);
     void setCameraSourcesProvider(SourcesProvider provider);
     void setSpoutSourcesProvider(SourcesProvider provider);
+#ifdef __APPLE__
+    void setSyphonSourcesProvider(SourcesProvider provider);
+#endif
     void setAudioInputSourcesProvider(SourcesProvider provider);
     void setStopCallback(StopCallback callback);
     void setQuitCallback(QuitCallback callback);
@@ -83,6 +86,9 @@ class LocalControlServer : public QObject {
     SourcesProvider windowSourcesProvider_;
     SourcesProvider cameraSourcesProvider_;
     SourcesProvider spoutSourcesProvider_;
+#ifdef __APPLE__
+    SourcesProvider syphonSourcesProvider_;
+#endif
     SourcesProvider audioInputSourcesProvider_;
     StopCallback stopCallback_;
     QuitCallback quitCallback_;

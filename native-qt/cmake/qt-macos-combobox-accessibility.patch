@@ -1,0 +1,22 @@
+--- a/src/widgets/accessible/itemviews.cpp
++++ b/src/widgets/accessible/itemviews.cpp
+@@ -1193,7 +1193,7 @@
+ void QAccessibleTableCell::doAction(const QString& actionName)
+ {
+     if (actionName == toggleAction()) {
+-#if defined(Q_OS_ANDROID)
++#if defined(Q_OS_ANDROID) || defined(Q_OS_MACOS)
+         QAccessibleInterface *parentInterface = parent();
+         while (parentInterface){
+             if (parentInterface->role() == QAccessible::ComboBox) {
+--- a/src/widgets/accessible/complexwidgets.cpp
++++ b/src/widgets/accessible/complexwidgets.cpp
+@@ -465,7 +465,7 @@
+     if (QComboBox *cBox = comboBox()) {
+         if (actionName == showMenuAction() || actionName == pressAction()) {
+             if (cBox->view()->isVisible()) {
+-#if defined(Q_OS_ANDROID)
++#if defined(Q_OS_ANDROID) || defined(Q_OS_MACOS)
+                 const auto list = child(0)->tableInterface();
+                 if (list && list->selectedRowCount() > 0) {
+                     cBox->setCurrentIndex(list->selectedRows().at(0));

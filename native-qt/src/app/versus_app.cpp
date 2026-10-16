@@ -8,6 +8,14 @@
 
 #include "versus/audio/audio_format_converter.h"
 #include "versus/video/aspect_fit.h"
+#include "versus/platform/capabilities.h"
+#ifdef __APPLE__
+#include "versus/platform/macos_capture.h"
+#include "versus/platform/macos_audio_input.h"
+#include "versus/platform/macos_camera.h"
+#include "versus/platform/macos_system_resources.h"
+#include "versus/platform/macos_media_activity.h"
+#endif
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -212,6 +220,8 @@ const char *hardwareEncoderLabel(video::HardwareEncoder encoder) {
             return "QuickSync";
         case video::HardwareEncoder::AMF:
             return "AMF";
+        case video::HardwareEncoder::VideoToolbox:
+            return "VideoToolbox";
         case video::HardwareEncoder::None:
         default:
             return "Software";
@@ -233,6 +243,8 @@ bool encoderNameMatchesHardwarePreference(const std::string &encoderName, video:
             return lower.find("amd") != std::string::npos ||
                    lower.find("amf") != std::string::npos ||
                    lower.find("radeon") != std::string::npos;
+        case video::HardwareEncoder::VideoToolbox:
+            return lower.find("videotoolbox") != std::string::npos;
         case video::HardwareEncoder::None:
         default:
             return false;
@@ -694,6 +706,10 @@ const char *videoSourceModeName(VideoSourceMode mode) {
             return "camera";
         case VideoSourceMode::Spout:
             return "spout";
+#ifdef __APPLE__
+        case VideoSourceMode::Syphon:
+            return "syphon";
+#endif
         case VideoSourceMode::Window:
         default:
             return "window";
@@ -815,6 +831,12 @@ std::vector<versus::video::WindowInfo> VersusApp::listSpoutSenders() {
     return spoutCapture_.getSenders();
 }
 
+#ifdef __APPLE__
+std::vector<versus::video::WindowInfo> VersusApp::listSyphonServers() {
+    return syphonCapture_.getServers();
+}
+#endif
+
 std::vector<versus::video::WindowInfo> VersusApp::listCameras() {
     return cameraCapture_.getCameras();
 }
@@ -830,6 +852,11 @@ std::string VersusApp::lastCaptureError() const {
             return lastCaptureError_;
         }
     }
+#ifdef __APPLE__
+    if (lifecycleStateSnapshot().videoSourceMode == VideoSourceMode::Syphon) {
+        return syphonCapture_.lastError();
+    }
+#endif
     if (lifecycleStateSnapshot().videoSourceMode == VideoSourceMode::Camera) {
         return cameraCapture_.lastError();
     }
@@ -848,6 +875,10 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     {
         std::lock_guard<std::mutex> lock(captureErrorMutex_);
         lastCaptureError_.clear();
+        if (!platform::capabilities().canPublish()) {
+            lastCaptureError_ = platform::capabilities().unavailableReason;
+            return false;
+        }
     }
     struct StartupRollback {
         VersusApp *app = nullptr;
@@ -933,6 +964,9 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
             encodeThreadRunning_.load(std::memory_order_acquire);
     });
     spoutCapture_.setFrameCallback(frameCallback);
+#ifdef __APPLE__
+    syphonCapture_.setFrameCallback(frameCallback);
+#endif
     cameraCapture_.setFrameCallback(frameCallback);
     {
         std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
@@ -976,6 +1010,21 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                 captureConfig.frameRate > 0 ? captureConfig.frameRate : 60)) {
             return false;
         }
+#ifdef __APPLE__
+    } else if (mode == VideoSourceMode::Syphon) {
+        int fps;
+        {
+            std::lock_guard<std::mutex> lock(videoSendMutex_);
+            fps = videoConfig_.frameRate;
+        }
+        if (!syphonCapture_.startCapture(sourceId, fps > 0 ? fps : 60,
+                syphonPremultiplied_.load() ? platform::MacSyphonCapture::Alpha::Premultiplied
+                                            : platform::MacSyphonCapture::Alpha::Straight)) {
+            std::lock_guard<std::mutex> lock(captureErrorMutex_);
+            lastCaptureError_ = syphonCapture_.lastError();
+            return false;
+        }
+#endif
     } else if (mode == VideoSourceMode::Camera) {
         video::EncoderConfig captureConfig;
         {
@@ -1153,6 +1202,9 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
 void VersusApp::stopCapture() {
     stopVideoMaintenanceThread();
     stopEncodeThread();
+#ifdef __APPLE__
+    syphonCapture_.stopCapture();
+#endif
     windowCapture_.stopCapture();
     spoutCapture_.stopCapture();
     cameraCapture_.stopCapture();
@@ -1798,8 +1850,21 @@ StreamMetrics VersusApp::getStreamMetrics() const {
 }
 
 SourceHealth VersusApp::getSourceHealth() const {
+#ifdef __APPLE__
+    SourceHealth health;
+    {
+        std::lock_guard<std::mutex> lock(sourceHealthMutex_);
+        health = sourceHealth_;
+    }
+    // Do not hold the frame-health lock while querying the native lifecycle:
+    // stopCapture can wait for a frame callback that updates source health.
+    health.suspended = health.mode == VideoSourceMode::Window &&
+        capturing_.load(std::memory_order_relaxed) && windowCapture_.isSuspended();
+    return health;
+#else
     std::lock_guard<std::mutex> lock(sourceHealthMutex_);
     return sourceHealth_;
+#endif
 }
 
 std::shared_ptr<const video::CapturedFrame> VersusApp::getPublisherPreviewFrame() {
@@ -1935,6 +2000,12 @@ void VersusApp::populateSystemResourceUsage(ConnectionHealth &health) const {
     lastSystemKernelTime_ = kernel;
     lastSystemUserTime_ = user;
     health.systemCpuPercent = lastSystemCpuPercent_;
+#elif defined(__APPLE__)
+    const auto resources = platform::macSystemResources();
+    health.systemCpuPercent = resources.cpuPercent;
+    health.systemMemoryPercent = resources.memoryPercent;
+    health.systemMemoryTotalBytes = resources.memoryTotalBytes;
+    health.systemMemoryUsedBytes = resources.memoryUsedBytes;
 #else
     (void)health;
 #endif
@@ -2038,6 +2109,38 @@ std::string VersusApp::buildDiagnosticsJson() const {
     nlohmann::json root;
     root["schema"] = "game-capture-diagnostics-v1";
     root["version"] = publisherVersionTag();
+    const auto &capabilities = platform::capabilities();
+    root["platform_capabilities"] = {
+        {"platform", capabilities.name},
+        {"window_capture", capabilities.windowCapture},
+        {"camera_capture", capabilities.cameraCapture},
+        {"spout_capture", capabilities.spoutCapture},
+        {"audio_capture", capabilities.audioCapture},
+        {"microphone_capture", capabilities.microphoneCapture},
+        {"communications_audio_capture", capabilities.communicationsAudioCapture},
+        {"video_encoding", capabilities.videoEncoding},
+        {"can_publish", capabilities.canPublish()},
+        {"unavailable_reason", capabilities.unavailableReason}
+    };
+#ifdef __APPLE__
+    root["platform_capabilities"]["syphon_capture"] = true;
+    root["macos_media_activity_active"] = platform::macMediaActivityActive();
+    root["syphon_input_alpha"] = syphonPremultiplied_.load() ? "premultiplied" : "straight";
+    const auto syphonReadback = syphonCapture_.readbackStats();
+    root["syphon_readback"] = {
+        {"active", syphonCapture_.isCapturing()},
+        {"gpu_copies", syphonReadback.gpuCopies},
+        {"verified_frames", syphonReadback.verifiedFrames},
+        {"mismatched_copies", syphonReadback.mismatchedCopies},
+        {"deferred_frames", syphonReadback.deferredFrames}
+    };
+    root["platform_permissions"] = {
+        {"screen_recording", platform::screenCapturePermissionGranted() ? "granted" : "not_granted"},
+        {"capture_status", platform::screenCaptureStatus()},
+        {"microphone", platform::microphonePermissionStatus()},
+        {"camera", platform::cameraPermissionStatus()}
+    };
+#endif
     root["generated_steady_ms"] = steadyNowMs();
 
     refreshDiagnosticsTrackObservationsForTesting();
@@ -2135,6 +2238,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"green_background_likely", sourceHealth.greenBackgroundLikely},
         {"large_source", sourceHealth.largeSource}
     };
+#ifdef __APPLE__
+    root["source"]["suspended"] = sourceHealth.suspended;
+#endif
     root["signaling"] = {
         {"server", diagnosticsServer},
         {"room", diagnosticsRoom},
@@ -2192,6 +2298,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"ffmpeg_version", ffmpegInfo.version},
         {"ffmpeg_configuration", ffmpegInfo.configuration},
         {"ffmpeg_has_libvpx_vp9", ffmpegInfo.hasLibvpxVp9},
+#ifdef __APPLE__
+        {"ffmpeg_has_libaom_av1", ffmpegInfo.hasLibaomAv1},
+#endif
         {"ffmpeg_is_bundled", ffmpegInfo.bundled},
         {"ffmpeg_is_user_override", ffmpegInfo.userOverride},
         {"ffmpeg_gpl_enabled", ffmpegInfo.gplEnabled},
@@ -2701,6 +2810,9 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         spdlog::warn("[Audio] {} microphone capture failed: {}",
                      role,
                      micResult.error.empty() ? "unknown error" : micResult.error);
+#ifdef __APPLE__
+        emitRuntimeEvent(micResult.error.empty() ? "Microphone capture failed." : micResult.error, false);
+#endif
         setActiveMicrophoneSource("none");
         return false;
     };
@@ -4018,6 +4130,16 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
             }
             return false;
         }
+#ifdef __APPLE__
+        if (resolutionChanged && windowCapture_.isCapturing() &&
+            !windowCapture_.ensureFrameSize(nextConfig.width, nextConfig.height)) {
+            spdlog::error("[App] Native window size update failed; restoring the encoder configuration");
+            if (!videoEncoder_.initialize(previousPrimaryConfig))
+                spdlog::error("[App] Could not restore the encoder after the capture size failure");
+            publishVideoStateSnapshotLocked();
+            return false;
+        }
+#endif
         activeHqWidth_ = std::max(2, nextConfig.width & ~1);
         activeHqHeight_ = std::max(2, nextConfig.height & ~1);
         lastHqReconfigureMs_ = steadyNowMs();
@@ -4055,6 +4177,11 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     const bool roomQualityRoutingChanged =
         usesVp9AlphaTrack(videoConfig_) != usesVp9AlphaTrack(nextConfig);
     videoConfig_ = nextConfig;
+#ifdef __APPLE__
+    if (fpsChanged && syphonCapture_.isCapturing()) {
+        syphonCapture_.setFrameRate(nextConfig.frameRate);
+    }
+#endif
     if (fpsChanged && spoutCapture_.isCapturing()) {
         spoutCapture_.setFrameRate(nextConfig.frameRate);
     }
@@ -4471,6 +4598,14 @@ bool VersusApp::ensureLqEncoderInitializedLocked() {
     if (lqEncoderInitialized_.load(std::memory_order_relaxed)) {
         return true;
     }
+#ifdef __APPLE__
+    // A small HQ output must not limit the independent 640x360 room preview's
+    // native detail. Windows capture already retains the source-sized image.
+    if (windowCapture_.isCapturing() && !windowCapture_.ensureFrameSize(kLqWidth, kLqHeight)) {
+        spdlog::error("[App] Could not enlarge native window capture for the LQ preview");
+        return false;
+    }
+#endif
     std::function<bool()> beforeLqInitialize;
     {
         std::lock_guard<std::mutex> hookLock(roomQualityArchitectureTestHookMutex_);
@@ -4924,6 +5059,8 @@ void VersusApp::sendPeerConnectionMap(
         {"version", APP_VERSION},
 #if defined(_WIN32)
         {"platform", "Windows"}
+#elif defined(__APPLE__)
+        {"platform", "macOS"}
 #else
         {"platform", "Unknown"}
 #endif
@@ -6559,10 +6696,14 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                     }
 
                     if (!switchedToHardware && !videoConfig_.explicitEncoderSelection) {
+#ifdef __APPLE__
+                        const std::array<video::HardwareEncoder, 1> hardwareFallbackOrder = {video::HardwareEncoder::VideoToolbox};
+#else
                         const std::array<video::HardwareEncoder, 3> hardwareFallbackOrder = {
                             video::HardwareEncoder::QuickSync,
                             video::HardwareEncoder::AMF,
                             video::HardwareEncoder::NVENC};
+#endif
 
                         for (const auto mode : hardwareFallbackOrder) {
                             if (mode == videoConfig_.preferredHardware) {
@@ -7349,12 +7490,20 @@ void VersusApp::startVideoMaintenanceThread() {
     const VideoSourceMode sourceMode = lifecycleStateSnapshot().videoSourceMode;
     videoMaintenanceThread_ = std::thread([this, sourceMode]() {
         int64_t lastInfoBroadcastMs = 0;
+#ifdef __APPLE__
+        bool windowSuspended = false;
+#endif
         while (videoMaintenanceRunning_.load()) {
             bool sourceCapturing = false;
             switch (sourceMode) {
                 case VideoSourceMode::Camera:
                     sourceCapturing = cameraCapture_.isCapturing();
                     break;
+#ifdef __APPLE__
+                case VideoSourceMode::Syphon:
+                    sourceCapturing = syphonCapture_.isCapturing();
+                    break;
+#endif
                 case VideoSourceMode::Spout:
                     sourceCapturing = spoutCapture_.isCapturing();
                     break;
@@ -7372,10 +7521,21 @@ void VersusApp::startVideoMaintenanceThread() {
                         case VideoSourceMode::Camera:
                             message = cameraCapture_.lastError();
                             if (message.empty()) {
+#ifdef __APPLE__
+                                message =
+                                    "Camera capture stopped. Check its connection and System Settings > Privacy & Security > Camera, then start streaming again.";
+#else
                                 message =
                                     "Camera capture stopped. Check the camera connection and Windows privacy settings, then start streaming again.";
+#endif
                             }
                             break;
+#ifdef __APPLE__
+                        case VideoSourceMode::Syphon:
+                            message = syphonCapture_.lastError();
+                            if (message.empty()) message = "Syphon capture stopped. Select a live sender and start again.";
+                            break;
+#endif
                         case VideoSourceMode::Spout:
                             message =
                                 "Spout2 capture stopped. Select a valid Spout2 sender and start streaming again.";
@@ -7397,6 +7557,54 @@ void VersusApp::startVideoMaintenanceThread() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 continue;
             }
+
+#ifdef __APPLE__
+            // AVFoundation stops this exact input on loss; it never opens a
+            // replacement. Reconcile the app state once, outside the native
+            // notification callback, so operators see the loss as well.
+            bool microphoneStopped = false;
+            if (!stopRequested_.load() && !microphoneAudioCapture_.IsCapturing()) {
+                std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+                if (activeMicrophoneSourceName_ != "none") {
+                    activeMicrophoneSourceName_ = "none";
+                    microphoneStopped = true;
+                }
+            }
+            if (microphoneStopped) {
+                // Drain any in-flight input callback before clearing its last
+                // samples and meters. Preserve independently captured audio.
+                microphoneAudioCapture_.StopCapture();
+                {
+                    std::lock_guard<std::mutex> lock(additionalAudioMutex_);
+                    additionalAudioBuffer_.clear();
+                    additionalAudioSampleRate_ = 0;
+                    additionalAudioChannels_ = 0;
+                }
+                additionalAudioLevelRms_.store(0.0f, std::memory_order_relaxed);
+                additionalAudioPeak_.store(0.0f, std::memory_order_relaxed);
+                if (!audioCapture_.IsCapturing()) {
+                    primaryAudioLevelRms_.store(0.0f, std::memory_order_relaxed);
+                    primaryAudioPeak_.store(0.0f, std::memory_order_relaxed);
+                    audioLevelRms_.store(0.0f, std::memory_order_relaxed);
+                    audioPeak_.store(0.0f, std::memory_order_relaxed);
+                }
+                const std::string message =
+                    "Microphone/input stopped. Audio from this input is off. Reconnect or select an input, then stop and start streaming again.";
+                spdlog::warn("[Audio] {}", message);
+                emitRuntimeEvent(message, false);
+            }
+            if (sourceMode == VideoSourceMode::Window) {
+                const bool suspended = windowCapture_.isSuspended();
+                if (suspended != windowSuspended) {
+                    windowSuspended = suspended;
+                    emitRuntimeEvent(suspended
+                        ? "Window capture paused; viewers retain the last image. Restore the source window to resume."
+                        : "Window capture resumed.", false);
+                }
+                // Keep peer maintenance and audio alive during a temporary
+                // video suspension. The encode worker gates video delivery.
+            }
+#endif
 
             const int64_t nowMs = steadyNowMs();
             pruneTimedOutPeerInits(nowMs);
@@ -7764,6 +7972,11 @@ void VersusApp::startEncodeThread() {
 
     encodeThread_ = std::thread([this]() {
         spdlog::info("[EncodeThread] Started");
+#ifdef __APPLE__
+        platform::MacMediaActivity mediaActivity;
+        const auto sourceMode = lifecycleStateSnapshot().videoSourceMode;
+        bool windowSuspended = false;
+#endif
         using Clock = std::chrono::steady_clock;
         video::detail::FrameWaiter frameWaiter;
         auto nextFrameDue = Clock::now();
@@ -7821,6 +8034,20 @@ void VersusApp::startEncodeThread() {
             if (!live_) {
                 continue;
             }
+
+#ifdef __APPLE__
+            if (sourceMode == VideoSourceMode::Window && windowCapture_.isSuspended()) {
+                // Match the shared Windows behavior: keep presenting the last
+                // owned image while native capture is suspended. Otherwise OBS
+                // expires its asynchronous source and renders black. Capture
+                // counters and source.suspended still report the actual input
+                // state; only the output clock advances for the held image.
+                windowSuspended = true;
+            } else if (windowSuspended) {
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                windowSuspended = false;
+            }
+#endif
 
             const bool trackActive = hasAnyActiveVideoTrack();
             const bool wasTrackActive = videoTrackActive_.exchange(trackActive);

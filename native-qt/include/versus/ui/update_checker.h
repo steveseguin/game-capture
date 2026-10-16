@@ -9,13 +9,20 @@ inline constexpr const char *ReleasesUrl = "https://github.com/steveseguin/game-
 inline constexpr const char *LatestReleaseApi =
     "https://api.github.com/repos/steveseguin/game-capture/releases/latest";
 
-enum class UpdateStatus { Checking, UpToDate, Available, Unavailable };
+enum class UpdateStatus { Checking, UpToDate, Available, Unavailable, NoCompatibleDownload };
+enum class UpdatePlatform { VersionOnly, MacArm64 };
+#ifdef __APPLE__
+inline constexpr auto NativeUpdatePlatform = UpdatePlatform::MacArm64;
+#else
+inline constexpr auto NativeUpdatePlatform = UpdatePlatform::VersionOnly;
+#endif
 struct UpdateResult {
     UpdateStatus status = UpdateStatus::Unavailable;
     QString version;
 };
 
-UpdateResult evaluateRelease(const QByteArray &json, const QString &installedVersion);
+UpdateResult evaluateRelease(const QByteArray &json, const QString &installedVersion,
+                             UpdatePlatform platform = NativeUpdatePlatform);
 
 // Injectable transport for deterministic gates; production always uses the fixed HTTPS API.
 class ReleaseRequest : public QObject {
@@ -32,7 +39,8 @@ class UpdateChecker final : public QObject {
     Q_OBJECT
   public:
     UpdateChecker(const QString &installedVersion, const QString &cachePath,
-                  QObject *parent = nullptr, ReleaseRequest *request = nullptr);
+                  QObject *parent = nullptr, ReleaseRequest *request = nullptr,
+                  UpdatePlatform platform = NativeUpdatePlatform);
     ~UpdateChecker() override;
     const UpdateResult &result() const { return result_; }
     void checkForUpdates();
@@ -45,6 +53,7 @@ class UpdateChecker final : public QObject {
     QString installedVersion_;
     QString cachePath_;
     ReleaseRequest *request_;
+    UpdatePlatform platform_;
     QTimer timer_;
     QTimer deadline_;
     qint64 lastAttempt_ = 0;

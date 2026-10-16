@@ -1,4 +1,7 @@
 #include "versus/control/local_control_server.h"
+#ifdef __APPLE__
+#include "versus/platform/app_paths.h"
+#endif
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -62,6 +65,9 @@ QByteArray reasonPhrase(int status) {
 }
 
 QString appDataPath(const QString &leaf) {
+#ifdef __APPLE__
+    return QDir(platform::dataDirectory()).filePath(leaf);
+#else
 #ifdef _WIN32
     const QString base = qEnvironmentVariable("LOCALAPPDATA");
     QDir dir(base.isEmpty() ? QDir::currentPath() : base);
@@ -73,6 +79,7 @@ QString appDataPath(const QString &leaf) {
     }
     dir.cd("GameCapture");
     return dir.filePath(leaf);
+#endif
 }
 
 bool ensureParentDir(const QString &path) {
@@ -276,6 +283,12 @@ void LocalControlServer::setCameraSourcesProvider(SourcesProvider provider) {
     cameraSourcesProvider_ = std::move(provider);
 }
 
+#ifdef __APPLE__
+void LocalControlServer::setSyphonSourcesProvider(SourcesProvider provider) {
+    syphonSourcesProvider_ = std::move(provider);
+}
+#endif
+
 void LocalControlServer::setSpoutSourcesProvider(SourcesProvider provider) {
     spoutSourcesProvider_ = std::move(provider);
 }
@@ -458,6 +471,12 @@ void LocalControlServer::routeRequest(QTcpSocket *socket, const HttpRequest &req
         sendJson(socket, 200, sourcesJson(cameraSourcesProvider_));
         return;
     }
+#ifdef __APPLE__
+    if (request.method == "GET" && path == "/sources/syphon") {
+        sendJson(socket, 200, sourcesJson(syphonSourcesProvider_));
+        return;
+    }
+#endif
     if (request.method == "GET" && path == "/sources/spout") {
         sendJson(socket, 200, sourcesJson(spoutSourcesProvider_));
         return;
@@ -610,6 +629,9 @@ QByteArray LocalControlServer::schemaJson() const {
         QJsonObject{{"method", "GET"}, {"path", "/diagnostics"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/sources/windows"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/sources/cameras"}, {"auth_required", true}},
+#ifdef __APPLE__
+        QJsonObject{{"method", "GET"}, {"path", "/sources/syphon"}, {"auth_required", true}},
+#endif
         QJsonObject{{"method", "GET"}, {"path", "/sources/spout"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/sources/audio-inputs"}, {"auth_required", true}},
         QJsonObject{{"method", "GET"}, {"path", "/logs/recent?lines=250"}, {"auth_required", true}},
@@ -724,6 +746,9 @@ bool LocalControlServer::writeDiscoveryFile() {
             "/schema",
             "/sources/windows",
             "/sources/cameras",
+#ifdef __APPLE__
+            "/sources/syphon",
+#endif
             "/sources/spout",
             "/sources/audio-inputs",
             "/logs/recent",

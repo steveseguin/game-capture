@@ -34,6 +34,7 @@ class MainWindow : public QMainWindow {
     struct RuntimeOptions {
         bool persistedSettingsEnabled = true;
         bool systemIntegrationsEnabled = true;
+        QString settingsDirectory;
     };
 
     struct ParsedStreamTarget {
@@ -92,6 +93,9 @@ class MainWindow : public QMainWindow {
     void showFfmpegStatus(const versus::video::FfmpegProbeInfo &info);
     bool hasPendingAsyncOperation() const;
     void loadPersistedSettings();
+#ifdef __APPLE__
+    void syncAudioSourceChoices();
+#endif
     bool resetPersistedSettingsToDefaults();
     void showFirewallWarningIfNeeded();
     void maybeQuitAfterPendingOperations();
@@ -124,6 +128,9 @@ class MainWindow : public QMainWindow {
     QPushButton *passwordRevealButton_ = nullptr;
     QLineEdit *labelInput_ = nullptr;
     QComboBox *sourceModeSelect_ = nullptr;
+#ifdef __APPLE__
+    QComboBox *syphonAlphaSelect_ = nullptr;
+#endif
     QWidget *cameraOptionsPanel_ = nullptr;
     QComboBox *cameraResolutionSelect_ = nullptr;
     QComboBox *cameraFpsSelect_ = nullptr;
@@ -176,6 +183,10 @@ class MainWindow : public QMainWindow {
     QString previousOutput_ = QStringLiteral("vdo");
     bool switchingOutput_ = false;
     QHash<QString, output::Config> outputProfiles_;
+#ifdef __APPLE__
+    bool outputProfilesReadable_ = true;
+    QByteArray lastSavedOutputProfiles_;
+#endif
     QComboBox *audioChannelsSelect_ = nullptr;
     QCheckBox *includeMicrophoneCheck_ = nullptr;
     QComboBox *microphoneDeviceSelect_ = nullptr;

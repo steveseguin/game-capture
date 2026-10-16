@@ -183,7 +183,7 @@ struct Session::Impl {
             result.body = reply->readAll(); result.url = url;
             result.contentType = reply->rawHeader("Content-Type");
             result.location = url.resolved(QUrl(QString::fromUtf8(reply->rawHeader("Location"))));
-            if (!reply->hasRawHeader("Location")) result.location = {};
+            if (!reply->hasRawHeader("Location")) result.location = QUrl{};
             for (const auto &header : reply->rawHeaderPairs())
                 if (header.first.toLower() == "link") result.links += header.second + ',';
             delete reply;
@@ -210,7 +210,7 @@ struct Session::Impl {
             client.prepareForShutdown(); client.shutdown();
             if (!resource.isEmpty()) {
                 try { http(network, "DELETE", resource, {}, resourceCredentialOrigin, true); } catch (...) {}
-                resource = {};
+                resource = QUrl{};
             }
         };
         try {
@@ -233,7 +233,12 @@ struct Session::Impl {
             if (!client.initialize(peer) || client.createOffer().empty()) throw OutputError("WHIP could not create a WebRTC offer.");
             const auto gatheringStart = Clock::now();
             while (!stopping.load() && !client.iceGatheringComplete()) {
-                if (Clock::now() - gatheringStart > std::chrono::seconds(10)) throw OutputError("WHIP ICE gathering timed out.");
+                // The bundled ICE agent can spend 23.5 seconds retrying an
+                // unresponsive STUN/TURN server. Let gathering finish so one
+                // unavailable advertised server does not discard usable
+                // candidates from the others. This non-trickle offer still
+                // waits for completion, including in Relay Only mode.
+                if (Clock::now() - gatheringStart > std::chrono::seconds(30)) throw OutputError("WHIP ICE gathering timed out.");
                 pause(25);
             }
             if (stopping.load()) { cleanup(); return; }
@@ -256,7 +261,7 @@ struct Session::Impl {
             if (answer.status == 201 && (resource.isEmpty() || !allowedHttpUrl(resource) ||
                 (answer.url.scheme() == "https" && resource.scheme() != "https"))) {
                 // An invalid/insecure Location must not be followed by cleanup.
-                resource = {};
+                resource = QUrl{};
                 throw OutputError("WHIP did not return a valid secure session location.", true);
             }
             if (answer.oversized) throw OutputError("WHIP response exceeded the size limit.", true);

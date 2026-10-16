@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include "versus/platform/macos_network.h"
+#endif
 #include "versus/signaling/vdo_signaling.h"
 
 #include <nlohmann/json.hpp>
@@ -917,6 +920,14 @@ bool VdoSignaling::connect(const std::string &server, const std::function<bool()
     wsConfig.connectionTimeout = std::chrono::seconds(60);
     wsConfig.pingInterval = std::chrono::milliseconds::zero();
     wsConfig.disableTlsVerification = false;
+#ifdef __APPLE__
+    const auto roots = platform::macSystemCaCertificatesPem();
+    if (roots.empty()) {
+        spdlog::error("[Signaling] No macOS system CA certificates are available");
+        return false;
+    }
+    wsConfig.caCertificatePemFile = roots;
+#endif
 
     auto socket = std::make_shared<rtc::WebSocket>(wsConfig);
 

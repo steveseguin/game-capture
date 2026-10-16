@@ -1,4 +1,5 @@
 #pragma once
+#include "versus/platform/atomic_shared_ptr.h"
 
 #include <atomic>
 #include <chrono>
@@ -25,6 +26,9 @@
 #include "versus/webrtc/webrtc_client.h"
 #include "versus/video/camera_capture.h"
 #include "versus/video/spout_capture.h"
+#ifdef __APPLE__
+#include "versus/platform/macos_syphon_capture.h"
+#endif
 #include "versus/video/video_encoder.h"
 #include "versus/video/window_capture.h"
 #include "versus/audio/opus_encoder.h"
@@ -46,6 +50,9 @@ enum class AudioSourceMode {
 enum class VideoSourceMode {
     Window,
     Spout,
+#ifdef __APPLE__
+    Syphon,
+#endif
     Camera
 };
 
@@ -125,6 +132,9 @@ struct SourceHealth {
     VideoSourceMode mode = VideoSourceMode::Window;
     std::string sourceId;
     bool hasFrame = false;
+#ifdef __APPLE__
+    bool suspended = false;
+#endif
     bool bgra = false;
     int width = 0;
     int height = 0;
@@ -167,6 +177,10 @@ class VersusApp {
 
     std::vector<versus::video::WindowInfo> listWindows();
     std::vector<versus::video::WindowInfo> listSpoutSenders();
+#ifdef __APPLE__
+    std::vector<versus::video::WindowInfo> listSyphonServers();
+    void setSyphonPremultiplied(bool enabled) { syphonPremultiplied_.store(enabled); }
+#endif
     std::vector<versus::video::WindowInfo> listCameras();
     std::vector<versus::audio::AudioDeviceInfo> listAudioInputDevices();
     std::string lastCaptureError() const;
@@ -485,7 +499,7 @@ class VersusApp {
     LifecycleStateSnapshot lifecycleStateSnapshot() const;
 
     std::atomic<bool> live_{false};
-    std::atomic<std::shared_ptr<output::Session>> externalOutput_;
+    platform::AtomicSharedPtr<output::Session> externalOutput_;
     std::atomic<bool> capturing_{false};
     std::atomic<bool> stopRequested_{false};
     std::atomic<bool> reconnecting_{false};
@@ -877,6 +891,10 @@ class VersusApp {
 
     versus::video::WindowCapture windowCapture_;
     versus::video::SpoutCapture spoutCapture_;
+#ifdef __APPLE__
+    versus::platform::MacSyphonCapture syphonCapture_;
+    std::atomic<bool> syphonPremultiplied_{false};
+#endif
     versus::video::CameraCapture cameraCapture_;
     versus::video::VideoEncoder videoEncoder_;
     versus::video::VideoEncoder videoEncoderLq_;
