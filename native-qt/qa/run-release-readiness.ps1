@@ -1022,7 +1022,7 @@ if (-not $SkipRoomAlpha) {
     }
     $allPass = $allPass -and $roomAlphaPass
 
-    $fullAlphaPass = & $script:runStepImplementation "Packaged Alpha (seven-case transparency matrix)" {
+    $fullAlphaPass = & $script:runStepImplementation "Packaged Alpha (steady-state transparency matrix)" {
         if ($alphaIdentityError) {
             throw $alphaIdentityError
         }
@@ -1038,17 +1038,17 @@ if (-not $SkipRoomAlpha) {
         )
         & $script:npmExecutable @fullAlphaArgs
         if ($LASTEXITCODE -ne 0) {
-            throw "Packaged seven-case alpha workflow exited with code $LASTEXITCODE"
+            throw "Packaged steady-state alpha workflow exited with code $LASTEXITCODE"
         }
         $manifestPath = Join-Path $fullAlphaRunDir "manifest.json"
         if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
-            throw "Packaged seven-case alpha workflow did not produce its manifest: $manifestPath"
+            throw "Packaged steady-state alpha workflow did not produce its manifest: $manifestPath"
         }
         $fullAlphaManifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
         if (-not [bool]$fullAlphaManifest.ok -or
             -not [bool]$fullAlphaManifest.artifactHashesStable -or
             @($fullAlphaManifest.cases | Where-Object { -not $_.ok }).Count -ne 0) {
-            throw "Packaged seven-case alpha manifest is not release-acceptable: $manifestPath"
+            throw "Packaged steady-state alpha manifest is not release-acceptable: $manifestPath"
         }
         $fullAlphaEvidence.publisher = $packagedPublisher
         $fullAlphaEvidence.publisherSha256 = $publisherHash
@@ -1066,7 +1066,7 @@ if ($SkipRoomAlpha) {
     $lines += "- Result: SKIPPED (disabled via -SkipRoomAlpha)"
 } else {
     $lines += "- Room Quality result: " + ($(if ($roomAlphaPass) { "PASS" } else { "FAIL" }))
-    $lines += "- Seven-case transparency result: " + ($(if ($fullAlphaPass) { "PASS" } else { "FAIL" }))
+    $lines += "- Steady-state transparency result: " + ($(if ($fullAlphaPass) { "PASS" } else { "FAIL" }))
     $lines += "- Publisher: $(if ($roomAlphaEvidence.publisher) { $roomAlphaEvidence.publisher } else { '(unresolved)' })"
     $lines += "- Publisher SHA-256: $(if ($roomAlphaEvidence.publisherSha256) { $roomAlphaEvidence.publisherSha256 } else { '(unresolved)' })"
     $lines += "- Spout fixture: $(if ($roomAlphaEvidence.spoutSender) { $roomAlphaEvidence.spoutSender } else { '(unresolved)' })"
@@ -1074,7 +1074,7 @@ if ($SkipRoomAlpha) {
     $lines += "- Plugin payload: $(if ($roomAlphaEvidence.plugin) { $roomAlphaEvidence.plugin } else { '(unresolved)' })"
     $lines += "- Plugin SHA-256: $(if ($roomAlphaEvidence.pluginSha256) { $roomAlphaEvidence.pluginSha256 } else { '(unresolved)' })"
     $lines += "- Room Quality manifest: $(if ($roomAlphaEvidence.manifest) { $roomAlphaEvidence.manifest } else { '(unresolved)' })"
-    $lines += "- Seven-case manifest: $(if ($fullAlphaEvidence.manifest) { $fullAlphaEvidence.manifest } else { '(unresolved)' })"
+    $lines += "- Steady-state manifest: $(if ($fullAlphaEvidence.manifest) { $fullAlphaEvidence.manifest } else { '(unresolved)' })"
 }
 $lines += ""
 
