@@ -28,7 +28,7 @@ The production version supports Windows hardware encoders, Spout2 sources, optio
 
 Apple Silicon (M-series) only, built for **macOS 14.2+**. Uses **Apple VideoToolbox** hardware H.264 or **x264** software H.264. The app is Developer ID signed and notarized.
 
-This is an early port with incomplete feature parity. **RTMP audio has a known failure.** Minimum-OS and clean-machine compatibility remain unverified; packaged workflows were tested on an M1 running macOS 26.4.1. Read the [beta release notes](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1) before using it.
+This is an early port with incomplete feature parity. Minimum-OS and clean-machine compatibility remain unverified; packaged workflows were tested on an M1 running macOS 26.4.1. Read the [beta release notes](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1) before using it.
 
 ## Help and development
 
