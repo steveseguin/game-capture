@@ -13,11 +13,15 @@ for codec,encoder in [('h264','h264_amf'),('hevc','hevc_amf'),('av1','av1_amf')]
     if encoded.returncode==0:
         decoded=run(['-v','error','-xerror','-i',file,'-fps_mode','passthrough','-enc_time_base','1:1000000','-f','null','-'])
         (out/(name+'-decode.log')).write_bytes(decoded.stderr)
-        probe=subprocess.run([str(a.ffmpeg.with_name('ffprobe.exe')),'-v','error','-show_streams','-show_packets','-of','json',str(file)],capture_output=True,creationflags=subprocess.CREATE_NO_WINDOW,timeout=60)
-        data=json.loads(probe.stdout);video=next(s for s in data['streams'] if s['codec_type']=='video');packets=[v for v in data['packets'] if v['codec_type']=='video'];pts=[float(v['pts_time']) for v in packets]
+        probe=run(['-v','info','-copyts','-i',file,'-an','-vf','showinfo','-fps_mode','passthrough','-f','null','-'])
+        probe_text=probe.stderr.decode(errors='replace');(out/(name+'-frames.log')).write_text(probe_text,encoding='utf-8')
+        assert probe.returncode==0
+        pts=[float(v) for v in re.findall(r'\bn:\s*\d+\s+pts:\s*\S+\s+pts_time:([-\d.e+]+)',probe_text)]
+        actual=re.search(r'Stream #0:0[^\n]*Video: (\w+)',probe_text).group(1)
+        width,height=map(int,re.search(r'\bs:(\d+)x(\d+)',probe_text).groups())
         gaps=[y-x for x,y in zip(pts,pts[1:])]
-        row.update(actualCodec=video['codec_name'],frames=len(packets),width=video['width'],height=video['height'],maxFrameGapMs=max(gaps)*1000,monotonic=all(g>0 for g in gaps),cleanDecode=decoded.returncode==0 and not decoded.stderr,encodedBytes=file.stat().st_size)
-        row['passed']=row['cleanDecode'] and row['actualCodec']==codec and len(packets)>=299 and row['monotonic'] and max(gaps)<.035
+        row.update(actualCodec=actual,frames=len(pts),width=width,height=height,maxFrameGapMs=max(gaps)*1000,monotonic=all(g>0 for g in gaps),cleanDecode=decoded.returncode==0 and not decoded.stderr,encodedBytes=file.stat().st_size)
+        row['passed']=row['cleanDecode'] and row['actualCodec']==codec and len(pts)>=299 and row['monotonic'] and max(gaps)<.035
     else:row['passed']=False
     (out/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(row),flush=True)
 results['passed']=all(c['passed'] for c in results['cases']);(out/'results.json').write_text(json.dumps(results,indent=2));assert results['passed']
