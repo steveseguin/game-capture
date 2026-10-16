@@ -89,10 +89,16 @@ $publisher = Join-Path $package "game-capture.exe"
 $manifest = Join-Path $package "release-artifact-manifest.json"
 $manifestSha256 = (Get-FileHash -LiteralPath $manifest -Algorithm SHA256).Hash.ToLowerInvariant()
 $firefox = (Resolve-Path (Join-Path $env:ProgramFiles "Mozilla Firefox\firefox.exe")).Path
+$pluginRepo = (Resolve-Path ..\ninja-plugin).Path
+$spoutSender = (Resolve-Path .\native-qt\build-review2\bin\spout_test_sender.exe).Path
 powershell -NoProfile -ExecutionPolicy Bypass -File .\native-qt\qa\run-release-readiness.ps1 `
   -BuildDir build-review2 -Configuration Release -PublisherPath $publisher `
-  -ArtifactManifestPath $manifest -ArtifactManifestSha256 $manifestSha256 -FirefoxPath $firefox
+  -ArtifactManifestPath $manifest -ArtifactManifestSha256 $manifestSha256 -FirefoxPath $firefox `
+  -RoomAlphaPluginRepo $pluginRepo -RoomAlphaPublisherPath $publisher -RoomAlphaSpoutSenderPath $spoutSender
 ```
+
+The transparency workflows require the sibling `ninja-plugin` checkout's staged
+plugin and portable OBS. They use the same signed package as the other workflows.
 
 Packaged signaling and interoperability workflows:
 

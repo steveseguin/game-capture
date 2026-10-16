@@ -394,15 +394,40 @@ class BidiLocator {
 
   async click(options = {}) {
     await this.scrollIntoViewIfNeeded();
-    const point = await this.page.callFunction(
-      locatorFunction([
-        'const elements = resolve(spec);',
-        'if (elements.length !== 1) throw new Error(`Expected one element, found ${elements.length}`);',
-        'const rect = elements[0].getBoundingClientRect();',
-        'return { x: Math.floor(rect.left + rect.width / 2), y: Math.floor(rect.top + rect.height / 2) };'
-      ].join('\n')),
-      [this.spec, null]
-    );
+    const timeout = options.timeout || DEFAULT_COMMAND_TIMEOUT_MS;
+    const started = Date.now();
+    let previous = null;
+    let point;
+    // BiDi supplies pointer actions, but does not wait for a locator to stop
+    // moving as Playwright does. Avoid clicking a neighbour during reflow or
+    // smooth scrolling, and never click through an overlay.
+    for (;;) {
+      const current = await this.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        const style = getComputedStyle(element);
+        const left = Math.max(0, rect.left);
+        const right = Math.min(innerWidth, rect.right);
+        const top = Math.max(0, rect.top);
+        const bottom = Math.min(innerHeight, rect.bottom);
+        if (right <= left || bottom <= top || style.visibility === 'hidden' ||
+            style.display === 'none' || Number(style.opacity) === 0 ||
+            element.matches(':disabled') || element.getAttribute('aria-disabled') === 'true') return null;
+        const x = Math.floor((left + right) / 2);
+        const y = Math.floor((top + bottom) / 2);
+        const hit = document.elementFromPoint(x, y);
+        if (!hit || (hit !== element && !element.contains(hit))) return null;
+        return { x, y, left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+      });
+      if (current && previous && JSON.stringify(current) === JSON.stringify(previous)) {
+        point = current;
+        break;
+      }
+      if (Date.now() - started >= timeout) {
+        throw new Error(`Locator was not stable and unobstructed for click in ${timeout} ms`);
+      }
+      previous = current;
+      await wait(50);
+    }
     await this.page.connection.command('input.performActions', {
       context: this.page.contextId,
       actions: [{

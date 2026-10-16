@@ -1616,10 +1616,26 @@ async function clickDirectorQualityButton(page, uuid, actionType) {
   }
   try {
     await button.scrollIntoViewIfNeeded();
+    await button.evaluate((element) => {
+      element.__directorQualityClick = null;
+      document.addEventListener('click', (event) => {
+        const targetButton = event.target instanceof Element
+          ? event.target.closest('button') : null;
+        element.__directorQualityClick = {
+          trusted: event.isTrusted,
+          targetMatches: element === event.target || element.contains(event.target),
+          targetAction: targetButton?.getAttribute('data-action-type') || '',
+          x: event.clientX,
+          y: event.clientY
+        };
+      }, { capture: true, once: true });
+    });
     await button.click({ timeout: 10000 });
     return await button.evaluate((element, action) => ({
-      ok: true,
+      ok: element.__directorQualityClick?.trusted === true &&
+        element.__directorQualityClick?.targetMatches === true,
       action,
+      click: element.__directorQualityClick,
       pressed: element.classList.contains('pressed'),
       ariaPressed: element.getAttribute('aria-pressed') || ''
     }), actionType);
@@ -2846,6 +2862,7 @@ async function run() {
     await sendDirectorRequest(page, uuid, { requestStatsContinuous: false });
 
     const qualityOffClick = await clickDirectorQualityButton(page, uuid, 'change-quality1');
+    report.qualityOffClick = qualityOffClick;
     if (!qualityOffClick.ok) {
       throw Object.assign(new Error('quality off button click failed'), { result: qualityOffClick });
     }
@@ -2859,6 +2876,7 @@ async function run() {
     const beforeQualityRestoreMedia = await readDirectorMediaProgress(page, uuid, config.streamId);
     const qualityHighProbeStart = await getDirectorProbeMessageCount(page);
     const qualityHighClick = await clickDirectorQualityButton(page, uuid, 'change-quality3');
+    report.qualityHighClick = qualityHighClick;
     if (!qualityHighClick.ok) {
       throw Object.assign(new Error('quality high button click failed'), { result: qualityHighClick });
     }

@@ -29,7 +29,10 @@ const readinessParameters = [
   '-PublisherPath',
   '-ArtifactManifestPath',
   '-ArtifactManifestSha256',
-  '-FirefoxPath'
+  '-FirefoxPath',
+  '-RoomAlphaPluginRepo',
+  '-RoomAlphaPublisherPath',
+  '-RoomAlphaSpoutSenderPath'
 ];
 const cmakeText = fs.readFileSync(path.join(nativeRoot, 'CMakeLists.txt'), 'utf8');
 const versionMatch = cmakeText.match(/project\s*\([^)]*\bVERSION\s+([0-9]+(?:\.[0-9]+)+)/iu);
@@ -39,7 +42,7 @@ check(
     readinessParameters.every((parameter) => readinessBlock.includes(parameter)) &&
     !!versionMatch &&
     readinessBlock.includes(`game-capture-${versionMatch[1]}-win64`),
-  'Developer guide commands must include every mandatory parameter and the current package version'
+  'Developer guide commands must include every required workflow argument and the current package version'
 );
 
 const packageJson = JSON.parse(
