@@ -154,3 +154,8 @@ Native WHIP publishing now uses negotiated video RTX/NACK/PLI, bounded repair hi
 Packaged measurements, CPU contention results and remaining hardware limits: [encoding defaults validation](encoding-defaults-validation-2026-10-14.md).
 
 Auto also tries AMD AMF before software when an AMD adapter is present but no usable hardware Media Foundation encoder is available. Select **AMD AMF** in Advanced to choose AMD specifically on a mixed-GPU system. See the [RX 9060 XT application and fallback validation](radeon-rx9060xt-validation-2026-10-16.md).
+
+## AMD codec validation
+
+See the [RX 9060 XT codec results](radeon-codecs-2026-10-16.md) for H.264/AV1
+hardware playback, VP9 software behavior and HEVC receiver limitations.
