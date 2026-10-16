@@ -38,6 +38,9 @@ const mixedMic = includeMic && ['selected-window','default-output'].includes(aud
 const performanceSeconds = Number(opts['performance-seconds'] || 0);
 if (!Number.isInteger(performanceSeconds) || (performanceSeconds && (performanceSeconds < 10 || performanceSeconds > 1800)))
   throw Error('--performance-seconds must be 10..1800');
+const fixtureStartId = Number(opts['fixture-start-id'] || 0);
+if (!Number.isInteger(fixtureStartId) || fixtureStartId < 0 || fixtureStartId > 65535 || (opts['fixture-start-id'] && !performanceSeconds))
+  throw Error('--fixture-start-id must be 0..65535 and requires a timed performance observation');
 const compactPerformanceReport = opts['compact-performance-report'] === 'true';
 if (opts['compact-performance-report'] && !['true','false'].includes(opts['compact-performance-report']))
   throw Error('--compact-performance-report must be true or false');
@@ -57,6 +60,7 @@ if (opts.gui && (!opts['ui-helper'] || !mixedMic || opts.encoder !== 'videotoolb
 const result = {receiverHarnessSha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'macos-media-receiver.js'))).digest('hex'), harnessSha256:crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'), gui:!!opts.gui, microphoneDevice:opts['microphone-device'] || null, includeMic, missingInput:!!opts['missing-input'], lateAudioStart:!!opts['late-audio'], scope:'Packaged Mac window video with ' + audioMode + ' audio; release qualification excluded',
   executableSha256:crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'), cases:[], passed:false};
 result.requested = {codec,width,height,fps,bitrateKbps:bitrate,performanceSeconds,windowSuspension};
+if (opts['fixture-start-id']) result.requested.fixtureStartId = fixtureStartId;
 if (compactPerformanceReport) result.requested.compactPerformanceReport = true;
 result.hardware = {cpu:execFileSync('/usr/sbin/sysctl',['-n','machdep.cpu.brand_string'],{encoding:'utf8'}).trim(),
   memoryBytes:Number(execFileSync('/usr/sbin/sysctl',['-n','hw.memsize'],{encoding:'utf8'}).trim())};
@@ -141,7 +145,7 @@ function saveReport() {
     await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden}canvas{display:block}</style><canvas></canvas>
       <script>
       const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');
-      window.fixture={paused:false,id:0,trace:[],record:false};const origin=performance.now();
+      window.fixture={paused:false,id:${fixtureStartId},trace:[],record:false};const origin=performance.now();
       function draw(){
         canvas.width=innerWidth;canvas.height=innerHeight;
         // The performance source changes identity once per actual draw. Time
@@ -256,6 +260,8 @@ function saveReport() {
       entry.distinctFrames = requireMoving(entry.moving, encoder);
       if (performanceSeconds) {
         entry.performance = {scope:'Local controlled window and browser on the same Mac; not calibrated latency/A-V or release qualification',chunks:[],samples:[],meetsTarget:true};
+        const samplePerformanceAudio = audioMode !== 'none' || usesMic;
+        if (samplePerformanceAudio) entry.performance.audioCoverage = 'Three-second decoded stereo/isolation observations in each ten-second interval; not continuous audio or A/V drift measurement';
         const counters = () => page.evaluate(async () => {
           let decoded=0,dropped=0;
           for(const pc of window.reviewPCs) if(pc.connectionState==='connected')
@@ -282,8 +288,10 @@ function saveReport() {
               await Promise.race([sleep(2000),samplingDone]);
             }
           })().catch(error=>{samplingError=error;});
-          let observation,presentation;
-          try { [observation,presentation]=await Promise.all([observeDecoded(page,seconds*1000),observe(page,seconds*1000)]); }
+          let observation,presentation,audioObservation;
+          try { [observation,presentation,audioObservation]=await Promise.all([
+            observeDecoded(page,seconds*1000,null,'camera',true),observe(page,seconds*1000),
+            samplePerformanceAudio ? observeAudio(page) : Promise.resolve(null)]); }
           finally { observing=false;finishSampling();await sampling; }
           if (samplingError) throw samplingError;
           if (logError) throw logError;
@@ -291,7 +299,19 @@ function saveReport() {
           const sourceTrace=await source.evaluate(()=>{fixture.record=false;return fixture.trace;});
           const sourceFrames=sourceTrace.filter(f=>f.time>=observation.started&&f.time<=observation.ended);
           const sourceDistinct=new Set(sourceFrames.map(f=>f.id)).size;
-          const receivedDistinct=requireMoving(observation,encoder+' sustained');
+          let receivedDistinct;
+          try { receivedDistinct=requireMoving(observation,encoder+' sustained'); }
+          catch(error) {
+            const failed={elapsed,error:String(error),observation,presentation,audioObservation,
+              sourceFrames,beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
+            const raw=Buffer.from(JSON.stringify(failed)),compressed=gzipSync(raw);
+            const name=`${encoder}-failed-performance-${String(elapsed).padStart(4,'0')}.json.gz`;
+            fs.writeFileSync(path.join(report,name),compressed,{flag:'wx'});
+            entry.performance.failedInterval={elapsed,error:String(error),evidence:{path:name,compression:'gzip',
+              sha256:crypto.createHash('sha256').update(compressed).digest('hex'),
+              uncompressedSha256:crypto.createHash('sha256').update(raw).digest('hex')}};
+            entry.performance.meetsTarget=false;saveReport();throw error;
+          }
           const gaps=observation.observations.slice(1).map((f,i)=>(f.mediaTime-observation.observations[i].mediaTime)*1000).sort((a,b)=>a-b);
           const wallSeconds=(observation.ended-observation.started)/1000;
           const expectedDistinct=Math.min(sourceDistinct,fps*wallSeconds);
@@ -300,9 +320,18 @@ function saveReport() {
             p95MediaGapMs:gaps[Math.floor(gaps.length*.95)],maxMediaGapMs:Math.max(...gaps),before,after,
             observation,presentation,presentedDistinct:new Set(presentation.observations.map(f=>f.id)).size,
             sourceFrames,beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
+          let audioError;
+          if (samplePerformanceAudio) {
+            chunk.audioObservation = audioObservation;
+            try { requireAudio(audioObservation); } catch (error) { audioError = error; }
+            chunk.audioCheck = {passed:!audioError,spectra:audioObservation.spectra.length,
+              minRms:Math.min(...audioObservation.spectra.map(s=>s.rms)),
+              maxRms:Math.max(...audioObservation.spectra.map(s=>s.rms)),
+              ...(audioError ? {error:String(audioError)} : {})};
+          }
           chunk.meetsTarget=chunk.sourceFps>=fps*.95&&chunk.deliveryRatio>=.95&&chunk.p95MediaGapMs<=2000/fps+2&&
             observation.width===width&&observation.height===height&&
-            afterDiag.video.encode_failures===beforeDiag.video.encode_failures&&afterDiag.video.encode_timeouts===beforeDiag.video.encode_timeouts;
+            afterDiag.video.encode_failures===beforeDiag.video.encode_failures&&afterDiag.video.encode_timeouts===beforeDiag.video.encode_timeouts&&!audioError;
           if (compactPerformanceReport) {
             // Keep every raw observation, but write each interval once. Long
             // runs otherwise rewrite tens of megabytes after every interval.
@@ -311,7 +340,7 @@ function saveReport() {
             const name = `${encoder}-performance-${String(elapsed).padStart(4,'0')}.json.gz`;
             fs.writeFileSync(path.join(report,name),compressed,{flag:'wx'});
             const {observation: rawDecoded,presentation: rawPresented,sourceFrames: rawSource,
-              beforeDiagnostics: rawBefore,afterDiagnostics: rawAfter,...summary} = chunk;
+              beforeDiagnostics: rawBefore,afterDiagnostics: rawAfter,audioObservation: rawAudio,...summary} = chunk;
             summary.evidence = {path:name,compression:'gzip',bytes:compressed.length,
               sha256:crypto.createHash('sha256').update(compressed).digest('hex'),
               uncompressedBytes:raw.length,uncompressedSha256:crypto.createHash('sha256').update(raw).digest('hex')};
@@ -320,6 +349,7 @@ function saveReport() {
           entry.performance.meetsTarget&&=chunk.meetsTarget;
           console.log(`${encoder}: ${elapsed+seconds}s source=${chunk.sourceFps.toFixed(1)} received=${chunk.receivedFps.toFixed(1)} fps ratio=${chunk.deliveryRatio.toFixed(3)} p95=${chunk.p95MediaGapMs.toFixed(1)}ms target=${chunk.meetsTarget}`);
           saveReport();
+          if (audioError) throw audioError;
         }
       }
       if (audioMode !== 'none' || usesMic) {

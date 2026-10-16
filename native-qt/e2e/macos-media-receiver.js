@@ -90,8 +90,10 @@ function requireMoving(observation, label, expectedCodec = 'video/h264') {
   const unique = new Set(observation.observations.map(frame => frame.id));
   if (unique.size < 20) throw Error(`${label}: only ${unique.size} distinct decoded fixture identities`);
   for (let index = 1; index < observation.observations.length; ++index) {
-    const step = (observation.observations[index].id - observation.observations[index - 1].id + 65536) % 65536;
-    if (step > 90) throw Error(`${label}: reversed/corrupt fixture identity or a gap exceeding three seconds`);
+    const previous = observation.observations[index - 1], current = observation.observations[index];
+    const step = (current.id - previous.id + 65536) % 65536;
+    if (step > 90) throw Error(`${label}: reversed/corrupt fixture identity or gap exceeding 90 fixture steps; ` +
+      `frame=${index}, ids=${previous.id}->${current.id}, step=${step}, mediaGapMs=${(current.mediaTime-previous.mediaTime)*1000}`);
   }
   if (!observation.tracks.some(track => track.codec?.toLowerCase() === expectedCodec.toLowerCase()))
     throw Error(`${label}: expected received ${expectedCodec}`);
@@ -102,16 +104,16 @@ function requireMoving(observation, label, expectedCodec = 'video/h264') {
 // display/compositor cadence. Keep the visible player running alongside it.
 // Requires the API provided by the pinned Chromium receiver; no silent fallback
 // to presentation callbacks when a decoded-output measurement was requested.
-async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout = 'camera') {
+async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout = 'camera', captureIdentityFailures = false) {
   if (!['camera', 'syphon'].includes(fixtureLayout)) throw Error('Unknown fixture layout');
-  return page.evaluate(async ({milliseconds, peerUuid, fixtureLayout}) => {
+  return page.evaluate(async ({milliseconds, peerUuid, fixtureLayout, captureIdentityFailures}) => {
     const peers = peerUuid ? [window.session?.rpcs?.[peerUuid]] : window.reviewPCs;
     if (peers.some(pc => !pc)) throw Error('Requested receiver peer is absent');
     if (typeof MediaStreamTrackProcessor !== 'function') throw Error('Decoded-frame observation requires MediaStreamTrackProcessor');
     const received = peers.filter(pc=>pc.connectionState==='connected')
       .flatMap(pc=>pc.getReceivers()).map(r=>r.track).find(t=>t?.kind==='video'&&t.readyState==='live');
     if (!received) throw Error('No received video track');
-    const track=received.clone(),observations=[];
+    const track=received.clone(),observations=[],identityFailures=[];
     let reader,timer,width=0,height=0,started,ended;
     try {
       reader=new MediaStreamTrackProcessor({track,maxBufferSize:4}).readable.getReader();
@@ -146,7 +148,19 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
               if(x<0||x>=width){valid=false;break;}
               if(row[x*4]>127)id|=1<<bit;
             }
-            if(valid)observations.push({id,time:performance.now(),mediaTime:frame.timestamp/1000000});
+            if(valid) {
+              const observation={id,time:performance.now(),mediaTime:frame.timestamp/1000000};
+              const previous=observations.at(-1),step=previous?(id-previous.id+65536)%65536:0;
+              // Preserve actual received pixels on a rejected identity, before
+              // the frame is closed. Bound capture cost to two images per interval.
+              if(captureIdentityFailures&&previous&&step>90&&identityFailures.length<2) {
+                const picture=document.createElement('canvas');picture.width=width;picture.height=height;
+                picture.getContext('2d').drawImage(frame,0,0,width,height);
+                identityFailures.push({index:observations.length,previous,current:observation,step,
+                  cyan,magenta,scanlineRgba:Array.from(row),png:picture.toDataURL('image/png')});
+              }
+              observations.push(observation);
+            }
           }
         } finally {frame.close();}
       }
@@ -159,8 +173,9 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
       const stats=await pc.getStats();
       for(const item of stats.values())if(item.type==='inbound-rtp')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType});
     }
-    return {observations,tracks,width,height,started,ended,method:'MediaStreamTrackProcessor'};
-  },{milliseconds, peerUuid, fixtureLayout});
+    return {observations,tracks,width,height,started,ended,method:'MediaStreamTrackProcessor',
+      ...(captureIdentityFailures?{identityFailures}: {})};
+  },{milliseconds, peerUuid, fixtureLayout, captureIdentityFailures});
 }
 
 async function observeAudio(page, peerUuid = null) {

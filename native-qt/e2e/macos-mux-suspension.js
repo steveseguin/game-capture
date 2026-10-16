@@ -34,7 +34,9 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
 function receiver(url,label){
  const file=path.join(report,label+'.mkv'),samples=[],bytesPerFrame=640*360*4;
  const child=launch(ffmpeg,['-hide_banner','-y','-rtsp_transport','tcp','-i',url,
-  '-map','0','-c','copy',file,'-map','0:v:0','-vf','scale=640:360','-fps_mode','passthrough','-pix_fmt','rgba','-f','rawvideo','pipe:1'],label,true);
+  // Audio packets from older FFmpeg RTSP demuxers may lack the key flag.
+  // Preserve them in the recording; retain the video keyframe requirement.
+  '-map','0','-c','copy','-copyinkf:a',file,'-map','0:v:0','-vf','scale=640:360','-fps_mode','passthrough','-pix_fmt','rgba','-f','rawvideo','pipe:1'],label,true);
  let pending=Buffer.alloc(0);
  child.stdout.on('data',b=>{pending=Buffer.concat([pending,b]);while(pending.length>=bytesPerFrame){
   const frame=pending.subarray(0,bytesPerFrame);pending=pending.subarray(bytesPerFrame);

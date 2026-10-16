@@ -9,6 +9,8 @@ const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=
 for(const key of ['app','reports','server','ffmpeg','camera-device','camera-helper','tone-helper','microphone-device'])assert(opts[key],'Required --'+key);
 assert.equal(process.platform,'darwin');
 if(opts.gui)assert(opts['ui-helper'],'GUI workflow requires --ui-helper');
+assert(['rtsp','rtmp'].includes(opts['receiver-protocol']||'rtsp'),'Receiver protocol must be rtsp or rtmp');
+if(opts['receiver-protocol']==='rtmp')assert.equal(opts.protocols,'rtmp','Direct RTMP reception requires --protocols=rtmp');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 const app=path.resolve(opts.app),exe=path.join(app,'Contents/MacOS/game-capture'),helper=path.join(app,'Contents/Helpers/ffmpeg');
@@ -17,6 +19,9 @@ assert(fs.existsSync(path.join(app,'Contents/Frameworks'))&&fs.existsSync(helper
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={started:new Date().toISOString(),executableSha256:hash(exe),helperSha256:hash(helper),harnessSha256:hash(__filename),
   receiverSha256:hash(ffmpeg),serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Local packaged camera/microphone mux workflows; WAN, physical devices and release qualification excluded',cases:[],passed:false};
+result.receiverProtocol=opts['receiver-protocol']||'rtsp';
+result.receiverVersion=execFileSync(ffmpeg,['-version'],{encoding:'utf8'}).split('\n')[0];
+result.probeSha256=hash(ffprobe);
 const children=new Set();let server;
 function launch(program,args,name){
   const log=fs.createWriteStream(path.join(report,name+'.log'));
@@ -89,11 +94,17 @@ function decode(file,seconds,staticAndSilent=false){
     const id=protocol+'-'+encoder,entry={protocol,encoder,phases:[],passed:false};result.cases.push(entry);
     const stream=(protocol==='srt'?'encrypted':'stream')+crypto.randomBytes(8).toString('hex'),direct=['udp','rist'].includes(protocol),directPort=await port(true);
     const url=protocol==='rtmp'?`rtmp://127.0.0.1:${ports.rtmp}/live`:protocol==='srt'?`srt://127.0.0.1:${ports.srt}?passphrase=${encodeURIComponent(passphrase)}`:protocol.startsWith('rtsp')?`rtsp://127.0.0.1:${ports.rtsp}/${stream}`:`${protocol}://127.0.0.1:${directPort}`;
-    const receiverInput=direct?['-i',protocol==='udp'?`udp://127.0.0.1:${directPort}?fifo_size=8192&overrun_nonfatal=1`:`rist://@127.0.0.1:${directPort}`]:['-rtsp_transport','tcp','-i',`rtsp://127.0.0.1:${ports.rtsp}/${protocol==='rtmp'?'live/':''}${stream}`];
+    const rtmpReceiver=opts['receiver-protocol']==='rtmp';
+    entry.receiverProtocol=direct?protocol:rtmpReceiver?'rtmp':'rtsp';
+    const receiverInput=direct?['-i',protocol==='udp'?`udp://127.0.0.1:${directPort}?fifo_size=8192&overrun_nonfatal=1`:`rist://@127.0.0.1:${directPort}`]:rtmpReceiver?['-i',`rtmp://127.0.0.1:${ports.rtmp}/live/${stream}`]:['-rtsp_transport','tcp','-i',`rtsp://127.0.0.1:${ports.rtsp}/${protocol==='rtmp'?'live/':''}${stream}`];
     let sequence=0;
-    // Unlike RTSP's SDP, a direct TS input must discover SPS/PPS in-band.
+    // Unlike RTSP's SDP, direct TS/RTMP inputs must discover SPS/PPS in-band.
     // Its analysis window must cover the two-second keyframe interval.
-    function record(seconds,phase){const file=path.join(report,id+'-'+phase+'.mkv');return {file,process:launch(ffmpeg,['-hide_banner','-y','-analyzeduration',direct?'3000000':'1000000','-probesize','1000000',...receiverInput,'-map','0','-c','copy','-t',String(seconds+3),file],id+'-receiver-'+sequence++)};}
+    // FFmpeg 7.1 RTSP AAC packets can lack the key flag. Its stream-copy
+    // startup then discards every audio packet despite receiving valid AAC.
+    // Copy initial AUDIO packets only; video must still wait for an IDR.
+    // Keep packet/timestamp/stereo/silence assertions in decode() unchanged.
+    function record(seconds,phase){const file=path.join(report,id+'-'+phase+'.mkv');return {file,process:launch(ffmpeg,['-hide_banner','-y','-analyzeduration',direct||rtmpReceiver?'3000000':'1000000','-probesize','1000000',...receiverInput,'-map','0','-c','copy','-copyinkf:a','-t',String(seconds+3),file],id+'-receiver-'+sequence++)};}
     let recording=direct?record(6,'moving'):null;if(direct)await sleep(500);
     const discovery=path.join(report,id+'-control.json');
     const publisher=launch(exe,opts.gui?['--temporary-settings','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`]:['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,`--output=${protocol}`,`--output-url=${url}`,
