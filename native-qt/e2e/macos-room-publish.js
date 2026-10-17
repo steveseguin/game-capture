@@ -385,8 +385,14 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       await waitFor(async()=>{after=(await api(control,'/diagnostics')).peers.find(p=>p.uuid===before.uuid);
         return after&&after.active_wire_session!==before.active_wire_session&&after.last_connection_state==='connected'&&after.transport.data_channel_open;
       },30000,'Guest transport refresh did not reconnect');
-      const refreshed={before,after,guest:await media(viewer,640,360,'Guest after transport refresh',4,viewerUuid),
-        director:await media(dir,640,360,'Director after transport refresh',4,uuid),scene:await media(scene,1280,720,'Scene after transport refresh',4)};
+      const scenePublisher=await scene.evaluate(stream=>Object.keys(window.session.rpcs).find(id=>window.session.rpcs[id].streamID===stream),stream);
+      assert(scenePublisher,'Scene publisher not found after refresh');
+      // Refresh can reorder scene videos; the synthetic guest is also present.
+      // Observe the publisher by identity, never the first DOM video.
+      const refreshed=entry.guestRefresh={before,after};checkpoint();
+      refreshed.guest=await media(viewer,640,360,'Guest after transport refresh',4,viewerUuid);
+      refreshed.director=await media(dir,640,360,'Director after transport refresh',4,uuid);
+      refreshed.scene=await media(scene,1280,720,'Scene after transport refresh',4,scenePublisher);
       refreshed.audio=await observeAudio(viewer,viewerUuid);requireAudio(refreshed.audio);
       assert.equal(after.owner_session,before.owner_session,'Refresh replaced the logical owner');
       entry.guestRefresh=refreshed;
