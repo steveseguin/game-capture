@@ -1873,6 +1873,11 @@ void MainWindow::setupUI() {
     outputSelect_->addItem("RTSP (UDP)", "rtsp-udp");
     outputSelect_->addItem("UDP / MPEG-TS (LAN)", "udp");
     outputSelect_->addItem("RIST", "rist");
+#ifdef __APPLE__
+    // Qt's generic table-cell AX action can invalidate itself while clearing
+    // selection. Use the same owned rows as the fixed audio-source menu.
+    platform::configureMacComboChoices(outputSelect_);
+#endif
     installComboWheelGuard(outputSelect_);
     advancedForm->addRow("Output", outputSelect_);
     outputPanel_ = new QWidget(this);
@@ -2028,7 +2033,7 @@ void MainWindow::setupUI() {
     }
     audioSourceSelect_->addItem("No audio", QVariant("none"));
 #ifdef __APPLE__
-    platform::configureMacAudioChoices(audioSourceSelect_);
+    platform::configureMacComboChoices(audioSourceSelect_);
 #endif
     audioSourceSelect_->setToolTip(platform::capabilities().communicationsAudioCapture
         ? "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above."
