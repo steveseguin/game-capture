@@ -1594,7 +1594,8 @@ void VersusApp::stopLive() {
     if (external) external->stop();
     if (wasLive && !external) {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
-        signaling_.unpublish();
+        // VDO.Ninja removes the publication on socket disconnect.
+        // There is no separate unpublish wire command.
         signaling_.disconnect();
     }
     clearPeerSessions();
