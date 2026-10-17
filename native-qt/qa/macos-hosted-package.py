@@ -107,7 +107,9 @@ def main():
             if (case / 'results.json').exists():
                 observed = json.loads((case / 'results.json').read_text())
                 entry.update(passed=observed['passed'], checks=observed['checks'], error=observed.get('error'),
-                             resultsSha256=digest(case / 'results.json'))
+                             resultsSha256=digest(case / 'results.json'),
+                             availableCameraCount=observed.get('availableCameraCount'),
+                             cameraRefusals=observed.get('cameraRefusals'))
                 assert observed['executable_sha256'] == args.executable_sha256
                 if (case / 'exported-diagnostics.json').exists():
                     diagnostics = json.loads((case / 'exported-diagnostics.json').read_text())
