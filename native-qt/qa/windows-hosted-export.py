@@ -34,6 +34,7 @@ for name in ['result.json','backend-selection.json','dependency-revisions.json',
     file=root/'qa/reports/windows-build-gate'/name
     if file.exists():shutil.copy2(file,out/('build-'+name))
 if (raw/'release-artifact-manifest.json').exists():shutil.copy2(raw/'release-artifact-manifest.json',out/'release-artifact-manifest.json')
+if (raw/'runtime-dependencies.json').exists():shutil.copy2(raw/'runtime-dependencies.json',out/'runtime-dependencies.json')
 for file in [Path(__file__),root/'qa/windows-packaged-media.ps1',root/'e2e/windows-hosted-media.js',root/'e2e/macos-media-receiver.js']:
     shutil.copy2(file,out/file.name)
 (out/'results.json').write_text(json.dumps(export,indent=2)+'\n')
