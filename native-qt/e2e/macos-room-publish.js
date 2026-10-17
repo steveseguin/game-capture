@@ -8,6 +8,7 @@ const {sleep,waitFor,installReceiverProbe,observe,observeDecoded,requireMoving,o
 const director=require('./director-room-e2e');
 const {create:createSignalingProxy}=require('./signaling-fault-proxy');
 const roomRecovery=require('./macos-room-recovery-observer');
+const continuousAudio=require('./macos-continuous-audio');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 for(const key of ['app','reports','camera-device','camera-helper','microphone-device','tone-helper'])assert(opts[key],'Required --'+key);
 assert.equal(process.platform,'darwin');
@@ -18,6 +19,9 @@ const recoverSignaling=opts['signaling-recovery']==='true',passwordProtected=opt
 assert(!recoverSignaling||remoteEnabled,'Room recovery requires the guest/director controls workflow');
 const performanceSeconds=Number(opts['performance-seconds']||0);
 const extraScenes=Number(opts['extra-scenes']||0),compact=opts['compact-performance-report']==='true';
+const continuous=opts['continuous-audio']==='true';
+assert(!opts['continuous-audio']||['true','false'].includes(opts['continuous-audio']),'Invalid --continuous-audio');
+assert(!continuous||performanceSeconds,'Continuous audio requires a timed room observation');
 assert(Number.isInteger(extraScenes)&&extraScenes>=0&&extraScenes<=2,'--extra-scenes must be 0..2');
 assert(!opts['compact-performance-report']||['true','false'].includes(opts['compact-performance-report']),'Invalid --compact-performance-report');
 assert(!extraScenes||performanceSeconds,'Additional scene receivers require a timed room observation');
@@ -28,10 +32,11 @@ const app=path.resolve(opts.app),exe=path.join(app,'Contents/MacOS/game-capture'
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
-  directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,performanceSeconds,extraScenes,compactPerformanceReport:compact,recoverSignaling,passwordProtected,
+  directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,performanceSeconds,extraScenes,compactPerformanceReport:compact,continuousAudio:continuous,recoverSignaling,passwordProtected,
+  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),
   cameraFixtureSha256:hash(path.resolve(opts['camera-helper'])),toneFixtureSha256:hash(path.resolve(opts['tone-helper'])),
   scope:'Packaged controlled camera/input with real VDO.Ninja director, scene and guest camera-join UI; optional bounded dual-tier load observation; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
-for(const name of ['macos-room-publish.js','macos-media-receiver.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+for(const name of ['macos-room-publish.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const children=new Set(),proxies=new Map();let browser;
 function launch(program,args,name){const log=fs.createWriteStream(path.join(report,name+'.log'));
   const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(k)));
@@ -88,7 +93,12 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     assert(diag.room_quality.effective&&diag.room_quality.reason==='enabled');assert(diag.video.lq_encoder_initialized&&diag.video.lq_encoder.includes('x264'));
     assert.equal(diag.video.hardware_encoder,encoder==='videotoolbox');assert(diag.peer_counts.hq>=1&&diag.peer_counts.lq>=1);
     if(performanceSeconds){
-      entry.performance={scope:`${2+extraScenes} simultaneous real receivers: ${1+extraScenes} at 1280x720/30 HQ and independent 640x360/30 x264 preview. Stereo audio sampled for three seconds in each ten-second interval, not continuous or calibrated A/V.`,chunks:[],meetsTarget:true};
+      const audioPages=[['preview',dir],['high',scene],...additional.map((page,i)=>['extra'+i,page])];
+      const audioPackets=new Map();
+      entry.performance={scope:`${2+extraScenes} simultaneous real receivers: ${1+extraScenes} at 1280x720/30 HQ and independent 640x360/30 x264 preview. `+
+        (continuous?'Continuous received PCM on every receiver, 100 ms windows; 500 ms startup settling and final partial window excluded. ':'')+
+        'Stereo audio also sampled for three seconds in each ten-second interval. Not calibrated A/V or physical playback.',chunks:[],meetsTarget:true};
+      if(continuous)entry.performance.audioObservers=await Promise.all(audioPages.map(async([tier,page])=>({tier,...await continuousAudio.start(page)})));
       for(let elapsed=0;elapsed<performanceSeconds;elapsed+=10){
         const disk=fs.statfsSync(report);assert(disk.bavail*disk.bsize>=128*1024*1024,'Room observation stopped: insufficient evidence space');
         for(const p of [publisher,fixture,tone])assert(p.exitCode===null&&!p.signalCode,'Owned process exited during room load');
@@ -100,9 +110,18 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
             observeDecoded(page,10000,null,'camera',true),observeAudio(page)]);return {video,audio};}))]);
         const after=await api(control,'/diagnostics');
         const sourceAfter=await sourceState();
+        const continuousObservations=continuous?await Promise.all(audioPages.map(async([tier,page])=>{
+          const counters=await page.evaluate(async()=>{
+            const rows=[];
+            for(const pc of window.reviewPCs)if(pc.connectionState==='connected')
+              for(const stat of (await pc.getStats()).values())if(stat.type==='inbound-rtp'&&stat.kind==='audio')rows.push({...stat});
+            return rows;
+          });
+          return {tier,counters,observation:await continuousAudio.drain(page)};
+        })):[];
         // Preserve all received pixels/identity failures and audio before any
         // assertion can terminate the interval. Compact summaries retain hashes.
-        const raw=Buffer.from(JSON.stringify({elapsed,preview,high,previewAudio,highAudio,extra,
+        const raw=Buffer.from(JSON.stringify({elapsed,preview,high,previewAudio,highAudio,extra,continuousObservations,
           sourceBefore,sourceAfter,beforeDiagnostics:before,afterDiagnostics:after}));
         const compressed=gzipSync(raw),name=`${encoder}-room-${String(elapsed).padStart(4,'0')}.json.gz`;
         fs.writeFileSync(path.join(report,name),compressed,{flag:'wx'});
@@ -114,7 +133,13 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
         const chunk={elapsed,beforeDiagnostics:before,afterDiagnostics:after,
           source:{before:sourceBefore,after:sourceAfter,changedFps:(sourceAfter.changedFrames-sourceBefore.changedFrames)/(sourceAfter.time-sourceBefore.time)},
           publisherRssKiB:Number(execFileSync('/bin/ps',['-o','rss=','-p',String(publisher.pid)],{encoding:'utf8'}).trim()),
-          previewAudio,highAudio,evidence};
+          previewAudio,highAudio,evidence,
+          continuousAudioChecks:continuousObservations.map(({tier,observation,counters})=>{
+            const check={tier,...continuousAudio.analyze(observation,9.65)},packets=counters.reduce((n,s)=>n+(s.packetsReceived||0),0);
+            check.receivedPackets=packets;check.previousReceivedPackets=audioPackets.get(tier)||0;
+            if(packets<=check.previousReceivedPackets){check.passed=false;check.errors.push('Received audio packets stopped advancing');}
+            audioPackets.set(tier,packets);return check;
+          })};
         for(const [tier,data,width,height] of [['preview',preview,640,360],['high',high,1280,720],
           ...extra.map((data,index)=>['extra'+index,data.video,1280,720])]){
           if(!compact)fs.writeFileSync(path.join(report,`${encoder}-${tier}-${elapsed}.json`),JSON.stringify(data));
@@ -130,7 +155,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
         assert.equal(after.macos_media_activity_active,true);
         chunk.meetsTarget=chunk.source.changedFps>=28.5&&chunk.preview.meetsTarget&&chunk.high.meetsTarget&&after.video.encode_failures===0&&
           after.video.encode_timeouts===0&&after.video.send_failures===0&&after.audio.send_failures===0&&
-          extra.every((_,index)=>chunk['extra'+index].meetsTarget);
+          extra.every((_,index)=>chunk['extra'+index].meetsTarget)&&chunk.continuousAudioChecks.every(check=>check.passed);
         if(compact)for(const key of ['beforeDiagnostics','afterDiagnostics','previewAudio','highAudio'])delete chunk[key];
         entry.performance.chunks.push(chunk);entry.performance.meetsTarget&&=chunk.meetsTarget;
         delete entry.performance.pendingInterval;
@@ -138,7 +163,8 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
         console.log(`${encoder}: room ${elapsed+10}s preview=${chunk.preview.decodedFps.toFixed(2)} HQ=${chunk.high.decodedFps.toFixed(2)}`+
           extra.map((_,index)=>` extra${index}=${chunk['extra'+index].decodedFps.toFixed(2)}`).join('')+` fps target=${chunk.meetsTarget}`);
       }
-      assert(entry.performance.meetsTarget,'Sustained dual-tier room delivery missed its target');
+      if(continuous)await Promise.all(audioPages.map(([,page])=>continuousAudio.stop(page)));
+      assert(entry.performance.meetsTarget,'Sustained dual-tier room video/audio delivery missed its target');
     }
     for(const page of additional)await page.close();
     fixture.stdin.write('pause\n');await sleep(800);
