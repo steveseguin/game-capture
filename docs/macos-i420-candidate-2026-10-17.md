@@ -4,6 +4,10 @@ An **unreleased, Developer ID signed candidate** passed the focused workflows be
 
 Runtime revision [`af9ce7b`](https://github.com/steveseguin/game-capture/commit/af9ce7b525b9d430551f3780e55ebf9d48ee732c); signed executable SHA-256 `54b61a56b5d1b8c0bbff624c456914c11ab38d412d0921231dbe665c6414c353`. All 39 application compilation units were rebuilt from a frozen source archive. This separate candidate was signed and signature-verified, but has not been notarized or published as a download.
 
+## Newly found release blocker
+
+A later packaged GUI workflow exposed a repeatable crash while selecting an output destination after saved-profile relaunch. macOS crash reports for owned app PIDs 70982, 71530 and 72070 show `EXC_BAD_ACCESS` in Qt's `QAccessibleTableCell::selectCell()` → `QAbstractItemView::selectionModel()`, reached through an accessibility press. This is an application crash, not a passing profile workflow or merely a harness timeout. Earlier setup/selector errors and the crash attempts remain retained separately. The media/endurance outcomes below remain valid for their stated workflows, but do not qualify this GUI path. A separate candidate using the existing owned accessible rows for the Mac output menu is being built; its fix is not yet verified.
+
 ## Change and correctness gates
 
 Two stack samples of signed Beta 2 showed substantial work in scalar BGRA-to-I420 conversion and repeated Qt scanline calls. The Mac converter now processes sixteen pixels per row with ARM NEON, retaining a scalar tail for other even widths. At 1920×1080, scanline lookups fall from 1,036,800 to 1,080 per frame. Aspect fitting, black padding, alpha separation, limited-range BT.601 coefficients, RGB averaging/rounding, encoder presets and bitrate settings stay the same. No VDO.Ninja messages changed.
