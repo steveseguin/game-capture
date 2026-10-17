@@ -20,6 +20,11 @@ assert(!recoverSignaling||remoteEnabled,'Room recovery requires the guest/direct
 const performanceSeconds=Number(opts['performance-seconds']||0);
 const extraScenes=Number(opts['extra-scenes']||0),compact=opts['compact-performance-report']==='true';
 const continuous=opts['continuous-audio']==='true';
+const guestCycles=Number(opts['guest-cycles']||2);
+assert(Number.isInteger(guestCycles)&&guestCycles>=2&&guestCycles<=10,'--guest-cycles must be 2..10');
+assert(['true','false'].includes(opts['drop-guest-bye']||'false'),'Invalid --drop-guest-bye');
+const dropGuestBye=opts['drop-guest-bye']==='true';
+assert(!dropGuestBye||(remoteEnabled&&!recoverSignaling),'Guest bye negative control requires ordinary enabled room controls');
 assert(!opts['continuous-audio']||['true','false'].includes(opts['continuous-audio']),'Invalid --continuous-audio');
 assert(!continuous||performanceSeconds,'Continuous audio requires a timed room observation');
 assert(Number.isInteger(extraScenes)&&extraScenes>=0&&extraScenes<=2,'--extra-scenes must be 0..2');
@@ -33,7 +38,7 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
   directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,performanceSeconds,extraScenes,compactPerformanceReport:compact,continuousAudio:continuous,recoverSignaling,passwordProtected,
-  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),
+  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),guestCycles,dropGuestBye,
   cameraFixtureSha256:hash(path.resolve(opts['camera-helper'])),toneFixtureSha256:hash(path.resolve(opts['tone-helper'])),
   scope:'Packaged controlled camera/input with real VDO.Ninja director, scene and guest camera-join UI; optional bounded dual-tier load observation; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
 for(const name of ['macos-room-publish.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
@@ -45,7 +50,29 @@ function launch(program,args,name){const log=fs.createWriteStream(path.join(repo
   p.closed=new Promise(resolve=>{p.once('close',code=>{children.delete(p);log.end();resolve(code);});p.once('error',e=>result.launchError=String(e));});return p;}
 async function api(control,route,body){const r=await fetch(control.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok,'Control HTTP '+r.status);return r.json();}
 function requireAudio(audio){assert(audio.spectra.filter(s=>s.rms>.001&&s.channels[0].tone440>s.channels[0].tone880+20&&s.channels[1].tone880>s.channels[1].tone440+20).length>=25,'Stereo audio missing or crossed');}
-async function pageAt(url){const page=await browser.newPage({viewport:{width:1600,height:1000}});await installReceiverProbe(page);await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});return page;}
+function installGuestCleanupProbe({dropGuestBye=false}){
+  window.__guestLeaveEvidence=[];
+  const send=RTCDataChannel.prototype.send;
+  RTCDataChannel.prototype.send=function(data){
+    if(!window.__guestLeaveEnabled)return send.call(this,data);
+    let message,text;
+    try{
+      if(typeof data==='string')text=data;
+      else if(data instanceof ArrayBuffer||ArrayBuffer.isView(data))text=new TextDecoder().decode(data);
+      if(text&&text.length<65536)message=JSON.parse(text);
+    }catch{}
+    const object=message&&typeof message==='object';
+    const entry={time:Date.now(),event:'send',channel:this.label,toPublisher:window.__guestLeaveChannels?.includes(this)||false,
+      state:this.readyState,bufferedAmount:this.bufferedAmount,type:typeof data==='string'?'string':data?.constructor?.name,
+      bytes:typeof data==='string'?new TextEncoder().encode(data).length:data?.byteLength,
+      bye:!!object&&('bye' in message),cleanup:!!object&&message.request==='cleanup'};
+    window.__guestLeaveEvidence.push(entry);
+    if(dropGuestBye&&entry.toPublisher&&entry.bye){entry.droppedByDiagnostic=true;entry.bufferedAfter=this.bufferedAmount;return;}
+    try{const value=send.call(this,data);entry.returned=true;entry.bufferedAfter=this.bufferedAmount;return value;}
+    catch(error){entry.error=String(error);throw error;}
+  };
+}
+async function pageAt(url,cleanupProbe=false){const page=await browser.newPage({viewport:{width:1600,height:1000}});await installReceiverProbe(page);if(cleanupProbe)await page.addInitScript(installGuestCleanupProbe,{dropGuestBye});await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});return page;}
 function check(value,label){assert(value.ok,label+': '+JSON.stringify(value));return value;}
 async function dimensions(page,width,height,peerUuid=null){await waitFor(()=>page.evaluate(({width,height,peerUuid})=>[...document.querySelectorAll('video')].some(v=>!v.paused&&v.videoWidth===width&&v.videoHeight===height&&v.currentTime>0&&(!peerUuid||v.dataset.sid===window.session?.rpcs?.[peerUuid]?.streamID||v.id===`videosource_${peerUuid}`)),{width,height,peerUuid}),25000,'No decoded '+width+'x'+height+' video');}
 async function media(page,width,height,label,seconds=4,peerUuid=null){await dimensions(page,width,height,peerUuid);const observed=await observe(page,seconds*1000,peerUuid);const distinct=requireMoving(observed,label);assert.equal(observed.width,width);assert.equal(observed.height,height);return {distinctFrames:distinct,...observed};}
@@ -199,7 +226,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     // Join through the real hosted guest UI. Chrome exposes only synthetic
     // devices. Never inject an init/role message; observe the site's own role.
     async function joinGuest(label){
-      const page=await pageAt(`https://vdo.ninja/?room=${room}&password=${password}&stereo=1&label=ControlledGuest&easyexit`);
+      const page=await pageAt(`https://vdo.ninja/?room=${room}&password=${password}&stereo=1&label=ControlledGuest&easyexit`,true);
       await page.getByText('Join Room with Camera',{exact:true}).click();
       await page.locator('#gowebcam').waitFor({state:'visible'});
       const devices=await page.locator('#videoSourceSelect option').allTextContents();
@@ -238,9 +265,54 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     async function leaveGuest(guest,abrupt=false){
       if(proxy)return roomRecovery.leave({guest,diagnostics:()=>api(control,'/diagnostics'),survivors,abrupt});
       const started=Date.now();
+      const evidence=guest.evidence.leave={action:'Hosted guest Hang up button',observations:[],promptCleanupPassed:false};
+      await guest.page.evaluate(peerUuid=>{
+        window.__guestLeaveEvidence=[];
+        const rpc=window.session.rpcs[peerUuid];
+        window.__guestLeaveChannels=[rpc?.sendChannel,rpc?.receiveChannel].filter(Boolean);
+        window.__guestLeaveEnabled=true;
+        for(const channel of window.__guestLeaveChannels)channel.addEventListener('close',()=>{
+          window.__guestLeaveEvidence.push({time:Date.now(),event:'close',channel:channel.label,toPublisher:true,
+            state:channel.readyState,bufferedAmount:channel.bufferedAmount});
+        });
+      },guest.peerUuid);
+      const absent=async()=>{
+        const diagnostics=await api(control,'/diagnostics');
+        const peers=diagnostics.peers.filter(p=>p.room.role==='guest');
+        evidence.observations.push({elapsedMs:Date.now()-started,peers:peers.map(p=>({uuid:p.uuid,
+          state:p.last_connection_state,transport:p.transport,media:p.media})),peerCounts:diagnostics.peer_counts});
+        if(peers.length)return false;
+        evidence.elapsedMs=Date.now()-started;evidence.diagnostics=diagnostics;return true;
+      };
       await guest.page.getByRole('button',{name:'Hang up',exact:true}).click();
-      await waitFor(async()=>!(await api(control,'/diagnostics')).peers.some(p=>p.room.role==='guest'),15000,'Guest peer retained after explicit Hang up');
-      guest.evidence.leave={action:'Hosted guest Hang up button',elapsedMs:Date.now()-started,diagnostics:await api(control,'/diagnostics')};
+      try{await waitFor(absent,15000,'Guest peer retained after explicit Hang up');evidence.promptCleanupPassed=true;}
+      catch(error){
+        evidence.promptCleanupError=String(error);
+        console.log(encoder+': prompt guest cleanup failed; observing bounded fallback without waiving failure');
+        // Preserve the original failure. Diagnose the separately documented
+        // 90-second transport-retention fallback without turning it into a pass.
+        let cleanupDone=false;evidence.fallbackPlayback=[];
+        const cleanup=waitFor(absent,110000,'Guest remained beyond transport cleanup window').finally(()=>{cleanupDone=true;});
+        const playback=(async()=>{
+          do{
+            const [directorVideo,sceneVideo,directorAudio,sceneAudio]=await Promise.all([
+              media(dir,640,360,'Director during guest cleanup',10,uuid),media(scene,1280,720,'Scene during guest cleanup',10),
+              observeAudio(dir,uuid),observeAudio(scene)]);
+            requireAudio(directorAudio);requireAudio(sceneAudio);
+            evidence.fallbackPlayback.push({directorVideo,sceneVideo,directorAudio,sceneAudio});
+          }while(!cleanupDone);
+        })();
+        const [cleaned,played]=await Promise.allSettled([cleanup,playback]);
+        evidence.fallbackCleanupPassed=cleaned.status==='fulfilled';
+        evidence.fallbackPlaybackPassed=played.status==='fulfilled';
+        if(cleaned.status==='rejected')evidence.fallbackCleanupError=String(cleaned.reason);
+        if(played.status==='rejected')evidence.fallbackPlaybackError=String(played.reason);
+        throw error;
+      }finally{
+        evidence.browserCleanupSends=await guest.page.evaluate(()=>window.__guestLeaveEvidence||[]).catch(()=>[]);
+        evidence.finalDiagnostics=await api(control,'/diagnostics');
+      }
+      console.log(encoder+': '+guest.evidence.label+' cleanup '+evidence.elapsedMs+'ms');
       await guest.page.close();
     }
     const guest=await joinGuest('Guest UI initial');const viewer=guest.page,viewerUuid=guest.peerUuid;
@@ -270,7 +342,9 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     await leaveGuest(guest);
     entry.guestUi.afterLeave={director:await media(dir,640,360,'Director after guest leave'),scene:await media(scene,1280,720,'Scene after guest leave')};
     if(restoreSignaling)await restoreSignaling(survivors);
-    const rejoined=await joinGuest('Guest UI rejoin');entry.guestUi.joins.push(rejoined.evidence);await leaveGuest(rejoined,!!proxy);
+    for(let cycle=1;cycle<guestCycles;cycle++){
+      const rejoined=await joinGuest('Guest UI rejoin'+(cycle>1?' '+cycle:''));entry.guestUi.joins.push(rejoined.evidence);await leaveGuest(rejoined,!!proxy);
+    }
     check(await director.changeDirectorResolutionThroughUi(dir,uuid,960,540),'Director resolution controls');
     await waitFor(async()=>{const d=await api(control,'/diagnostics');return d.video.configured_width===960&&d.video.configured_height===540;},20000,'Director resolution not committed');
     check(await director.closeDirectorVideoSettings(dir,uuid),'Close director settings');
@@ -319,6 +393,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     if(passwordProtected){assert(!fs.readFileSync(path.join(report,encoder+'-publisher.log'),'utf8').includes(password),'Password in logs');entry.passwordNotExposedInLog=true;}
     await dir.close();await late.close();entry.passed=true;console.log(encoder+': room workflow passed');fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));
   }
+  if(dropGuestBye)throw Error('Guest bye negative control did not trigger the required prompt-cleanup rejection');
   result.passed=true;
 }catch(error){result.error=String(error.stack||error);console.error(result.error);process.exitCode=1;
   if(browser)for(const [i,page] of browser.contexts().flatMap(c=>c.pages()).entries())try{await page.screenshot({path:path.join(report,'failure-'+i+'.png')});fs.writeFileSync(path.join(report,'failure-'+i+'.json'),JSON.stringify(await page.evaluate(()=>({url:location.href,text:document.body.innerText.slice(0,5000),rpc:Object.fromEntries(Object.entries(window.session?.rpcs||{}).map(([k,r])=>[k,{stream:r.streamID,info:r.stats?.info}]))})),null,2));}catch{}
