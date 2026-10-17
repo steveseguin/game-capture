@@ -196,11 +196,40 @@ int main(int argc,char **argv) { @autoreleasepool {
         }
         const CGPoint point{origin.x + size.width / 2, origin.y + size.height / 2};
         AXUIElementRef hit = nullptr;
-        if (AXUIElementCopyElementAtPosition(app,point.x,point.y,&hit) || !hit) { CFRelease(element); CFRelease(app); return 5; }
+        auto desktop = AXUIElementCreateSystemWide();
+        const auto hitError = AXUIElementCopyElementAtPosition(desktop,point.x,point.y,&hit);
+        CFRelease(desktop);
+        if (hitError || !hit) { CFRelease(element); CFRelease(app); return 5; }
         pid_t hitPid = 0;
         const bool belongsToApp = !AXUIElementGetPid(hit,&hitPid) && hitPid == pid;
+        NSDictionary *audit = @{@"x":@(point.x), @"y":@(point.y), @"hitPid":@(hitPid),
+            @"eventPostingAllowed":@(CGPreflightPostEventAccess()),
+            @"targetTitle":attribute(element,kAXTitleAttribute) ?: @"",
+            @"hitTitle":attribute(hit,kAXTitleAttribute) ?: @"",
+            @"hitRole":attribute(hit,kAXRoleAttribute) ?: @""};
+        auto data = [NSJSONSerialization dataWithJSONObject:audit options:0 error:nil];
+        fwrite(data.bytes,1,data.length,stdout); fputc('\n',stdout);
         CFRelease(hit);
-        if (!belongsToApp) { CFRelease(element); CFRelease(app); return 5; }
+        if (!belongsToApp || !CGPreflightPostEventAccess()) {
+            fprintf(stderr,"Refusing mouse input: screen point belongs to PID %d, target PID %d; event permission %d.\n",
+                hitPid,pid,CGPreflightPostEventAccess());
+            CFRelease(element); CFRelease(app); return 5;
+        }
+        // A real pointer reaches the row before pressing it. Qt popup lists
+        // update their current item on mouse movement; posting only down/up
+        // can retain an old hover/current item after an AX-opened popup.
+        auto motion = CGEventCreateMouseEvent(nullptr,kCGEventMouseMoved,point,kCGMouseButtonLeft);
+        CGEventPost(kCGHIDEventTap,motion); CFRelease(motion);
+        [NSThread sleepForTimeInterval:0.05];
+        desktop = AXUIElementCreateSystemWide(); hit = nullptr;
+        const auto afterMotionError = AXUIElementCopyElementAtPosition(desktop,point.x,point.y,&hit);
+        CFRelease(desktop); hitPid = 0;
+        const bool stillOwned = !afterMotionError && hit && !AXUIElementGetPid(hit,&hitPid) && hitPid == pid;
+        if (hit) CFRelease(hit);
+        if (NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier != pid || !stillOwned) {
+            fprintf(stderr,"Mouse target changed after pointer motion; no click posted.\n");
+            CFRelease(element); CFRelease(app); return 5;
+        }
         for (auto type : {kCGEventLeftMouseDown,kCGEventLeftMouseUp}) {
             auto event = CGEventCreateMouseEvent(nullptr,type,point,kCGMouseButtonLeft);
             CGEventSetIntegerValueField(event,kCGMouseEventClickState,1);
