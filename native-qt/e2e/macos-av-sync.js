@@ -3,7 +3,7 @@
 // Signed Mac app -> real browser receiver, paired with the generated source.
 // Record bounded first/last samples while the same publisher stays running.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),http=require('node:http');
-const {spawn,execFileSync}=require('node:child_process');
+const {spawn,spawnSync,execFileSync}=require('node:child_process');
 const {chromium}=require('playwright');
 const {receiver,sleep,waitFor}=require('./macos-media-receiver');
 const recorder=require('./macos-continuous-audio');
@@ -116,9 +116,13 @@ const api=async(route,body)=>{
     if(child.exitCode!==0||fs.existsSync(discovery))throw Error('Publisher shutdown/discovery cleanup failed');
     result.recordingWorkflowPassed=true;save();
     // Analyze only after capture ends, so offline decoding cannot change its cadence.
-    execFileSync('python3',[path.join(__dirname,'macos-analyze-av-sync.py'),report,'--ffmpeg',opts.ffmpeg||'/opt/homebrew/bin/ffmpeg'],{stdio:'inherit',timeout:180000});
-    result.analysis=JSON.parse(fs.readFileSync(path.join(report,'av-analysis.json')));
-    result.passed=result.analysis.passed;
+    const analysisProcess=spawnSync('python3',[path.join(__dirname,'macos-analyze-av-sync.py'),report,'--ffmpeg',opts.ffmpeg||'/opt/homebrew/bin/ffmpeg'],{stdio:'inherit',timeout:180000});
+    result.analysisExitCode=analysisProcess.status;
+    const analysisPath=path.join(report,'av-analysis.json');
+    if(fs.existsSync(analysisPath))result.analysis=JSON.parse(fs.readFileSync(analysisPath));
+    if(analysisProcess.error)throw analysisProcess.error;
+    if(!result.analysis)throw Error('A/V analyzer produced no result');
+    result.passed=analysisProcess.status===0&&result.analysis.passed;
     if(!result.passed)process.exitCode=1;
   } catch(error) {result.error=String(error.stack||error);console.error(result.error);process.exitCode=1;}
   finally {

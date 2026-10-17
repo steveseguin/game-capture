@@ -1,4 +1,8 @@
 #pragma once
+
+#ifdef __APPLE__
+#include "versus/audio/sample_clock.h"
+#endif
 #include "versus/platform/atomic_shared_ptr.h"
 
 #include <atomic>
@@ -530,6 +534,9 @@ class VersusApp {
     std::string selectedWindowId_;
     VideoSourceMode videoSourceMode_ = VideoSourceMode::Window;
     std::atomic<int64_t> audioPts100ns_{0};
+#ifdef __APPLE__
+    audio::SampleClockFraction audioPtsFraction_; // Protected by audioEncodeMutex_.
+#endif
     std::atomic<float> audioLevelRms_{0.0f};
     std::atomic<float> audioPeak_{0.0f};
     std::atomic<float> primaryAudioLevelRms_{0.0f};
