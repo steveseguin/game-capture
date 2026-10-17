@@ -27,6 +27,14 @@ Both encoders also passed paired-alpha publication through the native OBS 32.2.2
 
 Two follow-up stack samples show fewer conversion samples. These profiles perturb execution and are not calibrated CPU-efficiency measurements. The diagnostic Beta 2 run failed one cadence interval while both candidate diagnostic samples completed within a passing workflow; all four complete five-minute/OBS workflows above ran without profiling. Host load varied substantially: x264 host CPU samples ranged 73.1–93.2%, VT 62.5–97.3%. Do not infer an isolated CPU reduction or cross-encoder efficiency ranking from these runs.
 
+## Thirty-minute x264 follow-up
+
+The same signed candidate passed a 30-minute 1080p60 x264 workflow: **180/180 ten-second cadence intervals**, **18,398 continuous PCM windows**, plus live controls, static/silence/resumption, resizing, late-viewer reception and expected source-loss exit 3. Received interval cadence ranged **58.382–60.098 fps**. Passing permits at least 95% of expected distinct frames; it does not mean zero dropped frames.
+
+Source/receiver observations both crossed the 16-bit frame-counter rollover in a passing interval. Publisher RSS ranged 136.0–188.3 MiB; first/last-minute sample medians were 177.7/143.4 MiB. Across performance samples, diagnostics added 52 dropped frames and 18 skips before readback, with no encode failures, encode timeouts or send failures. Host CPU ranged 57.3–99.6%, without isolated publisher or thermal/power measurements. This remains the same 1920×930 moving-tile source, aspect-fitted to 1080p, with source and receiver on one M1.
+
+All 180 retained observations were hash-verified and their distinct-frame, cadence and continuous PCM decisions recomputed. [Measurements and evidence index](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-17-apple-m1-endurance) preserve the outcome and limits. Local freeze: `macos-i420-endurance-evidence/4375c897-8296-4d59-ad23-abaf0b92f14c`, 200 files, manifest SHA-256 `3e56f4edc9185a1c1251ad2f932a01f98e9aecdbf0c8467966e6b668d93085ec`. Reproduce with the same harness/options below, changing `--performance-seconds=1800` and selecting x264. This adds sustained-workload evidence, not a representative-gameplay, independent-machine or matched-quality qualification.
+
 ## Evidence and remaining qualification
 
 The [benchmark repository](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-17-apple-m1-i420) contains the measurements and a scrubbed evidence index. Local freeze: `macos-i420-evidence/14cecc57-0bf2-46ae-9c72-57104d342670/evidence-manifest.json`, SHA-256 `734ad8514ee710166dcd5af0a7e5ae432e91a22a559fdd84166e9dcc188b4145`; 203 files indexed. Raw observations, commands, recordings, source archive and signing records remain local. Earlier frozen evidence is unchanged.
