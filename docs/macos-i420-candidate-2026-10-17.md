@@ -6,7 +6,7 @@ Runtime revision [`af9ce7b`](https://github.com/steveseguin/game-capture/commit/
 
 ## Newly found release blocker
 
-A later packaged GUI workflow exposed a repeatable crash while selecting an output destination after saved-profile relaunch. macOS crash reports for owned app PIDs 70982, 71530 and 72070 show `EXC_BAD_ACCESS` in Qt's `QAccessibleTableCell::selectCell()` → `QAbstractItemView::selectionModel()`, reached through an accessibility press. This is an application crash, not a passing profile workflow or merely a harness timeout. Earlier setup/selector errors and the crash attempts remain retained separately. The media/endurance outcomes below remain valid for their stated workflows, but do not qualify this GUI path. A separate candidate using the existing owned accessible rows for the Mac output menu is being built; its fix is not yet verified.
+A later packaged GUI workflow exposed a repeatable crash while selecting an output destination after saved-profile relaunch. macOS crash reports for owned app PIDs 70982, 71530 and 72070 show `EXC_BAD_ACCESS` in Qt's `QAccessibleTableCell::selectCell()` → `QAbstractItemView::selectionModel()`, reached through an accessibility press. This is an application crash, not a passing profile workflow or merely a harness timeout. Earlier setup/selector errors and the crash attempts remain retained separately. The media/endurance outcomes below remain valid for their stated workflows, but do not qualify this GUI path. A [separate signed candidate now passes three complete profile/recovery workflows and short VT/x264 media workflows](macos-output-profile-fix-2026-10-17.md). The earlier executable remains affected; its measurements below are unchanged.
 
 ## Change and correctness gates
 
