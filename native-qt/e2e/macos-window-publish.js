@@ -282,7 +282,17 @@ function saveReport() {
       }
       const page = await receiver(viewerBrowser, stream, child);
       if (audioMode !== 'none' && audioMode !== 'default-microphone' && opts['late-audio']) await startFixtureAudio();
-      entry.moving = await observe(page, 6000);
+      // Keep source and publisher measurements even when the first picture
+      // observation fails, so a slow source/host is distinguishable from loss
+      // between capture, encoding and browser presentation. Thresholds below
+      // remain unchanged; no failed observation is retried.
+      entry.initialBeforeDiagnostics = await api(control,'/diagnostics');
+      await source.evaluate(()=>{fixture.trace=[];fixture.record=true;});
+      try { entry.moving = await observe(page, 6000); }
+      finally {
+        entry.initialSourceTrace = await source.evaluate(()=>{fixture.record=false;return fixture.trace;});
+        entry.initialAfterDiagnostics = await api(control,'/diagnostics').catch(error=>({observationError:String(error)}));
+      }
       entry.distinctFrames = requireMoving(entry.moving, encoder);
       if (performanceSeconds) {
         entry.performance = {scope:'Local controlled window and browser on the same Mac; not calibrated latency/A-V or release qualification',chunks:[],samples:[],meetsTarget:true};

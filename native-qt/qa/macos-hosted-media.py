@@ -47,6 +47,17 @@ def main():
     env = {k: v for k, v in os.environ.items() if k not in [
         'GH_TOKEN', 'GITHUB_TOKEN', 'ACTIONS_RUNTIME_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN']}
     try:
+        result['stage'] = 'native-host-capability-gate'
+        probe_source = Path(__file__).with_name('macos-vt-host-probe.mm')
+        probe = report / 'vt-host-probe'
+        with (export / 'vt-host-probe-build.log').open('w') as log:
+            subprocess.run(['xcrun', 'clang++', '-std=c++17', '-fobjc-arc', str(probe_source),
+                '-framework', 'Foundation', '-framework', 'VideoToolbox', '-framework', 'CoreMedia',
+                '-o', str(probe)], stdout=log, stderr=subprocess.STDOUT, check=True, timeout=90)
+        with (export / 'vt-host-probe.json').open('w') as output, (export / 'vt-host-probe.log').open('w') as log:
+            subprocess.run([str(probe)], stdout=output, stderr=log, check=True, timeout=30)
+        shutil.copy2(probe_source, export / probe_source.name)
+        result['stage'] = 'archive-and-startup'
         # The existing wrapper verifies archive paths, exact binaries, signatures,
         # notarization and dependencies, then actually launches/quits the app.
         startup = report / 'startup'
@@ -101,8 +112,25 @@ def main():
                 if phase in case:
                     observed_phase = case[phase]
                     entry['phases'][phase] = {key: observed_phase[key] for key in [
-                        'started', 'ended', 'observations', 'width', 'height', 'colors', 'orientation']
+                        'started', 'ended', 'observations', 'width', 'height', 'identityReadFailures', 'rowDisagreements', 'identityObserved', 'observerError']
                         if key in observed_phase}
+                    entry['phases'][phase]['tracks'] = [{k: track[k] for k in [
+                        'codec', 'framesDecoded', 'framesReceived', 'framesDropped', 'packetsReceived',
+                        'packetsLost', 'bytesReceived', 'jitter', 'totalDecodeTime', 'totalProcessingDelay',
+                        'jitterBufferDelay', 'jitterBufferEmittedCount', 'frameWidth', 'frameHeight',
+                        'framesPerSecond', 'freezeCount', 'totalFreezesDuration'] if k in track}
+                        for track in observed_phase.get('tracks', [])]
+            entry['initialSourceTrace'] = case.get('initialSourceTrace', [])
+            entry['publisher'] = {}
+            for phase in ['initialBeforeDiagnostics', 'initialAfterDiagnostics']:
+                diagnostics = case.get(phase, {})
+                entry['publisher'][phase] = {
+                    'generatedSteadyMs': diagnostics.get('generated_steady_ms'),
+                    'observationError': clean_error(diagnostics.get('observationError', '')),
+                    'video': {k: diagnostics['video'][k] for k in [
+                        'active_encoder', 'hardware_encoder', 'frames_captured', 'frames_sent', 'frames_dropped',
+                        'encode_failures', 'encode_timeouts', 'encode_hard_failures', 'send_failures',
+                        'frames_skipped_before_readback'] if k in diagnostics.get('video', {})}}
             result['cases'].append(entry)
         log_path = observed_path.parent / (args.encoder + '.log')
         if log_path.exists():
