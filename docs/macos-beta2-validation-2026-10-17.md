@@ -2,6 +2,8 @@
 
 The current [macOS 0.2.64 Beta 2](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2) remains **experimental**. Windows v0.2.64 remains the stable production release. This record identifies the new artifact separately from the [earlier qualification history](macos-beta-validation-2026-10-16.md).
 
+A separate [unreleased ARM conversion candidate](macos-i420-candidate-2026-10-17.md) now has passing focused five-minute and OBS composition follow-ups. Those results belong to a different executable and do not change the Beta 2 results below.
+
 ## Candidate and behavior change
 
 Runtime revision `1eefab24dbb03fa6bbe8caac30e2133865e71484`; Developer ID signed executable SHA-256 `2c1bfb2bc873c4c2c998034ec7ed5a311c2d0c3b99dd0d203305fef5ded1fad3`. The full application was rebuilt from that Git revision. Apple notarization, stapling, bundle/signature verification and Gatekeeper assessment passed as distribution gates.
