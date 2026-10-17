@@ -43,15 +43,49 @@ The fourteen camera/input publishing cases check moving H.264 video and stereo A
 
 The window endurance harness now samples three seconds of decoded audio during **every ten-second video interval**, checking stereo, expected source tones and exclusion of unrelated application audio. Raw observations remain hash-bound in compressed evidence. This extends the earlier end-only audio check; it is not continuous audio monitoring or calibrated lip-sync measurement.
 
-### Endurance finding remains open
+### Earlier endurance finding (historical checkpoint)
 
 The thirty-minute VT/application-audio attempt failed during its 72nd ten-second interval, after 710 seconds of completed observations. The receiver rejected a reversed/corrupt fixture identity or excessive identity gap. All 71 completed intervals had passed video cadence and sampled stereo/isolation checks, but **the complete workflow failed** and did not reach its subsequent controls. Encoder failures, timeouts and send failures remained zero; that does not explain or waive the received-output failure.
 
 The original runner did not retain the rejected interval's pixels. It now saves rejected frame images and scanlines, source identities, presentation observations, audio, and before/after diagnostics in a hash-bound compressed failure artifact before exiting. Acceptance thresholds are unchanged. An optional `--fixture-start-id` allows replaying a selected identity range.
 
-A three-minute replay starting at identity 42000 passed all eighteen intervals and the subsequent functional controls. That result does not reproduce or resolve the original failure. A separate fifteen-minute reproduction then passed all ninety intervals and subsequent functional controls: 59.595–60.091 distinct decoded fps, 17 ms worst interval p95 frame gap, and zero encode failures/timeouts/send failures. All 2,700 sampled audio spectra were retained, and the compressed payload hashes and summary values were independently checked. Publisher RSS ranged from 87.2 to 117.0 MiB. **The original failure remains unresolved**, despite these later passes; this is not a completed thirty-minute audio qualification.
+A three-minute replay starting at identity 42000 passed all eighteen intervals and the subsequent functional controls. That result does not reproduce or resolve the original failure. A separate fifteen-minute reproduction then passed all ninety intervals and subsequent functional controls: 59.595–60.091 distinct decoded fps, 17 ms worst interval p95 frame gap, and zero encode failures/timeouts/send failures. All 2,700 sampled audio spectra were retained, and the compressed payload hashes and summary values were independently checked. Publisher RSS ranged from 87.2 to 117.0 MiB. **The original failure remained unresolved at this checkpoint**, despite these later passes; the continuous-audio follow-up is recorded below.
 
 The failure recorder was then exercised with an explicitly modified diagnostic fixture that reverses its source identity once. The signed app delivered that reversal, the runner rejected `848 → 649` at the intended threshold, and the saved 1280×720 image visibly shows fixture 649. Source identities, scanline, audio and diagnostics were retained and their hashes checked. This is an expected negative control, not another application defect or a passing endurance run.
+
+## Continuous audio, identity decoding and download follow-up
+
+The unchanged signed beta completed a **thirty-minute VT/application-audio workflow**: all 180 video intervals, 18,212 consecutive 100 ms received-audio windows, and the subsequent live controls, static image, resize, late viewer and shutdown passed. The observer covered 1,821.2 seconds of PCM against 1,821.225 seconds of wall time, with no missing clock windows, silence, clipping, channel/isolation failures or invalid samples. Interval evidence hashes and stored summaries were independently checked.
+
+The corrected-reader **thirty-minute x264/application-audio workflow also passed** all 180 video intervals and subsequent controls, resize, late viewing and expected source closure. It covered 18,229 consecutive 100 ms audio windows: 1,822.9 seconds of PCM against 1,822.919 seconds of wall time, with no missing clock windows or content failures. Received cadence ranged from 59.684 to 60.093 distinct fps; worst interval p95 frame gap was 17 ms. Publisher RSS ranged from 94.2 to 127.0 MiB. Independent verification confirmed every interval hash and summary. Its supplementary recording also had clean decoded content (18,203 inspected windows), but failed the strict recorder-clock check: 1,821.42 decoded seconds against 1,823.584 wall seconds, with a maximum 15 ms PTS gap.
+
+A separate early qualification failed on one 100 ms tone window during a video freeze. Receiver audio-concealment counters increased despite zero reported packet loss. That brief transient remains unexplained. Subsequent recordings preserve raw PCM for rejected windows and periodic receiver counters. A deliberate 700 ms source dropout was rejected by the continuous observer even when the older three-second audio sample passed.
+
+The supplementary browser audio recorder is **not a gapless timing reference**. Its thirty-minute file decoded to 1,819.32 seconds of PCM against 1,821.798 seconds of recording wall time; the strict offline recording-clock check failed. Its 18,182 inspected audio windows contained no silence, clipping or tone failures. These recording limitations are retained separately from the continuous received-playback evidence; they do not identify a publisher defect.
+
+### Reproduced identity rejection was cursor occlusion
+
+The first continuous x264 attempt reproduced an identity rejection in its 400–410-second interval. Saved pixels show the captured mouse pointer covering the middle-row barcode sample: the reader reported 27426 while the visible source label and unobscured rows showed **25378**. The cursor outline changed bit 11 from black to gray (177), above the old reader's threshold. The attempt remains failed and was intentionally stopped after diagnosis; it is not counted as completed endurance.
+
+The reader now samples three separated rows and requires two complete identities to agree. Frame ordering, maximum-step and cadence requirements remain unchanged; an ambiguous read is rejected. It retains disagreement images as well as rejected-frame images. An offline regression gate uses the actual received PNG. In real signed-app controls, a small one-row overlay produced **1,570 recovered frames** during a passing sixty-second VT/audio workflow, while a deliberate whole-frame reversal was still rejected (`882 → 683`, all three rows agreed on 683).
+
+This explains the reproduced x264 rejection. The older VT failure did not retain its rejected pixels, so the same cause cannot be established retrospectively.
+
+### Calibrated recorded-media timing
+
+The A/V workflow records a generated canvas/audio reference and the received stream, matching numbered visual flashes to audio pulses. The first analyzer incorrectly treated decoded audio as a gapless timeline, producing a false drift reading. Its correction maps each detected sample through its own decoded frame timestamp. The original analysis remains preserved.
+
+Offline controls measured identical media at 0 ms and deliberate audio shifts at exactly +150 ms and −150 ms; both shifted cases were rejected. Corrected analysis of the initial sixty-second signed VT recording matched 28 pulses, with additional received skew from **−32 to +23.5 ms**, median −19.5 ms, within the preset 50 ms limit. This measures paired events in recorded media, not physical display/speaker latency, HTML/OBS presentation, or continuous recording coverage between pulses. Long-run drift and additional encoder coverage remain pending.
+
+### Real browser download and replacement
+
+Installed desktop Chrome downloaded the published ZIP with its original `com.apple.quarantine` attribute, and the archive hash matched the signed release. Extraction preserved quarantine. macOS presented the normal downloaded-app **Open** prompt, including its successful malicious-software check, on both launches. Both launches used App Translocation; executable hashes and deep signatures matched the delivered app. GUI controls responded, capture stayed off, a private preference persisted across same-version archive replacement, and shutdown/discovery cleanup passed. The first extracted app was retained before replacement.
+
+The preceding headless-browser attempt had no quarantine attribute and was rejected. A subsequent launch-harness attempt timed out at the normal Open prompt; that prompt was cancelled and the complete workflow repeated with a narrowly scoped normal-Open action. No quarantine removal, trust-store change or untrusted-app override was used. This existing development Mac does not establish fresh-machine permissions, minimum-OS behavior or a cross-version upgrade.
+
+### Integration with current Windows main
+
+Windows [0.2.64 has its own packaged qualification](release-0.2.64-windows-validation.md). A separate `macos-main-integration` branch reconciles the experimental Mac source with that newer main branch, preserving its README, version and AMF changes. The Mac's longer WHIP gathering allowance is confined to macOS so Windows retains its existing ten-second limit. All 27 changed Mac/shared translation units passed an isolated arm64 compiler gate using existing dependency headers; one file first required its generated Qt meta-object include. This was not a linked package build. Source reconciliation and secret/compiler checks are gates; this integrated source is not a newly qualified package. Published Mac and Windows assets remain unchanged by this work.
 
 ## Evidence identifiers
 
@@ -67,29 +101,54 @@ Raw recordings, logs, private local-control files and interval payloads remain i
 - Three-minute identity replay: `macos-signed-identity-replay/abd735ac-1a59-40fe-9726-2988cb9cd645`.
 - Fifteen-minute reproduction: `macos-signed-vt-audio-reproduction/07f4dfc6-0abb-465f-a2da-940ed9abaa08`.
 - Expected diagnostic rejection: `macos-observer-negative-control/003f3da2-e843-4432-b5c6-8434912ebbd7`.
+- Thirty-minute corrected-reader x264: `macos-signed-x264-three-row-endurance/0ca9aeae-7f50-4f8a-a904-9137a888566d`.
+- Thirty-minute continuous VT: `macos-signed-vt-continuous-endurance/fbad1cc4-dd75-48a2-a76a-c393b269762e`.
+- Brief audio-concealment transient: `macos-continuous-audio-qualification/ab8ac562-43c3-4824-b836-55ce28250c33`.
+- Cursor-obscured x264 rejection: `macos-signed-x264-continuous-endurance/59e815f0-2684-478f-b0f9-c6cc5217d9d6`.
+- Corrected-reader occlusion control: `macos-three-row-occlusion-control/bb44bb85-a5d1-45db-97e6-edf15baf33ff`.
+- Corrected-reader reversal rejection: `macos-three-row-negative-control/af34cbb0-8f8a-453e-840f-6d522eddea9b`.
+- A/V initial recording: `macos-signed-av-calibration/828e3929-449a-4989-9e60-a29d8772132a`; corrected analysis: `macos-av-analysis-correction/5432f129-8d8b-46a7-9f00-56799b53482c`.
+- Offline A/V calibration: `macos-av-analyzer-calibration/3ac342ee-5f76-46b8-ad78-21c27c3842e4`.
+- Chrome download: `macos-desktop-browser-download/ee0a52ea-37b8-4642-87cd-47f2dc6f255e`.
+- Quarantined replacement: `macos-quarantined-replacement-launch/2eeb89a2-7875-4aea-a9f4-9c9ae4b08b6b`.
 
 ## Reproduction
 
-The [QA changes](https://github.com/steveseguin/game-capture/commit/24b700dbcf5fb40bd4e723efdc114ee2b0f4b30d) are on `macos-production-readiness`, based on the beta tag; the Mac runtime remains separate from Windows production. Use that branch, the signed, extracted beta app and compiled fixture helpers; choose a fresh report category for each attempt. Reports receive a unique identifier automatically. For the window/audio endurance workflow on this machine:
+The [QA changes](https://github.com/steveseguin/game-capture/tree/macos-production-readiness) are on `macos-production-readiness`, based on the beta tag; the Mac runtime remains separate from Windows production. Use that branch, the signed, extracted beta app and compiled fixture helpers; choose a fresh report category for each attempt. Reports receive a unique identifier automatically. For the window/audio endurance workflow on this machine:
 
 ```sh
 node native-qt/e2e/macos-window-publish.js \
   '--app=/path/to/Game Capture.app' \
   --reports=native-qt/qa/reports/macos-window-audio-repeat \
   --encoder=videotoolbox --performance-seconds=1800 \
-  --audio=selected-window --compact-performance-report=true \
+  --audio=selected-window --continuous-audio=true --compact-performance-report=true \
   --source-ui-helper=native-qt/build-macos-arm64/bin/macos-ui-control
 ```
 
 Use `--encoder=x264` for software encoding. A targeted identity replay additionally accepts `--fixture-start-id=42000`; shortening that replay is diagnostic only. The source helper explicitly activates the owned fixture browser. Keep other capture workflows stopped during performance observation.
 
+The recorded-media drift workflow keeps one publisher live between its initial and final samples. Repeat separately for `videotoolbox` and `x264`:
+
+```sh
+node native-qt/e2e/macos-av-sync.js \
+  '--app=/path/to/Game Capture.app' \
+  --reports=native-qt/qa/reports/macos-av-drift-repeat \
+  --encoder=videotoolbox --seconds=60 --hold-seconds=1740 \
+  --width=1280 --height=720 --fps=60 --bitrate-kbps=4000 \
+  --source-ui-helper=native-qt/build-macos-arm64/bin/macos-ui-control
+```
+
+The expanded room runner accepts `--extra-scenes=2 --performance-seconds=900 --compact-performance-report=true`, in addition to its explicit app, camera fixture, audio fixture and report arguments. That observes four actual browser receivers: one 360p preview and three 720p scene views at 30 fps. It samples stereo audio during each interval; it does not replace continuous audio or A/V-drift coverage. Its new four-viewer execution remains pending at this checkpoint.
+
+For Windows integration regression, build and freeze a **new package from the integrated candidate**, record its source revision and artifact-manifest digest, and pass that package to the existing release-readiness workflow. Reusing the frozen Windows 0.2.64 production package would not qualify these shared changes. The GitHub workflows require a prepared Windows self-hosted runner; none was registered when checked.
+
 ## Remaining production work
 
-- Diagnose the rejected identity in the first VT/audio endurance attempt; complete the intended thirty-minute signed VT and x264 runs with audio. The later fifteen-minute VT pass does not close that finding.
-- Fresh-machine browser download, quarantine/Finder launch, permissions and upgrade/replace workflows; execution on the minimum advertised macOS and another Apple Silicon Mac.
+- Investigate any recurrence of the early audio-concealment transient with the new retained PCM/counters. Both thirty-minute VT and x264 workflows now passed. The original VT identity rejection has insufficient saved evidence to establish its cause retrospectively.
+- Fresh-machine download/launch and permissions, cross-version upgrade, minimum macOS 14.2 and another Apple Silicon Mac. Quarantined Chrome download/launch and same-version replacement passed on this existing machine.
 - Physical device hotplug/busy recovery, permission denial/revocation, sleep/wake and display/audio-device changes.
-- Calibrated A/V synchronization and long-run drift; broader sustained gameplay, resolutions, room load and receiver/network coverage.
+- Long-run calibrated A/V drift with both encoders; broader sustained gameplay, resolutions, room load and receiver/network coverage. The short VT recorded-media timing analysis passed its calibrated 50 ms limit.
 - Remote services and trusted RTMPS, plus remaining advanced-feature qualification. Local protocol success is not a production-service interoperability claim.
-- Packaged Windows regression of the port's shared-code changes before those changes enter a future Windows release. Existing Windows v0.2.63 production binaries are unchanged.
+- Packaged Windows regression of the port's shared-code changes before those changes enter a future Windows release. The independently qualified Windows v0.2.64 production release is unchanged by this work.
 
 Syntax, source/hash checks, signing verification and secret scans are separate gates. The media workflows above run the shipped app and verify actual received output.
