@@ -1,3 +1,6 @@
+#ifdef __APPLE__
+#include "versus/platform/macos_network.h"
+#endif
 #include "versus/signaling/vdo_signaling.h"
 
 #include <nlohmann/json.hpp>
@@ -917,6 +920,14 @@ bool VdoSignaling::connect(const std::string &server, const std::function<bool()
     wsConfig.connectionTimeout = std::chrono::seconds(60);
     wsConfig.pingInterval = std::chrono::milliseconds::zero();
     wsConfig.disableTlsVerification = false;
+#ifdef __APPLE__
+    const auto roots = platform::macSystemCaCertificatesPem();
+    if (roots.empty()) {
+        spdlog::error("[Signaling] No macOS system CA certificates are available");
+        return false;
+    }
+    wsConfig.caCertificatePemFile = roots;
+#endif
 
     auto socket = std::make_shared<rtc::WebSocket>(wsConfig);
 
@@ -1065,13 +1076,6 @@ bool VdoSignaling::joinRoom(const RoomConfig &config) {
     return impl_->sendMessage(msg, "join-room");
 }
 
-void VdoSignaling::leaveRoom() {
-    json msg;
-    msg["leave"] = true;
-    impl_->sendMessage(msg);
-    impl_->roomId.clear();
-}
-
 bool VdoSignaling::publish(const std::string &streamId, const std::string &label) {
     impl_->streamId = sanitizeId(streamId.empty() ? generateStreamId() : streamId, 64);
     if (impl_->streamId.empty()) {
@@ -1102,13 +1106,6 @@ bool VdoSignaling::publish(const std::string &streamId, const std::string &label
                      socketRef->isOpen(), socketRef->bufferedAmount());
     }
     return true;
-}
-
-void VdoSignaling::unpublish() {
-    json msg;
-    msg["unpublish"] = true;
-    impl_->sendMessage(msg);
-    impl_->published.store(false);
 }
 
 bool VdoSignaling::sendOffer(const SignalOffer &offer) {

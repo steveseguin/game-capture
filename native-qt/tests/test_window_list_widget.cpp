@@ -192,11 +192,9 @@ void TestWindowListWidget::testAutoRefreshTimer() {
     QSignalSpy spy(widget_, &versus::ui::WindowListWidget::autoRefreshRequested);
     QVERIFY(spy.isValid());
 
-    // Auto-refresh is enabled by default with 3 second interval
-    // Wait for one tick
-    QTest::qWait(3100);
-
-    QVERIFY(spy.count() >= 1);
+    // Observe the real refresh signal, allowing event-loop scheduling slack
+    // around the default three-second timer. A missing tick still fails.
+    QTRY_VERIFY_WITH_TIMEOUT(spy.count() >= 1, 5000);
 }
 
 void TestWindowListWidget::testSelectionPersistence() {

@@ -25,7 +25,8 @@ enum class HardwareEncoder {
     None,
     NVENC,
     QuickSync,
-    AMF
+    AMF,
+    VideoToolbox
 };
 
 enum class AlphaBackgroundMode {
@@ -47,7 +48,11 @@ enum class EncodeFailureKind {
 
 struct EncoderConfig {
     VideoCodec codec = VideoCodec::H264;
+#ifdef __APPLE__
+    HardwareEncoder preferredHardware = HardwareEncoder::VideoToolbox;
+#else
     HardwareEncoder preferredHardware = HardwareEncoder::NVENC;
+#endif
     // Auto is vendor-neutral and may fall back to software. When this is true,
     // preferredHardware is a strict user selection and may not change category.
     bool explicitEncoderSelection = false;
@@ -93,6 +98,9 @@ struct FfmpegProbeInfo {
     bool bundled = false;
     bool userOverride = false;
     bool hasLibvpxVp9 = false;
+#ifdef __APPLE__
+    bool hasLibaomAv1 = false;
+#endif
     bool gplEnabled = false;
     bool nonfreeEnabled = false;
     std::string path;

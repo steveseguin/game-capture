@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <variant>
@@ -27,9 +28,11 @@ class WebSocket {
         std::chrono::milliseconds connectionTimeout{0};
         std::chrono::milliseconds pingInterval{0};
         bool disableTlsVerification = false;
+        std::optional<std::string> caCertificatePemFile;
     };
 
-    explicit WebSocket(const Configuration &configuration = {});
+    WebSocket();
+    explicit WebSocket(const Configuration &configuration);
     ~WebSocket();
 
     WebSocket(const WebSocket &) = delete;

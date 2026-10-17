@@ -1,5 +1,8 @@
 ﻿#include <QApplication>
 #include <QIcon>
+#include <QSettings>
+#include <QFileInfo>
+#include <QDir>
 #include <QScreen>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -31,6 +34,10 @@
 #include "versus/diagnostics/crash_reporter.h"
 #include "versus/ui/main_window.h"
 #include "versus/video/window_capture.h"
+#include "versus/platform/capabilities.h"
+#ifdef __APPLE__
+#include "versus/platform/app_paths.h"
+#endif
 
 namespace {
 
@@ -55,6 +62,8 @@ std::string resolveLogFilePath() {
     std::error_code ec;
     std::filesystem::create_directories(logDir, ec);
     return (logDir / "game-capture-debug.log").string();
+#elif defined(__APPLE__)
+    return QDir(versus::platform::logDirectory()).filePath("game-capture-debug.log").toStdString();
 #else
     return "game-capture-debug.log";
 #endif
@@ -185,6 +194,8 @@ QJsonArray audioInputListToJson(const std::vector<versus::audio::AudioDeviceInfo
 int main(int argc, char *argv[]) {
     // Check for --headless mode
     bool headless = false;
+    bool temporarySettings = false;
+    QString settingsDirectory;
     versus::output::Config outputConfig;
     std::string streamId = "steve123";
     std::string password;
@@ -199,7 +210,12 @@ int main(int argc, char *argv[]) {
     std::string windowFilterArg;
     std::string videoSourceArg = "window";
     std::string spoutSenderArg;
+#ifdef __APPLE__
+    std::string syphonServerArg;
+    bool syphonPremultiplied = false;
+#endif
     std::string cameraFilterArg;
+    std::string cameraIdArg;
     versus::app::VideoSourceMode videoSourceMode = versus::app::VideoSourceMode::Window;
     versus::app::AudioSourceMode audioSourceMode = versus::app::AudioSourceMode::SelectedWindow;
     std::string audioSourceArg = "selected-window";
@@ -233,7 +249,13 @@ int main(int argc, char *argv[]) {
 
     for (int i = 1; i < argc; i++) {
         std::string arg = argv[i];
-        if (arg == "--headless") {
+        if (arg == "--temporary-settings") {
+            temporarySettings = true;
+        } else if (arg.find("--settings-dir=") == 0) {
+            const auto value = arg.substr(15);
+            if (value.empty()) { spdlog::error("--settings-dir requires a nonempty directory"); return 2; }
+            settingsDirectory = QFileInfo(QString::fromStdString(value)).absoluteFilePath();
+        } else if (arg == "--headless") {
             headless = true;
         } else if (arg.rfind("--output=", 0) == 0) {
             try { outputConfig.protocol = versus::output::parseProtocol(arg.substr(9)); }
@@ -301,6 +323,11 @@ int main(int argc, char *argv[]) {
             if (normalized == "spout" || normalized == "spout2") {
                 videoSourceMode = versus::app::VideoSourceMode::Spout;
                 videoSourceArg = "spout";
+#ifdef __APPLE__
+            } else if (normalized == "syphon") {
+                videoSourceMode = versus::app::VideoSourceMode::Syphon;
+                videoSourceArg = "syphon";
+#endif
             } else if (normalized == "camera" || normalized == "webcam" || normalized == "video-input") {
                 videoSourceMode = versus::app::VideoSourceMode::Camera;
                 videoSourceArg = "camera";
@@ -312,10 +339,27 @@ int main(int argc, char *argv[]) {
                 videoSourceArg = "window";
                 videoSourceMode = versus::app::VideoSourceMode::Window;
             }
+#ifdef __APPLE__
+        } else if (arg.find("--syphon-server=") == 0) {
+            syphonServerArg = arg.substr(16);
+        } else if (arg.find("--syphon-alpha=") == 0) {
+            const auto association = arg.substr(15);
+            if (association != "straight" && association != "premultiplied") {
+                spdlog::error("--syphon-alpha requires straight or premultiplied");
+                return 2;
+            }
+            syphonPremultiplied = association == "premultiplied";
+#endif
         } else if (arg.find("--spout-sender=") == 0) {
             spoutSenderArg = arg.substr(15);
         } else if (arg.find("--camera=") == 0) {
             cameraFilterArg = arg.substr(9);
+        } else if (arg.find("--camera-id=") == 0) {
+            cameraIdArg = arg.substr(12);
+            if (cameraIdArg.empty()) {
+                spdlog::error("--camera-id requires an exact, nonempty device ID");
+                return 2;
+            }
         } else if (arg.find("--audio-codec=") == 0) {
             const auto codec = arg.substr(14);
             if (codec != "opus" && codec != "pcm") {
@@ -576,12 +620,53 @@ int main(int argc, char *argv[]) {
         spdlog::info("[Main] Camera audio is off unless explicitly selected");
     }
 
+    if (!settingsDirectory.isEmpty()) {
+        if (temporarySettings || headless || !QDir().mkpath(settingsDirectory)) {
+            spdlog::error("--settings-dir requires GUI mode, writable storage, and cannot be combined with --temporary-settings");
+            return 2;
+        }
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory);
+        QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, settingsDirectory);
+    }
     QApplication app(argc, argv);
+#ifdef __APPLE__
+    if (videoSourceMode == versus::app::VideoSourceMode::Syphon) {
+        if (headless && syphonServerArg.empty()) {
+            spdlog::error("Syphon requires --syphon-server=<exact UUID or unique sender name>");
+            return 2;
+        }
+        if (audioSourceMode == versus::app::AudioSourceMode::SelectedWindow) {
+            audioSourceMode = versus::app::AudioSourceMode::None;
+            audioSourceArg = "none";
+        }
+    }
+    if (headless && ((videoSourceMode != versus::app::VideoSourceMode::Window &&
+        videoSourceMode != versus::app::VideoSourceMode::Camera &&
+        videoSourceMode != versus::app::VideoSourceMode::Syphon) ||
+        audioSourceMode == versus::app::AudioSourceMode::CommunicationsOutput ||
+        (!videoCodecArg.empty() && videoCodecArg != "h264" && videoCodecArg != "avc" &&
+         videoCodecArg != "h265" && videoCodecArg != "hevc" && videoCodecArg != "vp9" && videoCodecArg != "av1") ||
+        (alphaWorkflowEnabled && ((videoSourceMode != versus::app::VideoSourceMode::Window &&
+         videoSourceMode != versus::app::VideoSourceMode::Syphon) ||
+         (!videoCodecArg.empty() && videoCodecArg != "h264" && videoCodecArg != "avc" && videoCodecArg != "vp9"))) ||
+        (alphaBackgroundConfigured && alphaBackgroundMode != versus::video::AlphaBackgroundMode::None &&
+         videoSourceMode != versus::app::VideoSourceMode::Window &&
+         videoSourceMode != versus::app::VideoSourceMode::Syphon))) {
+        spdlog::error("This Mac development build supports window/camera/Syphon video, H.264/H.265/VP9/AV1, and app/system/microphone audio. Alpha requires H.264 or VP9 window/Syphon capture.");
+        return 2;
+    }
+#endif
     app.setWindowIcon(QIcon(":/icons/vdoninja.ico"));
     app.setProperty("force_exit_without_shutdown", false);
     auto coreHolder = std::make_unique<versus::app::VersusApp>();
     auto &core = *coreHolder;
     core.initialize();
+#ifdef __APPLE__
+    // Start distributed discovery on the Cocoa event loop before source selection.
+    core.listSyphonServers();
+    core.setSyphonPremultiplied(syphonPremultiplied);
+#endif
     auto writeDiagnostics = [&core, &diagnosticsOutArg](const char *reason) {
         if (diagnosticsOutArg.empty()) {
             return;
@@ -596,6 +681,11 @@ int main(int argc, char *argv[]) {
                          diagnosticsOutArg);
         }
     };
+    if (headless && !versus::platform::capabilities().canPublish()) {
+        spdlog::error("{}", versus::platform::capabilities().unavailableReason);
+        writeDiagnostics("unsupported-platform");
+        return 3;
+    }
     core.onRuntimeEvent([headless](const std::string &message, bool fatal) {
         if (message.empty()) {
             return;
@@ -623,6 +713,11 @@ int main(int argc, char *argv[]) {
         localControlServer->setCameraSourcesProvider([&core]() {
             return sourceListToJson(core.listCameras());
         });
+#ifdef __APPLE__
+        localControlServer->setSyphonSourcesProvider([&core]() {
+            return sourceListToJson(core.listSyphonServers());
+        });
+#endif
         localControlServer->setSpoutSourcesProvider([&core]() {
             return sourceListToJson(core.listSpoutSenders());
         });
@@ -673,7 +768,11 @@ int main(int argc, char *argv[]) {
             return static_cast<char>(std::tolower(ch));
         });
 
-        if (normalized == "nvenc" || normalized == "nvidia") {
+        if (normalized == "videotoolbox" || normalized == "vt") {
+            encoderOverride.preferredHardware = versus::video::HardwareEncoder::VideoToolbox;
+            encoderOverride.explicitEncoderSelection = true;
+            hasVideoConfigOverride = true;
+        } else if (normalized == "nvenc" || normalized == "nvidia") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::NVENC;
             encoderOverride.explicitEncoderSelection = true;
             hasVideoConfigOverride = true;
@@ -691,7 +790,7 @@ int main(int argc, char *argv[]) {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::AMF;
             encoderOverride.explicitEncoderSelection = true;
             hasVideoConfigOverride = true;
-        } else if (normalized == "software" || normalized == "none") {
+        } else if (normalized == "software" || normalized == "none" || normalized == "x264") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::None;
             encoderOverride.explicitEncoderSelection = true;
             hasVideoConfigOverride = true;
@@ -881,7 +980,11 @@ int main(int argc, char *argv[]) {
              windowFilterArg,
              videoSourceMode,
              spoutSenderArg,
-             cameraFilterArg]() {
+#ifdef __APPLE__
+             syphonServerArg,
+#endif
+             cameraFilterArg,
+             cameraIdArg]() {
             if (videoSourceMode == versus::app::VideoSourceMode::Camera) {
                 auto cameras = core.listCameras();
                 if (cameras.empty()) {
@@ -892,7 +995,16 @@ int main(int argc, char *argv[]) {
                 }
 
                 const versus::video::WindowInfo *selected = nullptr;
-                if (!cameraFilterArg.empty()) {
+                if (!cameraIdArg.empty()) {
+                    const auto match = std::find_if(cameras.begin(), cameras.end(), [&](const auto &camera) { return camera.id == cameraIdArg; });
+                    if (match == cameras.end()) {
+                        spdlog::error("[Headless] No camera has the exact requested --camera-id; no replacement camera will be opened");
+                        spdlog::default_logger()->flush();
+                        QApplication::exit(2);
+                        return;
+                    }
+                    selected = &*match;
+                } else if (!cameraFilterArg.empty()) {
                     selected = versus::video::findBestWindowMatch(cameras, cameraFilterArg);
                     if (!selected) {
                         spdlog::error(
@@ -918,6 +1030,35 @@ int main(int argc, char *argv[]) {
                     QApplication::exit(3);
                     return;
                 }
+#ifdef __APPLE__
+            } else if (videoSourceMode == versus::app::VideoSourceMode::Syphon) {
+                const auto servers = core.listSyphonServers();
+                const versus::video::WindowInfo *selected = nullptr;
+                for (const auto &sender : servers) {
+                    if (sender.id == syphonServerArg) { selected = &sender; break; }
+                }
+                if (!selected) {
+                    for (const auto &sender : servers) {
+                        if (sender.name != syphonServerArg) continue;
+                        if (selected) {
+                            spdlog::error("[Headless] Ambiguous Syphon name; select an exact UUID from /sources/syphon");
+                            QApplication::exit(2);
+                            return;
+                        }
+                        selected = &sender;
+                    }
+                }
+                if (!selected) {
+                    spdlog::error("[Headless] Requested Syphon sender is unavailable; no replacement selected");
+                    QApplication::exit(2);
+                    return;
+                }
+                if (!core.startCapture(versus::app::VideoSourceMode::Syphon, selected->id)) {
+                    spdlog::error("[Headless] Syphon capture failed: {}", core.lastCaptureError());
+                    QApplication::exit(3);
+                    return;
+                }
+#endif
             } else if (videoSourceMode == versus::app::VideoSourceMode::Spout) {
                 auto senders = core.listSpoutSenders();
                 if (senders.empty()) {
@@ -1023,7 +1164,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Normal GUI mode
-    versus::ui::MainWindow window(&core);
+    versus::ui::MainWindow window(&core, {!temporarySettings, true, settingsDirectory});
     guiWindow = &window;
     // Keep first launch usable on small screens and at high display scaling.
     // The content already scrolls; maximize rather than shrink its controls.

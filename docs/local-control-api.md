@@ -47,6 +47,34 @@ Default report path:
 %LOCALAPPDATA%\GameCapture\reports
 ```
 
+In the Mac development build, the corresponding paths are
+`~/Library/Application Support/GameCapture/control.json` and
+`~/Library/Application Support/GameCapture/reports`. Mac logs are under
+`~/Library/Logs/GameCapture`. Diagnostics include `platform_capabilities`;
+`can_publish: false` with an `unavailable_reason` means this build has no working
+publisher backend, rather than merely having no discoverable sources. The Mac
+development build reports window capture, encoding, and app/system audio available.
+`microphone_capture` is available, while `communications_audio_capture` remains false;
+camera capture is implemented and Spout remains unavailable. Input discovery exposes stable device IDs and native
+format metadata. `platform_permissions.microphone` reports `granted`, `denied`,
+`restricted`, or `not_determined` without prompting. `platform_permissions.camera` uses the same states. Camera discovery returns native stable IDs; `--source=camera --camera-id=ID` selects an exact device and fails without substitution when it is absent. `platform_permissions.screen_recording` reports
+`granted` or `not_granted` without triggering a permission prompt.
+
+Mac `system` diagnostics include native system-wide `cpu_percent`,
+`memory_total_bytes`, `memory_used_bytes`, and `memory_percent`. CPU needs two
+samples before it becomes available. Memory usage estimates physical memory less
+free/inactive pages; it is not Activity Monitor's memory-pressure measurement.
+Sampling is cached for 250 ms. Unavailable percentages remain negative.
+
+For an isolated GUI session, `--temporary-settings` uses defaults without reading
+or writing the saved UI preferences or update cache. Normal launches retain their existing settings behavior.
+`--settings-dir=/absolute/directory` instead persists GUI preferences in an isolated
+INI directory and keeps `update-check.ini` there; it cannot be combined with headless mode or `--temporary-settings`.
+Mac output profiles, including URLs and tokens, are stored in Keychain with only an
+opaque reference in the preference file. Mac builds expose VDO.Ninja, WHIP and
+the bundled FFmpeg destinations; external outputs use the existing redacted
+`output` diagnostics and session lifecycle.
+
 Crash reports:
 
 ```text
@@ -89,6 +117,7 @@ Authenticated:
 - `GET /sources/windows`
 - `GET /sources/cameras`
 - `GET /sources/spout`
+- `GET /sources/syphon` (macOS only)
 - `GET /sources/audio-inputs`
 - `GET /logs/recent?lines=250`
 - `POST /commands`
@@ -96,6 +125,31 @@ Authenticated:
 `/logs/recent` defaults to the latest 250 lines. Only the `lines` query parameter
 changes that limit; unrelated query parameters are ignored. Numeric limits are
 clamped to 1–2000.
+
+On macOS, Syphon sources use an exact server-generation UUID as `id`. A restarted
+sender gets a new UUID even when its name is unchanged. Dimensions are unknown
+until capture starts and are then available in diagnostics. Select Syphon in the
+GUI or use `--source=syphon --syphon-server=<UUID>`; an exact, unique sender name
+is also accepted by the CLI. Ambiguous names and missing senders fail without
+selecting a replacement. `--syphon-alpha=straight|premultiplied` describes the
+input pixels; it does not enable the separate OBS alpha output workflow.
+
+Mac diagnostics include `macos_media_activity_active`: whether a capture encode
+worker currently holds the scoped user-initiated activity that prevents App Nap
+during publishing. It is false before capture and after Stop. This activity
+allows idle display and system sleep; it does not change system power settings.
+
+Mac diagnostics also include `syphon_readback` for the most recent capture
+generation. `active` reports whether it is running. `gpu_copies` counts completed
+GPU readbacks, `verified_frames` counts accepted pairs of identical owned copies,
+`mismatched_copies` counts disagreeing comparisons, and `deferred_frames` counts
+iterations that exhausted the bounded copy attempts without agreement. A
+disagreement can simply mean the sender advanced between copies; it is not a
+count of corrupted output frames. Counters reset when a capture generation
+starts and remain available after Stop. A deferred read retains the previous
+verified image and retries; three seconds without a stable copy stops capture
+with an actionable error. When the sender pauses publication, the verified
+image remains paced without additional GPU readback.
 
 Audio-input source objects include `sampleRate`, `channels`, `bitsPerSample`,
 `validBitsPerSample`, `floatingPoint`, and `isDefault` alongside the device
@@ -123,12 +177,23 @@ has been committed; failed replacements preserve the previous report.
 - `transparent_ratio`, `translucent_ratio`, `opaque_ratio`, `green_ratio`
 - `resize_count`, `sampled_frames`
 
+On macOS, `source.suspended` distinguishes a temporarily blank/suspended window
+stream from a closed source. While it is true, the capture session and publishing
+connection remain open, but video capture/send counters stop advancing. The last
+frame's health fields are historical; `has_frame` does not mean fresh video is
+currently arriving. A fresh complete frame clears suspension and resumes video.
+A native stream-stop error or confirmed disappearance of the captured native window
+stops publishing and requires a new source selection. Some applications retain an
+offscreen native window after closing its visible content; that window remains
+suspended until restored, destroyed, or explicitly stopped by the user.
+
 Local tools should show these as plain status, for example: transparency detected, green background detected, large source may lower FPS, or sender resized during capture.
 
 `GET /diagnostics` also includes video alpha/encoder fields:
 
 - `ffmpeg_resolved`, `ffmpeg_resolved_path`, `ffmpeg_configured_path`
 - `ffmpeg_version`, `ffmpeg_configuration`, `ffmpeg_has_libvpx_vp9`
+- On macOS, `ffmpeg_has_libaom_av1` reports software AV1 availability in the probed helper; it does not indicate hardware AV1 support.
 - `ffmpeg_is_bundled`, `ffmpeg_is_user_override`, `ffmpeg_gpl_enabled`, `ffmpeg_nonfree_enabled`, `ffmpeg_probe_error`
 - `alpha_enabled`, `alpha_background_mode`, `alpha_background_color_rgb`
 - `encode_timeouts`, `encode_hard_failures`

@@ -91,10 +91,8 @@ class VdoSignaling {
     bool isConnected() const;
 
     bool joinRoom(const RoomConfig &config);
-    void leaveRoom();
 
     bool publish(const std::string &streamId, const std::string &label);
-    void unpublish();
 
     bool sendOffer(const SignalOffer &offer);
     bool sendAnswer(const SignalAnswer &answer);
