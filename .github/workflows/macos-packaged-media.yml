@@ -2,7 +2,7 @@ name: Mac Packaged Media Compatibility
 
 on:
   push:
-    branches: [macos-hosted-media]
+    branches: [macos-hosted-media, macos-hosted-strict-timer]
     paths:
       - .github/workflows/macos-packaged-media.yml
       - native-qt/qa/macos-hosted-media.py
@@ -22,10 +22,10 @@ permissions:
   contents: read
 
 env:
-  CANDIDATE_ASSET_ID: 651523057
-  CANDIDATE_ARCHIVE_SHA256: c0ea7d6cbaccc08a976ce9b85c3e2a845347009168f34de7f26fddb0f17c5289
-  CANDIDATE_EXECUTABLE_SHA256: 17314b8f7eea037e113e7b8d465ca39dc23d7b9d1d1189644c2d7c90f15c0e6c
-  CANDIDATE_REVISION: 5888246ab9c443b459393bd44cfdf5bee9ba99be
+  CANDIDATE_ASSET_ID: 651595990
+  CANDIDATE_ARCHIVE_SHA256: a8aade96ae03fc31bb063aca88f29435f2ca01c3002ae987b9d48b77d62430fd
+  CANDIDATE_EXECUTABLE_SHA256: dc4311c7c648fdf8d5cf3a196e8bfd1ee9160e96c34420132ff83a3f39b36dc4
+  CANDIDATE_REVISION: 77e887ac50c1623836578676d87753c719f4654a
 
 jobs:
   acquire:
@@ -39,8 +39,8 @@ jobs:
       - name: Download and verify draft app and corresponding source
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_ASSET_ID: 651523052
-          SOURCE_SHA256: e48ec432e0f773e959bacf059b05b3a9ef4daa0cbaf43901d8efd9bf92693353
+          SOURCE_ASSET_ID: 651595986
+          SOURCE_SHA256: d178bdd085a782f537ac541af75e796dc3d3b78c154c6b24c6151b7d62118927
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/candidate"
