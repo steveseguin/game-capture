@@ -25,8 +25,19 @@ class AudioChoiceView final : public QListView {
 public:
     explicit AudioChoiceView(QComboBox *combo) : QListView(combo), combo_(combo) {}
     QList<AudioChoice *> choices() {
-        // These menus keep a fixed model. Persistent indices also prevent
-        // an old accessibility reference from selecting a different row.
+        // Model resets/removals invalidate persistent indices. Retire their
+        // owned objects outside the current AX query, rather than accumulating
+        // stale rows as device lists refresh. Old references remain inert.
+        for (auto it = choices_.begin(); it != choices_.end();) {
+            const auto &index = (*it)->index;
+            if (!index.isValid() || index.model() != model() ||
+                index.parent() != rootIndex() || index.column() != modelColumn()) {
+                (*it)->deleteLater();
+                it = choices_.erase(it);
+            } else {
+                ++it;
+            }
+        }
         if (model()) {
             for (int row = 0; row < model()->rowCount(rootIndex()); ++row) {
                 const auto index = model()->index(row, modelColumn(), rootIndex());
@@ -50,7 +61,10 @@ public:
     AudioChoice *choice() const { return static_cast<AudioChoice *>(object()); }
     bool isValid() const override {
         const auto *c = choice();
-        return c && c->view && c->combo && c->index.isValid();
+        return c && c->view && c->combo && c->index.isValid()
+            && c->index.model() == c->view->model()
+            && c->index.parent() == c->view->rootIndex()
+            && c->index.column() == c->view->modelColumn();
     }
     QAccessibleInterface *parent() const override {
         return isValid() ? QAccessible::queryAccessibleInterface(choice()->view) : nullptr;
@@ -74,7 +88,8 @@ public:
         result.invalid = !isValid();
         if (result.invalid) return result;
         const auto *c = choice();
-        result.disabled = !c->combo->isEnabled() || !(c->index.flags() & Qt::ItemIsEnabled);
+        result.disabled = !c->combo->isEnabled() || !(c->index.flags() & Qt::ItemIsEnabled)
+            || !(c->index.flags() & Qt::ItemIsSelectable);
         result.invisible = !c->view->isVisible();
         result.offscreen = !c->view->viewport()->rect().intersects(c->view->visualRect(c->index));
         result.selectable = !result.disabled;
@@ -93,10 +108,14 @@ public:
         if ((action != toggleAction() && action != pressAction()) || !isValid()) return;
         const auto current = state();
         if (current.disabled || current.invisible) return;
-        auto *c = choice();
-        c->combo->setCurrentIndex(c->index.row());
-        c->combo->hidePopup();
-        c->combo->setFocus(Qt::OtherFocusReason);
+        const auto *c = choice();
+        const QPointer<QComboBox> combo = c->combo;
+        const int row = c->index.row();
+        // Selection signals may refresh the model or destroy the row/view.
+        // Do not read this interface or its row after emitting those signals.
+        combo->setCurrentIndex(row);
+        if (combo) combo->hidePopup();
+        if (combo) combo->setFocus(Qt::OtherFocusReason);
     }
 };
 

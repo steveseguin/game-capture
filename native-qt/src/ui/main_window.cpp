@@ -413,6 +413,11 @@ void installComboWheelGuard(QComboBox *combo) {
     }
     combo->setFocusPolicy(Qt::StrongFocus);
     combo->installEventFilter(new ComboWheelGuard(combo));
+#ifdef __APPLE__
+    // Every app dropdown needs stable accessible rows: Qt's generic cell
+    // selection action can crash during repeated selection after relaunch.
+    platform::configureMacComboChoices(combo);
+#endif
 }
 
 void installSpinWheelGuard(QSpinBox *spin) {
@@ -1873,11 +1878,6 @@ void MainWindow::setupUI() {
     outputSelect_->addItem("RTSP (UDP)", "rtsp-udp");
     outputSelect_->addItem("UDP / MPEG-TS (LAN)", "udp");
     outputSelect_->addItem("RIST", "rist");
-#ifdef __APPLE__
-    // Qt's generic table-cell AX action can invalidate itself while clearing
-    // selection. Use the same owned rows as the fixed audio-source menu.
-    platform::configureMacComboChoices(outputSelect_);
-#endif
     installComboWheelGuard(outputSelect_);
     advancedForm->addRow("Output", outputSelect_);
     outputPanel_ = new QWidget(this);
@@ -2032,9 +2032,6 @@ void MainWindow::setupUI() {
             audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
     }
     audioSourceSelect_->addItem("No audio", QVariant("none"));
-#ifdef __APPLE__
-    platform::configureMacComboChoices(audioSourceSelect_);
-#endif
     audioSourceSelect_->setToolTip(platform::capabilities().communicationsAudioCapture
         ? "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above."
         : "Selected app audio includes its child processes and other windows. Default output mix shares audio from all apps.");
