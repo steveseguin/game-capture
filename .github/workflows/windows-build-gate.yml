@@ -3,7 +3,7 @@ name: Windows Build Gate
 on:
   workflow_dispatch:
   push:
-    branches: [macos-windows-build-gate, macos-main-integration]
+    branches: [macos-windows-build-gate, macos-main-integration, macos-windows-timer-gate]
     paths:
       - .github/workflows/windows-build-gate.yml
       - native-qt/CMakeLists.txt
