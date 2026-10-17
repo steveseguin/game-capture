@@ -43,7 +43,10 @@ class CaptureFramePacer {
 
   private:
     std::chrono::steady_clock::duration interval_{};
-    std::chrono::steady_clock::time_point nextDue_{};
+    std::chrono::steady_clock::duration jitterCredit_{};
+    std::chrono::steady_clock::duration maxCredit_{};
+    std::chrono::steady_clock::duration availableCredit_{};
+    std::chrono::steady_clock::time_point lastUpdate_{};
     bool scheduled_ = false;
 };
 

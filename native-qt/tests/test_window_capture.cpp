@@ -11,7 +11,11 @@ class TestWindowCapture : public QObject {
     void testInvalidWindowIdRejected();
     void testInvalidWindowIdThumbnailReturnsNull();
     void testFramePacerAdmitsAtRequestedCadence();
+    void testFramePacerToleratesPresentationJitter();
+    void testFramePacerToleratesClusteredSixtyFpsCallbacks();
+    void testFramePacerStillCapsDoubleRateInput();
     void testFramePacerDoesNotBurstAfterDelay();
+    void testFramePacerResetsAfterTimestampDiscontinuity();
     void testFrameAdmissionCallbackCanRejectBeforeReadback();
 };
 
@@ -53,7 +57,40 @@ void TestWindowCapture::testFramePacerAdmitsAtRequestedCadence() {
     const auto start = std::chrono::steady_clock::time_point{};
 
     QVERIFY(pacer.shouldAdmit(start));
-    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(10)));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(6)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(17)));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(25)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(34)));
+}
+
+void TestWindowCapture::testFramePacerToleratesPresentationJitter() {
+    versus::video::detail::CaptureFramePacer pacer(60);
+    const auto start = std::chrono::steady_clock::time_point{};
+
+    QVERIFY(pacer.shouldAdmit(start));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::microseconds(15000)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::microseconds(31500)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::microseconds(48200)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::microseconds(64800)));
+}
+
+void TestWindowCapture::testFramePacerToleratesClusteredSixtyFpsCallbacks() {
+    versus::video::detail::CaptureFramePacer pacer(60);
+    const auto start = std::chrono::steady_clock::time_point{};
+
+    QVERIFY(pacer.shouldAdmit(start));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(10)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(33)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(43)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(66)));
+}
+
+void TestWindowCapture::testFramePacerStillCapsDoubleRateInput() {
+    versus::video::detail::CaptureFramePacer pacer(60);
+    const auto start = std::chrono::steady_clock::time_point{};
+
+    QVERIFY(pacer.shouldAdmit(start));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(8)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(17)));
     QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(25)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(34)));
@@ -67,6 +104,16 @@ void TestWindowCapture::testFramePacerDoesNotBurstAfterDelay() {
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(200)));
     QVERIFY(!pacer.shouldAdmit(start + std::chrono::milliseconds(201)));
     QVERIFY(pacer.shouldAdmit(start + std::chrono::milliseconds(234)));
+}
+
+void TestWindowCapture::testFramePacerResetsAfterTimestampDiscontinuity() {
+    versus::video::detail::CaptureFramePacer pacer(60);
+    const auto start = std::chrono::steady_clock::time_point{};
+
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::seconds(10)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::seconds(10) + std::chrono::milliseconds(17)));
+    QVERIFY(pacer.shouldAdmit(start + std::chrono::seconds(1)));
+    QVERIFY(!pacer.shouldAdmit(start + std::chrono::seconds(1) + std::chrono::milliseconds(6)));
 }
 
 void TestWindowCapture::testFrameAdmissionCallbackCanRejectBeforeReadback() {

@@ -7,13 +7,25 @@ const path = require('path');
 const { spawn } = require('child_process');
 const { chromium } = require('playwright');
 
+function optionValue(name) {
+  const index = process.argv.indexOf(name);
+  if (index < 0) {
+    return '';
+  }
+  const value = process.argv[index + 1];
+  if (!value) {
+    throw new Error(`${name} requires a value`);
+  }
+  return value;
+}
+
+function hasFlag(name) {
+  return process.argv.includes(name);
+}
+
 function detectPublisherBinary() {
-  const publisherArgIndex = process.argv.indexOf('--publisher');
-  if (publisherArgIndex >= 0) {
-    const requested = process.argv[publisherArgIndex + 1];
-    if (!requested) {
-      throw new Error('--publisher requires a path to game-capture.exe');
-    }
+  const requested = optionValue('--publisher');
+  if (requested) {
     const resolved = path.resolve(requested);
     if (!fs.existsSync(resolved)) {
       throw new Error(`Requested publisher does not exist: ${resolved}`);
@@ -32,6 +44,12 @@ function detectPublisherBinary() {
     }
   }
   return '';
+}
+
+function freshCaptureFpsSamples(output) {
+  return Array.from(output.matchAll(/\[Frame\] Received (\d+) frames in last 5s/g))
+    .map((match) => Number(match[1]) / 5)
+    .filter(Number.isFinite);
 }
 
 function detectQtPluginPath() {
@@ -168,8 +186,32 @@ async function main() {
   }
 
   const id = `${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-  const sourceTitle = `GC60 Source ${id}`;
-  const sourcePath = path.join(os.tmpdir(), `gc60-source-${id}.html`);
+  const captureSource = (optionValue('--capture-source') || 'window').toLowerCase();
+  const externalSourceTitle = optionValue('--source-window-title');
+  const cameraFilter = optionValue('--camera');
+  const spoutSender = optionValue('--spout-sender');
+  const videoEncoder = optionValue('--video-encoder') || 'nvenc';
+  const videoCodec = optionValue('--video-codec') || 'h264';
+  const resolution = optionValue('--resolution') || '1920x1080';
+  const targetFps = Number(optionValue('--fps') || 60);
+  const minimumFps = Number(optionValue('--minimum-fps') || Math.max(1, targetFps - 5));
+  const sampleMs = Number(optionValue('--sample-ms') || 15000);
+  const sourcePattern = (optionValue('--source-pattern') || 'animated').toLowerCase();
+  const expectStaticBootstrap = hasFlag('--expect-static-bootstrap');
+  if (!['window', 'camera', 'spout'].includes(captureSource)) {
+    throw new Error(`Unknown --capture-source value: ${captureSource}`);
+  }
+  if (!['animated', 'static'].includes(sourcePattern)) {
+    throw new Error(`Unknown --source-pattern value: ${sourcePattern}`);
+  }
+  if (!Number.isFinite(targetFps) || targetFps <= 0 ||
+      !Number.isFinite(minimumFps) || minimumFps <= 0 ||
+      !Number.isFinite(sampleMs) || sampleMs < 5000) {
+    throw new Error('--fps and --minimum-fps must be positive; --sample-ms must be at least 5000');
+  }
+  const createSyntheticWindow = captureSource === 'window' && !externalSourceTitle;
+  const sourceTitle = externalSourceTitle || `GC60 Source ${id}`;
+  const sourcePath = createSyntheticWindow ? path.join(os.tmpdir(), `gc60-source-${id}.html`) : '';
   const streamId = `gc60_verify_${id}`;
 
   const sourceHtml = `<!doctype html>
@@ -197,6 +239,7 @@ async function main() {
     let acc = 0;
     let frames = 0;
     let x = 0;
+    const animate = ${sourcePattern === 'animated' ? 'true' : 'false'};
     function draw(now){
       const dt = now - last;
       last = now;
@@ -220,17 +263,33 @@ async function main() {
       ctx.fillStyle = '#fff';
       ctx.font = '700 64px Segoe UI';
       ctx.fillText('60 FPS SOURCE', 80, 120);
-      requestAnimationFrame(draw);
+      if (animate) requestAnimationFrame(draw);
     }
-    requestAnimationFrame(draw);
+    if (animate) requestAnimationFrame(draw); else draw(performance.now());
   </script>
 </body>
 </html>`;
-  fs.writeFileSync(sourcePath, sourceHtml, 'utf8');
+  if (sourcePath) {
+    fs.writeFileSync(sourcePath, sourceHtml, 'utf8');
+  }
 
   console.log(`[VERIFY] Publisher: ${publisherPath}`);
-  console.log(`[VERIFY] Source file: ${sourcePath}`);
+  if (captureSource === 'window') {
+    console.log(externalSourceTitle
+      ? `[VERIFY] Existing source window: ${externalSourceTitle}`
+      : `[VERIFY] Source file: ${sourcePath}`);
+  } else if (captureSource === 'camera') {
+    console.log(`[VERIFY] Camera source: ${cameraFilter || '(auto)'}`);
+  } else {
+    console.log(`[VERIFY] Spout source: ${spoutSender || '(auto)'}`);
+  }
   console.log(`[VERIFY] Stream ID: ${streamId}`);
+  console.log(`[VERIFY] Encoder: ${videoEncoder}; codec: ${videoCodec}`);
+  console.log(`[VERIFY] Output resolution: ${resolution}`);
+  console.log(`[VERIFY] Target FPS: ${targetFps}; minimum accepted FPS: ${minimumFps}`);
+  if (createSyntheticWindow) {
+    console.log(`[VERIFY] Source pattern: ${sourcePattern}`);
+  }
 
   let sourceBrowser;
   let viewerBrowser;
@@ -238,31 +297,46 @@ async function main() {
   const pubState = { stdout: '', stderr: '', exited: false };
 
   try {
-    sourceBrowser = await chromium.launch({
-      channel: 'chrome',
-      headless: false,
-      args: [
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
-      ]
-    });
-    const sourceContext = await sourceBrowser.newContext({ viewport: { width: 1280, height: 720 } });
-    const sourcePage = await sourceContext.newPage();
-    await sourcePage.goto(`file:///${sourcePath.replace(/\\/g, '/')}`);
-    await sourcePage.bringToFront();
-    console.log('[VERIFY] Source window opened in Chrome');
+    if (createSyntheticWindow) {
+      sourceBrowser = await chromium.launch({
+        channel: 'chrome',
+        headless: false,
+        args: [
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
+        ]
+      });
+      const sourceContext = await sourceBrowser.newContext({ viewport: { width: 1280, height: 720 } });
+      const sourcePage = await sourceContext.newPage();
+      await sourcePage.goto(`file:///${sourcePath.replace(/\\/g, '/')}`);
+      await sourcePage.bringToFront();
+      console.log('[VERIFY] Source window opened in Chrome');
+    }
 
     const pubArgs = [
       '--headless',
       `--stream=${streamId}`,
       '--duration-ms=90000',
-      '--fps=60',
-      '--resolution=1920x1080',
+      `--fps=${targetFps}`,
+      `--resolution=${resolution}`,
       '--bitrate-kbps=12000',
-      '--video-encoder=nvenc',
-      `--window=${sourceTitle.toLowerCase()}`
+      `--video-encoder=${videoEncoder}`,
+      `--video-codec=${videoCodec}`
     ];
+    if (captureSource === 'window') {
+      pubArgs.push(`--window=${sourceTitle.toLowerCase()}`);
+    } else if (captureSource === 'camera') {
+      pubArgs.push('--source=camera');
+      if (cameraFilter) {
+        pubArgs.push(`--camera=${cameraFilter}`);
+      }
+    } else {
+      pubArgs.push('--source=spout');
+      if (spoutSender) {
+        pubArgs.push(`--spout-sender=${spoutSender}`);
+      }
+    }
     const pubEnv = { ...process.env };
     const qtPluginPath = detectQtPluginPath();
     if (qtPluginPath) {
@@ -312,15 +386,50 @@ async function main() {
     }
     console.log(`[VERIFY] Viewer decoded video: ${decoded.decoded.width}x${decoded.decoded.height}`);
 
-    const fps = await measureVideoFps(viewerPage, 10000);
+    if (expectStaticBootstrap) {
+      const staticResult = await viewerPage.evaluate(async () => {
+        const video = Array.from(document.querySelectorAll('video'))
+          .find((candidate) => candidate.readyState >= 2 && candidate.videoWidth > 0);
+        const before = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        const after = video.getVideoPlaybackQuality ? video.getVideoPlaybackQuality() : null;
+        return {
+          decodedDelta: before && after
+            ? Math.max(0, after.totalVideoFrames - before.totalVideoFrames)
+            : 0,
+          currentTime: video.currentTime,
+          width: video.videoWidth,
+          height: video.videoHeight
+        };
+      });
+      console.log(`[VERIFY] Static viewer sample: decodedDelta=${staticResult.decodedDelta} size=${staticResult.width}x${staticResult.height}`);
+      if (staticResult.decodedDelta > 2) {
+        throw new Error(`Static source was repeatedly encoded: ${staticResult.decodedDelta} decoded frames in 5 seconds`);
+      }
+      console.log('[VERIFY] PASS: static source bootstrapped the viewer without continuous repeated frames');
+      return;
+    }
+
+    const fps = await measureVideoFps(viewerPage, sampleMs);
     console.log(`[VERIFY] Chrome viewer sample: rvfcFps=${fps.rvfcFps.toFixed(2)} decodedFps=${fps.decodedFps.toFixed(2)} frames=${fps.rvfcFrames} size=${fps.videoWidth}x${fps.videoHeight}`);
 
     const effectiveFps = fps.decodedFps > 0 ? fps.decodedFps : fps.rvfcFps;
-    if (effectiveFps < 55) {
-      throw new Error(`Chrome decoded FPS is not near 60: ${effectiveFps.toFixed(2)} (<55)`);
+    if (effectiveFps < minimumFps) {
+      throw new Error(`Chrome decoded FPS is below target: ${effectiveFps.toFixed(2)} (<${minimumFps})`);
     }
 
-    console.log('[VERIFY] PASS: Chrome viewer sustained near-60fps decoded output for 1080p60 publish');
+    const captureSamples = freshCaptureFpsSamples(`${pubState.stdout}\n${pubState.stderr}`);
+    if (captureSamples.length < 2) {
+      throw new Error(`Publisher did not report two fresh-capture FPS samples: ${captureSamples.join(', ')}`);
+    }
+    const sustainedCaptureSamples = captureSamples.slice(-2);
+    const minimumFreshCaptureFps = Math.min(...sustainedCaptureSamples);
+    console.log(`[VERIFY] Publisher fresh-capture FPS samples: ${sustainedCaptureSamples.map((value) => value.toFixed(2)).join(', ')}`);
+    if (minimumFreshCaptureFps < minimumFps) {
+      throw new Error(`Publisher fresh-capture FPS is below target: ${minimumFreshCaptureFps.toFixed(2)} (<${minimumFps})`);
+    }
+
+    console.log('[VERIFY] PASS: Chrome viewer sustained the required fresh capture and decoded output cadence');
   } finally {
     if (publisher && !pubState.exited) {
       publisher.kill();
@@ -332,10 +441,12 @@ async function main() {
     if (sourceBrowser) {
       await sourceBrowser.close().catch(() => {});
     }
-    try {
-      fs.unlinkSync(sourcePath);
-    } catch {
-      // ignore cleanup errors
+    if (sourcePath) {
+      try {
+        fs.unlinkSync(sourcePath);
+      } catch {
+        // ignore cleanup errors
+      }
     }
   }
 }

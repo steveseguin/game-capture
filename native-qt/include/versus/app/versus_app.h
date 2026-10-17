@@ -436,6 +436,7 @@ class VersusApp {
         const versus::video::CapturedFrame &frame,
         bool forceKeyframe,
         int64_t outputTimestamp = std::numeric_limits<int64_t>::min());
+    bool queueCachedVideoBootstrapFrame(const char *reason);
     bool adaptHqEncoderToFrameLocked(const versus::video::CapturedFrame &frame, int64_t nowMs);
     std::shared_ptr<const versus::video::CapturedFrame> getCachedVideoFrame();
     std::string makePeerKey(const std::string &uuid, const std::string &session) const;
@@ -820,7 +821,8 @@ class VersusApp {
     mutable std::mutex videoStateSnapshotMutex_;
     mutable VideoStateSnapshot cachedVideoStateSnapshot_;
     std::mutex latestVideoFrameMutex_;
-    std::shared_ptr<const versus::video::CapturedFrame> pendingVideoFrame_;
+    static constexpr size_t kMaxPendingVideoFrames = 2;
+    std::deque<std::shared_ptr<const versus::video::CapturedFrame>> pendingVideoFrames_;
     std::shared_ptr<const versus::video::CapturedFrame> cachedVideoFrame_;
     int activeHqWidth_ = 0;
     int activeHqHeight_ = 0;

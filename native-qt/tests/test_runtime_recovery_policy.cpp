@@ -10,8 +10,8 @@ class TestRuntimeRecoveryPolicy : public QObject {
     void testTemporarySoftwareEncoderPressureRemainsRetryable();
     void testBoundedOutputStallFallsBackImmediately();
     void testHardSoftwareEncoderFailuresUseCountedRecovery();
-    void testCapturePipelineAllowsOneFrameToWaitBehindEncoder();
-    void testOutputPacerTargetsSixtyFpsWithoutCatchupBursts();
+    void testCapturePipelineAllowsBoundedFramesBehindEncoder();
+    void testEncoderWaitsForFreshFramesInsteadOfTimerTicks();
     void testAnonymousViewerResolutionHintIsSilent();
     void testExplicitResolutionControlGetsAuthorizationFeedback();
 };
@@ -52,34 +52,22 @@ void TestRuntimeRecoveryPolicy::testHardSoftwareEncoderFailuresUseCountedRecover
         SoftwareEncoderFailureDisposition::CountedFailure);
 }
 
-void TestRuntimeRecoveryPolicy::testCapturePipelineAllowsOneFrameToWaitBehindEncoder() {
+void TestRuntimeRecoveryPolicy::testCapturePipelineAllowsBoundedFramesBehindEncoder() {
     using versus::app::shouldAdmitCapturedFrame;
 
-    QVERIFY(shouldAdmitCapturedFrame(false, false, false));
-    QVERIFY(shouldAdmitCapturedFrame(true, true, false));
-    QVERIFY(!shouldAdmitCapturedFrame(true, true, true));
-    QVERIFY(!shouldAdmitCapturedFrame(true, false, false));
+    QVERIFY(shouldAdmitCapturedFrame(false, false, 2, 2));
+    QVERIFY(shouldAdmitCapturedFrame(true, true, 0, 2));
+    QVERIFY(shouldAdmitCapturedFrame(true, true, 1, 2));
+    QVERIFY(!shouldAdmitCapturedFrame(true, true, 2, 2));
+    QVERIFY(!shouldAdmitCapturedFrame(true, false, 0, 2));
 }
 
-void TestRuntimeRecoveryPolicy::testOutputPacerTargetsSixtyFpsWithoutCatchupBursts() {
-    using Clock = std::chrono::steady_clock;
-    using versus::app::advanceOutputFrameDeadline;
-    using versus::app::outputFrameInterval;
-    using versus::app::outputFrameTimestamp100ns;
+void TestRuntimeRecoveryPolicy::testEncoderWaitsForFreshFramesInsteadOfTimerTicks() {
+    using versus::app::freshFrameWaitComplete;
 
-    const auto interval = outputFrameInterval(60);
-    QCOMPARE(interval.count(), int64_t{16666666});
-
-    const Clock::time_point first{};
-    const auto second = advanceOutputFrameDeadline(first, first, interval);
-    QCOMPARE(second - first, interval);
-    QCOMPARE(outputFrameTimestamp100ns(second) - outputFrameTimestamp100ns(first),
-             int64_t{166666});
-
-    const auto delayedNow = first + (interval * 3) + std::chrono::milliseconds(1);
-    const auto afterDelay = advanceOutputFrameDeadline(second, delayedNow, interval);
-    QVERIFY(afterDelay > delayedNow);
-    QVERIFY(afterDelay <= delayedNow + interval);
+    QVERIFY(!freshFrameWaitComplete(true, false));
+    QVERIFY(freshFrameWaitComplete(true, true));
+    QVERIFY(freshFrameWaitComplete(false, false));
 }
 
 void TestRuntimeRecoveryPolicy::testAnonymousViewerResolutionHintIsSilent() {

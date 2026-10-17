@@ -48,7 +48,6 @@ namespace {
 #define APP_VERSION "dev"
 #endif
 
-constexpr int64_t kStaleResendMs = 350;
 constexpr int64_t kPeriodicKeyframeMs = 2500;
 constexpr int64_t kDataInfoIntervalMs = 2000;
 constexpr int64_t kPrimaryAudioActiveWindowMs = 250;
@@ -904,7 +903,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     }
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        pendingVideoFrame_.reset();
+        pendingVideoFrames_.clear();
         cachedVideoFrame_.reset();
     }
     const auto frameCallback = [this](video::CapturedFrame frame) {
@@ -912,11 +911,12 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     };
     windowCapture_.setFrameCallback(frameCallback);
     windowCapture_.setFrameAdmissionCallback([this]() {
-        std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
         return shouldAdmitCapturedFrame(
             live_.load(std::memory_order_acquire),
             encodeThreadRunning_.load(std::memory_order_acquire),
-            encodeFrameReady_);
+            pendingVideoFrames_.size(),
+            kMaxPendingVideoFrames);
     });
     spoutCapture_.setFrameCallback(frameCallback);
     cameraCapture_.setFrameCallback(frameCallback);
@@ -1184,7 +1184,7 @@ void VersusApp::stopCapture() {
     capturing_ = false;
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        pendingVideoFrame_.reset();
+        pendingVideoFrames_.clear();
         cachedVideoFrame_.reset();
     }
 }
@@ -3060,6 +3060,7 @@ void VersusApp::handlePeerConnectionState(
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
         peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
         reservePeerAlphaAdmissionCutoff(peer);
+        queueCachedVideoBootstrapFrame("peer-connected");
         {
             std::lock_guard<std::mutex> lock(peer->diagnosticsMutex);
             peer->selectedIcePath = webrtc::selectedIcePathName(selectedPath);
@@ -3138,6 +3139,10 @@ void VersusApp::handlePeerDataChannelState(
         }
         sendPeerDataInfo(peer, true);
         applyPeerMediaPlan(peer, "datachannel-open");
+        if (peer->initReceived.load(std::memory_order_relaxed) &&
+            peer->videoEnabled.load(std::memory_order_relaxed)) {
+            queueCachedVideoBootstrapFrame("datachannel-open");
+        }
         return;
     }
     peer->initDeadlineMs.store(0, std::memory_order_relaxed);
@@ -4232,6 +4237,9 @@ void VersusApp::pruneTimedOutPeerInits(int64_t nowMs) {
                          peer->session);
         }
         applyPeerMediaPlan(peer, peer->roomMode ? "room-init-fallback" : "direct-init-fallback");
+        if (peer->videoEnabled.load(std::memory_order_relaxed)) {
+            queueCachedVideoBootstrapFrame("peer-init-fallback");
+        }
         sendPeerDataInfo(peer, true);
     }
 }
@@ -5540,6 +5548,10 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
                 peer->client->sendDataMessage(muteState.dump());
             }
             applyPeerMediaPlan(peer, hasExplicitRoleSignal ? "peer-init" : "peer-media-update");
+            if (videoEnabled && (!initAlreadyReceived || videoMuteStateChanged)) {
+                queueCachedVideoBootstrapFrame(
+                    initAlreadyReceived ? "peer-video-enabled" : "peer-init");
+            }
         }
     }
 
@@ -6938,6 +6950,36 @@ bool VersusApp::adaptHqEncoderToFrameLocked(const video::CapturedFrame &frame, i
     return true;
 }
 
+bool VersusApp::queueCachedVideoBootstrapFrame(const char *reason) {
+    if (!live_.load(std::memory_order_relaxed) ||
+        !encodeThreadRunning_.load(std::memory_order_acquire)) {
+        return false;
+    }
+
+    bool hasFrame = false;
+    {
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        if (pendingVideoFrames_.empty() && cachedVideoFrame_ && !cachedVideoFrame_->data.empty()) {
+            pendingVideoFrames_.push_back(cachedVideoFrame_);
+        }
+        hasFrame = !pendingVideoFrames_.empty() &&
+            !pendingVideoFrames_.front()->data.empty();
+    }
+    if (!hasFrame) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
+        encodeFrameReady_ = true;
+    }
+    encodeFrameCV_.notify_one();
+    spdlog::info(
+        "[EncodeThread] Queued one cached bootstrap frame reason={}",
+        reason ? reason : "unspecified");
+    return true;
+}
+
 std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame() {
     std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
     return cachedVideoFrame_;
@@ -6956,7 +6998,11 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
     const auto sharedFrame = std::make_shared<const video::CapturedFrame>(std::move(frame));
     {
         std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-        pendingVideoFrame_ = sharedFrame;
+        if (pendingVideoFrames_.size() >= kMaxPendingVideoFrames) {
+            pendingVideoFrames_.pop_front();
+            videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
+        }
+        pendingVideoFrames_.push_back(sharedFrame);
         cachedVideoFrame_ = sharedFrame;
     }
 
@@ -6972,9 +7018,6 @@ void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
     // the next frame immediately without waiting for encode to finish.
     {
         std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
-        if (encodeFrameReady_) {
-            videoFramesDropped_.fetch_add(1, std::memory_order_relaxed);
-        }
         encodeFrameReady_ = true;
     }
     encodeFrameCV_.notify_one();
@@ -7177,19 +7220,15 @@ void VersusApp::startVideoMaintenanceThread() {
                 lastInfoBroadcastMs = nowMs;
             }
 
-            const int64_t lastSendMs = lastVideoSendMs_.load(std::memory_order_relaxed);
-            const bool staleSend = (lastSendMs == 0) || ((nowMs - lastSendMs) >= kStaleResendMs);
             const int64_t lastKeyframeMs = lastKeyframeSendMs_.load(std::memory_order_relaxed);
             const bool periodicKeyframeDue =
                 (lastKeyframeMs == 0) || ((nowMs - lastKeyframeMs) >= kPeriodicKeyframeMs);
 
-            if (staleSend || periodicKeyframeDue) {
-                const auto cachedFrame = getCachedVideoFrame();
-                if (cachedFrame && !cachedFrame->data.empty()) {
-                    encodeAndSendVideoFrame(*cachedFrame, periodicKeyframeDue);
-                } else if (periodicKeyframeDue) {
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                }
+            // A keyframe request applies to the next fresh capture. Re-encoding
+            // cached pixels made the transport counter look healthy while
+            // hiding a slow capture path and doing unnecessary encoder work.
+            if (periodicKeyframeDue) {
+                pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
 
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -7494,34 +7533,33 @@ void VersusApp::startEncodeThread() {
         return;
     }
 
+    // Capture starts before the encoder thread so a static source can already
+    // have queued its only frame. Recompute the wake predicate atomically with
+    // respect to frame producers, while also discarding stale wake state from
+    // a previous capture session.
+    {
+        std::scoped_lock lock(latestVideoFrameMutex_, encodeNotifyMutex_);
+        encodeFrameReady_ = !pendingVideoFrames_.empty();
+    }
+
     startAlphaEncodeThread();
 
     encodeThread_ = std::thread([this]() {
         spdlog::info("[EncodeThread] Started");
-        using Clock = std::chrono::steady_clock;
-        auto nextFrameDue = Clock::now();
         while (encodeThreadRunning_.load()) {
-            const VideoStateSnapshot videoState = videoStateSnapshot();
-            const auto frameInterval = outputFrameInterval(
-                std::max(1, videoState.config.frameRate));
-            const auto scheduledFrameDue = nextFrameDue;
             {
                 std::unique_lock<std::mutex> lock(encodeNotifyMutex_);
-                encodeFrameCV_.wait_until(
-                    lock,
-                    scheduledFrameDue,
-                    [this] { return !encodeThreadRunning_.load(); });
+                encodeFrameCV_.wait(lock, [this] {
+                    return freshFrameWaitComplete(
+                        encodeThreadRunning_.load(),
+                        encodeFrameReady_);
+                });
                 if (!encodeThreadRunning_.load()) {
                     break;
                 }
                 encodeFrameReady_ = false;
                 videoEncodeInProgress_.store(true, std::memory_order_release);
             }
-
-            nextFrameDue = advanceOutputFrameDeadline(
-                scheduledFrameDue,
-                Clock::now(),
-                frameInterval);
 
             struct EncodeProgressGuard {
                 std::atomic<bool> &flag;
@@ -7546,25 +7584,30 @@ void VersusApp::startEncodeThread() {
             }
 
             std::shared_ptr<const video::CapturedFrame> frame;
+            bool moreFramesPending = false;
             {
                 std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
-                if (pendingVideoFrame_) {
-                    frame = std::move(pendingVideoFrame_);
-                } else {
-                    frame = cachedVideoFrame_;
+                if (!pendingVideoFrames_.empty()) {
+                    frame = std::move(pendingVideoFrames_.front());
+                    pendingVideoFrames_.pop_front();
                 }
+                moreFramesPending = !pendingVideoFrames_.empty();
+            }
+            if (moreFramesPending) {
+                {
+                    std::lock_guard<std::mutex> lock(encodeNotifyMutex_);
+                    encodeFrameReady_ = true;
+                }
+                encodeFrameCV_.notify_one();
             }
 
             if (!frame || frame->data.empty()) {
                 continue;
             }
 
-            const int64_t outputTimestamp = outputFrameTimestamp100ns(
-                scheduledFrameDue);
             if (!encodeAndSendVideoFrame(
                     *frame,
-                    false,
-                    outputTimestamp)) {
+                    false)) {
                 static int sendFailCount = 0;
                 if (++sendFailCount % 100 == 1) {
                     spdlog::warn("[EncodeThread] encodeAndSendVideoFrame failed (count={})", sendFailCount);
@@ -9531,6 +9574,7 @@ void VersusApp::applyPeerMediaPlan(const std::shared_ptr<PeerSession> &peer, con
         reservePeerAlphaAdmissionCutoff(peer);
         pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
         lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        queueCachedVideoBootstrapFrame("video-track-added");
     }
 
     if (queuedTransition) {

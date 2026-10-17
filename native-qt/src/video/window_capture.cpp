@@ -2,6 +2,7 @@
 #include "versus/video/aspect_fit.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <exception>
 #include <mutex>
@@ -23,6 +24,7 @@
 #ifdef VERSUS_USE_GRAPHICS_CAPTURE
 // Windows Graphics Capture API (WinRT-based)
 #include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.Foundation.Metadata.h>
 #include <winrt/Windows.Graphics.Capture.h>
 #include <winrt/Windows.Graphics.DirectX.h>
 #include <winrt/Windows.Graphics.DirectX.Direct3D11.h>
@@ -54,10 +56,18 @@ CaptureFramePacer::CaptureFramePacer(int targetFps) {
 
 void CaptureFramePacer::reset(int targetFps) {
     scheduled_ = false;
-    nextDue_ = {};
+    lastUpdate_ = {};
     interval_ = targetFps > 0
         ? std::chrono::nanoseconds(1000000000LL / std::max(1, targetFps))
         : std::chrono::steady_clock::duration::zero();
+    // WGC callbacks can arrive in an early/late pair even when compositor
+    // presentation averages exactly the requested cadence. Carry bounded
+    // credit across those pairs instead of anchoring every decision to a rigid
+    // deadline. Keep the credit below half an interval so a steady 120 Hz
+    // source is still reduced to the configured 60 FPS ceiling.
+    jitterCredit_ = interval_ * 45 / 100;
+    maxCredit_ = interval_ + jitterCredit_;
+    availableCredit_ = jitterCredit_;
 }
 
 bool CaptureFramePacer::shouldAdmit(std::chrono::steady_clock::time_point now) {
@@ -65,17 +75,29 @@ bool CaptureFramePacer::shouldAdmit(std::chrono::steady_clock::time_point now) {
         return true;
     }
     if (!scheduled_) {
-        nextDue_ = now + interval_;
+        lastUpdate_ = now;
+        availableCredit_ = jitterCredit_;
         scheduled_ = true;
         return true;
     }
-    if (now < nextDue_) {
-        return false;
+
+    if (now < lastUpdate_) {
+        lastUpdate_ = now;
+        availableCredit_ = jitterCredit_;
+        return true;
     }
 
-    const auto overdue = now - nextDue_;
-    const auto intervalsElapsed = (overdue / interval_) + 1;
-    nextDue_ += interval_ * intervalsElapsed;
+    if (now > lastUpdate_) {
+        availableCredit_ = std::min(
+            maxCredit_,
+            availableCredit_ + (now - lastUpdate_));
+    }
+    lastUpdate_ = now;
+
+    if (availableCredit_ < interval_) {
+        return false;
+    }
+    availableCredit_ -= interval_;
     return true;
 }
 
@@ -439,8 +461,28 @@ class WindowCapture::Impl {
         targetHeight_ = height;
         targetFps_ = fps;
         preserveAlpha_ = preserveAlpha;
+        stopping_.store(false, std::memory_order_release);
         framePacer_.reset(fps);
         framesSkippedBeforeReadback_.store(0, std::memory_order_relaxed);
+        framesSkippedByPacer_.store(0, std::memory_order_relaxed);
+        framesSkippedByEncoderAdmission_.store(0, std::memory_order_relaxed);
+        framesArrived_.store(0, std::memory_order_relaxed);
+        framesSubmittedForReadback_.store(0, std::memory_order_relaxed);
+        framesDeliveredFromReadback_.store(0, std::memory_order_relaxed);
+        readbackBackpressureDrops_.store(0, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> cadenceLock(captureCadenceMutex_);
+            captureCadenceLogged_ = false;
+            captureCadenceWindowStart_ = std::chrono::steady_clock::now();
+            lastCadenceArrived_ = 0;
+            lastCadenceSubmitted_ = 0;
+            lastCadenceDelivered_ = 0;
+            lastCadenceSkipped_ = 0;
+            lastCadencePacerSkipped_ = 0;
+            lastCadenceEncoderAdmissionSkipped_ = 0;
+            lastCadenceBackpressure_ = 0;
+        }
+        resetReadbackSlots();
 
         if (useGraphicsCapture_) {
             spdlog::info("[Capture::Impl] Using Windows Graphics Capture API");
@@ -451,22 +493,11 @@ class WindowCapture::Impl {
     }
 
     void stopCapture() {
+        stopping_.store(true, std::memory_order_release);
         capturing_.store(false, std::memory_order_release);
-        if (captureThread_.joinable()) {
-            captureThread_.join();
-        }
-        outputDuplication_ = nullptr;
-        stagingTexture_ = nullptr;
-        scaledTexture_ = nullptr;
-        scaledOutputView_ = nullptr;
-        videoProcessor_ = nullptr;
-        videoProcessorEnumerator_ = nullptr;
-        scalerSourceWidth_ = 0;
-        scalerSourceHeight_ = 0;
-        scalerTargetWidth_ = 0;
-        scalerTargetHeight_ = 0;
-        stagingWidth_ = 0;
-        stagingHeight_ = 0;
+        // Stop WGC from scheduling more callbacks before releasing textures.
+        // A callback already in progress is allowed to finish under
+        // processFrameMutex_ below.
         if (framePool_) {
             framePool_.Close();
             framePool_ = nullptr;
@@ -474,6 +505,22 @@ class WindowCapture::Impl {
         if (captureSession_) {
             captureSession_.Close();
             captureSession_ = nullptr;
+        }
+        if (captureThread_.joinable()) {
+            captureThread_.join();
+        }
+        {
+            std::lock_guard<std::mutex> processLock(processFrameMutex_);
+            outputDuplication_ = nullptr;
+            resetReadbackSlots();
+            scaledTexture_ = nullptr;
+            scaledOutputView_ = nullptr;
+            videoProcessor_ = nullptr;
+            videoProcessorEnumerator_ = nullptr;
+            scalerSourceWidth_ = 0;
+            scalerSourceHeight_ = 0;
+            scalerTargetWidth_ = 0;
+            scalerTargetHeight_ = 0;
         }
 #ifdef VERSUS_USE_GRAPHICS_CAPTURE
         if (captureItemClosedTokenSet_ && captureItem_) {
@@ -489,8 +536,21 @@ class WindowCapture::Impl {
         lastContentWidth_ = 0;
         lastContentHeight_ = 0;
         const uint64_t skipped = framesSkippedBeforeReadback_.load(std::memory_order_relaxed);
-        if (skipped > 0) {
-            spdlog::info("[Capture::Impl] Skipped {} frame(s) before GPU readback", skipped);
+        const uint64_t arrived = framesArrived_.load(std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> cadenceLock(captureCadenceMutex_);
+            if (!captureCadenceLogged_ && arrived > 0) {
+                captureCadenceLogged_ = true;
+                spdlog::info(
+                    "[Capture::Impl] Capture cadence totals arrived={} submitted={} delivered={} skipped={} pacerSkipped={} encoderAdmissionSkipped={} readbackBackpressure={}",
+                    arrived,
+                    framesSubmittedForReadback_.load(std::memory_order_relaxed),
+                    framesDeliveredFromReadback_.load(std::memory_order_relaxed),
+                    skipped,
+                    framesSkippedByPacer_.load(std::memory_order_relaxed),
+                    framesSkippedByEncoderAdmission_.load(std::memory_order_relaxed),
+                    readbackBackpressureDrops_.load(std::memory_order_relaxed));
+            }
         }
     }
 
@@ -552,6 +612,45 @@ class WindowCapture::Impl {
             spdlog::warn("[Capture::Impl] Failed to disable graphics capture border with unknown exception");
         }
     }
+
+    void applyCaptureRatePreference() {
+        try {
+            using winrt::Windows::Foundation::Metadata::ApiInformation;
+            if (!ApiInformation::IsPropertyPresent(
+                    L"Windows.Graphics.Capture.GraphicsCaptureSession",
+                    L"MinUpdateInterval")) {
+                spdlog::info(
+                    "[Capture::Impl] GraphicsCaptureSession.MinUpdateInterval is unavailable on this Windows build");
+                return;
+            }
+
+            const int requestedFps = std::max(1, targetFps_);
+            // Do not use the exact output-frame interval here. A 60 Hz source
+            // can present a little before the nominal 16.67 ms boundary; an
+            // exact 16.67 ms WGC minimum then suppresses that update and waits
+            // for the following one, producing an apparent ~30 FPS capture.
+            // Ask WGC for updates as soon as they are available and let the
+            // app's frame pacer enforce the configured output ceiling.
+            constexpr int64_t kFastCaptureInterval100ns = 40000;  // 4 ms
+            const int64_t outputInterval100ns = 10000000LL / requestedFps;
+            const winrt::Windows::Foundation::TimeSpan interval{
+                std::min(outputInterval100ns, kFastCaptureInterval100ns)};
+            captureSession_.MinUpdateInterval(interval);
+            spdlog::info(
+                "[Capture::Impl] Requested graphics capture minimum update interval={}us (output cap={}fps)",
+                interval.count() / 10,
+                requestedFps);
+        } catch (const winrt::hresult_error &e) {
+            spdlog::warn(
+                "[Capture::Impl] Failed to set graphics capture update interval hr=0x{:08x} msg={}",
+                static_cast<unsigned int>(e.code()),
+                winrt::to_string(e.message()));
+        } catch (const std::exception &e) {
+            spdlog::warn("[Capture::Impl] Failed to set graphics capture update interval: {}", e.what());
+        } catch (...) {
+            spdlog::warn("[Capture::Impl] Failed to set graphics capture update interval with unknown exception");
+        }
+    }
 #endif
 
     bool startGraphicsCapture(HWND hwnd) {
@@ -606,6 +705,7 @@ class WindowCapture::Impl {
             framePool_.FrameArrived([this](auto const &sender, auto const &) { onFrameArrived(sender); });
             captureSession_ = framePool_.CreateCaptureSession(captureItem_);
             captureSession_.IsCursorCaptureEnabled(false);
+            applyCaptureRatePreference();
             applyBorderlessCapturePreference();
             captureSession_.StartCapture();
             capturing_.store(true, std::memory_order_release);
@@ -677,6 +777,10 @@ class WindowCapture::Impl {
     }
 
     void onFrameArrived(winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const &sender) {
+        if (stopping_.load(std::memory_order_acquire)) {
+            return;
+        }
+        framesArrived_.fetch_add(1, std::memory_order_relaxed);
         try {
             onFrameArrivedUnsafe(sender);
         } catch (const winrt::hresult_error &e) {
@@ -688,6 +792,7 @@ class WindowCapture::Impl {
         } catch (...) {
             spdlog::warn("[Capture::Impl] Frame-arrived processing failed with unknown exception");
         }
+        logCaptureCadenceMaybe();
     }
 
     void onFrameArrivedUnsafe(winrt::Windows::Graphics::Capture::Direct3D11CaptureFramePool const &sender) {
@@ -1052,6 +1157,191 @@ class WindowCapture::Impl {
         return scaledTexture_.get();
     }
 
+    static constexpr size_t kReadbackSlotCount = 3;
+
+    struct ReadbackSlot {
+        winrt::com_ptr<ID3D11Texture2D> texture;
+        winrt::com_ptr<ID3D11Query> completion;
+        UINT textureWidth = 0;
+        UINT textureHeight = 0;
+        int frameWidth = 0;
+        int frameHeight = 0;
+        int readbackX = 0;
+        int readbackY = 0;
+        int64_t timestamp = 0;
+        uint64_t sequence = 0;
+        bool pending = false;
+    };
+
+    void logCaptureCadenceMaybe() {
+        const auto now = std::chrono::steady_clock::now();
+        std::lock_guard<std::mutex> lock(captureCadenceMutex_);
+        const auto elapsed = now - captureCadenceWindowStart_;
+        if (elapsed < std::chrono::seconds(5)) {
+            return;
+        }
+
+        const uint64_t arrived = framesArrived_.load(std::memory_order_relaxed);
+        const uint64_t submitted = framesSubmittedForReadback_.load(std::memory_order_relaxed);
+        const uint64_t delivered = framesDeliveredFromReadback_.load(std::memory_order_relaxed);
+        const uint64_t skipped = framesSkippedBeforeReadback_.load(std::memory_order_relaxed);
+        const uint64_t pacerSkipped = framesSkippedByPacer_.load(std::memory_order_relaxed);
+        const uint64_t encoderAdmissionSkipped =
+            framesSkippedByEncoderAdmission_.load(std::memory_order_relaxed);
+        const uint64_t backpressure = readbackBackpressureDrops_.load(std::memory_order_relaxed);
+        const double elapsedSeconds = std::max(
+            0.001,
+            std::chrono::duration<double>(elapsed).count());
+        spdlog::info(
+            "[Capture::Impl] Fresh cadence arrived={:.2f}fps submitted={:.2f}fps delivered={:.2f}fps skipped={} pacerSkipped={} encoderAdmissionSkipped={} readbackBackpressure={}",
+            static_cast<double>(arrived - lastCadenceArrived_) / elapsedSeconds,
+            static_cast<double>(submitted - lastCadenceSubmitted_) / elapsedSeconds,
+            static_cast<double>(delivered - lastCadenceDelivered_) / elapsedSeconds,
+            skipped - lastCadenceSkipped_,
+            pacerSkipped - lastCadencePacerSkipped_,
+            encoderAdmissionSkipped - lastCadenceEncoderAdmissionSkipped_,
+            backpressure - lastCadenceBackpressure_);
+        captureCadenceWindowStart_ = now;
+        lastCadenceArrived_ = arrived;
+        lastCadenceSubmitted_ = submitted;
+        lastCadenceDelivered_ = delivered;
+        lastCadenceSkipped_ = skipped;
+        lastCadencePacerSkipped_ = pacerSkipped;
+        lastCadenceEncoderAdmissionSkipped_ = encoderAdmissionSkipped;
+        lastCadenceBackpressure_ = backpressure;
+    }
+
+    void resetReadbackSlots() {
+        for (auto &slot : readbackSlots_) {
+            slot = ReadbackSlot{};
+        }
+        nextReadbackSlot_ = 0;
+        nextReadbackSequence_ = 0;
+    }
+
+    ReadbackSlot *oldestPendingReadback() {
+        ReadbackSlot *oldest = nullptr;
+        for (auto &slot : readbackSlots_) {
+            if (!slot.pending || (oldest && slot.sequence >= oldest->sequence)) {
+                continue;
+            }
+            oldest = &slot;
+        }
+        return oldest;
+    }
+
+    bool deliverOldestReadyReadback(bool waitForCompletion = false) {
+        ReadbackSlot *slot = oldestPendingReadback();
+        if (!slot || !slot->texture || !slot->completion) {
+            return false;
+        }
+
+        if (!waitForCompletion) {
+            const HRESULT readyHr = context_->GetData(
+                slot->completion.get(),
+                nullptr,
+                0,
+                D3D11_ASYNC_GETDATA_DONOTFLUSH);
+            if (readyHr == S_FALSE) {
+                return false;
+            }
+            if (FAILED(readyHr)) {
+                spdlog::warn("[Capture::Impl] GPU readback completion query failed hr=0x{:08x}",
+                             static_cast<unsigned int>(readyHr));
+                slot->pending = false;
+                readbackBackpressureDrops_.fetch_add(1, std::memory_order_relaxed);
+                return false;
+            }
+        }
+
+        CapturedFrame frame;
+        frame.width = slot->frameWidth;
+        frame.height = slot->frameHeight;
+        frame.stride = frame.width * 4;
+        frame.timestamp = slot->timestamp;
+        frame.format = CapturedFrame::Format::BGRA;
+        const size_t dataSize = static_cast<size_t>(frame.stride) *
+                                static_cast<size_t>(frame.height);
+        frame.data.resize(dataSize);
+
+        {
+            ScopedD3DTextureMap mapped{context_.get(), slot->texture.get()};
+            const HRESULT mapHr = context_->Map(
+                slot->texture.get(),
+                0,
+                D3D11_MAP_READ,
+                waitForCompletion ? 0 : D3D11_MAP_FLAG_DO_NOT_WAIT,
+                &mapped.mapped);
+            if (mapHr == DXGI_ERROR_WAS_STILL_DRAWING) {
+                return false;
+            }
+            if (FAILED(mapHr)) {
+                spdlog::warn("[Capture::Impl] Failed to map completed staging texture hr=0x{:08x}",
+                             static_cast<unsigned int>(mapHr));
+                slot->pending = false;
+                readbackBackpressureDrops_.fetch_add(1, std::memory_order_relaxed);
+                return false;
+            }
+            mapped.active = true;
+
+            const auto *mappedBytes = static_cast<const uint8_t *>(mapped.mapped.pData);
+            for (int y = 0; y < frame.height; ++y) {
+                const uint8_t *srcRow = mappedBytes +
+                    static_cast<size_t>(slot->readbackY + y) * mapped.mapped.RowPitch +
+                    static_cast<size_t>(slot->readbackX) * 4;
+                uint8_t *dstRow = frame.data.data() + static_cast<size_t>(y) * frame.stride;
+                std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
+            }
+        }
+
+        slot->pending = false;
+        framesDeliveredFromReadback_.fetch_add(1, std::memory_order_relaxed);
+        if (frameCallback_) {
+            frameCallback_(std::move(frame));
+        }
+        return true;
+    }
+
+    ReadbackSlot *acquireReadbackSlot(const D3D11_TEXTURE2D_DESC &readbackDesc) {
+        for (size_t offset = 0; offset < readbackSlots_.size(); ++offset) {
+            const size_t index = (nextReadbackSlot_ + offset) % readbackSlots_.size();
+            ReadbackSlot &slot = readbackSlots_[index];
+            if (slot.pending) {
+                continue;
+            }
+
+            if (!slot.texture ||
+                slot.textureWidth != readbackDesc.Width ||
+                slot.textureHeight != readbackDesc.Height) {
+                D3D11_TEXTURE2D_DESC stagingDesc = readbackDesc;
+                stagingDesc.Usage = D3D11_USAGE_STAGING;
+                stagingDesc.BindFlags = 0;
+                stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+                stagingDesc.MiscFlags = 0;
+                slot.texture = nullptr;
+                if (FAILED(device_->CreateTexture2D(&stagingDesc, nullptr, slot.texture.put()))) {
+                    return nullptr;
+                }
+                slot.textureWidth = readbackDesc.Width;
+                slot.textureHeight = readbackDesc.Height;
+            }
+            if (!slot.completion) {
+                D3D11_QUERY_DESC queryDesc = {};
+                queryDesc.Query = D3D11_QUERY_EVENT;
+                if (FAILED(device_->CreateQuery(&queryDesc, slot.completion.put()))) {
+                    slot.texture = nullptr;
+                    slot.textureWidth = 0;
+                    slot.textureHeight = 0;
+                    return nullptr;
+                }
+            }
+
+            nextReadbackSlot_ = (index + 1) % readbackSlots_.size();
+            return &slot;
+        }
+        return nullptr;
+    }
+
     void processFrameUnsafe(ID3D11Texture2D *texture,
                             int64_t timestamp,
                             int contentWidth,
@@ -1062,11 +1352,30 @@ class WindowCapture::Impl {
             return;
         }
         std::lock_guard<std::mutex> processLock(processFrameMutex_);
-        if (!detail::frameAdmissionAllowed(frameAdmissionCallback_) ||
-            !framePacer_.shouldAdmit(std::chrono::steady_clock::now())) {
+        if (!detail::frameAdmissionAllowed(frameAdmissionCallback_)) {
             framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
+            framesSkippedByEncoderAdmission_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
+        auto pacingTime = std::chrono::steady_clock::now();
+        if (useGraphicsCapture_ && timestamp > 0) {
+            using HundredNanoseconds =
+                std::chrono::duration<int64_t, std::ratio<1, 10000000>>;
+            pacingTime = std::chrono::steady_clock::time_point(
+                std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    HundredNanoseconds(timestamp)));
+        }
+        if (!framePacer_.shouldAdmit(pacingTime)) {
+            framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
+            framesSkippedByPacer_.fetch_add(1, std::memory_order_relaxed);
+            return;
+        }
+
+        // Retire a completed copy from an earlier capture before submitting the
+        // new one. Mapping the texture copied in this same callback serialized
+        // the CPU behind the GPU and capped fresh capture near 30 FPS at 1080p.
+        deliverOldestReadyReadback();
+
         D3D11_TEXTURE2D_DESC desc;
         texture->GetDesc(&desc);
         if (desc.Width == 0 || desc.Height == 0) {
@@ -1094,49 +1403,30 @@ class WindowCapture::Impl {
 
         D3D11_TEXTURE2D_DESC readbackDesc;
         readbackSource->GetDesc(&readbackDesc);
-        if (!stagingTexture_ || stagingWidth_ != readbackDesc.Width || stagingHeight_ != readbackDesc.Height) {
-            D3D11_TEXTURE2D_DESC stagingDesc = readbackDesc;
-            stagingDesc.Usage = D3D11_USAGE_STAGING;
-            stagingDesc.BindFlags = 0;
-            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-            stagingDesc.MiscFlags = 0;
-            if (FAILED(device_->CreateTexture2D(&stagingDesc, nullptr, stagingTexture_.put()))) {
-                return;
-            }
-            stagingWidth_ = readbackDesc.Width;
-            stagingHeight_ = readbackDesc.Height;
-        }
-
-        context_->CopyResource(stagingTexture_.get(), readbackSource);
-        ScopedD3DTextureMap mapped{context_.get(), stagingTexture_.get()};
-        const HRESULT mapHr = context_->Map(stagingTexture_.get(), 0, D3D11_MAP_READ, 0, &mapped.mapped);
-        if (FAILED(mapHr)) {
-            spdlog::warn("[Capture::Impl] Failed to map staging texture hr=0x{:08x}",
-                         static_cast<unsigned int>(mapHr));
+        ReadbackSlot *slot = acquireReadbackSlot(readbackDesc);
+        if (!slot) {
+            framesSkippedBeforeReadback_.fetch_add(1, std::memory_order_relaxed);
+            readbackBackpressureDrops_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
-        mapped.active = true;
 
-        CapturedFrame frame;
-        frame.width = gpuScaled ? static_cast<int>(readbackDesc.Width) : contentWidth;
-        frame.height = gpuScaled ? static_cast<int>(readbackDesc.Height) : contentHeight;
-        frame.stride = frame.width * 4;
-        frame.timestamp = timestamp;
-        frame.format = CapturedFrame::Format::BGRA;
-        size_t dataSize = static_cast<size_t>(frame.stride) * static_cast<size_t>(frame.height);
-        frame.data.resize(dataSize);
-        const auto *mappedBytes = static_cast<const uint8_t *>(mapped.mapped.pData);
-        for (int y = 0; y < frame.height; ++y) {
-            const int readbackX = gpuScaled ? 0 : sourceX;
-            const int readbackY = gpuScaled ? y : sourceY + y;
-            const uint8_t *srcRow = mappedBytes + static_cast<size_t>(readbackY) * mapped.mapped.RowPitch +
-                                    static_cast<size_t>(readbackX) * 4;
-            uint8_t *dstRow = frame.data.data() + static_cast<size_t>(y) * frame.stride;
-            std::memcpy(dstRow, srcRow, static_cast<size_t>(frame.stride));
-        }
+        context_->CopyResource(slot->texture.get(), readbackSource);
+        context_->End(slot->completion.get());
+        context_->Flush();
+        slot->frameWidth = gpuScaled ? static_cast<int>(readbackDesc.Width) : contentWidth;
+        slot->frameHeight = gpuScaled ? static_cast<int>(readbackDesc.Height) : contentHeight;
+        slot->readbackX = gpuScaled ? 0 : sourceX;
+        slot->readbackY = gpuScaled ? 0 : sourceY;
+        slot->timestamp = timestamp;
+        slot->sequence = ++nextReadbackSequence_;
+        slot->pending = true;
+        framesSubmittedForReadback_.fetch_add(1, std::memory_order_relaxed);
 
-        if (frameCallback_) {
-            frameCallback_(std::move(frame));
+        // A static window may produce only its initial WGC callback. Complete
+        // that first readback here so it becomes available for preview and for
+        // a viewer bootstrap keyframe. Moving content remains fully pipelined.
+        if (framesDeliveredFromReadback_.load(std::memory_order_relaxed) == 0) {
+            deliverOldestReadyReadback(true);
         }
     }
 
@@ -1148,7 +1438,7 @@ class WindowCapture::Impl {
     winrt::com_ptr<ID3D11VideoProcessor> videoProcessor_;
     winrt::com_ptr<ID3D11Texture2D> scaledTexture_;
     winrt::com_ptr<ID3D11VideoProcessorOutputView> scaledOutputView_;
-    winrt::com_ptr<ID3D11Texture2D> stagingTexture_;
+    std::array<ReadbackSlot, kReadbackSlotCount> readbackSlots_{};
     winrt::com_ptr<IDXGIOutputDuplication> outputDuplication_;
 
     bool useGraphicsCapture_ = false;
@@ -1169,10 +1459,27 @@ class WindowCapture::Impl {
     bool preserveAlpha_ = false;
     detail::CaptureFramePacer framePacer_{60};
     std::atomic<bool> capturing_{false};
+    std::atomic<bool> stopping_{false};
     std::atomic<uint64_t> framesSkippedBeforeReadback_{0};
+    std::atomic<uint64_t> framesSkippedByPacer_{0};
+    std::atomic<uint64_t> framesSkippedByEncoderAdmission_{0};
+    std::atomic<uint64_t> framesArrived_{0};
+    std::atomic<uint64_t> framesSubmittedForReadback_{0};
+    std::atomic<uint64_t> framesDeliveredFromReadback_{0};
+    std::atomic<uint64_t> readbackBackpressureDrops_{0};
+    bool captureCadenceLogged_ = false;
+    std::mutex captureCadenceMutex_;
+    std::chrono::steady_clock::time_point captureCadenceWindowStart_{};
+    uint64_t lastCadenceArrived_ = 0;
+    uint64_t lastCadenceSubmitted_ = 0;
+    uint64_t lastCadenceDelivered_ = 0;
+    uint64_t lastCadenceSkipped_ = 0;
+    uint64_t lastCadencePacerSkipped_ = 0;
+    uint64_t lastCadenceEncoderAdmissionSkipped_ = 0;
+    uint64_t lastCadenceBackpressure_ = 0;
 
-    UINT stagingWidth_ = 0;
-    UINT stagingHeight_ = 0;
+    size_t nextReadbackSlot_ = 0;
+    uint64_t nextReadbackSequence_ = 0;
     UINT scalerSourceWidth_ = 0;
     UINT scalerSourceHeight_ = 0;
     DXGI_FORMAT scalerSourceFormat_ = DXGI_FORMAT_UNKNOWN;

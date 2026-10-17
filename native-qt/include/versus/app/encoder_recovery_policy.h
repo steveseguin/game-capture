@@ -1,9 +1,8 @@
 #pragma once
 
-#include "versus/video/video_encoder.h"
+#include <cstddef>
 
-#include <algorithm>
-#include <chrono>
+#include "versus/video/video_encoder.h"
 
 namespace versus::app {
 
@@ -31,41 +30,23 @@ inline SoftwareEncoderFailureDisposition classifySoftwareEncoderFailure(
     return SoftwareEncoderFailureDisposition::CountedFailure;
 }
 
-// Keep at most one captured frame waiting behind the frame currently being
-// encoded. This lets capture/readback overlap the encoder without allowing an
+// Keep capture admission bounded by the caller-provided queue capacity. This
+// lets capture/readback absorb short scheduler jitter without allowing an
 // unbounded queue to accumulate and make input or the desktop feel laggy.
 inline bool shouldAdmitCapturedFrame(
     bool live,
     bool encodeThreadRunning,
-    bool pendingFrameReady) {
-    return !live || (encodeThreadRunning && !pendingFrameReady);
+    size_t pendingFrameCount,
+    size_t pendingFrameCapacity) {
+    return !live ||
+        (encodeThreadRunning && pendingFrameCount < pendingFrameCapacity);
 }
 
-inline std::chrono::nanoseconds outputFrameInterval(int fps) {
-    return std::chrono::nanoseconds(
-        1000000000LL / std::max(1, fps));
-}
-
-// Advance one output slot without trying to encode a burst of stale frames
-// after a delayed encoder call or a scheduler stall.
-inline std::chrono::steady_clock::time_point advanceOutputFrameDeadline(
-    std::chrono::steady_clock::time_point deadline,
-    std::chrono::steady_clock::time_point now,
-    std::chrono::nanoseconds interval) {
-    deadline += interval;
-    if (deadline <= now) {
-        const auto overdue = now - deadline;
-        deadline += interval * ((overdue / interval) + 1);
-    }
-    return deadline;
-}
-
-inline int64_t outputFrameTimestamp100ns(
-    std::chrono::steady_clock::time_point deadline) {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-               deadline.time_since_epoch())
-               .count() /
-        100;
+// The encoder sleeps until a newly captured frame is pending. There is no
+// timer-only wakeup that can re-encode cached pixels.
+inline bool freshFrameWaitComplete(bool encodeThreadRunning,
+                                   bool pendingFrameReady) {
+    return !encodeThreadRunning || pendingFrameReady;
 }
 
 }  // namespace versus::app
