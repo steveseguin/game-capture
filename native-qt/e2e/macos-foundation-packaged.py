@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the packaged Mac development UI's diagnostics workflow.
+"""Exercise the packaged Mac UI diagnostics and invalid-input workflows.
 
 This does not qualify media capture, encoding, playback or Windows regressions.
 It requires a logged-in macOS desktop and a macdeployqt-deployed .app.
@@ -79,6 +79,9 @@ def main():
                 assert error.code == 401
             checks.append("Diagnostics require authentication")
 
+            camera_sources = request("/sources/cameras")
+            assert camera_sources["ok"] and isinstance(camera_sources["sources"], list)
+            result["availableCameraCount"] = len(camera_sources["sources"])
             diagnostics = request("/diagnostics")
             capabilities = diagnostics["platform_capabilities"]
             assert capabilities["platform"] == "macOS"
@@ -135,15 +138,33 @@ def main():
         assert headless.returncode == 2
         assert json.loads(headless_diagnostics.read_text())["platform_capabilities"]["can_publish"] is True
         checks.append("An explicitly missing source fails without publishing and exports diagnostics")
-        for device_id, expected_message in [("game-capture-explicitly-missing-camera", "No camera has the exact requested --camera-id"),
+        # A fresh VM may have no cameras at all. That is a distinct existing
+        # refusal path in main.cpp, before exact-ID matching. Bind the expected
+        # branch to the authenticated inventory rather than accepting any error.
+        missing_reason = ("No camera has the exact requested --camera-id"
+                          if result["availableCameraCount"] else "No cameras found for capture!")
+        result["cameraRefusals"] = []
+        for device_id, expected_message in [("game-capture-explicitly-missing-camera", missing_reason),
                                              ("", "--camera-id requires an exact, nonempty device ID")]:
+            camera_diagnostics = report / "missing-camera-diagnostics.json"
             camera = subprocess.run(
                 [str(executable), "--headless", "--source=camera", f"--camera-id={device_id}",
-                 "--audio-source=none", "--duration-ms=5000"],
+                 "--audio-source=none", "--duration-ms=5000", f"--diagnostics-out={camera_diagnostics}"],
                 cwd=report, env=env, capture_output=True, text=True, timeout=10)
             camera_log = camera.stdout + camera.stderr
             (report / ("missing-camera.log" if device_id else "empty-camera.log")).write_text(camera_log)
-            assert camera.returncode == 2 and expected_message in camera_log
+            entry = {"input": "missing-exact-id" if device_id else "empty-id", "exitCode": camera.returncode,
+                     "expectedReason": expected_message, "reasonObserved": expected_message in camera_log}
+            result["cameraRefusals"].append(entry)
+            assert camera.returncode == 2 and entry["reasonObserved"], "Camera refusal did not match the observed inventory"
+            if device_id:
+                refused = json.loads(camera_diagnostics.read_text())
+                state = refused["app"]
+                metrics = refused["metrics"]
+                entry["captureInactive"] = not state["capturing"] and not state["live"]
+                entry["videoFramesCaptured"] = metrics["video_frames_captured"]
+                entry["videoFramesSent"] = metrics["video_frames_sent"]
+                assert entry["captureInactive"] and entry["videoFramesCaptured"] == 0 and entry["videoFramesSent"] == 0, "Missing camera started capture or publication"
         checks.append("Missing and empty exact camera IDs fail without default-device substitution")
         for index, options in enumerate([
                 ["--settings-dir="],
@@ -157,7 +178,7 @@ def main():
         checks.append("Empty or conflicting isolated-settings options fail before creating preferences")
         result["passed"] = True
     except Exception as error:
-        result["error"] = str(error)
+        result["error"] = repr(error)
         raise
     finally:
         if process is not None and process.poll() is None:
