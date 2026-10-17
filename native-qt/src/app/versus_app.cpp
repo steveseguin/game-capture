@@ -3048,8 +3048,19 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
         captureTime100ns = outputFrameTimestamp100ns(std::chrono::steady_clock::now()) - chunkDuration100ns;
     }
     int64_t pts = audioPts100ns_.load();
-    if (!pts || std::abs(captureTime100ns - pts) > 500000) pts = captureTime100ns;
+    if (!pts || std::abs(captureTime100ns - pts) > 500000) {
+        pts = captureTime100ns;
+#ifdef __APPLE__
+        audioPtsFraction_.reset();
+#endif
+    }
+#ifdef __APPLE__
+    // Core Audio commonly delivers 512 frames: truncating each duration loses
+    // 11.25 ms in 30 minutes. Retain the fraction until the next capture anchor.
+    audioPts100ns_.store(pts + audioPtsFraction_.duration100ns(static_cast<uint32_t>(frames)));
+#else
     audioPts100ns_.store(pts + chunkDuration100ns);
+#endif
     if (auto external = externalOutput_.load(); external && external->usesPcmInput()) {
         if (external->wantsAudio() && !external->sendPcm(normalizedSamples, pts))
             audioSendFailures_.fetch_add(1, std::memory_order_relaxed);
