@@ -33,10 +33,15 @@ def main():
                         help='Retain the first extracted app, replace it from the same archive, and verify persisted preferences')
     parser.add_argument('--upgrade-to-delivery', type=Path,
                         help='Replace the initial delivery with a newer verified delivery before relaunch; uses private preferences')
+    parser.add_argument('--replace-with-delivery', type=Path,
+                        help='Replace with a different beta artifact of the same app version; uses private preferences')
     args = parser.parse_args()
-    if args.upgrade_to_delivery and args.quarantined_archive:
-        parser.error('Cross-version replacement uses local delivery archives; browser quarantine coverage is a separate workflow')
-    if args.upgrade_to_delivery:
+    if args.upgrade_to_delivery and args.replace_with_delivery:
+        parser.error('Choose cross-version upgrade or same-version beta replacement')
+    replacement_delivery = args.upgrade_to_delivery or args.replace_with_delivery
+    if replacement_delivery and args.quarantined_archive:
+        parser.error('Replacing from another delivery uses local archives; browser quarantine coverage is a separate workflow')
+    if replacement_delivery:
         args.replace_before_relaunch = True
     delivery, helper = args.delivery.resolve(), args.ui_helper.resolve()
     report = args.reports.resolve() / str(uuid.uuid4())
@@ -175,13 +180,18 @@ def main():
             assert result['archiveQuarantine'], 'Downloaded archive has no quarantine metadata'
         initial_size = checked_archive_size(archive)
         replacement_size = initial_size if args.replace_before_relaunch else 0
-        if args.upgrade_to_delivery:
-            upgrade_delivery = args.upgrade_to_delivery.resolve()
+        if replacement_delivery:
+            upgrade_delivery = replacement_delivery.resolve()
             upgrade_manifest, upgrade_archive = checked_delivery(upgrade_delivery)
-            assert tuple(map(int, upgrade_manifest['version'].split('.'))) > tuple(map(int, manifest['version'].split('.'))), 'Upgrade must increase the app version'
+            if args.upgrade_to_delivery:
+                assert tuple(map(int, upgrade_manifest['version'].split('.'))) > tuple(map(int, manifest['version'].split('.'))), 'Upgrade must increase the app version'
+            else:
+                assert upgrade_manifest['version'] == manifest['version'], 'Beta replacement must keep the same app version'
+                assert upgrade_manifest['binaries']['Contents/MacOS/game-capture'] != manifest['binaries']['Contents/MacOS/game-capture'], 'Beta replacement must use a different executable'
+            replacement_kind = 'Cross-version' if args.upgrade_to_delivery else 'Same-version beta artifact'
             replacement_size = checked_archive_size(upgrade_archive)
-            result['scope'] = 'Cross-version local archive replacement and Launch Services GUI workflows with private preferences on this existing Mac; not browser-download or clean-machine qualification'
-            result['upgrade'] = {'fromVersion': manifest['version'], 'toVersion': upgrade_manifest['version'],
+            result['scope'] = replacement_kind + ' local archive replacement and Launch Services GUI workflows with private preferences on this existing Mac; not browser-download or clean-machine qualification'
+            result['upgrade' if args.upgrade_to_delivery else 'betaReplacement'] = {'fromVersion': manifest['version'], 'toVersion': upgrade_manifest['version'],
                                  'initialExecutableSha256': manifest['binaries']['Contents/MacOS/game-capture'],
                                  'initialDeliveryManifestSha256': result['deliveryManifestSha256'],
                                  'initialArchive': manifest['archive']}
@@ -255,7 +265,7 @@ def main():
                 previous = report/'Previous Installation'/app.name
                 previous.parent.mkdir()
                 app.rename(previous)
-                if args.upgrade_to_delivery:
+                if replacement_delivery:
                     manifest, archive = upgrade_manifest, upgrade_archive
                     result['deliveryManifestSha256'] = packager.digest(upgrade_delivery/'delivery-manifest.json')
                     result['archive'] = manifest['archive']
@@ -265,8 +275,8 @@ def main():
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 result['replacement'] = {'scope': 'Same-version archive replacement with private preferences retained; not a cross-version upgrade',
                                          'previousAppPreserved': str(previous), 'replacementMatchesDelivery': True}
-                if args.upgrade_to_delivery:
-                    result['replacement']['scope'] = 'Cross-version archive replacement with private preferences retained'
+                if replacement_delivery:
+                    result['replacement']['scope'] = replacement_kind + ' archive replacement with private preferences retained'
                     result['executableSha256'] = packager.digest(exe)
                     result['verifiedBundleEntries'] = len(manifest['appFiles'])
                     result['verifiedMachOBinaries'] = len(manifest['binaries'])
