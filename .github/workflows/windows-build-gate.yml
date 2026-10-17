@@ -1,0 +1,43 @@
+name: Windows Build Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [macos-windows-build-gate, macos-main-integration]
+    paths:
+      - .github/workflows/windows-build-gate.yml
+      - native-qt/CMakeLists.txt
+      - native-qt/src/**
+      - native-qt/include/**
+      - native-qt/cmake/**
+      - native-qt/resources/**
+      - native-qt/qa/windows-build-gate.ps1
+      - native-qt/qa/windows-build-selection.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Compile Windows backends and run isolated gates
+        shell: pwsh
+        run: ./native-qt/qa/windows-build-gate.ps1
+      - name: Retain gate evidence (not a release package)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-build-gate-${{ github.sha }}
+          path: native-qt/qa/reports/windows-build-gate/
+          if-no-files-found: error
+          retention-days: 7
