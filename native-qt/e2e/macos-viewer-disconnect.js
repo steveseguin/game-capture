@@ -63,17 +63,23 @@ async function picture(page,label){
     await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===1;},15000,'Closed viewer track remained active');
     entry.withSurvivor=snapshot(await diagnostics());save();
     await survivor.close();
-    await waitFor(async()=>{const d=await diagnostics();return d.metrics.peer_count===0&&d.metrics.active_video_peers===0;},15000,'Last closed viewer was not removed');
-    await sleep(500);entry.afterAllClosed=snapshot(await diagnostics());
-    assert.equal(entry.afterAllClosed.encodeFailures,0);assert.equal(entry.afterAllClosed.encodeTimeouts,0);
-    const reasons=entry.afterAllClosed.reasons;
+    await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===0;},15000,'Last closed viewer track remained active');
+    await sleep(500);entry.afterTracksClosed=snapshot(await diagnostics());
+    assert.equal(entry.afterTracksClosed.encodeFailures,0);assert.equal(entry.afterTracksClosed.encodeTimeouts,0);
+    const reasons=entry.afterTracksClosed.reasons;
     for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(reasons[key],0,'Unexpected '+key);
-    assert.equal(Object.values(reasons).reduce((a,b)=>a+b,0),entry.afterAllClosed.sendFailures,'Aggregate failure count differs from reason totals');
+    assert.equal(Object.values(reasons).reduce((a,b)=>a+b,0),entry.afterTracksClosed.sendFailures,'Aggregate failure count differs from reason totals');
     entry.passed=true;save();
   }
   // The final fresh viewer proves reception still starts after the last close.
   const fresh=await receiver(browser,stream,null);result.finalRejoinPicture=await picture(fresh,'Final fresh viewer');await fresh.close();
-  await waitFor(async()=>{const d=await diagnostics();return d.metrics.peer_count===0;},15000,'Final viewer was not removed');
+  const lastClose=Date.now();
+  await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===0;},15000,'Final viewer track remained active');
+  result.afterFinalTrackClosed=snapshot(await diagnostics());save();
+  // Direct sessions have an existing 90-second ICE recovery retention period.
+  // Require actual removal after that period, without changing app policy.
+  await waitFor(async()=>{const d=await diagnostics();return d.metrics.peer_count===0;},105000,'Retained direct sessions were not pruned');
+  result.lastCloseToSessionRemovalMs=Date.now()-lastClose;
   await sleep(500);result.final=snapshot(await diagnostics());save();
   assert.equal(result.final.encodeFailures,0);assert.equal(result.final.encodeTimeouts,0);
   for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(result.final.reasons[key],0,'Final unexpected '+key);
