@@ -24,6 +24,8 @@ def main():
     parser.add_argument('--ui-helper', required=True, type=Path)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--launches', type=int, default=4, choices=range(2, 9))
+    parser.add_argument('--row-action', choices=['press', 'click'], default='press',
+                        help='Native AX row press or mouse click verified inside the owned popup')
     args = parser.parse_args()
     app, helper = args.app.resolve(), args.ui_helper.resolve()
     exe = app / 'Contents/MacOS/game-capture'
@@ -36,7 +38,7 @@ def main():
     settings, discovery = report / 'settings', report / 'control.json'
     sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
     result = {'scope': __doc__, 'executableSha256': sha(exe), 'harnessSha256': sha(Path(__file__)),
-              'uiHelperSha256': sha(helper), 'launches': [], 'actions': [], 'passed': False}
+              'uiHelperSha256': sha(helper), 'rowAction': args.row_action, 'launches': [], 'actions': [], 'passed': False}
     choices = {
         'resolutionSelect': ['3840x2160', '2560x1440', '1920x1080', '1280x720', '960x540', '1080x1920', '720x1280'],
         'fpsSelect': ['30', '60'],
@@ -97,7 +99,19 @@ def main():
         assert row.get('AXEnabled'), 'Disabled control: ' + name
         if before != title:
             ui('press', name)
-            ui('press', title)
+            if args.row_action == 'click':
+                # Qt animates/positions its popup and briefly guards mouse
+                # release after opening. Allow that transition before the one
+                # click; do not retry a selection that failed to commit.
+                time.sleep(.3)
+                before_bounds = json.loads(ui('bounds', title))
+                time.sleep(.1)
+                bounds = json.loads(ui('bounds', title))
+                assert before_bounds == bounds, 'Popup row bounds did not settle'
+                result.setdefault('mouseClicks', []).append({
+                    'control': name, 'title': title, 'bounds': bounds})
+                save()
+            ui(args.row_action, title)
             wait(lambda: (field(name) or {}).get('AXTitle') == title, 'Selection did not commit: ' + name)
         idle()
         result['actions'].append({'control': name, 'before': before, 'after': title,
@@ -174,6 +188,19 @@ def main():
             ui('set', 'Custom stream resolution', '1920x930')
             wait(lambda: (field('resolutionSelect') or {}).get('AXTitle') == '1920x930', 'Valid custom resolution did not restore')
             expected['resolutionSelect'] = '1920x930'
+            choose('sourceModeSelect', 'Camera / Webcam')
+            for name, titles in {
+                'cameraResolutionSelect': ['1280x720', '960x540', '640x480', '1920x1080'],
+                'cameraFpsSelect': ['60 fps', '24 fps', '30 fps'],
+            }.items():
+                for title in titles:
+                    choose(name, title)
+            # Verify camera selections on disk; these controls are hidden when
+            # relaunching into Window mode. Camera capture stays off here.
+            camera_settings = configparser.ConfigParser(interpolation=None)
+            camera_settings.read(ini)
+            assert camera_settings.get('camera', 'resolution') == '1920x1080'
+            assert camera_settings.getint('camera', 'fps') == 30
             choose('sourceModeSelect', 'Syphon (texture sharing)')
             choose('syphonAlphaSelect', 'Premultiplied alpha')
             choose('syphonAlphaSelect', 'Straight alpha')
