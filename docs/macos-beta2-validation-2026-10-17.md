@@ -29,9 +29,9 @@ All results below identify this exact signed executable. Publisher and browser r
 | Saved WHIP credential migration | Beta 1 saved a private Keychain profile; Beta 2 reused its unchanged reference without endpoint/token re-entry. VT and x264 passed authenticated publication, decoded video/stereo, static/silence/resumption, late reception, local server restart/recovery, shutdown and owned-profile deletion. |
 | Beta artifact replacement | Beta 1 → Beta 2 passed through Launch Services with both identities verified and seven private GUI preferences retained. Core app version remains 0.2.64. |
 | Published download and launch | Installed Chrome downloaded the published ZIP with its original quarantine. Normal macOS Open handling, App Translocation, GUI launch/relaunch, same-artifact replacement, private preferences and capture-off behavior passed. |
-| 1080p60 moving detail | Both encoders passed two minutes at 8 Mbps with selected-window audio, continuous received PCM monitoring and subsequent controls. |
+| 1080p60 moving detail | Both encoders passed the earlier two-minute workflows. In a new five-minute run per encoder, VT passed all 30 intervals; x264 failed cadence in 2/30 intervals. Both completed the subsequent functional controls and audio checks. See the extended workload below. |
 
-The shorter 1080p60 passes do not resolve the earlier three-minute workload failures or establish independent-receiver performance. The natural missing-BYE delivery cause also remains unproven; the native stale-session symptom now has direct lost-BYE coverage.
+The earlier two-minute 1080p60 passes do not resolve the historical failures. The extended run below reproduces a cadence failure with current Beta 2 x264; VT passes its five-minute workload. Neither establishes independent-receiver performance. The natural missing-BYE delivery cause also remains unproven; the native stale-session symptom now has direct lost-BYE coverage.
 
 ## Failed attempts retained
 
@@ -44,10 +44,25 @@ The initial source-package gate rejected a sparse checkout before archive creati
 - A new packaged Windows build from the integrated source, followed by actual Windows capture, encoder, room, recovery and output workflows. The existing stable Windows 0.2.64 artifact does not qualify these shared changes. The repository's Windows workflow needs a prepared self-hosted runner; none was registered when checked.
 - Fresh-machine and minimum macOS 14.2 installation/permission flows, plus another Apple Silicon Mac. Existing-machine quarantine and replacement workflows cannot substitute for these.
 - Physical camera/microphone hotplug and busy-device recovery, permission denial/revocation, sleep/wake, display changes and audio-route changes in a coordinated session.
-- Longer representative gameplay and an independent receiver machine/network, including confirmation of the earlier 1080p60 finding. Replacement now covers the advanced toggle plus stream ID, room, label, viewer limit, audio gain and limiter state in private preferences. A saved WHIP endpoint/token now also passes Beta 1 → Beta 2 reuse with both encoders; other destination profiles/credentials and broader receiver coverage remain open.
+- Longer representative gameplay and an independent receiver machine/network, including isolation of the current x264 1080p60 cadence failure under high host load. Replacement now covers the advanced toggle plus stream ID, room, label, viewer limit, audio gain and limiter state in private preferences. A saved WHIP endpoint/token now also passes Beta 1 → Beta 2 reuse with both encoders; other destination profiles/credentials and broader receiver coverage remain open.
 - A trusted remote RTMPS endpoint and the intended production services. Public WHIP relay success is separate evidence and does not qualify RTMPS.
 
 The stable Windows release must remain unchanged. Keep the Mac release explicitly experimental until these workflows are completed and any failures are resolved.
+
+## Five-minute 1080p60 workload — October 17 follow-up
+
+The unchanged signed Beta 2 executable was run sequentially with VT and x264, each for 300 seconds at requested H.264 1920×1080/60 and 8 Mbps. The source was the existing moving-tile browser fixture with selected-application stereo audio. The native captured window measured **1920×930**, aspect-fitted into the 1920×1080 output; this is not full-height 1080p source-capture coverage. Source and receiver used Chromium 145.0.7632.6 on the same M1. A thirty-second host baseline and five-second process snapshots were retained; the existing remote-desktop session remained active.
+
+| Encoder | Complete workload | Cadence intervals | Received fps range | Continuous 100 ms audio windows | Sampled publisher RSS |
+| --- | --- | --- | --- | --- | --- |
+| VideoToolbox | Passed | 30/30 passed | 59.799–60.098 | 3,038, all passed | 144.1–156.0 MiB |
+| x264 | **Failed sustained cadence**; functional controls passed | 28/30 passed | 56.590–59.996 | 3,059, all passed | 178.6–194.4 MiB |
+
+x264 failed the 240–250 and 250–260-second intervals against the unchanged 95% delivery target. In the first failed interval, source cadence was 59.990 fps and received cadence 56.590 fps (94.33% delivery). Publisher dropped frames rose from 104 to 135; capture increased by 605 frames and sent frames by 577. Receiver decoding advanced by 574 frames with zero decoder-reported drops. Encoder failures, timeouts and send failures stayed zero; continuous PCM passed. Host CPU was approximately 93% at both interval boundaries. Over the run, host CPU samples ranged from 76.6–97.1%, versus 38.3–73.2% during the preceding VT run. Late x264 process snapshots also show substantial remote-desktop CPU usage. Those measurements establish contention, not its sole cause or a matched CPU-efficiency comparison.
+
+Both workflows subsequently passed live FPS controls, static/silent/resumed content, resizing and late-viewer video/audio. VT quit normally. The x264 workflow deliberately closed its owned source and correctly reported capture failure with app exit 3; the workflow's overall failure is the cadence result, not that expected source-loss exit. This extends current-artifact VT evidence and reproduces the unresolved x264 performance concern; it does not erase older failures, qualify demanding gameplay/thermal endurance, measure A/V synchronization, or establish an independent-machine receiver result. No runtime source or release binary changed.
+
+Raw interval hashes, decoded identity counts, source/received cadence, acceptance decisions and continuous PCM decisions were recomputed separately as evidence gates. The 60 intervals retain their original observations. Reports: `macos-beta2-1080-extended/c7e83e55-c6f7-4052-aabf-ffa1c06ec3ff` (VT) and `macos-beta2-1080-extended/1ad5a9fc-a95b-402e-a31b-8ed295fd7abb` (x264). Queue, exact command arguments, host observations and additive evidence freeze: `macos-beta2-1080-extended-queue/2cea6b86-726e-47f9-ae8e-ff4cd014fd77/final-manifest.json`, SHA-256 `a92a0f2dbac88e8db3f51e5e703896bd4560d9b55b704521bc558276a5f482d4`.
 
 ## Saved WHIP profile follow-up
 
