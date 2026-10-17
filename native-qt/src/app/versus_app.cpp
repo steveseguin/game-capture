@@ -3378,6 +3378,26 @@ void VersusApp::handlePeerConnectionState(
             peer->session);
         return;
     }
+    // Closed is libdatachannel's terminal state, not a transient ICE outage.
+    // A room guest can close before its final BYE reaches the data callback.
+    // Release that owner instead of occupying a guest slot for the recovery
+    // timeout. Preserve an already requested transport replacement; its
+    // generation guards must continue to protect the replacement connection.
+    if (state == webrtc::ConnectionState::Closed && peer->roomMode &&
+        peer->roleValid.load(std::memory_order_relaxed) &&
+        peer->role.load(std::memory_order_relaxed) == PeerRole::Guest) {
+        bool transitionPending = false;
+        {
+            std::lock_guard<std::mutex> negotiationLock(peer->negotiationMutex);
+            transitionPending = peer->queuedOfferTransition ||
+                peer->offerCreationInProgress || peer->answerApplicationInProgress ||
+                peer->mediaPlanApplicationInProgress;
+        }
+        if (!transitionPending) {
+            removePeerSession(peer, "closed-room-guest");
+            return;
+        }
+    }
     if (state != webrtc::ConnectionState::Failed &&
         state != webrtc::ConnectionState::Closed) {
         return;
