@@ -19,6 +19,7 @@ const report = path.resolve(opts.reports, crypto.randomUUID());
 fs.mkdirSync(report, {recursive:true});
 const {sleep, waitFor, receiver, observe, observeDecoded, requireMoving: requireCodecMoving, observeAudio} = require('./macos-media-receiver');
 const {exerciseWindowSuspension} = require('./macos-window-suspension');
+const continuousAudio = require('./macos-continuous-audio');
 const codec = opts.codec || 'h264';
 if (!['h264','h265','vp9','av1'].includes(codec) || (codec === 'h265' && (opts.encoder !== 'videotoolbox' || opts.gui)))
   throw Error('HEVC workflow requires --codec=h265 --encoder=videotoolbox without --gui');
@@ -26,6 +27,7 @@ if (['vp9','av1'].includes(codec) && (opts.encoder !== 'software' || opts.gui))
   throw Error('VP9/AV1 workflow requires --encoder=software without --gui');
 const requireMoving = (observation, label) => requireCodecMoving(observation, label, 'video/' + codec);
 const children = new Set(), browsers = new Set();
+const audioRecordings = new Set();
 let interference,interferenceError,stoppingFixtures=false;
 const audioMode = opts.audio || 'none';
 const windowSuspension = opts['window-suspension'] === 'true';
@@ -36,9 +38,19 @@ const includeMic = opts['include-microphone'] === 'true';
 const usesMic = includeMic || audioMode === 'default-microphone';
 const mixedMic = includeMic && ['selected-window','default-output'].includes(audioMode);
 const performanceSeconds = Number(opts['performance-seconds'] || 0);
+const collectPerformanceFailures = opts['collect-performance-failures'] === 'true';
+if (opts['collect-performance-failures'] && (!['true','false'].includes(opts['collect-performance-failures']) || !performanceSeconds))
+  throw Error('--collect-performance-failures must be true or false and requires a timed observation');
+const continuousAudioEnabled = opts['continuous-audio'] === 'true';
+if (opts['continuous-audio'] && !['true','false'].includes(opts['continuous-audio']))
+  throw Error('--continuous-audio must be true or false');
+if (continuousAudioEnabled && (!performanceSeconds || audioMode !== 'selected-window' || usesMic))
+  throw Error('--continuous-audio requires timed selected-window audio without additional microphone mixing');
 if (!Number.isInteger(performanceSeconds) || (performanceSeconds && (performanceSeconds < 10 || performanceSeconds > 1800)))
   throw Error('--performance-seconds must be 10..1800');
 const fixtureStartId = Number(opts['fixture-start-id'] || 0);
+const motionPattern = opts['motion-pattern'] || 'bars';
+if (!['bars','tiles'].includes(motionPattern)) throw Error('--motion-pattern must be bars or tiles');
 if (!Number.isInteger(fixtureStartId) || fixtureStartId < 0 || fixtureStartId > 65535 || (opts['fixture-start-id'] && !performanceSeconds))
   throw Error('--fixture-start-id must be 0..65535 and requires a timed performance observation');
 const compactPerformanceReport = opts['compact-performance-report'] === 'true';
@@ -60,11 +72,15 @@ if (opts.gui && (!opts['ui-helper'] || !mixedMic || opts.encoder !== 'videotoolb
 const result = {receiverHarnessSha256:crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'macos-media-receiver.js'))).digest('hex'), harnessSha256:crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'), gui:!!opts.gui, microphoneDevice:opts['microphone-device'] || null, includeMic, missingInput:!!opts['missing-input'], lateAudioStart:!!opts['late-audio'], scope:'Packaged Mac window video with ' + audioMode + ' audio; release qualification excluded',
   executableSha256:crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'), cases:[], passed:false};
 result.requested = {codec,width,height,fps,bitrateKbps:bitrate,performanceSeconds,windowSuspension};
+result.requested.motionPattern = motionPattern;
+if (continuousAudioEnabled) result.requested.continuousAudio = true;
+if (collectPerformanceFailures) result.requested.collectPerformanceFailures = true;
 if (opts['fixture-start-id']) result.requested.fixtureStartId = fixtureStartId;
 if (compactPerformanceReport) result.requested.compactPerformanceReport = true;
 result.hardware = {cpu:execFileSync('/usr/sbin/sysctl',['-n','machdep.cpu.brand_string'],{encoding:'utf8'}).trim(),
   memoryBytes:Number(execFileSync('/usr/sbin/sysctl',['-n','hw.memsize'],{encoding:'utf8'}).trim())};
-for (const name of ['macos-window-publish.js','macos-media-receiver.js','macos-window-suspension.js']) fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+for (const name of ['macos-window-publish.js','macos-media-receiver.js','macos-window-suspension.js','macos-continuous-audio.js']) fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+result.continuousAudioHarnessSha256 = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'macos-continuous-audio.js'))).digest('hex');
 result.suspensionHarnessSha256 = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname,'macos-window-suspension.js'))).digest('hex');
 
 async function api(control, route, body) {
@@ -154,6 +170,16 @@ function saveReport() {
         if(fixture.record)fixture.trace.push({id:fixture.id,time:performance.timeOrigin+performance.now()});
         const w=canvas.width,h=canvas.height;
         ctx.fillStyle='#183042';ctx.fillRect(0,0,w,h);
+        if(${motionPattern === 'tiles'}) {
+          // Deterministic moving detail increases capture/encoder load without
+          // changing the identity strip or reading any user's desktop content.
+          const shift=fixture.id*3%64;
+          for(let y=-32;y<h+32;y+=32)for(let x=-64;x<w+64;x+=32) {
+            const light=((x/32+y/32)%2+2)%2;
+            ctx.fillStyle=light?'#908060':'#304050';
+            ctx.fillRect(x+shift,y+(fixture.id%32),30,30);
+          }
+        }
         ctx.fillStyle='#00ffff';ctx.fillRect(.1*w,.25*h,.05*w,.5*h);
         ctx.fillStyle='#ff00ff';ctx.fillRect(.85*w,.25*h,.05*w,.5*h);
         for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}
@@ -262,6 +288,12 @@ function saveReport() {
         entry.performance = {scope:'Local controlled window and browser on the same Mac; not calibrated latency/A-V or release qualification',chunks:[],samples:[],meetsTarget:true};
         const samplePerformanceAudio = audioMode !== 'none' || usesMic;
         if (samplePerformanceAudio) entry.performance.audioCoverage = 'Three-second decoded stereo/isolation observations in each ten-second interval; not continuous audio or A/V drift measurement';
+        if (continuousAudioEnabled) {
+          const recording=await continuousAudio.record(page,path.join(report,encoder+'-received-audio.webm'));
+          audioRecordings.add(recording);entry.independentAudioRecording=recording.metadata;
+          entry.performance.continuousAudio = await continuousAudio.start(page);
+          entry.performance.audioCoverage = 'Continuous received PCM in consecutive 100 ms windows, plus independent three-second spectra each interval; 500 ms initial settling and under 100 ms final partial window excluded. Not A/V drift measurement.';
+        }
         const counters = () => page.evaluate(async () => {
           let decoded=0,dropped=0;
           for(const pc of window.reviewPCs) if(pc.connectionState==='connected')
@@ -284,7 +316,22 @@ function saveReport() {
             while(observing) {
               const diagnostics=await api(control,'/diagnostics');
               const rssKiB=Number(execFileSync('/bin/ps',['-o','rss=','-p',String(child.pid)],{encoding:'utf8'}).trim());
-              entry.performance.samples.push({time:Date.now(),rssKiB,video:diagnostics.video,system:diagnostics.system});
+              const inbound=continuousAudioEnabled ? await page.evaluate(async()=>{
+                const samples=[];
+                for(const pc of window.reviewPCs)if(pc.connectionState==='connected')
+                  for(const item of (await pc.getStats()).values())if(item.type==='inbound-rtp') {
+                    const sample={};
+                    for(const key of ['timestamp','kind','packetsReceived','packetsLost','jitter','concealedSamples',
+                      'silentConcealedSamples','concealmentEvents','insertedSamplesForDeceleration','removedSamplesForAcceleration',
+                      'totalSamplesReceived','jitterBufferDelay','jitterBufferTargetDelay','jitterBufferEmittedCount',
+                      'framesDecoded','framesDropped','freezeCount','totalFreezesDuration'])
+                      if(item[key]!==undefined)sample[key]=item[key];
+                    samples.push(sample);
+                  }
+                return samples;
+              }) : undefined;
+              entry.performance.samples.push({time:Date.now(),rssKiB,video:diagnostics.video,system:diagnostics.system,
+                ...(inbound?{inbound}: {})});
               await Promise.race([sleep(2000),samplingDone]);
             }
           })().catch(error=>{samplingError=error;});
@@ -296,13 +343,14 @@ function saveReport() {
           if (samplingError) throw samplingError;
           if (logError) throw logError;
           const after=await counters(),afterDiag=await api(control,'/diagnostics');
+          const continuousAudioObservation=continuousAudioEnabled ? await continuousAudio.drain(page) : null;
           const sourceTrace=await source.evaluate(()=>{fixture.record=false;return fixture.trace;});
           const sourceFrames=sourceTrace.filter(f=>f.time>=observation.started&&f.time<=observation.ended);
           const sourceDistinct=new Set(sourceFrames.map(f=>f.id)).size;
           let receivedDistinct;
           try { receivedDistinct=requireMoving(observation,encoder+' sustained'); }
           catch(error) {
-            const failed={elapsed,error:String(error),observation,presentation,audioObservation,
+            const failed={elapsed,error:String(error),observation,presentation,audioObservation,continuousAudioObservation,
               sourceFrames,beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
             const raw=Buffer.from(JSON.stringify(failed)),compressed=gzipSync(raw);
             const name=`${encoder}-failed-performance-${String(elapsed).padStart(4,'0')}.json.gz`;
@@ -310,7 +358,10 @@ function saveReport() {
             entry.performance.failedInterval={elapsed,error:String(error),evidence:{path:name,compression:'gzip',
               sha256:crypto.createHash('sha256').update(compressed).digest('hex'),
               uncompressedSha256:crypto.createHash('sha256').update(raw).digest('hex')}};
-            entry.performance.meetsTarget=false;saveReport();throw error;
+            (entry.performance.failedIntervals ||= []).push(entry.performance.failedInterval);
+            entry.performance.meetsTarget=false;saveReport();
+            if(collectPerformanceFailures) {console.error(String(error));continue;}
+            throw error;
           }
           const gaps=observation.observations.slice(1).map((f,i)=>(f.mediaTime-observation.observations[i].mediaTime)*1000).sort((a,b)=>a-b);
           const wallSeconds=(observation.ended-observation.started)/1000;
@@ -329,6 +380,12 @@ function saveReport() {
               maxRms:Math.max(...audioObservation.spectra.map(s=>s.rms)),
               ...(audioError ? {error:String(audioError)} : {})};
           }
+          if (continuousAudioEnabled) {
+            chunk.continuousAudioObservation=continuousAudioObservation;
+            chunk.continuousAudioCheck=continuousAudio.analyze(continuousAudioObservation,seconds-.35);
+            if(!chunk.continuousAudioCheck.passed)
+              audioError=Error('Continuous audio: '+JSON.stringify(chunk.continuousAudioCheck));
+          }
           chunk.meetsTarget=chunk.sourceFps>=fps*.95&&chunk.deliveryRatio>=.95&&chunk.p95MediaGapMs<=2000/fps+2&&
             observation.width===width&&observation.height===height&&
             afterDiag.video.encode_failures===beforeDiag.video.encode_failures&&afterDiag.video.encode_timeouts===beforeDiag.video.encode_timeouts&&!audioError;
@@ -340,7 +397,8 @@ function saveReport() {
             const name = `${encoder}-performance-${String(elapsed).padStart(4,'0')}.json.gz`;
             fs.writeFileSync(path.join(report,name),compressed,{flag:'wx'});
             const {observation: rawDecoded,presentation: rawPresented,sourceFrames: rawSource,
-              beforeDiagnostics: rawBefore,afterDiagnostics: rawAfter,audioObservation: rawAudio,...summary} = chunk;
+              beforeDiagnostics: rawBefore,afterDiagnostics: rawAfter,audioObservation: rawAudio,
+              continuousAudioObservation: rawContinuousAudio,...summary} = chunk;
             summary.evidence = {path:name,compression:'gzip',bytes:compressed.length,
               sha256:crypto.createHash('sha256').update(compressed).digest('hex'),
               uncompressedBytes:raw.length,uncompressedSha256:crypto.createHash('sha256').update(raw).digest('hex')};
@@ -349,7 +407,14 @@ function saveReport() {
           entry.performance.meetsTarget&&=chunk.meetsTarget;
           console.log(`${encoder}: ${elapsed+seconds}s source=${chunk.sourceFps.toFixed(1)} received=${chunk.receivedFps.toFixed(1)} fps ratio=${chunk.deliveryRatio.toFixed(3)} p95=${chunk.p95MediaGapMs.toFixed(1)}ms target=${chunk.meetsTarget}`);
           saveReport();
-          if (audioError) throw audioError;
+          if (audioError) {
+            if(collectPerformanceFailures) console.error(String(audioError));
+            else throw audioError;
+          }
+        }
+        if (continuousAudioEnabled) {
+          await continuousAudio.stop(page);
+          for(const recording of audioRecordings) {await recording.stop();audioRecordings.delete(recording);}
         }
       }
       if (audioMode !== 'none' || usesMic) {
@@ -468,6 +533,10 @@ function saveReport() {
     console.error(result.error);
   } finally {
     stoppingFixtures=true;
+    for(const recording of audioRecordings) {
+      try {await recording.stop();}
+      catch(error) {result.recordingError=String(error);result.passed=false;process.exitCode=1;}
+    }
     for (const child of children) child.kill('SIGTERM');
     for (const browser of browsers) await browser.close().catch(() => {});
     try { saveReport(); }
