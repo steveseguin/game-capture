@@ -29,6 +29,8 @@ const ambiguous=decodeAnchoredRows(rows.map((row,i)=>stamp(row,100+i)),width);
 assert.equal(ambiguous.id,null);assert.equal(ambiguous.unreadable,true);
 const observation={observations:Array.from({length:24},(_,i)=>({id:1000+i,mediaTime:i/60})),tracks:[{codec:'video/h264'}]};
 assert.equal(requireMoving(observation,'Ordered fixture'),24);
+assert.throws(()=>requireMoving({...observation,identityObserved:false},'Timing only'),/cannot verify moving content/);
+assert.throws(()=>requireMoving({...observation,observerError:'Frame snapshot failed'},'Observer error'),/Frame snapshot failed/);
 observation.observations[12].id=900;
 assert.throws(()=>requireMoving(observation,'Reversed fixture'),/reversed\/corrupt/);
 assert.throws(()=>requireMoving({...observation,identityReadFailures:1},'Ambiguous rows'),/no agreeing barcode rows/);
