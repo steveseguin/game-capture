@@ -33,6 +33,10 @@ const guestCycles=Number(opts['guest-cycles']||2);
 assert(Number.isInteger(guestCycles)&&guestCycles>=2&&guestCycles<=10,'--guest-cycles must be 2..10');
 assert(['true','false'].includes(opts['drop-guest-bye']||'false'),'Invalid --drop-guest-bye');
 const dropGuestBye=opts['drop-guest-bye']==='true';
+for(const key of ['expect-closed-guest-cleanup','guest-refresh'])assert(['true','false'].includes(opts[key]||'false'),'Invalid --'+key);
+const expectClosedGuestCleanup=opts['expect-closed-guest-cleanup']==='true',guestRefresh=opts['guest-refresh']==='true';
+assert(!expectClosedGuestCleanup||dropGuestBye,'Closed-guest cleanup proof requires deliberately suppressed BYE');
+assert(!guestRefresh||(remoteEnabled&&!recoverSignaling),'Guest refresh requires normal room controls');
 assert(!dropGuestBye||(remoteEnabled&&!recoverSignaling),'Guest bye negative control requires ordinary enabled room controls');
 assert(!opts['continuous-audio']||['true','false'].includes(opts['continuous-audio']),'Invalid --continuous-audio');
 assert(!continuous||performanceSeconds,'Continuous audio requires a timed room observation');
@@ -47,7 +51,7 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
   directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,rtcLog,performanceSeconds,extraScenes,compactPerformanceReport:compact,continuousAudio:continuous,recoverSignaling,passwordProtected,
-  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),guestCycles,dropGuestBye,fuzzSeed,fuzzPlan,fuzzLocalControl,
+  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),guestCycles,dropGuestBye,expectClosedGuestCleanup,guestRefresh,fuzzSeed,fuzzPlan,fuzzLocalControl,
   cameraFixtureSha256:hash(path.resolve(opts['camera-helper'])),toneFixtureSha256:hash(path.resolve(opts['tone-helper'])),
   scope:'Packaged controlled camera/input with real VDO.Ninja director, scene and guest camera-join UI; optional bounded dual-tier load observation; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
 for(const name of ['macos-room-publish.js','macos-room-fuzz-plan.js','macos-live-control-fuzz.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
@@ -338,6 +342,15 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
         evidence.browserCleanupSends=await guest.page.evaluate(()=>window.__guestLeaveEvidence||[]).catch(()=>[]);
         evidence.finalDiagnostics=await api(control,'/diagnostics');
       }
+      if(expectClosedGuestCleanup){
+        const suppressed=evidence.browserCleanupSends.filter(e=>e.toPublisher&&e.bye);
+        assert(suppressed.length>0&&suppressed.every(e=>e.droppedByDiagnostic&&!e.returned),'BYE suppression was not established');
+        const nativeGuest=guest.evidence.diagnostics.peers.find(p=>p.room.role==='guest');assert(nativeGuest);
+        await waitFor(()=>fs.readFileSync(path.join(report,encoder+'-publisher.log'),'utf8').split('\n').some(line=>
+          line.includes('Removed peer session '+nativeGuest.uuid+':')&&line.includes('reason=closed-room-guest ')),
+          3000,'No terminal guest cleanup recorded');
+        evidence.terminalCleanupVerified=true;
+      }
       console.log(encoder+': '+guest.evidence.label+' cleanup '+evidence.elapsedMs+'ms');
       await guest.page.close();
     }
@@ -364,6 +377,19 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       entry.recovery={};
       restoreSignaling=await roomRecovery.begin({proxy,diagnostics:()=>api(control,'/diagnostics'),evidence:entry.recovery,
         participants:[...survivors,{name:'guest',page:viewer,uuid:viewerUuid,width:640,height:360}]});
+    }
+    if(guestRefresh){
+      const before=(await api(control,'/diagnostics')).peers.find(p=>p.room.role==='guest');assert(before);
+      check(await director.sendDirectorRequest(viewer,viewerUuid,{refreshConnection:true,remote:remoteToken}),'Existing VDO connection refresh');
+      let after;
+      await waitFor(async()=>{after=(await api(control,'/diagnostics')).peers.find(p=>p.uuid===before.uuid);
+        return after&&after.active_wire_session!==before.active_wire_session&&after.last_connection_state==='connected'&&after.transport.data_channel_open;
+      },30000,'Guest transport refresh did not reconnect');
+      const refreshed={before,after,guest:await media(viewer,640,360,'Guest after transport refresh',4,viewerUuid),
+        director:await media(dir,640,360,'Director after transport refresh',4,uuid),scene:await media(scene,1280,720,'Scene after transport refresh',4)};
+      refreshed.audio=await observeAudio(viewer,viewerUuid);requireAudio(refreshed.audio);
+      assert.equal(after.owner_session,before.owner_session,'Refresh replaced the logical owner');
+      entry.guestRefresh=refreshed;
     }
     await leaveGuest(guest);
     entry.guestUi.afterLeave={director:await media(dir,640,360,'Director after guest leave'),scene:await media(scene,1280,720,'Scene after guest leave')};
@@ -480,7 +506,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     if(passwordProtected){assert(!fs.readFileSync(path.join(report,encoder+'-publisher.log'),'utf8').includes(password),'Password in logs');entry.passwordNotExposedInLog=true;}
     await dir.close();await late.close();entry.passed=true;console.log(encoder+': room workflow passed');fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));
   }
-  if(dropGuestBye)throw Error('Guest bye negative control did not trigger the required prompt-cleanup rejection');
+  if(dropGuestBye&&!expectClosedGuestCleanup)throw Error('Guest bye negative control did not trigger the required prompt-cleanup rejection');
   result.passed=true;
 }catch(error){result.error=String(error.stack||error);console.error(result.error);process.exitCode=1;
   if(browser)for(const [i,page] of browser.contexts().flatMap(c=>c.pages()).entries())try{await page.screenshot({path:path.join(report,'failure-'+i+'.png')});fs.writeFileSync(path.join(report,'failure-'+i+'.json'),JSON.stringify(await page.evaluate(()=>({url:location.href,text:document.body.innerText.slice(0,5000),rpc:Object.fromEntries(Object.entries(window.session?.rpcs||{}).map(([k,r])=>[k,{stream:r.streamID,info:r.stats?.info}]))})),null,2));}catch{}
