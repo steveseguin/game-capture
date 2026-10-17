@@ -512,6 +512,10 @@ if(VERSUS_BUILD_TESTS)
         # ScreenCaptureKit requires an initialized WindowServer connection;
         # offscreen Qt intentionally does not establish one.
         set_tests_properties(PlatformCapabilitiesGate PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=cocoa")
+        add_executable(test_macos_i420 tests/test_macos_i420.cpp)
+        target_include_directories(test_macos_i420 PRIVATE include)
+        add_test(NAME MacI420ArithmeticGate COMMAND test_macos_i420)
+
         add_executable(test_macos_encoder tests/test_macos_encoder.cpp)
         set_target_properties(test_macos_encoder PROPERTIES AUTOMOC ON)
         target_link_libraries(test_macos_encoder PRIVATE versus-lib Qt6::Test)

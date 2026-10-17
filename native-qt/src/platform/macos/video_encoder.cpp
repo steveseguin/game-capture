@@ -1,4 +1,5 @@
 #include "versus/platform/macos_encoder.h"
+#include "versus/platform/macos_i420.h"
 #include "versus/platform/macos_ffmpeg_encoder.h"
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
@@ -32,7 +33,6 @@ bool setProperty(VTCompressionSessionRef session, CFStringRef property, CFTypeRe
     if (result != noErr) spdlog::warn("[VideoToolbox] Property failed (status={})", result);
     return result == noErr;
 }
-uint8_t clip(int value) { return static_cast<uint8_t>(std::clamp(value, 0, 255)); }
 
 bool toI420(const CapturedFrame &frame, int width, int height, std::vector<uint8_t> &pixels) {
     if (frame.format != CapturedFrame::Format::BGRA || frame.width <= 0 || frame.height <= 0 ||
@@ -53,24 +53,11 @@ bool toI420(const CapturedFrame &frame, int width, int height, std::vector<uint8
     pixels.resize(area * 3 / 2);
     auto *yPlane = pixels.data(), *uPlane = pixels.data() + area, *vPlane = pixels.data() + area * 5 / 4;
     for (int y = 0; y < height; y += 2) {
-        for (int x = 0; x < width; x += 2) {
-            int r = 0, g = 0, b = 0;
-            for (int dy = 0; dy < 2; ++dy) {
-                const auto *row = fitted.constScanLine(y + dy);
-                for (int dx = 0; dx < 2; ++dx) {
-                    const auto *pixel = row + (x + dx) * 4;
-                    const int pb = pixel[0], pg = pixel[1], pr = pixel[2];
-                    // Match the app's established SDR sRGB -> limited BT.601
-                    // contract. Metadata below describes the actual matrix.
-                    yPlane[(y + dy) * width + x + dx] = clip(((66 * pr + 129 * pg + 25 * pb + 128) >> 8) + 16);
-                    r += pr; g += pg; b += pb;
-                }
-            }
-            r = (r + 2) / 4; g = (g + 2) / 4; b = (b + 2) / 4;
-            const size_t chroma = static_cast<size_t>(y / 2) * (width / 2) + x / 2;
-            uPlane[chroma] = clip(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
-            vPlane[chroma] = clip(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
-        }
+        const size_t chroma = static_cast<size_t>(y / 2) * (width / 2);
+        detail::bgraRowsToI420(fitted.constScanLine(y), fitted.constScanLine(y + 1), width,
+                              yPlane + static_cast<size_t>(y) * width,
+                              yPlane + static_cast<size_t>(y + 1) * width,
+                              uPlane + chroma, vPlane + chroma);
     }
     return true;
 }
