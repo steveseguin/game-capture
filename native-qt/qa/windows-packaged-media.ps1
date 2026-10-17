@@ -18,7 +18,7 @@ try {
     if (-not $snapshot) { throw 'No source snapshot' }
     & (Join-Path $PSScriptRoot 'build-release.ps1') -BuildDir build-windows-hosted -Version 0.2.64 `
         -ExpectedSourceSnapshotSha256 $snapshot.sha256 -ExpectedSourceSnapshotFileCount $snapshot.fileCount `
-        -ExpectedSourceSnapshotAlgorithm $snapshot.algorithm -SkipVirusTotal -RequireReleaseArtifacts
+        -ExpectedSourceSnapshotAlgorithm $snapshot.algorithm -SkipVirusTotal -RequireReleaseArtifacts -RuntimeDependencyMode Imported
     if (-not $?) { throw 'Windows packaging failed' }
     Set-Location $repo
     $archive = Join-Path $repo 'native-qt/dist/game-capture-0.2.64-win64.zip'
@@ -32,6 +32,7 @@ try {
     $result.executableSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
     $result.manifestSha256 = $manifestSha
     Copy-Item $manifest (Join-Path $report 'release-artifact-manifest.json')
+    Copy-Item (Join-Path $extracted 'runtime-dependencies.json') (Join-Path $report 'runtime-dependencies.json')
     $result.steps += @{ name = 'normal-packaging-and-extraction'; kind = 'gate'; passed = $true }
     & npm.cmd ci --prefix (Join-Path $repo 'native-qt') --ignore-scripts
     if ($LASTEXITCODE -ne 0) { throw 'Pinned browser tooling install failed' }

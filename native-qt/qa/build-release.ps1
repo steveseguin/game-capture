@@ -14,7 +14,11 @@
     [string]$FfmpegBundleRoot = "",
     [switch]$AllowMissingFfmpeg = $false,
     [switch]$SkipVirusTotal = $false,
-    [switch]$RequireReleaseArtifacts = $false
+    [switch]$RequireReleaseArtifacts = $false,
+    # Keep the established production DLL set unless explicitly qualifying a
+    # different Qt distribution. Imported mode verifies its real PE imports.
+    [ValidateSet('Production', 'Imported')]
+    [string]$RuntimeDependencyMode = 'Production'
 )
 
 $ErrorActionPreference = "Stop"
@@ -120,6 +124,65 @@ function Resolve-RuntimeDll([string]$Name) {
 
 function Test-TextContains([string]$Text, [string]$Needle) {
     return $Text.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
+}
+
+function Complete-ImportedRuntime([string]$StageRoot, [string[]]$SearchRoots) {
+    $dumpbin = Get-Command dumpbin.exe -ErrorAction Stop
+    $pending = [System.Collections.Generic.Queue[string]]::new()
+    $checked = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $records = [System.Collections.Generic.List[object]]::new()
+    Get-ChildItem -LiteralPath $StageRoot -Recurse -File |
+        Where-Object { $_.Extension -in @('.dll', '.exe') } |
+        ForEach-Object { $pending.Enqueue($_.FullName) }
+    while ($pending.Count -gt 0) {
+        $binary = $pending.Dequeue()
+        if (-not $checked.Add($binary)) { continue }
+        # /IMPORTS includes ordinary and delay-loaded imports. Dynamic
+        # LoadLibrary dependencies still need the explicit required DLL set.
+        # https://learn.microsoft.com/en-us/cpp/build/reference/imports-dumpbin
+        $output = & $dumpbin.Source /nologo /imports $binary 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "Could not inspect PE imports: $binary" }
+        $imports = @($output | ForEach-Object {
+            if ([string]$_ -match '^\s+([A-Za-z0-9_.-]+\.dll)\s*$') { $Matches[1].ToLowerInvariant() }
+        } | Sort-Object -Unique)
+        if ($imports.Count -eq 0) { throw "No PE imports found; refusing an unverified dependency scan: $binary" }
+        $resolved = @()
+        foreach ($name in $imports) {
+            $nearby = Join-Path (Split-Path -Parent $binary) $name
+            $atRoot = Join-Path $StageRoot $name
+            $local = if (Test-Path -LiteralPath $nearby -PathType Leaf) { $nearby } elseif (Test-Path -LiteralPath $atRoot -PathType Leaf) { $atRoot } else { $null }
+            if ($local) {
+                $pending.Enqueue($local)
+                $resolved += @{ name = $name; resolution = 'packaged'; path = (ConvertTo-RootRelativePath -Root $StageRoot -Path $local) }
+                continue
+            }
+            if ($name -match '^(api-ms-win-|ext-ms-win-)') {
+                $resolved += @{ name = $name; resolution = 'Windows API set' }
+                continue
+            }
+            if (Test-Path -LiteralPath (Join-Path ([Environment]::SystemDirectory) $name) -PathType Leaf) {
+                $resolved += @{ name = $name; resolution = 'host Windows system directory' }
+                continue
+            }
+            $source = $null
+            foreach ($searchRoot in $SearchRoots) {
+                if (-not $searchRoot) { continue }
+                $candidate = Join-Path $searchRoot $name
+                if (Test-Path -LiteralPath $candidate -PathType Leaf) { $source = $candidate; break }
+            }
+            if (-not $source) { $source = Resolve-RuntimeDll $name }
+            if (-not $source) { throw "Unresolved PE import $name from $binary" }
+            Copy-Item -LiteralPath $source -Destination $atRoot
+            $pending.Enqueue($atRoot)
+            $resolved += @{ name = $name; resolution = 'packaged'; path = $name }
+        }
+        $records.Add(@{ path = (ConvertTo-RootRelativePath -Root $StageRoot -Path $binary); imports = $resolved })
+    }
+    [ordered]@{
+        scope = 'PE import closure on this Windows host, including delay imports; not application or minimum-OS testing'
+        method = 'dumpbin /nologo /imports'
+        binaries = @($records.ToArray())
+    } | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $StageRoot 'runtime-dependencies.json')
 }
 
 function ConvertTo-RootRelativePath([string]$Root, [string]$Path) {
@@ -506,6 +569,14 @@ $runtimeDlls = @(
     "VCRUNTIME140.dll",
     "VCRUNTIME140_1.dll"
 )
+if ($RuntimeDependencyMode -eq 'Imported') {
+    # The pinned official Qt build may link these libraries statically. The
+    # production profile retains its complete existing list unchanged.
+    $qtDistributionDlls = @('brotlicommon.dll', 'brotlidec.dll', 'bz2.dll',
+        'double-conversion.dll', 'freetype.dll', 'harfbuzz.dll', 'jpeg62.dll',
+        'libcrypto-3-x64.dll', 'libpng16.dll', 'md4c.dll', 'pcre2-16.dll', 'zlib1.dll', 'zstd.dll')
+    $runtimeDlls = @($runtimeDlls | Where-Object { $_ -notin $qtDistributionDlls })
+}
 foreach ($dll in $runtimeDlls) {
     $target = Join-Path $stageDir $dll
     if (Test-Path $target) {
@@ -532,6 +603,13 @@ if ($ffmpegManifest) {
     Write-Host "FFmpeg: $($ffmpegManifest.ffmpeg_version)"
 } else {
     Write-Warning "FFmpeg bundle missing; continuing because -AllowMissingFfmpeg was set."
+}
+
+if ($RuntimeDependencyMode -eq 'Imported') {
+    Write-Step "Verify Imported Runtime Closure"
+    $importRoots = @((Split-Path -Parent $exePath))
+    if ($windeployqt) { $importRoots += (Split-Path -Parent $windeployqt) }
+    Complete-ImportedRuntime -StageRoot $stageDir -SearchRoots $importRoots
 }
 
 $notes = @()
