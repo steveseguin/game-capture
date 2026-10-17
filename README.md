@@ -9,9 +9,9 @@ A free, open-source app for streaming games, app windows, and webcams to **VDO.N
 | Platform | Download | Status |
 | --- | --- | --- |
 | **Windows 64-bit** | [Installer](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe) · [Portable](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-portable.exe) · [ZIP](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-win64.zip) | Stable / production |
-| **macOS — Apple Silicon** | [Download Mac ZIP](https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.62-beta.1/game-capture-macos-arm64-0.2.62-beta.1.zip) | **0.2.62 Beta 1 — Experimental** |
+| **macOS — Apple Silicon** | [Download Mac ZIP](https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.64-beta.1/game-capture-macos-arm64-0.2.64-beta.1.zip) | **0.2.64 Beta 1 — Experimental** |
 
-[Windows release notes](https://github.com/steveseguin/game-capture/releases/latest) · [Mac release notes, source & checksums](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1)
+[Windows release notes](https://github.com/steveseguin/game-capture/releases/latest) · [Mac release notes, source & checksums](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1)
 
 ## Quick start
 
