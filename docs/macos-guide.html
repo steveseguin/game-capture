@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>macOS Guide | Game Capture for VDO.Ninja</title>
+  <meta name="description" content="Set up Game Capture on Apple Silicon: install the Mac beta, grant permissions, choose video and audio, stream to VDO.Ninja or OBS, and troubleshoot common problems." />
+  <meta name="theme-color" content="#050b18" />
+  <link rel="canonical" href="https://steveseguin.github.io/game-capture/macos-guide.html" />
+  <meta property="og:title" content="Game Capture — macOS guide" />
+  <meta property="og:description" content="A practical setup guide for the experimental Apple Silicon Mac app." />
+  <meta property="og:image" content="https://steveseguin.github.io/game-capture/macos-app-screenshot.png" />
+  <style>
+    :root { color-scheme: dark; --bg:#050b18; --panel:#101c32; --text:#e8efff; --muted:#b6c5ea; --accent:#69dfff; --border:#304563; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; scroll-padding-top:1.5rem; }
+    body { margin:0; background:var(--bg); color:var(--text); font:17px/1.7 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { max-width:1020px; margin:auto; padding:28px 24px 64px; }
+    a { color:var(--accent); text-underline-offset:3px; }
+    a:hover { color:white; }
+    a:focus-visible, summary:focus-visible { outline:3px solid #ffd28a; outline-offset:5px; }
+    .back { font-size:.92rem; }
+    h1,h2,h3 { line-height:1.2; letter-spacing:-.025em; }
+    h1 { font-size:clamp(2.4rem,6vw,4rem); margin:18px 0; }
+    h2 { font-size:1.8rem; margin:0 0 20px; }
+    h3 { font-size:1.12rem; }
+    p { margin:0 0 16px; }
+    .intro { font-size:1.15rem; max-width:740px; color:var(--muted); }
+    .badge { display:inline-block; margin-top:24px; padding:3px 12px; border:1px solid #906341; border-radius:999px; color:#ffd6b8; font-size:.85rem; font-weight:650; }
+    .button { display:inline-block; background:var(--accent); color:#071421; padding:10px 18px; border-radius:8px; font-weight:700; text-decoration:none; }
+    .button:hover { background:#b2edff; color:#071421; }
+    .actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px 22px; margin:24px 0; }
+    .note,figcaption,footer { color:var(--muted); font-size:.92rem; }
+    nav { display:flex; flex-wrap:wrap; gap:10px 22px; padding:20px 0; margin:24px 0; border-block:1px solid var(--border); }
+    figure { margin:28px 0 40px; }
+    figure img { display:block; width:100%; max-width:780px; height:auto; margin:auto; border:1px solid var(--border); border-radius:10px; background:var(--panel); }
+    figcaption { text-align:center; margin-top:12px; }
+    section { margin-top:46px; }
+    ol,ul { padding-left:1.5rem; }
+    li { margin:9px 0; }
+    .cards { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+    .card { padding:22px; background:var(--panel); border:1px solid var(--border); border-radius:12px; }
+    .card h3 { margin-top:0; }
+    .card p:last-child { margin-bottom:0; }
+    .table-wrap { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; text-align:left; }
+    th,td { padding:14px; border-bottom:1px solid var(--border); vertical-align:top; }
+    th { background:var(--panel); }
+    details { border-bottom:1px solid var(--border); padding:16px 0; }
+    summary { cursor:pointer; font-weight:650; }
+    details p { margin:14px 0 0; }
+    code { font-size:.9em; overflow-wrap:anywhere; }
+    footer { border-top:1px solid var(--border); margin-top:48px; padding-top:20px; }
+    @media(max-width:640px) { main { padding-inline:18px; } .cards { grid-template-columns:1fr; } th,td { padding:10px; } }
+    @media(prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <a class="back" href="./gamecapture.html">← Game Capture downloads</a>
+  <header>
+    <span class="badge">Apple Silicon · Experimental beta</span>
+    <h1>Game Capture on Mac</h1>
+    <p class="intro">Share an app window or camera through VDO.Ninja, then watch it in a browser or bring it into OBS.</p>
+    <div class="actions">
+      <a class="button" href="https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.64-beta.2/game-capture-macos-arm64-0.2.64-beta.2.zip">Download Mac Beta 2</a>
+      <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2">Release notes, source &amp; checksums</a>
+    </div>
+    <p class="note">Requires an Apple Silicon (M-series) Mac; Intel Macs are not supported. Built for macOS 14.2+. The current beta was tested on macOS 26.4.1; minimum-OS and fresh-machine compatibility remain unverified. Windows remains the stable production version.</p>
+  </header>
+  <nav aria-label="Guide sections">
+    <a href="#install">Install</a><a href="#first-stream">First stream</a><a href="#audio">Audio</a><a href="#encoders">Encoders</a><a href="#rooms-obs">Rooms &amp; OBS</a><a href="#troubleshooting">Troubleshooting</a><a href="#updates">Updates</a>
+  </nav>
+  <figure>
+    <a href="./macos-app-screenshot.png" aria-label="Open full-size Mac app screenshot"><img src="./macos-app-screenshot.png" alt="Game Capture on macOS with the Neon Orbit demo window selected, a local preview, and Go Live controls" width="1800" height="1358" decoding="async" /></a>
+    <figcaption>Actual Mac Beta 2 app, with the repository’s demo scene selected. Publishing is off.</figcaption>
+  </figure>
+  <section id="install">
+    <h2>1. Install and allow access</h2>
+    <ol>
+      <li>Download the Mac ZIP, extract it, and drag <strong>Game Capture.app</strong> into <strong>Applications</strong>.</li>
+      <li>Open the app from Applications. It is Developer ID signed and notarized; confirm the normal macOS <strong>Open</strong> prompt if shown.</li>
+      <li>For window capture, use the app’s <strong>Screen Recording…</strong> button or open <strong>System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording</strong> (called <strong>Screen Recording</strong> on some versions). Allow Game Capture, and restart it if macOS requests this.</li>
+      <li>If you use a camera or microphone, allow its separate permission prompt. These devices are opened when you go live. If the first attempt requests permission, grant it and start again.</li>
+    </ol>
+    <p>Camera and Microphone permissions can also be changed under <strong>Privacy &amp; Security</strong>. Allow only the sources you intend to share.</p>
+  </section>
+  <section id="first-stream">
+    <h2>2. Send your first stream</h2>
+    <ol>
+      <li>Open the app or game you want to share and keep its window visible.</li>
+      <li>In Game Capture, choose <strong>Video Source → Window</strong>. Click <strong>Refresh</strong>, use the source filter if needed, and select the window. Check the local preview.</li>
+      <li>Enter a unique <strong>Stream ID</strong>, or paste the VDO.Ninja publishing URL supplied by your director. Keep any required password consistent with your viewing or room setup.</li>
+      <li>Open <strong>Show advanced settings</strong> to choose audio and encoding. A starting point is <strong>H.264, Apple VideoToolbox, 1280×720, 30 FPS, 4,000 kbps</strong>.</li>
+      <li>Click <strong>Go Live</strong>. After streaming starts, use <strong>Copy Link</strong> to share the generated viewer URL. Open that link in a browser to verify picture and sound.</li>
+      <li>Click <strong>Stop</strong> when finished. Stop before changing settings that are locked during streaming.</li>
+    </ol>
+    <div class="cards">
+      <article class="card"><h3>Camera / Webcam</h3><p>Choose <strong>Camera / Webcam</strong>, select the device, then set its resolution and frame rate. Camera mode starts with <strong>No microphone</strong>; choose a <strong>Microphone / Input</strong> to add sound. The live camera preview appears after starting.</p></article>
+      <article class="card"><h3>Syphon</h3><p>Enable Syphon output in the sending Mac app, choose <strong>Syphon (texture sharing)</strong>, and select its sender. Syphon supplies video; select audio separately. Spout2 is the Windows source option.</p></article>
+    </div>
+  </section>
+  <section id="audio">
+    <h2>3. Choose what people hear</h2>
+    <p>Open <strong>Show advanced settings → Audio Source</strong>. App and system audio use native macOS capture; a virtual audio cable is not required for these modes.</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th scope="col">Source</th><th scope="col">What it shares</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Selected window/app audio</strong></td><td>Audio from the selected application, including its child processes and other windows. Available with Window video capture.</td></tr>
+        <tr><td><strong>System audio (all apps)</strong></td><td>The Mac’s application audio mix. Other apps’ sounds may be included.</td></tr>
+        <tr><td><strong>Selected microphone/input</strong></td><td>The device chosen in <strong>Microphone / Input</strong>.</td></tr>
+        <tr><td><strong>No audio</strong></td><td>No primary audio. Also leave the microphone disabled if you want a silent stream.</td></tr>
+      </tbody>
+    </table></div>
+    <p>To narrate over app audio, select your microphone and enable <strong>Also add microphone/input</strong> in advanced settings. <strong>Mute / Unmute</strong> for the microphone leaves app audio playing. Use headphones when listening to your own viewer to avoid feedback.</p>
+    <p>Keep the default <strong>Opus</strong> audio for normal VDO.Ninja viewing. Use the generated viewer link so the receiver gets the selected audio-channel settings.</p>
+  </section>
+  <section id="encoders">
+    <h2>4. Pick an encoder</h2>
+    <div class="cards">
+      <article class="card"><h3>Apple VideoToolbox</h3><p>Hardware H.264 encoding on Apple Silicon. Start here for window or game capture to leave more CPU capacity for the source app.</p></article>
+      <article class="card"><h3>x264 software</h3><p>Select <strong>H.264</strong> with <strong>Software (x264 / VP9 / AV1)</strong>. This uses the CPU and is useful when comparing a hardware-encoder problem. Lower resolution or FPS if the Mac cannot keep up.</p></article>
+    </div>
+    <p><strong>Auto</strong> tries hardware and then software. The software menu lists other codecs, but H.264 is the straightforward starting point for this guide.</p>
+    <p class="note">1080p60 is not yet production-qualified across machines and workloads. Start at 720p30, verify received video and audio, and increase settings gradually. See the <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-beta2-validation-2026-10-17.md">qualification record</a> for measured results and remaining limits.</p>
+  </section>
+  <section id="rooms-obs">
+    <h2>5. Use a room or OBS</h2>
+    <h3>VDO.Ninja rooms</h3>
+    <p>Use your director’s publishing URL, or enter the <strong>Room</strong> and optional <strong>Label</strong> in advanced settings. Match the room’s password. With room quality enabled, the app can send a lower-quality preview to a director or guest and a higher-quality stream to scene viewers.</p>
+    <p>Director control is optional. Enable it only when you need remote changes, and share its control token with your trusted director.</p>
+    <h3>OBS</h3>
+    <p>Add a <strong>Browser Source</strong> in OBS and paste the generated viewer URL. Set the source dimensions to match your stream, then verify picture and sound in OBS before using it in a production. Avoid playing the same feed through multiple monitors or browser tabs.</p>
+    <h3>Other destinations</h3>
+    <p><strong>Show advanced settings → Output</strong> also offers destinations such as WHIP, SRT, and RTMP. Supply the service’s publishing endpoint and credentials. Receiver setup depends on that service; VDO.Ninja room controls and viewer links apply to VDO.Ninja output. Trusted remote RTMPS and broader service compatibility remain part of beta qualification.</p>
+  </section>
+  <section id="troubleshooting">
+    <h2>Troubleshooting</h2>
+    <details><summary>My window is missing, or the preview is blank</summary><p>Check Screen Recording permission, reopen Game Capture if macOS requested it, and click Refresh. Clear the source filter and select the window again. Restore a minimized or hidden source window. Closing the source app requires choosing an available source before starting again.</p></details>
+    <details><summary>Video pauses when I minimize the source</summary><p>Restore the source window. The Mac app pauses video delivery while the captured window is suspended and resumes when fresh frames return; audio may continue. Keep the source visible during a stream.</p></details>
+    <details><summary>I have picture but no sound</summary><p>Check Audio Source, microphone selection and mute state, and the source app’s own volume. Selected app audio needs Window capture. Check macOS audio/microphone permissions as appropriate, then stop and start again after permission or device changes. Verify the viewer’s playback and volume controls too.</p></details>
+    <details><summary>The camera or microphone is unavailable</summary><p>Check its Privacy &amp; Security permission, connect the device, and close other software that may hold it. Refresh and select it again. After a permission prompt, retry Go Live. Physical-device hotplug and busy-device coverage is still incomplete in this beta.</p></details>
+    <details><summary>The stream stutters or falls behind</summary><p>Try H.264 with Apple VideoToolbox at 720p30, close unnecessary receivers on the publishing Mac, and check available upload bandwidth. Compare with a viewer on another machine. Stop before changing resolution, FPS, or encoder settings.</p></details>
+    <details><summary>macOS says the app is damaged or cannot be verified</summary><p>Download a fresh copy from the official Mac release and compare its checksum with the release’s checksum file. Keep macOS security checks enabled. If the official copy still fails, report the exact message and your macOS version.</p></details>
+  </section>
+  <section id="updates">
+    <h2>Updates and support</h2>
+    <p>Update Mac betas manually from the <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2">Mac release page</a>: stop streaming, quit the app, and replace the copy in Applications. The stable update check excludes prereleases. Beta 1 and Beta 2 both show the internal app version <strong>0.2.64</strong>; use the ZIP’s beta number to identify the download.</p>
+    <p>For a problem report, use <strong>Help → Open Log Folder</strong> and include the Mac model, macOS version, beta download, video/audio source, encoder, and steps to reproduce. Remove credentials from logs before sharing them.</p>
+    <p><a href="https://github.com/steveseguin/game-capture/issues">Report an issue</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-beta2-validation-2026-10-17.md">Testing status and open findings</a></p>
+  </section>
+  <footer>Game Capture · <a href="./gamecapture.html">All downloads</a> · <a href="https://github.com/steveseguin/game-capture">Source on GitHub</a></footer>
+</main>
+</body>
+</html>
