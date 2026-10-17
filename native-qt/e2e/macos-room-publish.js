@@ -389,7 +389,8 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       assert(scenePublisher,'Scene publisher not found after refresh');
       // Refresh can reorder scene videos; the synthetic guest is also present.
       // Observe the publisher by identity, never the first DOM video.
-      const refreshed=entry.guestRefresh={before,after};checkpoint();
+      const refreshed=entry.guestRefresh={before,after};
+      fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));
       refreshed.guest=await media(viewer,640,360,'Guest after transport refresh',4,viewerUuid);
       refreshed.director=await media(dir,640,360,'Director after transport refresh',4,uuid);
       refreshed.scene=await media(scene,1280,720,'Scene after transport refresh',4,scenePublisher);
