@@ -1,0 +1,22 @@
+# Independent Mac reception — October 17, 2026
+
+**Experimental, unpublished candidate.** Both VideoToolbox and x264 passed one minute of picture/stereo-audio reception on separate hosted Linux browsers, followed by late joining. The same signed Mac app also passed the earlier [30-minute local workflows](macos-timer-endurance-2026-10-17.md). Windows now has [actual packaged software-capture coverage](windows-hosted-qualification-2026-10-17.md). Public downloads remain Mac Beta 2 and Windows stable 0.2.64.
+
+The Mac candidate remains runtime `77e887ac50c1623836578676d87753c719f4654a`, executable SHA-256 `dc4311c7c648fdf8d5cf3a196e8bfd1ee9160e96c34420132ff83a3f39b36dc4`. An M1/8 GiB Mac on macOS 26.4.1 published a generated moving picture and 440/880 Hz stereo tones through existing VDO.Ninja signaling. Requested output was H.264, 1920×1080, 60 fps, 8 Mbps, with selected-window audio. The native captured window was 1920×930 fitted to 1080p. Each receiver was a separate fresh Ubuntu 24.04 hosted machine running the pinned Chromium workflow; source and receiver no longer shared the Mac's CPU.
+
+| Encoder | Functional intervals | Continuous 100 ms audio windows | Observed distinct presentation fps | Intervals at least 57 fps | Final send-failure counter |
+| --- | --- | ---: | --- | ---: | ---: |
+| videotoolbox | passed (6/6) | 602 | 55.999–59.480 | 5/6 | 2 |
+| x264 | passed (6/6) | 604 | 56.199–59.199 | 5/6 | 2 |
+
+Both runs also passed late-viewer picture/stereo-tone checks, explicit encoder identity on the Mac, and local publisher quit/discovery cleanup. The selected network paths were UDP with server-reflexive candidates on both ends. This is synthetic WAN functional coverage, not physical speaker/display, camera/microphone, gameplay or full network-impairment qualification.
+
+The first presentation interval in each run fell below the prior 60 fps campaign's 57 fps threshold. Those intervals remain in the results: this is **not sustained 60 fps presentation qualification**. Across the five later interval boundaries, the receiver's decoded-frame counters advanced by roughly 600 frames per approximately ten seconds. Decoder throughput and observed presentation callbacks are different measurements; CPU, rendering and network conditions were uncontrolled. These results cannot rank encoder efficiency or picture quality. There are no matched OBS/FFmpeg/WHIP quality scores here.
+
+The final evidence review also retains a **failed zero-send-failure-counter gate**: each Mac run ended with two send failures, while encode failures and timeouts remained zero. In each local publisher log, two peer-closed events precede the encode/send warning by 3 ms. This is consistent with a send attempt racing viewer closure, but does not establish exact cross-machine timing or qualify every disconnect case. The functional harness passed; the additional counter review did not. No application runtime change or counter reset was used to conceal the finding.
+
+Hosted receiver runs: [VT 39079337086](https://github.com/steveseguin/game-capture/actions/runs/39079337086) and [x264 39079594383](https://github.com/steveseguin/game-capture/actions/runs/39079594383). Sender and receiver evidence is joined by the SHA-256 of a fresh owned session identifier; the raw identifier and control credentials are not published. Harness revision [a6ce365](https://github.com/steveseguin/game-capture/commit/a6ce365) supplies the local sender, independent receiver and workflow. The existing VDO.Ninja receiver path was reused; no protocol call was added.
+
+Remaining work includes disconnect-counter classification, longer independent-receiver runs, broader receiver/physical-device coverage, minimum-OS hardware VT, privacy and sleep/wake transitions, trusted remote RTMPS, broader accessibility, and candidate browser-download qualification. The earlier independent recorder-clock failures also remain open; this run measures continuous received PCM, not recording timestamps or lip sync.
+
+Freeze `0f1759e7-253c-4fd4-ae4a-8bab3a9499f1` indexes 72 local files; manifest SHA-256 `7f2880c07f680a9358184470b5bbac39ce2d623d209ab7d3eb1d2706d4a3b8eb`. [Measurements and evidence index](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-17-apple-m1-independent) include both encoder observations and the Windows attempts. Raw settings, session requests, accessibility data, credentials and logs remain local.
