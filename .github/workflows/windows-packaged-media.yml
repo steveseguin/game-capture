@@ -1,0 +1,38 @@
+name: Windows Packaged Media
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [macos-windows-packaged-media]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-packaged-media-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  packaged-workflows:
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - name: Checkout exact candidate source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build, package, extract and exercise Windows application
+        shell: pwsh
+        run: ./native-qt/qa/windows-packaged-media.ps1
+      - name: Preserve qualification evidence
+        if: always()
+        shell: pwsh
+        run: py -3.12 ./native-qt/qa/windows-hosted-export.py
+      - name: Upload allowlisted evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows-packaged-media-${{ github.sha }}
+          path: native-qt/qa/reports/windows-packaged-media/export/
+          if-no-files-found: error
+          retention-days: 7
