@@ -1,6 +1,30 @@
 'use strict';
 // Shared real browser receiver observations for packaged Mac workflows.
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+// The captured native cursor can cover a single barcode sample. Read the same
+// vertically repeated barcode on three separated rows and require two complete
+// identities to agree. This changes pixel decoding, not frame-order thresholds.
+function decodeAnchoredRows(rows, width) {
+  const decoded=rows.map(row=>{
+    let cyan=-1,magenta=-1;
+    for(let x=0;x<width;x++) {
+      const r=row[x*4],g=row[x*4+1],b=row[x*4+2];
+      if(cyan<0&&r<70&&g>170&&b>170)cyan=x;
+      if(magenta<0&&r>170&&g<70&&b>170)magenta=x;
+    }
+    if(cyan<0||magenta<=cyan)return null;
+    const markerWidth=(magenta-cyan)/.75,left=cyan-markerWidth*.1;let id=0;
+    for(let bit=0;bit<16;bit++) {
+      const x=Math.round(left+markerWidth*(.2+(bit+.5)*.6/16));
+      if(x<0||x>=width)return null;
+      if(row[x*4]>127)id|=1<<bit;
+    }
+    return {id,cyan,magenta};
+  });
+  const match=decoded.find(row=>row&&decoded.filter(other=>other?.id===row.id).length>=2);
+  return {id:match?.id??null,rows:decoded,disagreement:decoded.some(row=>row?.id!==match?.id),
+    unreadable:!match&&decoded.some(Boolean)};
+}
 async function waitFor(check, timeout, message) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) { const value = await check(); if (value) return value; await sleep(200); }
@@ -10,6 +34,7 @@ async function receiver(browser, stream, publisher) {
   return receiverAt(browser, `https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput&stereo=1&ab=510&audiocodec=red`, publisher);
 }
 async function installReceiverProbe(page) {
+  await page.addInitScript({content:'globalThis.reviewDecodeIdentityRows = '+decodeAnchoredRows.toString()+';'});
   await page.addInitScript(() => {
     window.reviewPCs = [];
     window.RTCPeerConnection = new Proxy(window.RTCPeerConnection, {construct(target, args) {
@@ -43,31 +68,20 @@ async function observe(page, milliseconds, peerUuid = null) {
       (!peerUuid || v.dataset.sid === peers[0].streamID || v.id === `videosource_${peerUuid}`));
     if (!video) throw Error('No playing video');
     const canvas = document.createElement('canvas'), context = canvas.getContext('2d', {willReadFrequently:true});
-    const observations = [];
+    const observations = [];let identityReadFailures=0,rowDisagreements=0;
     let callback, stopped = false;
     function frame(now, metadata) {
       if (stopped) return;
-      // Read only the identity scanline. Copying a full 1080p frame on every
-      // callback would make the observer itself a substantial rendering load.
-      canvas.width = video.videoWidth; canvas.height = 1;
-      context.drawImage(video, 0, Math.floor(video.videoHeight / 2), video.videoWidth, 1,
-        0, 0, canvas.width, 1);
-      const row = context.getImageData(0, 0, canvas.width, 1).data;
-      let cyan = -1, magenta = -1;
-      for (let x = 0; x < canvas.width; ++x) {
-        const [r,g,b] = row.slice(x*4, x*4+3);
-        if (cyan < 0 && r < 70 && g > 170 && b > 170) cyan = x;
-        if (magenta < 0 && r > 170 && g < 70 && b > 170) magenta = x;
-      }
-      if (cyan >= 0 && magenta > cyan) {
-        const width = (magenta - cyan) / .75, left = cyan - width * .1;
-        let id = 0;
-        for (let bit = 0; bit < 16; ++bit) {
-          const x = Math.round(left + width * (.2 + (bit + .5) * .6 / 16));
-          if (x < 0 || x >= canvas.width) return;
-          if (row[x*4] > 127) id |= 1 << bit;
-        }
-        observations.push({id, time:performance.now(), mediaTime:metadata.mediaTime,
+      // Read three narrow scanlines, not a full frame on each callback.
+      canvas.width = video.videoWidth; canvas.height = 3;
+      for(const [index,fraction] of [.4,.5,.6].entries())context.drawImage(video,0,Math.floor(video.videoHeight*fraction),
+        video.videoWidth,1,0,index,canvas.width,1);
+      const data=context.getImageData(0,0,canvas.width,3).data;
+      const decoded=window.reviewDecodeIdentityRows([0,1,2].map(index=>data.subarray(index*canvas.width*4,(index+1)*canvas.width*4)),canvas.width);
+      identityReadFailures+=Number(decoded.unreadable);rowDisagreements+=Number(decoded.disagreement);
+      if(decoded.id!==null) {
+        observations.push({id:decoded.id, time:performance.now(), mediaTime:metadata.mediaTime,
+          ...(decoded.disagreement?{rowIds:decoded.rows.map(row=>row?.id??null)}: {}),
           presentedFrames:metadata.presentedFrames});
       }
       callback = video.requestVideoFrameCallback(frame);
@@ -83,10 +97,11 @@ async function observe(page, milliseconds, peerUuid = null) {
       for (const item of stats.values()) if (item.type === 'inbound-rtp')
         tracks.push({...item, codec:stats.get(item.codecId)?.mimeType});
     }
-    return {observations, tracks, width:video.videoWidth, height:video.videoHeight, started, ended};
+    return {observations, tracks, width:video.videoWidth, height:video.videoHeight, started, ended,identityReadFailures,rowDisagreements};
   }, {milliseconds, peerUuid});
 }
 function requireMoving(observation, label, expectedCodec = 'video/h264') {
+  if(observation.identityReadFailures)throw Error(`${label}: ${observation.identityReadFailures} frames have no agreeing barcode rows`);
   const unique = new Set(observation.observations.map(frame => frame.id));
   if (unique.size < 20) throw Error(`${label}: only ${unique.size} distinct decoded fixture identities`);
   for (let index = 1; index < observation.observations.length; ++index) {
@@ -113,8 +128,8 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
     const received = peers.filter(pc=>pc.connectionState==='connected')
       .flatMap(pc=>pc.getReceivers()).map(r=>r.track).find(t=>t?.kind==='video'&&t.readyState==='live');
     if (!received) throw Error('No received video track');
-    const track=received.clone(),observations=[],identityFailures=[];
-    let reader,timer,width=0,height=0,started,ended;
+    const track=received.clone(),observations=[],identityFailures=[],identityRowDisagreements=[];
+    let reader,timer,width=0,height=0,started,ended,identityReadFailures=0,rowDisagreements=0;
     try {
       reader=new MediaStreamTrackProcessor({track,maxBufferSize:4}).readable.getReader();
       const canvas=new OffscreenCanvas(1,1),context=canvas.getContext('2d',{willReadFrequently:true});
@@ -125,8 +140,12 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
         try {
           width=frame.displayWidth;height=frame.displayHeight;
           canvas.width=width;
-          context.drawImage(frame,0,Math.floor(fixtureLayout==='syphon'?height*20/360:height/2),width,1,0,0,width,1);
-          const row=context.getImageData(0,0,width,1).data;
+          canvas.height=fixtureLayout==='syphon'?1:3;
+          const fractions=fixtureLayout==='syphon'?[20/360]:[.4,.5,.6];
+          for(const [index,fraction] of fractions.entries())context.drawImage(frame,0,Math.floor(height*fraction),width,1,0,index,width,1);
+          const data=context.getImageData(0,0,width,canvas.height).data;
+          const rows=fractions.map((_,index)=>data.subarray(index*width*4,(index+1)*width*4));
+          const row=rows[fixtureLayout==='syphon'?0:1];
           // The Syphon fixture uses an opaque sixteen-bit strip across its top.
           // Camera/window fixtures use the anchored middle scanline below.
           if(fixtureLayout==='syphon') {
@@ -135,33 +154,22 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
             observations.push({id,time:performance.now(),mediaTime:frame.timestamp/1000000});
             continue;
           }
-          let cyan=-1,magenta=-1;
-          for(let x=0;x<width;x++) {
-            const r=row[x*4],g=row[x*4+1],b=row[x*4+2];
-            if(cyan<0&&r<70&&g>170&&b>170)cyan=x;
-            if(magenta<0&&r>170&&g<70&&b>170)magenta=x;
+          const decoded=window.reviewDecodeIdentityRows(rows,width),id=decoded.id;
+          identityReadFailures+=Number(decoded.unreadable);rowDisagreements+=Number(decoded.disagreement);
+          const observation={id,time:performance.now(),mediaTime:frame.timestamp/1000000,
+            ...(decoded.disagreement?{rowIds:decoded.rows.map(row=>row?.id??null)}: {})};
+          const previous=observations.at(-1),step=previous&&id!==null?(id-previous.id+65536)%65536:0;
+          const failure=decoded.unreadable||(previous&&step>90);
+          if(captureIdentityFailures&&((failure&&identityFailures.length<2)||
+            (decoded.disagreement&&identityRowDisagreements.length<2))) {
+            const picture=document.createElement('canvas');picture.width=width;picture.height=height;
+            picture.getContext('2d').drawImage(frame,0,0,width,height);
+            const evidence={index:observations.length,previous,current:observation,step,rows:decoded.rows,
+              scanlineRgba:Array.from(row),png:picture.toDataURL('image/png')};
+            if(failure&&identityFailures.length<2)identityFailures.push(evidence);
+            if(decoded.disagreement&&identityRowDisagreements.length<2)identityRowDisagreements.push(evidence);
           }
-          if(cyan>=0&&magenta>cyan) {
-            const markerWidth=(magenta-cyan)/.75,left=cyan-markerWidth*.1;let id=0,valid=true;
-            for(let bit=0;bit<16;bit++) {
-              const x=Math.round(left+markerWidth*(.2+(bit+.5)*.6/16));
-              if(x<0||x>=width){valid=false;break;}
-              if(row[x*4]>127)id|=1<<bit;
-            }
-            if(valid) {
-              const observation={id,time:performance.now(),mediaTime:frame.timestamp/1000000};
-              const previous=observations.at(-1),step=previous?(id-previous.id+65536)%65536:0;
-              // Preserve actual received pixels on a rejected identity, before
-              // the frame is closed. Bound capture cost to two images per interval.
-              if(captureIdentityFailures&&previous&&step>90&&identityFailures.length<2) {
-                const picture=document.createElement('canvas');picture.width=width;picture.height=height;
-                picture.getContext('2d').drawImage(frame,0,0,width,height);
-                identityFailures.push({index:observations.length,previous,current:observation,step,
-                  cyan,magenta,scanlineRgba:Array.from(row),png:picture.toDataURL('image/png')});
-              }
-              observations.push(observation);
-            }
-          }
+          if(id!==null)observations.push(observation);
         } finally {frame.close();}
       }
       ended=performance.timeOrigin+performance.now();
@@ -174,7 +182,8 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
       for(const item of stats.values())if(item.type==='inbound-rtp')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType});
     }
     return {observations,tracks,width,height,started,ended,method:'MediaStreamTrackProcessor',
-      ...(captureIdentityFailures?{identityFailures}: {})};
+      identityReadFailures,rowDisagreements,
+      ...(captureIdentityFailures?{identityFailures,identityRowDisagreements}: {})};
   },{milliseconds, peerUuid, fixtureLayout, captureIdentityFailures});
 }
 
@@ -223,4 +232,4 @@ async function observeAudio(page, peerUuid = null) {
     await context.close(); return {spectra,tracks};
   }, peerUuid);
 }
-module.exports = {sleep, waitFor, receiver, receiverAt, installReceiverProbe, observe, observeDecoded, requireMoving, observeAudio};
+module.exports = {sleep, waitFor, receiver, receiverAt, installReceiverProbe, observe, observeDecoded, requireMoving, observeAudio,decodeAnchoredRows};
