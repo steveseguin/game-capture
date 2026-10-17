@@ -31,7 +31,13 @@ def main():
                         help='Previously browser-downloaded ZIP; require preserved quarantine on archive and extracted app')
     parser.add_argument('--replace-before-relaunch', action='store_true',
                         help='Retain the first extracted app, replace it from the same archive, and verify persisted preferences')
+    parser.add_argument('--upgrade-to-delivery', type=Path,
+                        help='Replace the initial delivery with a newer verified delivery before relaunch; uses private preferences')
     args = parser.parse_args()
+    if args.upgrade_to_delivery and args.quarantined_archive:
+        parser.error('Cross-version replacement uses local delivery archives; browser quarantine coverage is a separate workflow')
+    if args.upgrade_to_delivery:
+        args.replace_before_relaunch = True
     delivery, helper = args.delivery.resolve(), args.ui_helper.resolve()
     report = args.reports.resolve() / str(uuid.uuid4())
     report.mkdir(parents=True)
@@ -128,25 +134,20 @@ def main():
     def field(name):
         return next((r for r in json.loads(ui('dump')) if r.get('AXIdentifier', '').endswith('.' + name)), None)
 
-    try:
-        print('Reports:', report, flush=True)
-        assert manifest['format'] == 1 and manifest['appName'] == 'Game Capture.app'
-        assert manifest['architecture'] == 'arm64'
-        result['deliveryManifestSha256'] = packager.digest(delivery / 'delivery-manifest.json')
-        result['archive'] = manifest['archive']
-        for line in (delivery / 'SHA256SUMS').read_text().splitlines():
+    def checked_delivery(directory):
+        candidate = json.loads((directory/'delivery-manifest.json').read_text())
+        assert candidate['format'] == 1 and candidate['appName'] == 'Game Capture.app'
+        assert candidate['architecture'] == 'arm64'
+        for line in (directory/'SHA256SUMS').read_text().splitlines():
             expected, name = line.split('  ', 1)
             assert Path(name).name == name
-            assert packager.digest(delivery / name) == expected, 'Delivery checksum mismatch: ' + name
-        archive = args.quarantined_archive.resolve() if args.quarantined_archive else delivery / manifest['archive']['name']
-        if not args.quarantined_archive:
-            assert archive.parent == delivery, 'Delivery archive must be inside the candidate directory'
-        assert packager.digest(archive) == manifest['archive']['sha256']
-        if args.quarantined_archive:
-            result['scope'] = 'Browser-downloaded quarantined signed ZIP: extraction and Launch Services GUI workflows on this existing Mac; not clean-machine qualification'
-            result['downloadedArchive'] = str(archive)
-            result['archiveQuarantine'] = quarantine(archive)
-            assert result['archiveQuarantine'], 'Downloaded archive has no quarantine metadata'
+            assert packager.digest(directory/name) == expected, 'Delivery checksum mismatch: '+name
+        candidate_archive = directory/candidate['archive']['name']
+        assert candidate_archive.parent == directory, 'Delivery archive must be inside the candidate directory'
+        assert packager.digest(candidate_archive) == candidate['archive']['sha256']
+        return candidate, candidate_archive
+
+    def checked_archive_size(archive):
         with zipfile.ZipFile(archive) as zipped:
             names = set()
             for entry in zipped.infolist():
@@ -156,11 +157,37 @@ def main():
                 names.add(entry.filename)
                 if stat.S_ISLNK(entry.external_attr >> 16):
                     link = zipped.read(entry).decode()
-                    normalized = os.path.normpath(str(name.parent / link))
-                    assert not Path(link).is_absolute() and normalized.startswith(app.name + '/')
-            result['requiredFreeBytes'] = sum(entry.file_size for entry in zipped.infolist()) * (2 if args.replace_before_relaunch else 1) + 128*1024*1024
-            result['initialFreeBytes'] = shutil.disk_usage(report).free
-            assert result['initialFreeBytes'] >= result['requiredFreeBytes'], 'Insufficient space to preserve extraction/replacement evidence'
+                    normalized = os.path.normpath(str(name.parent/link))
+                    assert not Path(link).is_absolute() and normalized.startswith(app.name+'/')
+            return sum(entry.file_size for entry in zipped.infolist())
+
+    try:
+        print('Reports:', report, flush=True)
+        manifest, archive = checked_delivery(delivery)
+        result['deliveryManifestSha256'] = packager.digest(delivery / 'delivery-manifest.json')
+        result['archive'] = manifest['archive']
+        archive = args.quarantined_archive.resolve() if args.quarantined_archive else archive
+        assert packager.digest(archive) == manifest['archive']['sha256']
+        if args.quarantined_archive:
+            result['scope'] = 'Browser-downloaded quarantined signed ZIP: extraction and Launch Services GUI workflows on this existing Mac; not clean-machine qualification'
+            result['downloadedArchive'] = str(archive)
+            result['archiveQuarantine'] = quarantine(archive)
+            assert result['archiveQuarantine'], 'Downloaded archive has no quarantine metadata'
+        initial_size = checked_archive_size(archive)
+        replacement_size = initial_size if args.replace_before_relaunch else 0
+        if args.upgrade_to_delivery:
+            upgrade_delivery = args.upgrade_to_delivery.resolve()
+            upgrade_manifest, upgrade_archive = checked_delivery(upgrade_delivery)
+            assert tuple(map(int, upgrade_manifest['version'].split('.'))) > tuple(map(int, manifest['version'].split('.'))), 'Upgrade must increase the app version'
+            replacement_size = checked_archive_size(upgrade_archive)
+            result['scope'] = 'Cross-version local archive replacement and Launch Services GUI workflows with private preferences on this existing Mac; not browser-download or clean-machine qualification'
+            result['upgrade'] = {'fromVersion': manifest['version'], 'toVersion': upgrade_manifest['version'],
+                                 'initialExecutableSha256': manifest['binaries']['Contents/MacOS/game-capture'],
+                                 'initialDeliveryManifestSha256': result['deliveryManifestSha256'],
+                                 'initialArchive': manifest['archive']}
+        result['requiredFreeBytes'] = initial_size + replacement_size + 128*1024*1024
+        result['initialFreeBytes'] = shutil.disk_usage(report).free
+        assert result['initialFreeBytes'] >= result['requiredFreeBytes'], 'Insufficient space to preserve extraction/replacement evidence'
         target.mkdir()
         subprocess.run(['/usr/bin/ditto', '-x', '-k', '--qtn', str(archive), str(target)], check=True)
         if args.quarantined_archive:
@@ -216,6 +243,7 @@ def main():
             assert not d['app']['live'] and not d['app']['capturing'] and not d['source']['has_frame']
             assert d['video']['frames_sent'] == 0 and d['metrics']['audio_packets_sent'] == 0
             result['launches'].append({'pid': pid, 'launchSeconds': time.monotonic() - started,
+                                      'version': manifest['version'], 'executableSha256': packager.digest(Path(actual_executable)),
                                       'actualExecutable': actual_executable, 'translocated': actual_executable != str(exe),
                                       'extractedExecutableConfirmed': True, 'guiControlResponded': True,
                                       'persistedPreferenceRestored': bool(index), 'captureStayedOff': True})
@@ -227,12 +255,23 @@ def main():
                 previous = report/'Previous Installation'/app.name
                 previous.parent.mkdir()
                 app.rename(previous)
+                if args.upgrade_to_delivery:
+                    manifest, archive = upgrade_manifest, upgrade_archive
+                    result['deliveryManifestSha256'] = packager.digest(upgrade_delivery/'delivery-manifest.json')
+                    result['archive'] = manifest['archive']
                 subprocess.run(['/usr/bin/ditto', '-x', '-k', '--qtn', str(archive), str(target)], check=True)
                 assert packager.inventory(app) == manifest['appFiles'], 'Replacement differs from the delivered bundle'
                 subprocess.run(['/usr/bin/codesign', '--verify', '--deep', '--strict', str(app)], check=True,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 result['replacement'] = {'scope': 'Same-version archive replacement with private preferences retained; not a cross-version upgrade',
                                          'previousAppPreserved': str(previous), 'replacementMatchesDelivery': True}
+                if args.upgrade_to_delivery:
+                    result['replacement']['scope'] = 'Cross-version archive replacement with private preferences retained'
+                    result['executableSha256'] = packager.digest(exe)
+                    result['verifiedBundleEntries'] = len(manifest['appFiles'])
+                    result['verifiedMachOBinaries'] = len(manifest['binaries'])
+                    for name, expected in manifest['binaries'].items():
+                        assert packager.digest(app/name) == expected
                 if args.quarantined_archive:
                     result['replacement']['quarantineBeforeRelaunch'] = quarantine(app)
                     assert result['replacement']['quarantineBeforeRelaunch'], 'Replacement lost download quarantine'
