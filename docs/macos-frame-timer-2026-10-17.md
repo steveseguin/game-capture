@@ -1,5 +1,7 @@
 # Mac frame timing candidate — October 17, 2026
 
+[Follow-up: sustained VT/x264 delivery and recording-clock investigation](macos-timer-endurance-2026-10-17.md).
+
 **Experimental, unpublished; production qualification remains open.** Runtime [`77e887a`](https://github.com/steveseguin/game-capture/commit/77e887ac50c1623836578676d87753c719f4654a); signed executable SHA-256 `dc4311c7c648fdf8d5cf3a196e8bfd1ee9160e96c34420132ff83a3f39b36dc4`. Public Mac downloads remain [Beta 2](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2). The earlier Beta 3 draft and stable Windows release were preserved.
 
 Fresh macOS 14.8.9 VM media workflows exposed a timing problem in the [previous candidate](macos-choice-accessibility-2026-10-17.md): four x264 attempts failed the unchanged picture-identity threshold, either initially or at late reception. In one instrumented observation, the source drew 369 frames and capture advanced by 187 frames, while publication advanced by only 26. Native timer probes showed ordinary waits with 137–154 ms p95 lateness on that VM. Late encode slots can be discarded by the existing scheduler. This is evidence supporting a timer-coalescing explanation, not proof that every dropped frame has that cause.
