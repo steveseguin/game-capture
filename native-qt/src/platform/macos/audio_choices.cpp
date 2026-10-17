@@ -25,7 +25,7 @@ class AudioChoiceView final : public QListView {
 public:
     explicit AudioChoiceView(QComboBox *combo) : QListView(combo), combo_(combo) {}
     QList<AudioChoice *> choices() {
-        // The audio menu keeps a fixed model. Persistent indices also prevent
+        // These menus keep a fixed model. Persistent indices also prevent
         // an old accessibility reference from selecting a different row.
         if (model()) {
             for (int row = 0; row < model()->rowCount(rootIndex()); ++row) {
@@ -124,7 +124,7 @@ public:
     }
 };
 
-void configureMacAudioChoices(QComboBox *combo) {
+void configureMacComboChoices(QComboBox *combo) {
     static std::once_flag installed;
     std::call_once(installed, [] {
         QAccessible::installFactory([](const QString &, QObject *object) -> QAccessibleInterface * {
