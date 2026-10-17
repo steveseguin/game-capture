@@ -61,12 +61,11 @@ def main():
         timer = report / 'frame-wait-probe'
         with (export / 'frame-wait-probe-build.log').open('w') as log:
             subprocess.run(['xcrun', 'clang++', '-std=c++17', '-fobjc-arc', str(timer_source),
-                '-I', str(native / 'include'), '-framework', 'Foundation', '-o', str(timer)],
+                '-framework', 'Foundation', '-o', str(timer)],
                 stdout=log, stderr=subprocess.STDOUT, check=True, timeout=90)
         with (export / 'frame-wait-probe.json').open('w') as output, (export / 'frame-wait-probe.log').open('w') as log:
             subprocess.run([str(timer)], stdout=output, stderr=log, check=True, timeout=90)
         shutil.copy2(timer_source, export / timer_source.name)
-        shutil.copy2(native / 'include/versus/video/frame_waiter.h', export / 'frame_waiter.h')
         result['stage'] = 'archive-and-startup'
         # The existing wrapper verifies archive paths, exact binaries, signatures,
         # notarization and dependencies, then actually launches/quits the app.

@@ -1,7 +1,7 @@
-// Compare the actual shared FrameWaiter under scoped Mac thread/activity modes.
+// Compare the original Mac sleep_until behavior with scoped timer alternatives.
 // This is a timer diagnostic gate, not packaged application testing.
 #import <Foundation/Foundation.h>
-#include "versus/video/frame_waiter.h"
+#include <chrono>
 #include <pthread/qos.h>
 #include <mach/mach_time.h>
 #include <dispatch/dispatch.h>
@@ -27,7 +27,6 @@ int main() { @autoreleasepool {
                 using Clock = std::chrono::steady_clock;
                 const auto interval = std::chrono::nanoseconds(1000000000LL / 30);
                 std::vector<double> late;
-                versus::video::detail::FrameWaiter waiter;
                 dispatch_source_t timer = nullptr;
                 dispatch_semaphore_t signal = nullptr;
                 dispatch_queue_t queue = nullptr;
@@ -54,7 +53,7 @@ int main() { @autoreleasepool {
                             dispatch_source_set_timer(timer, dispatch_time(DISPATCH_TIME_NOW, remaining), DISPATCH_TIME_FOREVER, 0);
                             dispatch_semaphore_wait(signal, DISPATCH_TIME_FOREVER);
                         }
-                    } else waiter.waitUntil(due);
+                    } else std::this_thread::sleep_until(due);
                     const auto now = Clock::now();
                     late.push_back(std::chrono::duration<double, std::milli>(now - due).count());
                     due = now + interval;
@@ -75,7 +74,7 @@ int main() { @autoreleasepool {
         }
     }
     NSData *data = [NSJSONSerialization dataWithJSONObject:@{
-        @"scope": @"Bounded FrameWaiter gate, 36 deadlines at 30 Hz per condition, forward/reverse order; no application pass implied",
+        @"scope": @"Bounded baseline sleep_until/timer gate, 36 deadlines at 30 Hz per condition, forward/reverse order; no application pass implied",
         @"cases": cases} options:NSJSONWritingPrettyPrinted error:nil];
     if (!data) return 1;
     fwrite(data.bytes, 1, data.length, stdout); fputc('\n', stdout); return 0;
