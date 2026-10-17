@@ -286,6 +286,7 @@ function saveReport() {
       entry.distinctFrames = requireMoving(entry.moving, encoder);
       if (performanceSeconds) {
         entry.performance = {scope:'Local controlled window and browser on the same Mac; not calibrated latency/A-V or release qualification',chunks:[],samples:[],meetsTarget:true};
+        entry.performance.presentationScope='Callback timing only during sustained observation; decoded-track pixels verify content. Initial and functional-control presentation checks still inspect pixels.';
         const samplePerformanceAudio = audioMode !== 'none' || usesMic;
         if (samplePerformanceAudio) entry.performance.audioCoverage = 'Three-second decoded stereo/isolation observations in each ten-second interval; not continuous audio or A/V drift measurement';
         if (continuousAudioEnabled) {
@@ -337,7 +338,7 @@ function saveReport() {
           })().catch(error=>{samplingError=error;});
           let observation,presentation,audioObservation;
           try { [observation,presentation,audioObservation]=await Promise.all([
-            observeDecoded(page,seconds*1000,null,'camera',true),observe(page,seconds*1000),
+            observeDecoded(page,seconds*1000,null,'camera',true),observe(page,seconds*1000,null,false),
             samplePerformanceAudio ? observeAudio(page) : Promise.resolve(null)]); }
           finally { observing=false;finishSampling();await sampling; }
           if (samplingError) throw samplingError;
@@ -369,7 +370,7 @@ function saveReport() {
           const chunk={elapsed,seconds:wallSeconds,sourceDistinct,receivedDistinct,sourceFps:sourceDistinct/wallSeconds,
             expectedDistinct,receivedFps:receivedDistinct/wallSeconds,deliveryRatio:receivedDistinct/expectedDistinct,
             p95MediaGapMs:gaps[Math.floor(gaps.length*.95)],maxMediaGapMs:Math.max(...gaps),before,after,
-            observation,presentation,presentedDistinct:new Set(presentation.observations.map(f=>f.id)).size,
+            observation,presentation,presentationCallbacks:presentation.observations.length,
             sourceFrames,beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
           let audioError;
           if (samplePerformanceAudio) {
