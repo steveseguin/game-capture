@@ -29,13 +29,19 @@ for file in raw.glob('media/*/results.json'):
         (out/(file.parent.name+'-native.log')).write_text('\n'.join(lines[:200])+'\n')
 for file in raw.glob('diagnostics/*/results.json'):
     r=read(file);export['diagnostics'].append({'rawResultsSha256':sha(file),'executableSha256':r['sha256'],
-        'results':[{k:c[k] for k in ['name','passed','reads','incomplete'] if k in c} for c in r['results']]})
+        'harnessSha256':r.get('harnessSha256'),'observerShareMode':r.get('observerShareMode'),
+        'results':[{**{k:c[k] for k in ['name','passed','reads','incomplete','locked','exitCode'] if k in c},
+                    'error':clean(c.get('error',''))} for c in r['results']]})
+log=raw/'private-diagnostics.log'
+if log.exists():
+    lines=[clean(line) for line in log.read_text(errors='replace').splitlines() if '[Diagnostics]' in line]
+    (out/'diagnostics-native.log').write_text('\n'.join(lines[:100])+'\n')
 for name in ['result.json','backend-selection.json','dependency-revisions.json','capability-gate.log']:
     file=root/'qa/reports/windows-build-gate'/name
     if file.exists():shutil.copy2(file,out/('build-'+name))
 if (raw/'release-artifact-manifest.json').exists():shutil.copy2(raw/'release-artifact-manifest.json',out/'release-artifact-manifest.json')
 if (raw/'runtime-dependencies.json').exists():shutil.copy2(raw/'runtime-dependencies.json',out/'runtime-dependencies.json')
-for file in [Path(__file__),root/'qa/windows-packaged-media.ps1',root/'e2e/windows-hosted-media.js',root/'e2e/macos-media-receiver.js']:
+for file in [Path(__file__),root/'qa/windows-packaged-media.ps1',root/'qa/build-release.ps1',root/'e2e/diagnostics-snapshot-packaged-e2e.py',root/'e2e/windows-hosted-media.js',root/'e2e/macos-media-receiver.js']:
     shutil.copy2(file,out/file.name)
 (out/'results.json').write_text(json.dumps(export,indent=2)+'\n')
 print(json.dumps({'export':str(out),'mediaReports':len(export['media']),'diagnosticsReports':len(export['diagnostics'])}))
