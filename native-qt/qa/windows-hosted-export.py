@@ -25,7 +25,7 @@ for file in raw.glob('media/*/results.json'):
     export['media'].append(e)
     log=file.parent/'private-publisher.log'
     if log.exists():
-        lines=[clean(line) for line in log.read_text(errors='replace').splitlines() if re.search(r'\[(VideoEncoder|WindowCapture|Capture|GraphicsCapture)\]',line)]
+        lines=[clean(line) for line in log.read_text(errors='replace').splitlines() if re.search(r'\[(VideoEncoder|MFEncoder|FFmpegEncoder|WindowCapture|Capture(?:::[A-Za-z0-9_]+)?|GraphicsCapture)\]',line)]
         (out/(file.parent.name+'-native.log')).write_text('\n'.join(lines[:200])+'\n')
 for file in raw.glob('diagnostics/*/results.json'):
     r=read(file);export['diagnostics'].append({'rawResultsSha256':sha(file),'executableSha256':r['sha256'],
