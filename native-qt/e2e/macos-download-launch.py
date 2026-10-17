@@ -35,6 +35,8 @@ def main():
                         help='Replace the initial delivery with a newer verified delivery before relaunch; uses private preferences')
     parser.add_argument('--replace-with-delivery', type=Path,
                         help='Replace with a different beta artifact of the same app version; uses private preferences')
+    parser.add_argument('--settings-profile', action='store_true',
+                        help='Change and verify a private stream/room/label, viewer limit and audio preferences through the GUI')
     args = parser.parse_args()
     if args.upgrade_to_delivery and args.replace_with_delivery:
         parser.error('Choose cross-version upgrade or same-version beta replacement')
@@ -132,8 +134,9 @@ def main():
         with urllib.request.urlopen(request, timeout=5) as response:
             return json.load(response)
 
-    def ui(action, name=None):
-        return subprocess.check_output([str(helper), str(pid), action, *([name] if name else [])],
+    def ui(action, name=None, value=None):
+        return subprocess.check_output([str(helper), str(pid), action, *([name] if name else []),
+                                       *([str(value)] if value is not None else [])],
                                        text=True, stderr=subprocess.PIPE, timeout=5)
 
     def field(name):
@@ -246,8 +249,24 @@ def main():
             wait(lambda: field('advancedToggle'), 'Extracted GUI not accessible')
             expected = index  # First launch starts collapsed; second restores the toggle.
             assert int(field('advancedToggle').get('AXValue', 0)) == expected
+            profile = {'streamIdInput': 'localmigration' + report.name.replace('-', '')[:12],
+                       'roomInput': 'localmigrationroom', 'streamLabelInput': 'Private migration fixture',
+                       'viewerLimitSpin': '8', 'primaryAudioGainSpin': '90', 'audioLimiterCheck': 0}
+            if args.settings_profile and index:
+                restored = {name: field(name).get('AXValue') for name in profile}
+                assert restored == profile, 'Private GUI preferences were not restored after replacement'
+                result['restoredSettingsProfile'] = restored
             ui('press', 'advancedToggle')
             wait(lambda: int(field('advancedToggle').get('AXValue', 0)) != expected, 'Extracted GUI control did not respond')
+            if args.settings_profile and not index:
+                for name in ['streamIdInput', 'roomInput', 'streamLabelInput']:
+                    ui('set', name, profile[name])
+                ui('decrement', 'viewerLimitSpin', 2)
+                ui('decrement', 'primaryAudioGainSpin', 10)
+                ui('press', 'audioLimiterCheck')
+                configured = {name: field(name).get('AXValue') for name in profile}
+                assert configured == profile, 'Private GUI settings did not accept their requested values'
+                result['configuredSettingsProfile'] = configured
             d = api('/diagnostics')
             assert d['platform_capabilities']['platform'] == 'macOS' and d['platform_capabilities']['can_publish']
             assert not d['app']['live'] and not d['app']['capturing'] and not d['source']['has_frame']
