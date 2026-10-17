@@ -93,6 +93,8 @@ A separate native-backend diagnostic delivered 5,671 callbacks of 512 stereo fra
 
 Both signed VT and x264 workflows passed a thirty-second four-viewer load followed by the complete room control/rejoin workflow. Each run had three 720p30 HQ scene receivers and one independent 360p30 x264 director preview. Each encoder passed 1,264 consecutive 100 ms PCM windows across the four receivers, with stereo/channel/isolation checks and advancing audio packets. Video ranged from 29.897–29.997 fps for VT and 29.890–29.996 fps for x264. Compressed raw observations and summary hashes were independently checked. This short load is not sustained room endurance, calibrated A/V timing or physical playback.
 
+The subsequent **fifteen-minute four-viewer room workflows passed with both encoders**, including all ninety intervals and the complete controls/rejoin/shutdown sequence. VT passed 37,948 continuous audio windows across its receivers at 29.873–30.099 fps; x264 passed 38,088 windows at 29.881–30.099 fps. Compressed raw observations and hashes verified. These are controlled camera/virtual-input room workflows on one Mac, not physical-device, WAN or calibrated A/V qualification.
+
 ### 1080p observer qualification
 
 An installed-Chrome 1080p60 moving-detail attempt rejected disagreeing barcode rows during its initial picture check. The presentation observer previously sampled the live video element three times. It now freezes one `VideoFrame`, uses that image for all rows and retained failure pixels, and reports callback errors explicitly. That removed initial row disagreements in subsequent attempts; the original attempt did not save rejected pixels and is retained as failed.
@@ -137,6 +139,7 @@ Raw recordings, logs, private local-control files and interval payloads remain i
 - Offline A/V calibration: `macos-av-analyzer-calibration/3ac342ee-5f76-46b8-ad78-21c27c3842e4`.
 - Fractional-clock arithmetic/compiler gate: `macos-sample-clock-gate/80ca03c1-e496-46b6-972e-70b066ef2689`; integrated application compile gate: `macos-integrated-clock-compile-gate/269fbead-c043-42bf-9725-7d6d422068d3`.
 - Failed 1080p60 workload with corrected observer: `macos-signed-1080p-chrome-detail/b0be8865-743a-4ca4-b71e-1812a1ae5d94`. Earlier diagnostic attempts: `d56a3830-a395-4526-88d5-5d2c8d2c43fa`, `f49a8b2d-c169-4531-81c3-203fbaf67e4c`, and intentionally stopped `3bd0d2ee-8519-443d-9f8c-77d8e39b91ea` in the same category.
+- Fifteen-minute four-viewer room endurance: `macos-signed-room-four-viewer-endurance/b7091e4d-0a22-4bc9-a1e4-ecb13d5bfe1a`.
 - Four-viewer room qualification: `macos-signed-room-four-viewer-qualification/5df2b76e-12c9-412a-bf0d-f13a530142d1`.
 - Native callback diagnostic: `macos-audio-clock-diagnostic/56ecf122-7396-4bce-b393-643b060b69ab`.
 - Failed x264 long A/V comparison: `macos-signed-av-drift/9ffbef4c-c15b-4f4e-b6c8-f9d266b77fc9`.
@@ -169,7 +172,7 @@ node native-qt/e2e/macos-av-sync.js \
   --source-ui-helper=native-qt/build-macos-arm64/bin/macos-ui-control
 ```
 
-The expanded room runner accepts `--extra-scenes=2 --performance-seconds=900 --compact-performance-report=true --continuous-audio=true`, in addition to its explicit app, camera fixture, audio fixture and report arguments. That observes four actual browser receivers: one 360p preview and three 720p scene views at 30 fps. With `--continuous-audio=true`, it retains consecutive received PCM windows and advancing packet/concealment counters for every receiver, plus the existing periodic spectra. This does not measure calibrated A/V drift. Both encoders passed the initial thirty-second four-viewer workflow and subsequent controls; the fifteen-minute expansion remains pending.
+The expanded room runner accepts `--extra-scenes=2 --performance-seconds=900 --compact-performance-report=true --continuous-audio=true`, in addition to its explicit app, camera fixture, audio fixture and report arguments. That observes four actual browser receivers: one 360p preview and three 720p scene views at 30 fps. With `--continuous-audio=true`, it retains consecutive received PCM windows and advancing packet/concealment counters for every receiver, plus the existing periodic spectra. This does not measure calibrated A/V drift. Both encoders passed the initial thirty-second four-viewer workflow and subsequent controls; the subsequent fifteen-minute workflows also passed, including their controls.
 
 For Windows integration regression, build and freeze a **new package from the integrated candidate**, record its source revision and artifact-manifest digest, and pass that package to the existing release-readiness workflow. Reusing the frozen Windows 0.2.64 production package would not qualify these shared changes. The GitHub workflows require a prepared Windows self-hosted runner; none was registered when checked.
 
@@ -178,7 +181,7 @@ For Windows integration regression, build and freeze a **new package from the in
 - Investigate any recurrence of the early audio-concealment transient with the new retained PCM/counters. Both thirty-minute VT and x264 workflows now passed. The original VT identity rejection has insufficient saved evidence to establish its cause retrospectively.
 - Fresh-machine download/launch and permissions, cross-version upgrade, minimum macOS 14.2 and another Apple Silicon Mac. Quarantined Chrome download/launch and same-version replacement passed on this existing machine.
 - Physical device hotplug/busy recovery, permission denial/revocation, sleep/wake and display/audio-device changes.
-- Resolve the failed x264 long-run A/V comparison and complete expanded room/workload coverage. VT passed its long-run recorded-media skew/drift limits. The 1080p60 moving-detail workload failed sustained delivery with both encoders on this cohosted M1 setup; it needs clean-session or independent-receiver confirmation. Broader sustained gameplay and receiver/network coverage remain open.
+- Resolve the failed x264 long-run A/V comparison and extend workload coverage beyond the completed fifteen-minute four-viewer room workflows. VT passed its long-run recorded-media skew/drift limits. The 1080p60 moving-detail workload failed sustained delivery with both encoders on this cohosted M1 setup; it needs clean-session or independent-receiver confirmation. Broader sustained gameplay and receiver/network coverage remain open.
 - Remote services and trusted RTMPS, plus remaining advanced-feature qualification. Local protocol success is not a production-service interoperability claim.
 - Packaged Windows regression of the port's shared-code changes before those changes enter a future Windows release. The independently qualified Windows v0.2.64 production release is unchanged by this work.
 
