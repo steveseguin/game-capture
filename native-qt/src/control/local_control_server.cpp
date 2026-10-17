@@ -83,8 +83,15 @@ bool ensureParentDir(const QString &path) {
 
 bool saveDocument(const QString &path, const QByteArray &bytes) {
     QSaveFile file(path);
-    return file.open(QIODevice::WriteOnly) &&
-           file.write(bytes) == bytes.size() && file.commit();
+    if (!(file.open(QIODevice::WriteOnly) &&
+          file.write(bytes) == bytes.size() && file.commit())) {
+        return false;
+    }
+    // These files include the local-control bearer token (discovery file) and
+    // captured log/diagnostics tails (reports). Keep them owner-only so other
+    // local user accounts cannot read the token and drive the loopback API.
+    QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
+    return true;
 }
 
 QJsonDocument jsonDocumentFromBytes(const QByteArray &bytes) {
