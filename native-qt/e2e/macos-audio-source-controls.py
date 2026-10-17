@@ -83,10 +83,11 @@ def field(name):
 
 
 def menu_rows(name):
+    # This workflow opens one popup at a time. All Mac app combos now use
+    # owned AudioChoiceView rows; older packages used them only for audio.
     return [r for r in rows() if r.get('AXRole') == 'AXStaticText'
             and (('.' + name + '.') in r.get('AXIdentifier', '')
-                 or (name == 'audioSourceSelect'
-                     and '.versus::platform::AudioChoiceView.' in r.get('AXIdentifier', '')))]
+                 or '.versus::platform::AudioChoiceView.' in r.get('AXIdentifier', ''))]
 
 
 def close_menu(name):
