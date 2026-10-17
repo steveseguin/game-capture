@@ -7,6 +7,7 @@ import io
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import stat
 import subprocess
@@ -21,6 +22,59 @@ def git(root, *args):
     return subprocess.check_output(['git', '-C', str(root), *args])
 
 
+def rebuild_provenance(directory, root, app):
+    """Validate an isolated application rebuild against its signed deployment."""
+    directory = directory.resolve(strict=True)
+    record = json.loads((directory/'results.json').read_text())
+    signed = json.loads((directory/'distribution-gates.json').read_text())
+    revision = git(root, 'rev-parse', 'HEAD').decode().strip()
+    info = plistlib.loads((app/'Contents/Info.plist').read_bytes())
+    if (record.get('passed') is not True or signed.get('passed') is not True
+            or record.get('candidate') != revision or signed.get('candidate') != revision
+            or info.get('GameCaptureQualificationRevision') != revision
+            or info.get('CFBundleShortVersionString') != record.get('version')
+            or signed.get('executableSha256') != sha((app/'Contents/MacOS/game-capture').read_bytes())):
+        raise ValueError('Rebuild record does not match the signed application/repository')
+    if git(root, 'status', '--porcelain', '--untracked-files=all', '--', 'native-qt').strip():
+        raise ValueError('Rebuilt application requires an unchanged native-qt source snapshot')
+    archive = directory/'candidate-source.tar.gz'
+    if sha(archive.read_bytes()) != record.get('sourceArchiveSha256'):
+        raise ValueError('Rebuild source snapshot hash mismatch')
+    files = {}
+    with tarfile.open(archive) as tar:
+        for entry in tar:
+            path = Path(entry.name)
+            if path.is_absolute() or '..' in path.parts or not path.parts or path.parts[0] != 'native-qt':
+                raise ValueError('Unsafe rebuild snapshot member')
+            if entry.isdir():
+                continue
+            if not entry.isfile() or sha(tar.extractfile(entry).read()) != sha((root/path).read_bytes()):
+                raise ValueError('Rebuild snapshot differs from repository: '+entry.name)
+            files[entry.name] = True
+    tracked = set(filter(None, git(root, 'ls-files', '-z', '--', 'native-qt').decode().split('\0')))
+    if set(files) != tracked:
+        raise ValueError('Rebuild snapshot omits tracked application sources')
+    commands = record.get('commands', [])
+    units = record.get('units', [])
+    if (not units or not commands or any(c.get('exitCode') != 0 for c in commands)
+            or sum(c.get('name', '').startswith('compile-') for c in commands) != len(units)
+            or not any(c.get('name') == 'link' for c in commands)):
+        raise ValueError('Incomplete successful rebuild commands')
+    generated = {}
+    for unit in units:
+        relative = Path(unit['source'])
+        source = (directory/relative).resolve(strict=True)
+        if not source.is_relative_to(directory) or sha(source.read_bytes()) != unit['sha256']:
+            raise ValueError('Rebuilt compilation unit changed: '+str(relative))
+    for source in sorted((directory/'autogen').rglob('*')):
+        if source.is_file():
+            generated[source.relative_to(directory).as_posix()] = source
+    generated['qrc_resources.cpp'] = directory/'qrc_resources.cpp'
+    for name in ['results.json', 'distribution-gates.json', 'game-capture-rebuild-candidate.py']:
+        generated[name] = directory/name
+    return generated
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--repository', type=Path, required=True)
@@ -29,10 +83,15 @@ def main():
                         help='Git-backed native dependency build tree, when --build used exported sources')
     parser.add_argument('--dependencies', type=Path, required=True)
     parser.add_argument('--app', type=Path, required=True)
+    parser.add_argument('--rebuild-report', type=Path,
+                        help='Isolated rebuild report with source snapshot, commands, generated Qt sources and signed deployment binding')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     root, build, deps, app = [p.resolve(strict=True) for p in [args.repository, args.build, args.dependencies, args.app]]
     native_build = args.native_build.resolve(strict=True) if args.native_build else build
+    if any(line.startswith('S ') for line in git(root, 'ls-files', '-t').decode().splitlines()):
+        parser.error('Use a complete checkout; sparse sources cannot produce a complete source archive')
+    rebuild_files = rebuild_provenance(args.rebuild_report, root, app) if args.rebuild_report else {}
     output = args.output.resolve()
     if output.exists() or output.with_suffix(output.suffix+'.json').exists():
         parser.error('Use a new output path; existing source artifacts are immutable')
@@ -60,12 +119,15 @@ def main():
             payload = source.read_bytes() if source is not None else data
         inputs[name] = dict(source=source, data=data, link=link, executable=executable, sha256=sha(payload), bytes=len(payload))
 
+    tracked = set(git(root, 'ls-files', '--cached', '-z').decode().split('\0'))
     for entry in sorted(set(git(root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z').decode().split('\0'))):
         if not entry or '__pycache__' in Path(entry).parts or entry.endswith('.pyc'):
             continue
         source = root/entry
         if source.is_file() or source.is_symlink():
             add('repository/'+entry, source=source)
+        elif entry in tracked:
+            raise ValueError('Missing tracked repository source: '+entry)
 
     def native(name, directory, prefix, expected=None):
         revision = git(directory, 'rev-parse', 'HEAD').decode().strip()
@@ -135,7 +197,11 @@ def main():
             add('notices/'+source.relative_to(notices).as_posix(), source=source)
     # Preserve generated build configuration as evidence, not reusable absolute paths.
     for name in ['CMakeCache.txt','compile_commands.json']:
-        add('provenance/application-'+name, source=build/name)
+        prefix = 'historical-dependency-build-' if args.rebuild_report else 'application-'
+        add('provenance/'+prefix+name, source=build/name)
+    for name, source in rebuild_files.items():
+        add('provenance/application-rebuild/'+name, source=source)
+    add('provenance/package-macos-source.py', source=Path(__file__).resolve())
     offline = ['# Local source overrides; no FetchContent downloads.',
                'set(FETCHCONTENT_FULLY_DISCONNECTED ON CACHE BOOL "" FORCE)']
     for name in ['mbedtls','libdatachannel','opus','spdlog','cxxopts']:
@@ -167,6 +233,17 @@ minimum-OS checks and release/legal review remain necessary before calling this
 a qualified distribution. This archive is not a legal compliance certification
 or a claim of bit-for-bit reproducibility. Do not substitute it for a source
 archive bound to a different executable.
+'''
+    if args.rebuild_report:
+        readme += '''
+This application was rebuilt from the recorded Git snapshot using existing
+dependency libraries. Every application unit was rebuilt, including regenerated
+Qt MOC/resource sources. provenance/application-rebuild/results.json contains
+the actual commands and input hashes; generated sources and the rebuild script
+are included alongside it. distribution-gates.json binds the signed executable.
+The historical-dependency-build files describe the earlier CMake configuration,
+not the commands used for this application rebuild. This was not a fresh build
+of every dependency. Absolute paths in the replay script require adaptation.
 '''
     add('README.txt', data=readme.encode())
     # Bind every deployed Mach-O, including QtWidgets: its accessibility code
