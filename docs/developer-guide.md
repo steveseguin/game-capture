@@ -1,6 +1,6 @@
 # Building and validating Game Capture
 
-These commands cover Windows development and packaged application workflows. For the Mac beta, use the matching source archive and build instructions on the [Mac release page](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1). Read [CONTRIBUTING.md](../CONTRIBUTING.md) before contributing.
+These commands cover Windows development and packaged application workflows. For the Mac beta, use the matching source archive and build instructions on the [Mac 0.2.64 Beta 2 release page](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2), plus the [Mac guide](macos-guide.html). Read [CONTRIBUTING.md](../CONTRIBUTING.md) before contributing.
 
 ## Build (Windows)
 
@@ -17,6 +17,14 @@ cd build
 cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
 ninja
 ```
+
+## Hosted Windows build gate
+
+The Mac integration branch includes an isolated [Windows Build Gate](https://github.com/steveseguin/game-capture/blob/macos-main-integration/.github/workflows/windows-build-gate.yml). Relevant source changes on that branch trigger a GitHub-hosted Windows 2022 job with pinned Qt 6.9.3 and two build workers. It compiles the application, verifies the selected Windows backend files and NVENC/Graphics Capture/Spout definitions, and runs the compiled platform-capability gate. Logs, dependency revisions, compilation commands and the executable hash are retained for seven days; no release binary is published.
+
+[Run 39061206387](https://github.com/steveseguin/game-capture/actions/runs/39061206387) passed on source `be0dfea6b60f2e00c3bd1a431432440375d7304c`, using MSVC 14.44.35207, Windows SDK 10.0.26100.0 and Qt 6.9.3. All 28 application compilation units linked, the six expected Windows backend files were selected, and no Mac implementation entered the compilation graph. One platform-capability gate executed and passed; missing registration fails the job.
+
+These are build and unit gates. Packaged Windows application testing—including real capture, hardware encoders, delivered media, controls and recovery—remains required before merging the wider Mac port or changing the stable Windows release. The prepared self-hosted workflow below remains the route for those application workflows.
 
 ## Testing
 
