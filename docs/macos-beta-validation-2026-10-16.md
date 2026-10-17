@@ -1,8 +1,10 @@
 # Mac beta qualification — October 16, 2026
 
-The current [macOS 0.2.64 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1) remains **experimental**. Its October 17 qualification is recorded separately below from the earlier 0.2.62 baseline. This work does not establish full production readiness or Windows feature parity.
+The earlier [macOS 0.2.64 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1) remains **experimental**. Its October 17 qualification is recorded separately below from the earlier 0.2.62 baseline. This work does not establish full production readiness or Windows feature parity.
 
-## October 17 protocol review and fuzz follow-up
+**Current status:** see the separate [0.2.64 Beta 2 qualification record](macos-beta2-validation-2026-10-17.md), including the guest-cleanup correction, new candidate workflows and remaining production requirements. The records below retain earlier findings and artifact boundaries.
+
+## Earlier October 17 protocol review and fuzz follow-up
 
 The [VDO.Ninja compatibility review](vdoninja-protocol-compatibility.md) traces BYE through the existing peer data-channel path and records three corrections: removal of unsupported native `leave`/`unpublish` sends and an extra harness `lock` field. No new VDO.Ninja command, BYE acknowledgement or WebSocket relay was added.
 
@@ -229,7 +231,9 @@ The expanded room runner accepts `--extra-scenes=2 --performance-seconds=900 --c
 
 For Windows integration regression, build and freeze a **new package from the integrated candidate**, record its source revision and artifact-manifest digest, and pass that package to the existing release-readiness workflow. Reusing the frozen Windows 0.2.64 production package would not qualify these shared changes. The GitHub workflows require a prepared Windows self-hosted runner; none was registered when checked.
 
-## Remaining production work
+## Historical production checklist
+
+The current checklist is in the [Beta 2 record](macos-beta2-validation-2026-10-17.md). The following items describe this earlier checkpoint.
 
 - Investigate any recurrence of the early audio-concealment transient with the new retained PCM/counters. Both thirty-minute VT and x264 workflows now passed. The original VT identity rejection has insufficient saved evidence to establish its cause retrospectively.
 - Fresh-machine download/launch and permissions, minimum macOS 14.2 and another Apple Silicon Mac. Quarantined Chrome download/launch and same-version replacement passed on this existing machine; local 0.2.62-to-0.2.64 replacement now also passed for one private UI preference. Broader settings migration remains open.

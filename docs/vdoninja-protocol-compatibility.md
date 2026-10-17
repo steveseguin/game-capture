@@ -4,6 +4,10 @@ Game Capture must use existing VDO.Ninja messages, fields, transport routes and 
 
 Reference checkout: `/Users/steveseguin/Code/obsninja`, clean revision `8ca1506a29fcfb5b0dbd009731e63fe77abb6302`. Reviewed the root `webrtc.js`, `lib.js`, `main.js` and `hss/gemini.js`; no files in that checkout were changed. These source references do not assert that every remotely cached hosted page has identical bytes.
 
+## Beta 2 follow-up
+
+The [Beta 2 qualification record](macos-beta2-validation-2026-10-17.md) covers runtime revision `1eefab2`. Terminal room-guest transports now release their logical owner when no replacement is pending; transient disconnections retain recovery handling. Eight deliberately suppressed BYEs completed in 76–329 ms with the native `closed-room-guest` reason. The existing refresh path and signaling recovery also passed for both encoders. The earlier missing-BYE delivery cause remains unproven, but the stale-session symptom has direct coverage. The removals below are included in this new experimental release. Earlier validation sections are historical checkpoints, not claims about the current release.
+
 ## What bye actually does
 
 1. `lib.js:22248` defines `session.hangup()`. It broadcasts `{videoMuted:true, bye:true}` to peers receiving its publication through `session.sendMessage()`, closes its signaling socket, then closes its receiving and publishing peer connections (`lib.js:22336` onward).
