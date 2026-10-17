@@ -57,7 +57,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Windows compile/link gate failed' }
     & $python (Join-Path $PSScriptRoot 'windows-build-selection.py') --build $build --output (Join-Path $report 'backend-selection.json')
     if ($LASTEXITCODE -ne 0) { throw 'Windows backend selection gate failed' }
-    & ctest --test-dir $build -R '^PlatformCapabilitiesGate$' --output-on-failure 2>&1 | Tee-Object (Join-Path $report 'capability-gate.log')
+    & ctest --test-dir $build -R '^PlatformCapabilitiesGate$' --no-tests=error --output-on-failure 2>&1 | Tee-Object (Join-Path $report 'capability-gate.log')
     if ($LASTEXITCODE -ne 0) { throw 'Compiled Windows capability gate failed' }
     $gate.passed = $true
 } catch {
