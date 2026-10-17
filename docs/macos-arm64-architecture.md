@@ -1,5 +1,7 @@
 # macOS Apple Silicon architecture and implementation plan
 
+Protocol boundary: follow the [VDO.Ninja source compatibility review](vdoninja-protocol-compatibility.md) for existing messages, authorization and BYE transport. Native lifecycle fixes must not invent VDO.Ninja commands or acknowledgements.
+
 Game Capture should keep its Qt interface, publishing protocols, and media routing in one codebase, with separate Windows and macOS implementations for capture, encoding, permissions, and operating-system services. The Mac implementation uses native VideoToolbox H.264/HEVC, directly linked x264 H.264, and a separate software VP9/AV1 worker using the bundled FFmpeg/libvpx/libaom helper. This limits Windows changes while giving Mac encoders direct control over keyframes and bitrate.
 
 Status: implementation in progress on `macos-arm64`. The parity ledger below records current capabilities and remaining work; evidence sections bind each workflow to its actual development artifact. The initial architecture review used source revision `ad5217b8d2600c08b5a3307727ab5a7fd005a57b` on 2026-10-14. Historical artifact results do not certify later builds or release readiness.

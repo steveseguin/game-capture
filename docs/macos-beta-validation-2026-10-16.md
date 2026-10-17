@@ -2,6 +2,14 @@
 
 The current [macOS 0.2.64 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1) remains **experimental**. Its October 17 qualification is recorded separately below from the earlier 0.2.62 baseline. This work does not establish full production readiness or Windows feature parity.
 
+## October 17 protocol review and fuzz follow-up
+
+The [VDO.Ninja compatibility review](vdoninja-protocol-compatibility.md) traces BYE through the existing peer data-channel path and records three corrections: removal of unsupported native `leave`/`unpublish` sends and an extra harness `lock` field. No new VDO.Ninja command, BYE acknowledgement or WebSocket relay was added.
+
+The published beta completed four seeded room cases across VideoToolbox/x264 and two seeds: 32 randomized actions, 512 local-control requests and 20 guest departures. The preserved natural 90-second cleanup failure remains unresolved; a separate disk-full interruption is incomplete, not a pass.
+
+An unpublished, Developer ID signed candidate from `987b07d` then passed both full room workflows (16 randomized actions, 256 local requests) and four GUI stop/start cycles with decoded output. Its executable SHA-256 is `5d117a4cd25ad28bec4ab7499d578f44fcf5770c47be6250059c58d69bd162b0`. These results cover the protocol cleanup; they do not promote the beta, qualify Windows, or establish full production readiness. Exact reports, source references and limitations are in the linked review.
+
 ## Released 0.2.62 baseline and environment
 
 - Release: [macOS 0.2.62 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1).
