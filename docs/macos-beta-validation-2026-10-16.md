@@ -1,8 +1,8 @@
 # Mac beta qualification — October 16, 2026
 
-The Apple Silicon release remains **experimental**. This work resolves the earlier missing-RTMP-audio finding and extends real packaged application coverage. It does not establish full production readiness or Windows feature parity.
+The current [macOS 0.2.64 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1) remains **experimental**. Its October 17 qualification is recorded separately below from the earlier 0.2.62 baseline. This work does not establish full production readiness or Windows feature parity.
 
-## Artifact and environment
+## Released 0.2.62 baseline and environment
 
 - Release: [macOS 0.2.62 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1).
 - Signed ZIP SHA-256: `2e51db7ef109e01d7d14b6787fd8d7a6b8bd14e05e725d7185e0cf0fbdec306b`.
@@ -83,11 +83,11 @@ The subsequent signed **VT 720p60 long-run comparison passed**. Initial and fina
 
 A second offline calibration isolates the drift decision: deliberate +40 ms and −40 ms changes between two copied phases were measured correctly and rejected, while each phase individually remained inside the 50 ms skew limit. These controls use recorded media with no claimed elapsed application run. They ran sequentially at lower CPU priority during part of the unrecorded x264 hold; that workload is retained in its evidence.
 
-The equivalent signed **x264 long-run comparison failed**. Its initial 28 paired events had additional skew from −17.5 to +34.5 ms (median −0.5 ms). The final 28 had −60.5 to −36.5 ms (median −45.25 ms). The **−44.75 ms median drift exceeded the 30 ms limit**, and some final events exceeded the 50 ms skew limit. All 372 health observations, source/receiver media-content checks and publisher shutdown passed; those successes do not override the timing failure. This remains a production blocker.
+The equivalent signed **x264 long-run comparison failed**. Its initial 28 paired events had additional skew from −17.5 to +34.5 ms (median −0.5 ms). The final 28 had −60.5 to −36.5 ms (median −45.25 ms). The **−44.75 ms median drift exceeded the 30 ms limit**, and some final events exceeded the 50 ms skew limit. All 372 health observations, source/receiver media-content checks and publisher shutdown passed; those successes do not override the timing failure. This blocks production qualification of the 0.2.62 binary; the separate 0.2.64 result is recorded below.
 
 Offline review of receiver statistics found video jitter-buffer delay increasing from approximately 61 to 111 ms between phases, while audio increased from approximately 36 to 37 ms. These are differences of cumulative delay divided by emitted-count differences, following the [WebRTC statistics definition](https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferdelay). This is consistent with the measured offset change but does not establish whether the cause is the publisher clock, receiver synchronization or recording behavior. No timing limit was relaxed and the failed artifacts are retained.
 
-A separate native-backend diagnostic delivered 5,671 callbacks of 512 stereo frames at 48 kHz. The app currently truncates each callback duration, accumulating approximately 11.25 ms of timestamp loss per thirty minutes at that size. That is insufficient to explain the complete measured drift. A Mac-only candidate now carries the fractional duration between callbacks and clears it when the capture clock re-anchors. The Windows calculation is unchanged. Two-hour arithmetic checks across several callback sizes, variable-size/reset cases and both readiness/integrated Mac application compiler gates passed. These are gates only. This candidate is **not in the released binary and has not passed packaged application testing**; a new signed package and both long-run timing workflows are required. The machine has less than 0.5 GiB of free disk, limiting further package construction without additional space.
+A separate native-backend diagnostic delivered 5,671 callbacks of 512 stereo frames at 48 kHz. The app currently truncates each callback duration, accumulating approximately 11.25 ms of timestamp loss per thirty minutes at that size. That is insufficient to explain the complete measured drift. A Mac-only candidate now carries the fractional duration between callbacks and clears it when the capture clock re-anchors. The Windows calculation is unchanged. Two-hour arithmetic checks across several callback sizes, variable-size/reset cases and both readiness/integrated Mac application compiler gates passed. These are gates only. The change is **not in the released beta**. It is included in the separate signed candidate below; long-run qualification is still in progress. Identical generated audio fixtures now share APFS storage, with content hashes, size, permissions, ownership and modification times verified unchanged. No existing report or package contents were removed.
 
 ### Four-viewer room follow-up
 
@@ -111,12 +111,57 @@ The preceding headless-browser attempt had no quarantine attribute and was rejec
 
 ### Integration with current Windows main
 
-Windows [0.2.64 has its own packaged qualification](release-0.2.64-windows-validation.md). A separate `macos-main-integration` branch reconciles the experimental Mac source with that newer main branch, preserving its README, version and AMF changes. The Mac's longer WHIP gathering allowance is confined to macOS so Windows retains its existing ten-second limit. All 27 changed Mac/shared translation units passed an isolated arm64 compiler gate using existing dependency headers; one file first required its generated Qt meta-object include. This was not a linked package build. Source reconciliation and secret/compiler checks are gates; this integrated source is not a newly qualified package. Published Mac and Windows assets remain unchanged by this work.
+Windows [0.2.64 has its own packaged qualification](release-0.2.64-windows-validation.md). A separate `macos-main-integration` branch reconciles the experimental Mac source with that newer main branch, preserving its README, version and AMF changes. The Mac's longer WHIP gathering allowance is confined to macOS so Windows retains its existing ten-second limit. All 27 changed Mac/shared translation units passed an isolated arm64 compiler gate using existing dependency headers; one file first required its generated Qt meta-object include. This was not a linked package build. Source reconciliation and secret/compiler checks are gates. The subsequent linked and signed candidate is identified below. Published Mac and Windows assets remain unchanged by this work.
+
+## macOS 0.2.64 Beta 1 — October 17 follow-up
+
+The separately published **0.2.64 Beta 1** was rebuilt from frozen revision `8c34eb37fdad851e29e9577595af7a1f63711de4`. All 39 application compilation units were rebuilt, including regenerated Qt meta-object and resource sources, using existing dependency libraries. This was not a fresh dependency build. The signed executable SHA-256 is `cb01f0ef684975158d592593f9b5116e5a850c83891d7b84f88a525fabd336a9`.
+
+Developer ID signing, bundle audit, Apple notarization, ticket stapling, deep signature verification and Gatekeeper assessment passed. Those are distribution gates. It is published as a separate experimental Mac prerelease. Previous Mac and Windows assets remain unchanged; Windows v0.2.64 remains the production “latest” release.
+
+Actual workflows against this signed bundle passed:
+
+- GUI launch, authenticated diagnostics, token-free diagnostics export, invalid source/settings handling and clean shutdown.
+- VT and x264 720p60 window/application-audio streaming, continuous PCM checks, live controls, static/silent/resumed media, resizing, late reception, source closure and cleanup. Both thirty-second performance intervals passed (VT 59.8–60 fps; x264 59.6–60 fps).
+- A sixty-second x264 paired recorded-media A/V comparison, with median additional skew +8.75 ms inside the preset 50 ms limit. This short run does not qualify long-run drift.
+
+The subsequent **thirty-minute x264 comparison passed**: initial/final recording starts were 1,814.611 seconds apart, with 28 matched pulses per phase. Initial additional skew was −3 to +36 ms (median +1.5 ms), and final skew was −22.5 to −15 ms (median −20.25 ms). The −21.75 ms median drift passed the unchanged 30 ms limit, and every paired event passed the unchanged 50 ms skew limit. All 372 health observations and clean shutdown passed. This is a bounded start/end recorded-media comparison, not physical playback or continuous A/V measurement. The candidate includes both the Mac fractional audio-duration correction and newer shared packet-pacing/recovery code; the improvement cannot be attributed to the fractional correction alone. The failed released-beta evidence remains unchanged.
+
+A matching download/source delivery also passed packaging gates: 10,581 source payloads, twelve native repositories, eight upstream archives and all sixteen deployed Mach-O binaries verified. The source archive records actual application rebuild commands and labels the older CMake configuration as historical dependency-build evidence. Download ZIP SHA-256: `6b72ea7a21e27c8baf6bafa8fb179ceb4260a3d133d8ba8a88bfcf199c0e3814`; source archive SHA-256: `27533cbea44bd73e3bce216368e2c0bbafe4da6e6d33d79552d5095fd7badb53`. These are gates, separate from application testing.
+
+The candidate passed all fourteen local VT/x264 output cases: RTMP through both RTSP and direct RTMP receivers, encrypted SRT, RTSP TCP/UDP, direct UDP and RIST. These use controlled virtual camera/input fixtures and local receivers, not remote production services.
+
+An initial four-viewer VT room attempt passed its load intervals but **failed prompt guest cleanup after rejoin**: the guest connection closed, but its logical peer remained beyond fifteen seconds. No received `bye` was recorded for that departure. The existing application deliberately retains disconnected logical sessions for up to ninety seconds for recovery; this failed attempt ended before that fallback could be qualified. The cause remains unresolved.
+
+A complete repeat passed with both encoders, including the room controls and all four guest departures (271–320 ms). VT passed 1,260 continuous audio windows across its four receivers at 29.875–29.999 fps; x264 passed 1,263 windows at 29.976–29.998 fps. A further eight-cycle VT guest workflow passed with cleanup in 287–324 ms and another 1,262 continuous audio windows during its load phase. All compressed interval hashes verified. These later passes do not erase the earlier failure. An initial late-installed browser probe was empty even when the publisher received `bye`; its empty output cannot establish that a message was never sent. The corrected early-installed probe observed publisher-directed `bye` sends in all eight cycles.
+
+A **local archive upgrade from 0.2.62 to 0.2.64 passed** through Launch Services. Both executable/bundle identities verified, the original installation was preserved, one private UI preference survived replacement, controls responded, capture stayed off and both processes shut down cleanly. This extends same-version replacement coverage on this Mac; it is not a browser download, fresh-machine permission flow or exhaustive settings migration.
+
+The candidate **VT thirty-minute comparison also passed**. Recording starts were 1,816.564 seconds apart, with 28 matched pulses per phase. Initial additional skew was −17 to +29 ms (median +2 ms); final skew was −16 to −5 ms (median −12.5 ms). Median drift was −14.5 ms, inside the unchanged 30 ms limit, and all paired events stayed within the unchanged 50 ms skew limit. All 372 health observations and clean shutdown passed. The scope remains bounded start/end recorded media, not physical playback.
+
+An explicit negative control then suppressed exactly one owned guest `bye` message to the publisher. The unchanged fifteen-second prompt-cleanup check correctly failed and remains a failed workflow result. Separately, the guest had no active audio/video tracks in all 378 observations after the first five seconds, and the logical peer was removed after **90.254 seconds**, within the existing recovery policy. Eight ten-second video observations with sampled audio passed for the surviving director/scene receivers; their final active peer counts were both two. The negative-control review passed. This verifies the bounded fallback and failure recorder, not the cause of the original natural failure. The published 0.2.64 Beta 1 ZIP was then downloaded through installed Chrome with its original quarantine metadata and the expected archive hash. Extraction preserved quarantine. Normal macOS Open handling, App Translocation, both GUI launches, one private preference, capture-off behavior, bundle identity and clean shutdown passed. This qualifies this download on the existing Mac, not a fresh/minimum-OS machine.
+
+Older beta passes do not qualify this new candidate. The remaining cross-platform/hardware workflows are still required.
 
 ## Evidence identifiers
 
 Raw recordings, logs, private local-control files and interval payloads remain in local `native-qt/qa/reports/`; they are not published wholesale. The principal report identifiers are:
 
+- Integrated candidate rebuild/signing/notarization: `macos-integrated-candidate-build/fdbbd5e8-d87f-44a0-87e9-820b7eb6e5c0`.
+- Candidate launch/diagnostics workflows: `macos-integrated-foundation/1f465ca9-e170-4a99-8222-14bcd8fc9399`.
+- Candidate VT/x264 window/application-audio workflows: `macos-integrated-window-audio/3b492e68-faab-406e-a1f3-67bc9a58504b`.
+- Candidate thirty-minute VT A/V comparison: `macos-integrated-av-drift/2d76d72a-4e84-4bbd-a88b-350d433428dc`.
+- Candidate thirty-minute x264 A/V comparison: `macos-integrated-av-drift/0b490263-b90a-4ac0-afb3-84decda45bcf`.
+- Candidate source/download delivery and sequential workflow logs: `macos-integrated-followup-queue/d771d3a4-329a-4355-808e-db38be0920ab`.
+- Candidate short x264 A/V comparison: `macos-integrated-av-initial/e6e79f82-7db7-4ae1-bb1e-3f8e99eeaf04`.
+- Candidate local mux outputs: `macos-integrated-mux/9b194b0a-b771-42a8-ab96-0f7390185a22`; direct RTMP reception: `macos-integrated-mux-direct/820f08ad-2e29-4f3c-8619-e6b30681d135`.
+- Deliberate lost-`bye` control: `macos-guest-bye-negative/6e798036-12df-4fe1-8258-6696ebe45735` (`negative-control-review.json` separates expected rejection from fallback qualification).
+- Candidate initial room cleanup failure: `macos-integrated-room-four-viewer/ae1ced59-ebb0-49d9-8d0c-b850229205fa`.
+- Candidate complete VT/x264 room repeat: `macos-integrated-room-cleanup-followup/404ae763-2be7-4760-9e4d-7e1e8d0fe753`.
+- Candidate eight guest cycles: `macos-integrated-guest-cycles/4f8d8ba8-28da-48ac-8d4b-63b849c6c2ce`.
+- Local cross-version upgrade: `macos-integrated-cross-version-upgrade/d9457f64-e252-4d7c-97cd-77dd5590a77b`.
+- 0.2.64 prerelease publication and unchanged older releases: `macos-integrated-beta-publication/0d031d39-4c07-4d06-a61b-a0fe458cfeff`.
+- Published 0.2.64 Chrome download: `macos-integrated-browser-download/13c62d1f-88e6-4cb9-8360-2e7ce81dfc67`; quarantined launch/relaunch: `macos-integrated-quarantined-launch/8d093a3d-3110-4dda-a51d-dc4ba0191df7`.
 - Receiver comparison: `macos-rtmp-investigation-2026-10-16/92641233-5cbc-48d6-9af9-16b636801738`.
 - RTMP via RTSP: `macos-rtmp-corrected-recorder/62976911-b577-4f9d-8d00-3689c78dde77`.
 - Direct RTMP: `macos-rtmp-direct-reception/2ac8ad5e-5a94-4687-a148-87494b1cf92a`.
@@ -179,9 +224,9 @@ For Windows integration regression, build and freeze a **new package from the in
 ## Remaining production work
 
 - Investigate any recurrence of the early audio-concealment transient with the new retained PCM/counters. Both thirty-minute VT and x264 workflows now passed. The original VT identity rejection has insufficient saved evidence to establish its cause retrospectively.
-- Fresh-machine download/launch and permissions, cross-version upgrade, minimum macOS 14.2 and another Apple Silicon Mac. Quarantined Chrome download/launch and same-version replacement passed on this existing machine.
+- Fresh-machine download/launch and permissions, minimum macOS 14.2 and another Apple Silicon Mac. Quarantined Chrome download/launch and same-version replacement passed on this existing machine; local 0.2.62-to-0.2.64 replacement now also passed for one private UI preference. Broader settings migration remains open.
 - Physical device hotplug/busy recovery, permission denial/revocation, sleep/wake and display/audio-device changes.
-- Resolve the failed x264 long-run A/V comparison and extend workload coverage beyond the completed fifteen-minute four-viewer room workflows. VT passed its long-run recorded-media skew/drift limits. The 1080p60 moving-detail workload failed sustained delivery with both encoders on this cohosted M1 setup; it needs clean-session or independent-receiver confirmation. Broader sustained gameplay and receiver/network coverage remain open.
+- Investigate the intermittent guest-cleanup failure and extend sustained gameplay/receiver coverage. Both 0.2.64 encoders passed their bounded thirty-minute recorded-media A/V limits. The earlier 0.2.62 fifteen-minute four-viewer room workflows remain separate from the newer candidate’s shorter room coverage. The earlier beta’s 1080p60 moving-detail workload failed sustained delivery with both encoders on this cohosted M1 setup; it needs clean-session or independent-receiver confirmation. Broader sustained gameplay and receiver/network coverage remain open.
 - Remote services and trusted RTMPS, plus remaining advanced-feature qualification. Local protocol success is not a production-service interoperability claim.
 - Packaged Windows regression of the port's shared-code changes before those changes enter a future Windows release. The independently qualified Windows v0.2.64 production release is unchanged by this work.
 
