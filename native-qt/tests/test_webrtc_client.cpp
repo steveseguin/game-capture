@@ -916,6 +916,7 @@ class TestWebRtcClient : public QObject {
     Q_OBJECT
 
   private slots:
+    void testVideoSendFailureClassification();
     void testTurnModesInitializeWithoutRegistryBinding();
     void testTurnModesConsumeExactRegistryBindingAcrossReset();
     void testRelayModeRequiresTurnServer();
@@ -1110,6 +1111,27 @@ class BoundedTask {
 };
 
 }  // namespace
+
+void TestWebRtcClient::testVideoSendFailureClassification() {
+    using namespace versus::webrtc;
+    WebRtcClient client;
+    EncodedVideoPacket packet{{0x00, 0x00, 0x00, 0x01, 0x65}, 1000, true};
+    VideoSendFailure reason = VideoSendFailure::SendFailed;
+    QVERIFY(!client.sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::TransportUnavailable);
+    PeerConfig config;
+    config.enableDataChannel = false;
+    config.initialVideo = true;
+    QVERIFY(client.initialize(config));
+    QVERIFY(!client.sendVideo(EncodedVideoPacket{}, &reason));
+    QCOMPARE(reason, VideoSendFailure::EmptyPacket);
+    QVERIFY(!client.sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::TrackUnavailable);
+    QVERIFY(!client.sendVideo(packet)); // Legacy callers still see false.
+    client.shutdown();
+    QVERIFY(!client.sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::TransportUnavailable);
+}
 
 void TestWebRtcClient::testTurnModesInitializeWithoutRegistryBinding() {
     // A failed or absent TURN registry fetch must not block connectivity:
@@ -5352,7 +5374,8 @@ void TestWebRtcClient::testConcurrentSendResetAndShutdownCompletes() {
 
     versus::webrtc::EncodedVideoPacket video{{0x82, 0x49, 0x83, 0x42}, 1000, true};
     versus::webrtc::EncodedAudioPacket audio{{0xF8, 0xFF, 0xFE}, 1000, 48000, 2};
-    const bool preRetirementVideo = negotiated && loopback->offerer->sendVideo(video);
+    auto preRetirementReason = versus::webrtc::VideoSendFailure::SendFailed;
+    const bool preRetirementVideo = negotiated && loopback->offerer->sendVideo(video, &preRetirementReason);
     const bool preRetirementAlpha = negotiated && loopback->offerer->sendAlphaVideo(video);
     const bool preRetirementAudio = negotiated && loopback->offerer->sendAudio(audio);
     const bool preRetirementData = negotiated && loopback->offerer->sendDataMessage("loopback-ready");
@@ -5660,6 +5683,7 @@ void TestWebRtcClient::testConcurrentSendResetAndShutdownCompletes() {
     offererCleanup.finishWithoutBlocking();
     answererCleanup.finishWithoutBlocking();
 
+    QCOMPARE(preRetirementReason, versus::webrtc::VideoSendFailure::None);
     QVERIFY2(sendEnteredResetBarrier,
              "The negotiated video send did not enter the deterministic reset barrier");
     QVERIFY2(resetCompletedWhileSendParked,

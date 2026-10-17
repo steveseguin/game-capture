@@ -5,6 +5,7 @@
 #endif
 #include "versus/platform/atomic_shared_ptr.h"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -460,6 +461,7 @@ class VersusApp {
     bool ensureLqEncoderInitializedLocked();
     void shutdownLqEncoderLocked();
     bool isControlMessageAuthorized(const std::shared_ptr<PeerSession> &peer, const std::string &token) const;
+    void recordPeerVideoSendFailure(webrtc::VideoSendFailure reason);
     bool encodeAndSendVideoFrame(
         const versus::video::CapturedFrame &frame,
         bool forceKeyframe,
@@ -559,6 +561,9 @@ class VersusApp {
     std::atomic<uint64_t> videoEncodeTimeouts_{0};
     std::atomic<uint64_t> videoEncodeHardFailures_{0};
     std::atomic<uint64_t> videoSendFailures_{0};
+    // Breakdown of peer failures; aggregate also includes external outputs.
+    std::array<std::atomic<uint64_t>, static_cast<size_t>(webrtc::VideoSendFailure::Count)>
+        peerVideoSendFailures_{};
     std::atomic<uint64_t> alphaPacketsSent_{0};
     std::atomic<uint64_t> alphaEncodeFailures_{0};
     std::atomic<uint64_t> alphaEncodeTimeouts_{0};

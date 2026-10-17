@@ -8,7 +8,7 @@ assert.equal(process.platform,'darwin');for(const key of ['app','reports','encod
 assert(['videotoolbox','x264'].includes(opts.encoder));
 const exe=path.resolve(opts.app,'Contents/MacOS/game-capture'),helper=path.resolve(opts['source-ui-helper']);
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
-const expected='dc4311c7c648fdf8d5cf3a196e8bfd1ee9160e96c34420132ff83a3f39b36dc4';assert.equal(sha(fs.readFileSync(exe)),expected);
+const expected=opts['expected-executable-sha256']||'dc4311c7c648fdf8d5cf3a196e8bfd1ee9160e96c34420132ff83a3f39b36dc4';assert(/^[a-f0-9]{64}$/.test(expected));assert.equal(sha(fs.readFileSync(exe)),expected);
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const stream='gcwan'+crypto.randomBytes(16).toString('hex'),discovery=path.join(report,'private-control.json');
 const result={scope:'Packaged Mac sender for an independently hosted receiver; join receiver evidence using the session binding hash',
@@ -28,7 +28,8 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
 const select=d=>({time:Date.now(),live:d.app.live,capturing:d.app.capturing,sourceWidth:d.source.width,sourceHeight:d.source.height,
   encoder:d.video.active_encoder,hardware:d.video.hardware_encoder,codec:d.video.active_codec,
   framesCaptured:d.video.frames_captured,framesSent:d.video.frames_sent,encodeFailures:d.video.encode_failures,
-  encodeTimeouts:d.video.encode_timeouts,sendFailures:d.video.send_failures,audioPacketsSent:d.metrics.audio_packets_sent});
+  encodeTimeouts:d.video.encode_timeouts,sendFailures:d.video.send_failures,peerSendFailureReasons:d.video.peer_send_failure_reasons,
+  activeVideoPeers:d.metrics.active_video_peers,audioPacketsSent:d.metrics.audio_packets_sent});
 (async()=>{console.log('Reports: '+report);save();try{
   const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_|GITHUB_|ACTIONS_|GH_)/.test(k)));
   browser=await chromium.launch({headless:false,env,args:['--autoplay-policy=no-user-gesture-required','--window-position=80,80','--window-size=1000,700','--disable-background-timer-throttling','--disable-renderer-backgrounding']});

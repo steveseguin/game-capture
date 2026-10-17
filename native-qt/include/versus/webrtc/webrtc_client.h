@@ -19,6 +19,21 @@ struct EncodedVideoPacket {
     bool isKeyframe = false;
 };
 
+// Local send admission/failure diagnostics, not a signaling protocol field.
+// A closed or retired track is still a failed send for the existing bool API.
+enum class VideoSendFailure {
+    None,
+    TransportUnavailable,
+    EmptyPacket,
+    TrackUnavailable,
+    PacketizerUnavailable,
+    PacerFailed,
+    SendFailed,
+    Count
+};
+
+const char *videoSendFailureName(VideoSendFailure reason);
+
 struct EncodedAudioPacket {
     std::vector<uint8_t> data;
     int64_t pts = 0;
@@ -136,7 +151,7 @@ class WebRtcClient {
     void setDataChannelStateCallback(DataChannelStateCallback cb);
     MediaPlanChange ensureMediaTracks(bool enableVideo, bool enableAudio, bool enableAlpha);
 
-    bool sendVideo(const EncodedVideoPacket &packet);
+    bool sendVideo(const EncodedVideoPacket &packet, VideoSendFailure *failure = nullptr);
     bool sendAlphaVideo(const EncodedVideoPacket &packet);
     bool sendAudio(const EncodedAudioPacket &packet, size_t *payloadBytesSent = nullptr);
     bool sendDataMessage(const std::string &message);

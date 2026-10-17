@@ -910,6 +910,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     videoEncodeTimeouts_.store(0, std::memory_order_relaxed);
     videoEncodeHardFailures_.store(0, std::memory_order_relaxed);
     videoSendFailures_.store(0, std::memory_order_relaxed);
+    for (auto &counter : peerVideoSendFailures_) counter.store(0, std::memory_order_relaxed);
     alphaPacketsSent_.store(0, std::memory_order_relaxed);
     alphaEncodeFailures_.store(0, std::memory_order_relaxed);
     alphaEncodeTimeouts_.store(0, std::memory_order_relaxed);
@@ -1391,6 +1392,7 @@ bool VersusApp::goLive(const StartOptions &options) {
     videoEncodeTimeouts_.store(0, std::memory_order_relaxed);
     videoEncodeHardFailures_.store(0, std::memory_order_relaxed);
     videoSendFailures_.store(0, std::memory_order_relaxed);
+    for (auto &counter : peerVideoSendFailures_) counter.store(0, std::memory_order_relaxed);
     alphaPacketsSent_.store(0, std::memory_order_relaxed);
     alphaEncodeFailures_.store(0, std::memory_order_relaxed);
     alphaEncodeTimeouts_.store(0, std::memory_order_relaxed);
@@ -2339,6 +2341,12 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"frames_skipped_before_readback", windowCapture_.framesSkippedBeforeReadback()},
         {"dropped_frame_rate", metrics.droppedFrameRate}
     };
+    root["video"]["peer_send_failure_reasons"] = nlohmann::json::object();
+    for (size_t i = 1; i < peerVideoSendFailures_.size(); ++i) {
+        root["video"]["peer_send_failure_reasons"][webrtc::videoSendFailureName(
+            static_cast<webrtc::VideoSendFailure>(i))] =
+                peerVideoSendFailures_[i].load(std::memory_order_relaxed);
+    }
     root["audio"] = {
         {"source_mode", audioSourceModeName(diagnosticsAudioSourceMode)},
         {"include_microphone", diagnosticsIncludeMicrophone},
@@ -6348,6 +6356,14 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
     }
 }
 
+void VersusApp::recordPeerVideoSendFailure(webrtc::VideoSendFailure reason) {
+    videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
+    const auto index = static_cast<size_t>(reason);
+    if (index > 0 && index < peerVideoSendFailures_.size()) {
+        peerVideoSendFailures_[index].fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
 bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                                         bool forceKeyframe,
                                         int64_t outputTimestamp) {
@@ -7039,7 +7055,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
             advanceMonotonic(peer->lastVideoWirePtsReserved, packet.pts);
-            if (peer->client->sendVideo(packet)) {
+            webrtc::VideoSendFailure failure = webrtc::VideoSendFailure::None;
+            if (peer->client->sendVideo(packet, &failure)) {
                 detail::FrameTrace::instance().record("sent", nullptr, hqPacket.sourceTimestamp);
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
@@ -7054,7 +7071,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                     peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
                 }
             } else {
-                videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
+                recordPeerVideoSendFailure(failure);
             }
         }
 
@@ -7159,6 +7176,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
 
+            webrtc::VideoSendFailure primaryFailure = webrtc::VideoSendFailure::None;
             int64_t peerPairWirePts = std::numeric_limits<int64_t>::min();
             const auto result = dispatchExactAlphaFramePair(
                 pair,
@@ -7215,7 +7233,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                     return peer->client->sendAlphaVideo(alphaPacket);
                 },
                 [&](const video::EncodedPacket &) {
-                    return peer->client->sendVideo(primaryPacket);
+                    return peer->client->sendVideo(primaryPacket, &primaryFailure);
                 });
             if (!result.admitted) {
                 continue;
@@ -7236,7 +7254,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
             peer->videoBytesSent.fetch_add(alphaPacket.data.size(), std::memory_order_relaxed);
             alphaPacketsSent_.fetch_add(1, std::memory_order_relaxed);
             if (!result.primarySent) {
-                videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
+                recordPeerVideoSendFailure(primaryFailure);
                 advanceMonotonic(
                     peer->alphaSourceCutoffTimestamp,
                     pair.primary.packet.sourceTimestamp);
@@ -7291,7 +7309,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
             advanceMonotonic(peer->lastVideoWirePtsReserved, packet.pts);
-            if (peer->client->sendVideo(packet)) {
+            webrtc::VideoSendFailure failure = webrtc::VideoSendFailure::None;
+            if (peer->client->sendVideo(packet, &failure)) {
                 sentAny = true;
                 videoBytesSentThisCall += packet.data.size();
                 primaryPtsSentThisCall.push_back(packet.pts);
@@ -7307,7 +7326,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                     peer->waitingForKeyframe.store(false, std::memory_order_relaxed);
                 }
             } else {
-                videoSendFailures_.fetch_add(1, std::memory_order_relaxed);
+                recordPeerVideoSendFailure(failure);
             }
         }
     }
