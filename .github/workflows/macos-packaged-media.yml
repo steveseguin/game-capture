@@ -6,6 +6,8 @@ on:
     paths:
       - .github/workflows/macos-packaged-media.yml
       - native-qt/qa/macos-hosted-media.py
+      - native-qt/qa/macos-vt-host-probe.mm
+      - native-qt/e2e/macos-window-publish.js
       - native-qt/e2e/macos-foundation-packaged.py
   workflow_dispatch:
 
