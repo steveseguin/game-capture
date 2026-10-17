@@ -127,6 +127,9 @@ def main():
                 entry['publisher'][phase] = {
                     'generatedSteadyMs': diagnostics.get('generated_steady_ms'),
                     'observationError': clean_error(diagnostics.get('observationError', '')),
+                    'system': {k: diagnostics['system'][k] for k in [
+                        'cpu_percent', 'memory_percent', 'memory_used_bytes', 'memory_total_bytes']
+                        if k in diagnostics.get('system', {})},
                     'video': {k: diagnostics['video'][k] for k in [
                         'active_encoder', 'hardware_encoder', 'frames_captured', 'frames_sent', 'frames_dropped',
                         'encode_failures', 'encode_timeouts', 'encode_hard_failures', 'send_failures',
@@ -137,7 +140,7 @@ def main():
             # Export only native capture/encoder messages, never signaling logs,
             # arguments, settings, discovery files or raw diagnostics.
             messages = [clean_error(line) for line in log_path.read_text(errors='replace').splitlines()
-                        if re.search(r'\[(VideoToolbox|MacEncoder|ScreenCaptureKit)\]', line)]
+                        if re.search(r'\[(VideoToolbox|MacEncoder|ScreenCaptureKit)\]|\[VideoPath\] slow frame ', line)]
             (export / 'native-media.log').write_text('\n'.join(messages[:200]) + '\n')
         for name in ['source.png', args.encoder + '-receiver.png']:
             source = observed_path.parent / name

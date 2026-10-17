@@ -10,6 +10,12 @@ on:
       - native-qt/e2e/macos-window-publish.js
       - native-qt/e2e/macos-foundation-packaged.py
   workflow_dispatch:
+    inputs:
+      encoder:
+        description: Explicit encoder to exercise (hardware may be unavailable in a VM)
+        type: choice
+        default: x264
+        options: [x264, videotoolbox]
 
 permissions:
   contents: read
@@ -54,10 +60,10 @@ jobs:
           if-no-files-found: error
 
   macos14:
-    strategy:
-      fail-fast: false
-      matrix:
-        encoder: [x264, videotoolbox]
+    # This image refused hardware VT in two retained runs and in the native
+    # probe. Automatic runs investigate x264; VT remains an explicit option.
+    env:
+      HOSTED_ENCODER: ${{ inputs.encoder || 'x264' }}
     needs: acquire
     runs-on: macos-14
     timeout-minutes: 15
@@ -83,13 +89,13 @@ jobs:
             --archive-sha256 "$CANDIDATE_ARCHIVE_SHA256" \
             --executable-sha256 "$CANDIDATE_EXECUTABLE_SHA256" \
             --revision "$CANDIDATE_REVISION" \
-            --encoder "${{ matrix.encoder }}" \
+            --encoder "$HOSTED_ENCODER" \
             --report native-qt/qa/reports/hosted-media
       - name: Retain scrubbed evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: macos14-packaged-media-${{ matrix.encoder }}-${{ github.sha }}
+          name: macos14-packaged-media-${{ inputs.encoder || 'x264' }}-${{ github.sha }}
           path: native-qt/qa/reports/hosted-media/export/
           retention-days: 7
           if-no-files-found: warn
