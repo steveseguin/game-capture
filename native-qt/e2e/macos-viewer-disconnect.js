@@ -32,7 +32,7 @@ async function picture(page,label){
     codecs:r.tracks.map(t=>t.codec)};
 }
 (async()=>{console.log('Reports: '+report);save();try{
-  const args=[path.join(__dirname,'macos-independent-sender.js'),...['app','encoder','source-ui-helper','expected-executable-sha256'].map(k=>'--'+k+'='+opts[k]),'--reports='+path.join(report,'sender')];
+  const args=[path.join(__dirname,'macos-independent-sender.js'),'--receiver-location=same-host',...['app','encoder','source-ui-helper','expected-executable-sha256'].map(k=>'--'+k+'='+opts[k]),'--reports='+path.join(report,'sender')];
   log=fs.createWriteStream(path.join(report,'sender-console.log'));
   sender=spawn(process.execPath,args,{stdio:['pipe','pipe','pipe']});sender.closed=new Promise(resolve=>sender.once('close',resolve));
   sender.stdout.pipe(log,{end:false});sender.stderr.pipe(log,{end:false});

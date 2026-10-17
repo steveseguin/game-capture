@@ -6,12 +6,14 @@ const {waitFor,sleep}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 assert.equal(process.platform,'darwin');for(const key of ['app','reports','encoder','source-ui-helper'])assert(opts[key]);
 assert(['videotoolbox','x264'].includes(opts.encoder));
+const receiverLocation=opts['receiver-location']||'independent';assert(['same-host','independent'].includes(receiverLocation));
 const exe=path.resolve(opts.app,'Contents/MacOS/game-capture'),helper=path.resolve(opts['source-ui-helper']);
 const sha=value=>crypto.createHash('sha256').update(value).digest('hex');
 const expected=opts['expected-executable-sha256']||'dc4311c7c648fdf8d5cf3a196e8bfd1ee9160e96c34420132ff83a3f39b36dc4';assert(/^[a-f0-9]{64}$/.test(expected));assert.equal(sha(fs.readFileSync(exe)),expected);
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const stream='gcwan'+crypto.randomBytes(16).toString('hex'),discovery=path.join(report,'private-control.json');
-const result={scope:'Packaged Mac sender for an independently hosted receiver; join receiver evidence using the session binding hash',
+const result={scope:'Packaged Mac sender; receiver location: '+receiverLocation+'; join receiver evidence using the session binding hash',
+  receiverLocation,
   encoder:opts.encoder,executableSha256:expected,harnessSha256:sha(fs.readFileSync(__filename)),
   uiHelperSha256:sha(fs.readFileSync(helper)),sessionBindingSha256:sha(stream),
   host:{platform:os.platform(),release:os.release(),arch:os.arch()},
