@@ -7,12 +7,16 @@ const {execFileSync}=require('node:child_process');
 const {chromium}=require('playwright');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 if(process.platform!=='darwin'||!opts.reports)throw Error('Use --reports on macOS');
+const selection=['release-tag','filename','sha256'];
+if(selection.some(key=>opts[key])&&!selection.every(key=>opts[key]))throw Error('Specify --release-tag, --filename and --sha256 together');
+const tag=opts['release-tag']||'macos-v0.2.62-beta.1';
+const filename=opts.filename||'game-capture-macos-arm64-0.2.62-beta.1.zip';
+const expected=opts.sha256||'2e51db7ef109e01d7d14b6787fd8d7a6b8bd14e05e725d7185e0cf0fbdec306b';
+if(!/^macos-v\d+\.\d+\.\d+-beta\.\d+$/.test(tag)||filename!==`game-capture-macos-arm64-${tag.slice(7)}.zip`||!(/^[a-f0-9]{64}$/).test(expected))throw Error('Invalid Mac beta artifact selection');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
-const release='https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1';
-const filename='game-capture-macos-arm64-0.2.62-beta.1.zip';
-const expected='2e51db7ef109e01d7d14b6787fd8d7a6b8bd14e05e725d7185e0cf0fbdec306b';
-const result={release,filename,expectedSha256:expected,scope:'Browser download and original quarantine preservation; does not itself launch the app',passed:false};
+const release='https://github.com/steveseguin/game-capture/releases/tag/'+tag;
+const result={release,filename,expectedSha256:expected,harnessSha256:crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),scope:'Browser download and original quarantine preservation; does not itself launch the app',passed:false};
 let browser;
 (async()=>{
   console.log('Reports: '+report);
@@ -24,7 +28,7 @@ let browser;
     result.browserVersion=browser.version();
     const context=await browser.newContext({acceptDownloads:true}),page=await context.newPage();
     await page.goto(release,{waitUntil:'domcontentloaded',timeout:60000});
-    const url='https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.62-beta.1/'+filename;
+    const url='https://github.com/steveseguin/game-capture/releases/download/'+tag+'/'+filename;
     // GitHub can defer rendering its asset list. The release page remains the
     // navigation/referrer context for a normal browser download request.
     const pending=page.waitForEvent('download',{timeout:60000});
