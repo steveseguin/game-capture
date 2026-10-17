@@ -15,13 +15,19 @@ if(!['none','options','post'].includes(turnDiscovery)||
   throw Error('TURN workflow requires --turn-discovery=options|post and --turn-server without --gui');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 if(opts.gui&&!opts['ui-helper'])throw Error('GUI workflow requires --ui-helper');
+if(opts['relaunch-app']&&!opts.gui)throw Error('--relaunch-app requires the GUI saved-profile workflow');
+const guiEncoder=opts['gui-encoder']||'videotoolbox';
+if(!['videotoolbox','x264'].includes(guiEncoder)||opts['gui-encoder']&&!opts.gui)throw Error('--gui-encoder requires GUI and videotoolbox or x264');
 const settingsDirectory=path.join(report,'settings');
 const exe=path.join(path.resolve(opts.app),'Contents/MacOS/game-capture');
 if(!fs.existsSync(path.join(path.resolve(opts.app),'Contents/Frameworks')))throw Error('Use a deployed bundle');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+const relaunchExe=opts['relaunch-app']?path.join(path.resolve(opts['relaunch-app']),'Contents/MacOS/game-capture'):exe;
+if(opts['relaunch-app']&&(!fs.existsSync(path.join(path.resolve(opts['relaunch-app']),'Contents/Frameworks'))||hash(relaunchExe)===hash(exe)))throw Error('Use a different deployed application for profile migration');
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
-  serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Packaged WHIP with controlled virtual camera/input and local MediaMTX; release/remote TURN qualification excluded',cases:[],trace:[],passed:false};
+  helperSha256:opts.gui?hash(path.resolve(opts['ui-helper'])):null,serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Packaged WHIP with controlled virtual camera/input and local MediaMTX; release/remote TURN qualification excluded',cases:[],trace:[],passed:false};
 result.turnDiscovery=turnDiscovery;
+if(opts['relaunch-app'])result.profileMigration={initialExecutableSha256:hash(exe),relaunchExecutableSha256:hash(relaunchExe),scope:'Same private preferences and Keychain profile across two retained packaged binaries; no credentials re-entered. Not an installation replacement or fresh-machine workflow.'};
 if(turnDiscovery!=='none')result.turnServerSha256=hash(path.resolve(opts['turn-server']));
 for(const name of ['macos-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const children=new Set();let browser,proxy,server,stalledStun;
@@ -53,6 +59,7 @@ function audioCheck(value,silent=false){
     throw Error('Received microphone stereo/silence does not match the controlled input');
 }
 (async()=>{console.log('Reports: '+report);try{
+  if(opts.gui){result.sessionState=JSON.parse(execFileSync(path.resolve(opts['ui-helper']),[String(process.pid),'session-state'],{encoding:'utf8',timeout:5000}));if(result.sessionState.screenLocked)throw Error('Unlock the Mac before running GUI workflows');}
   const webPort=await port(),apiPort=await port(),udpPort=await port(true);
   let turnConfig='';
   if(turnDiscovery!=='none'){
@@ -97,7 +104,7 @@ function audioCheck(value,silent=false){
   const tone=launch(opts['tone-helper'],[opts['microphone-device'],'440','880'],'tone');
   for(const p of [fixture,tone])await waitFor(()=>{if(p.exitCode!==null)throw Error('Fixture exited');return p.output().includes('READY');},5000,'Fixture did not start');
   browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
-  for(const encoder of (opts.gui?['videotoolbox']:['videotoolbox','x264'])){
+  for(const encoder of (opts.gui?[guiEncoder]:['videotoolbox','x264'])){
     currentCase=encoder;const entry={encoder,passed:false};result.cases.push(entry);const stream='whip'+crypto.randomBytes(12).toString('hex');
     const discovery=path.join(report,encoder+'-control.json');
     const guiArgs=[`--settings-dir=${settingsDirectory}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
@@ -108,17 +115,24 @@ function audioCheck(value,silent=false){
     let control=await ready();
     const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000});
     if(opts.gui){
-      ui('activate');await sleep(700);ui('press','sourceModeSelect');await sleep(250);ui('click','Camera / Webcam');await sleep(700);ui('click','OBS Virtual Camera');
-      ui('press','microphoneDeviceSelect');await sleep(250);ui('click','BlackHole 2ch');await sleep(300);
-      ui('press','advancedToggle');await sleep(250);ui('press','outputSelect');await sleep(250);ui('click','WHIP');await sleep(250);
+      await sleep(700);ui('press','sourceModeSelect');await sleep(250);ui('press','Camera / Webcam');await sleep(700);ui('select-source','OBS Virtual Camera');
+      ui('press','microphoneDeviceSelect');await sleep(250);ui('press','BlackHole 2ch');await sleep(300);
+      ui('press','advancedToggle');await sleep(250);
+      ui('press','encoderSelect');await sleep(250);ui('press',encoder==='videotoolbox'?'Apple VideoToolbox':'Software (x264 / VP9 / AV1)');await sleep(250);
+      ui('press','outputSelect');await sleep(250);ui('press','WHIP');await sleep(250);
       ui('set','outputUrlInput',`http://127.0.0.1:${proxy.address().port}/${stream}/whip`);ui('set','outputSecretInput',token);await sleep(500);
       const ini=fs.readFileSync(path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini'),'utf8');
       if(ini.includes(token)||ini.includes(stream)||!ini.includes('profilesEncrypted='))throw Error('Output profile was not stored as an opaque Keychain reference');
       await api(control,'/commands',{command:'quit'});await publisher.closed;if(publisher.exitCode!==0)throw Error('Profile-save shutdown failed');
-      publisher=launch(exe,guiArgs,encoder+'-relaunch');control=await ready();ui('activate');await sleep(700);
+      await waitFor(()=>!fs.existsSync(discovery),5000,'Old discovery survived profile-save shutdown');
+      publisher=launch(relaunchExe,guiArgs,encoder+'-relaunch');control=await ready();await sleep(700);
+      const restoredIni=fs.readFileSync(path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini'),'utf8');
+      const profileReference=text=>text.match(/^profilesEncrypted=.*$/m)?.[0];
+      if(!profileReference(ini)||profileReference(ini)!==profileReference(restoredIni)||restoredIni.includes(token)||restoredIni.includes(stream))throw Error('Saved Keychain profile reference changed or leaked on relaunch');
+      entry.sameKeychainReference=true;
       // No endpoint/token command-line arguments and no credential re-entry:
       // successful authenticated publishing proves the persisted profile loaded.
-      ui('click','OBS Virtual Camera');ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');entry.profileRelaunched=true;
+      ui('select-source','OBS Virtual Camera');ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');entry.profileRelaunched=true;entry.publishingExecutableSha256=hash(relaunchExe);
     }
     const url=`http://127.0.0.1:${webPort}/${stream}/?muted=true`;
     let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);entry.audio=await observeAudio(page);audioCheck(entry.audio);
@@ -130,7 +144,7 @@ function audioCheck(value,silent=false){
     if(diag.source.source_id!==opts['camera-device']||!diag.audio.active_microphone_source.includes('BlackHole'))throw Error('Source identity differs');
     if(JSON.stringify(diag).includes(token)||JSON.stringify(diag).includes(stream))throw Error('Token or private endpoint path leaked into diagnostics');fs.writeFileSync(path.join(report,encoder+'-diagnostics.json'),JSON.stringify(diag,null,2));
     await page.screenshot({path:path.join(report,encoder+'-receiver.png')});
-    if(encoder==='videotoolbox'||turnDiscovery!=='none'){
+    if(encoder==='videotoolbox'||turnDiscovery!=='none'||opts['relaunch-app']){
       entry.reconnectsBeforeServerRestart=diag.output.reconnects;
       await page.close();server.kill('SIGTERM');await server.closed;await sleep(1500);await startServer();
       await waitFor(async()=>{if(publisher.exitCode!==null)throw Error('Publisher exited during recovery');const d=await api(control,'/diagnostics');return d.output.reconnects>entry.reconnectsBeforeServerRestart&&d.output.state===2;},40000,'WHIP did not reconnect after the server restart');
