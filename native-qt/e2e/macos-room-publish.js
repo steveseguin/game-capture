@@ -14,12 +14,21 @@ for(const key of ['app','reports','camera-device','camera-helper','microphone-de
 assert.equal(process.platform,'darwin');
 assert(['enabled','disabled'].includes(opts['remote-control']||'enabled'),'--remote-control must be enabled or disabled');
 const remoteEnabled=opts['remote-control']!=='disabled';
+const rtcLog=opts['rtc-log']||'off';assert(['off','debug'].includes(rtcLog),'--rtc-log must be off or debug');
 for(const key of ['signaling-recovery','password-protected'])assert(['true','false'].includes(opts[key]||'false'),'--'+key+' must be true or false');
 const recoverSignaling=opts['signaling-recovery']==='true',passwordProtected=opts['password-protected']==='true';
 assert(!recoverSignaling||remoteEnabled,'Room recovery requires the guest/director controls workflow');
 const performanceSeconds=Number(opts['performance-seconds']||0);
 const extraScenes=Number(opts['extra-scenes']||0),compact=opts['compact-performance-report']==='true';
 const continuous=opts['continuous-audio']==='true';
+const fuzzEnabled=opts['fuzz-seed']!==undefined;
+assert(!opts['fuzz-steps']||fuzzEnabled,'--fuzz-steps requires --fuzz-seed');
+const fuzzSeed=fuzzEnabled?Number(opts['fuzz-seed']):null;
+assert(['true','false'].includes(opts['fuzz-local-control']||'false'),'Invalid --fuzz-local-control');
+const fuzzLocalControl=opts['fuzz-local-control']==='true';
+assert(!fuzzLocalControl||fuzzEnabled,'Local control fuzz requires --fuzz-seed');
+const fuzzPlan=fuzzEnabled?require('./macos-room-fuzz-plan')(fuzzSeed,Number(opts['fuzz-steps']||8)):[];
+assert(!fuzzEnabled||(remoteEnabled&&!recoverSignaling&&opts['drop-guest-bye']!=='true'),'Fuzz requires ordinary enabled room controls');
 const guestCycles=Number(opts['guest-cycles']||2);
 assert(Number.isInteger(guestCycles)&&guestCycles>=2&&guestCycles<=10,'--guest-cycles must be 2..10');
 assert(['true','false'].includes(opts['drop-guest-bye']||'false'),'Invalid --drop-guest-bye');
@@ -37,14 +46,15 @@ const app=path.resolve(opts.app),exe=path.join(app,'Contents/MacOS/game-capture'
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
-  directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,performanceSeconds,extraScenes,compactPerformanceReport:compact,continuousAudio:continuous,recoverSignaling,passwordProtected,
-  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),guestCycles,dropGuestBye,
+  directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,rtcLog,performanceSeconds,extraScenes,compactPerformanceReport:compact,continuousAudio:continuous,recoverSignaling,passwordProtected,
+  continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),guestCycles,dropGuestBye,fuzzSeed,fuzzPlan,fuzzLocalControl,
   cameraFixtureSha256:hash(path.resolve(opts['camera-helper'])),toneFixtureSha256:hash(path.resolve(opts['tone-helper'])),
   scope:'Packaged controlled camera/input with real VDO.Ninja director, scene and guest camera-join UI; optional bounded dual-tier load observation; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
-for(const name of ['macos-room-publish.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+for(const name of ['macos-room-publish.js','macos-room-fuzz-plan.js','macos-live-control-fuzz.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const children=new Set(),proxies=new Map();let browser;
 function launch(program,args,name){const log=fs.createWriteStream(path.join(report,name+'.log'));
   const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(k)));
+  if(path.resolve(program)===exe&&rtcLog==='debug')env.GAME_CAPTURE_RTC_LOG='debug';
   const p=spawn(path.resolve(program),args,{cwd:report,env,stdio:['pipe','pipe','pipe']});children.add(p);
   p.stdout.pipe(log,{end:false});p.stderr.pipe(log,{end:false});let output='';p.stdout.on('data',d=>output+=d);p.output=()=>output;
   p.closed=new Promise(resolve=>{p.once('close',code=>{children.delete(p);log.end();resolve(code);});p.once('error',e=>result.launchError=String(e));});return p;}
@@ -52,6 +62,19 @@ async function api(control,route,body){const r=await fetch(control.base_url+rout
 function requireAudio(audio){assert(audio.spectra.filter(s=>s.rms>.001&&s.channels[0].tone440>s.channels[0].tone880+20&&s.channels[1].tone880>s.channels[1].tone440+20).length>=25,'Stereo audio missing or crossed');}
 function installGuestCleanupProbe({dropGuestBye=false}){
   window.__guestLeaveEvidence=[];
+  const closePeer=RTCPeerConnection.prototype.close,closeChannel=RTCDataChannel.prototype.close;
+  RTCPeerConnection.prototype.close=function(){
+    if(window.__guestLeaveEnabled&&window.__guestLeavePeer===this)
+      window.__guestLeaveEvidence.push({time:Date.now(),event:'peer-close-request',toPublisher:true,
+        state:this.connectionState,iceState:this.iceConnectionState});
+    return closePeer.call(this);
+  };
+  RTCDataChannel.prototype.close=function(){
+    if(window.__guestLeaveEnabled&&window.__guestLeaveChannels?.includes(this))
+      window.__guestLeaveEvidence.push({time:Date.now(),event:'channel-close-request',toPublisher:true,
+        state:this.readyState,bufferedAmount:this.bufferedAmount});
+    return closeChannel.call(this);
+  };
   const send=RTCDataChannel.prototype.send;
   RTCDataChannel.prototype.send=function(data){
     if(!window.__guestLeaveEnabled)return send.call(this,data);
@@ -98,7 +121,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     const discovery=path.join(report,encoder+'-control.json');
     const publisherArgs=['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,`--stream=${stream}`,`--room=${room}`,`--password=${password}`,...(proxy?['--server='+proxy.url]:[]),
       '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--resolution=1280x720','--fps=30','--bitrate-kbps=4000',
-      ...(remoteEnabled?['--remote-control']:[]),`--remote-token=${remoteToken}`,`--duration-ms=${480000+performanceSeconds*1000}`,'--max-viewers=8','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
+      ...(remoteEnabled?['--remote-control']:[]),`--remote-token=${remoteToken}`,`--duration-ms=${480000+performanceSeconds*1000+fuzzPlan.length*90000}`,'--max-viewers=8','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
     const publisher=launch(exe,publisherArgs,encoder+'-publisher');
     await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return fs.existsSync(discovery);},15000,'No local control');const control=JSON.parse(fs.readFileSync(discovery));
     const dir=await pageAt(director.buildDirectorUrl(config)+'&stereo=1');
@@ -269,6 +292,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       await guest.page.evaluate(peerUuid=>{
         window.__guestLeaveEvidence=[];
         const rpc=window.session.rpcs[peerUuid];
+        window.__guestLeavePeer=rpc;
         window.__guestLeaveChannels=[rpc?.sendChannel,rpc?.receiveChannel].filter(Boolean);
         window.__guestLeaveEnabled=true;
         for(const channel of window.__guestLeaveChannels)channel.addEventListener('close',()=>{
@@ -285,6 +309,8 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
         evidence.elapsedMs=Date.now()-started;evidence.diagnostics=diagnostics;return true;
       };
       await guest.page.getByRole('button',{name:'Hang up',exact:true}).click();
+      // Product QA target, not a VDO.Ninja acknowledgement/deadline contract.
+      // VDO sends bye on the established data channel and immediately closes.
       try{await waitFor(absent,15000,'Guest peer retained after explicit Hang up');evidence.promptCleanupPassed=true;}
       catch(error){
         evidence.promptCleanupError=String(error);
@@ -318,7 +344,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     const guest=await joinGuest('Guest UI initial');const viewer=guest.page,viewerUuid=guest.peerUuid;
     entry.guestUi={joins:[guest.evidence]};
     const rejectionStart=await viewer.evaluate(()=>window.__directorRoomE2EProbe.messages.length);
-    check(await director.sendDirectorRequest(viewer,viewerUuid,{targetBitrate:1200,lock:true}),'Unauthorized bitrate request');
+    check(await director.sendDirectorRequest(viewer,viewerUuid,{targetBitrate:1200}),'Unauthorized bitrate request');
     check(await director.waitForProbeMessage(viewer,"entry => entry.message.rejected === 'targetBitrate' && entry.message.reason === 'unauthorized'",10000,rejectionStart),'Unauthorized bitrate rejection');
     assert.equal((await api(control,'/diagnostics')).video.configured_bitrate_kbps,4000);
     const invalidStart=await viewer.evaluate(()=>window.__directorRoomE2EProbe.messages.length);
@@ -344,6 +370,67 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     if(restoreSignaling)await restoreSignaling(survivors);
     for(let cycle=1;cycle<guestCycles;cycle++){
       const rejoined=await joinGuest('Guest UI rejoin'+(cycle>1?' '+cycle:''));entry.guestUi.joins.push(rejoined.evidence);await leaveGuest(rejoined,!!proxy);
+    }
+    // State transitions selected by a recorded seed, exercised through real
+    // hosted controls. Every action is followed by decoded pixels and stereo
+    // audio; diagnostic counters alone cannot qualify a transition.
+    if(fuzzEnabled){
+      entry.fuzz={seed:fuzzSeed,plan:fuzzPlan,actions:[],passed:false,
+        initialPublisherRssKiB:Number(execFileSync('/bin/ps',['-o','rss=','-p',String(publisher.pid)],{encoding:'utf8'}).trim())};
+      const checkpoint=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));
+      for(const action of fuzzPlan){
+        const evidence={...action,startedAt:new Date().toISOString(),passed:false};
+        entry.fuzz.actions.push(evidence);checkpoint();
+        console.log(encoder+': fuzz '+fuzzSeed+' action '+action.index+' '+action.kind);
+        await sleep(action.delayMs);
+        if(action.kind==='guest'){
+          const joined=await joinGuest('Fuzz guest '+action.index);
+          evidence.guest=joined.evidence;
+          await sleep(action.holdMs);await leaveGuest(joined);
+        }else if(action.kind==='bitrate'){
+          check(await director.sendDirectorRequest(dir,uuid,{targetBitrate:action.bitrateKbps}),'Fuzz bitrate');
+          await waitFor(async()=>(await api(control,'/diagnostics')).video.configured_bitrate_kbps===action.bitrateKbps,10000,'Fuzz bitrate not committed');
+        }else if(action.kind==='keyframe'){
+          evidence.before=await videoCounters(dir);
+          check(await director.requestVdoKeyframe(dir,uuid),'Fuzz keyframe');
+          await waitFor(async()=>{evidence.after=await videoCounters(dir);return evidence.after.keyframes>evidence.before.keyframes;},2500,'Fuzz keyframe absent');
+        }else{
+          const audio=action.kind==='audio',button=audio?'mute-guest':'mute-video-guest',field=audio?'audio_enabled':'video_enabled';
+          await toggle(button,field,false);await sleep(action.holdMs);
+          if(audio){
+            evidence.muted=await observeAudio(dir,uuid);
+            assert(evidence.muted.spectra.filter(s=>s.rms<.0005).length>=25,'Fuzz director did not mute');
+          }else{
+            evidence.before=await videoCounters(dir);
+            await sleep(1000);evidence.after=await videoCounters(dir);
+            assert(evidence.after.frames-evidence.before.frames<=2,'Fuzz muted director kept decoding');
+          }
+          evidence.unaffectedScene=await media(scene,1280,720,'Fuzz scene while preview muted',2);
+          evidence.unaffectedAudio=await observeAudio(scene);requireAudio(evidence.unaffectedAudio);
+          await toggle(button,field,true);await sleep(800);
+        }
+        const [preview,high,audio]=await Promise.all([
+          media(dir,640,360,'Fuzz preview restored',2,uuid),media(scene,1280,720,'Fuzz scene restored',2),observeAudio(scene)]);
+        requireAudio(audio);evidence.output={preview,high,audio};
+        evidence.previewAudio=await observeAudio(dir,uuid);requireAudio(evidence.previewAudio);
+        evidence.diagnostics=await api(control,'/diagnostics');
+        evidence.publisherRssKiB=Number(execFileSync('/bin/ps',['-o','rss=','-p',String(publisher.pid)],{encoding:'utf8'}).trim());
+        assert.equal(evidence.diagnostics.peers.filter(p=>p.room.role==='guest').length,0,'Fuzz leaked guest session');
+        assert.equal(publisher.exitCode,null,'Publisher exited during fuzz');
+        evidence.finishedAt=new Date().toISOString();evidence.passed=true;checkpoint();
+      }
+      check(await director.sendDirectorRequest(dir,uuid,{targetBitrate:4000}),'Restore fuzz bitrate');
+      await waitFor(async()=>(await api(control,'/diagnostics')).video.configured_bitrate_kbps===4000,10000,'Fuzz bitrate restoration failed');
+      if(fuzzLocalControl){
+        entry.fuzz.localControl={};checkpoint();
+        await require('./macos-live-control-fuzz')(control,fuzzSeed,entry.fuzz.localControl);
+        entry.fuzz.afterMalformedRequests={
+          preview:await media(dir,640,360,'Preview after malformed control requests',3,uuid),
+          high:await media(scene,1280,720,'Scene after malformed control requests',3),
+          audio:await observeAudio(scene)};
+        requireAudio(entry.fuzz.afterMalformedRequests.audio);
+      }
+      entry.fuzz.passed=true;checkpoint();
     }
     check(await director.changeDirectorResolutionThroughUi(dir,uuid,960,540),'Director resolution controls');
     await waitFor(async()=>{const d=await api(control,'/diagnostics');return d.video.configured_width===960&&d.video.configured_height===540;},20000,'Director resolution not committed');
