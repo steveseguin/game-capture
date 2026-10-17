@@ -1,5 +1,7 @@
 # Mac output-profile accessibility fix — October 17, 2026
 
+**Later finding:** this output-only fix still crashed in the FPS menu during broader testing. A [new candidate applies the fix to all Mac dropdowns](macos-choice-accessibility-2026-10-17.md). The focused results below remain bound to the earlier executable.
+
 An **unreleased, Developer ID signed candidate** passed three fresh output-profile workflows and separate VT/x264 streaming workflows after fixing a reproducible Mac output-menu crash. Runtime [`8f40168`](https://github.com/steveseguin/game-capture/commit/8f40168c2211e2605823dee5b47324052736e30b); executable SHA-256 `c043c8755f7e49ed9fe80a8ae2303d5517bf34f619c3080f7bec56d658b35eaf`. All 39 application compilation units were rebuilt from frozen source. This candidate is not notarized or downloadable; the public Mac beta remains experimental and Windows stable is unchanged.
 
 The earlier signed `af9ce7b` candidate crashed three times when an accessibility press selected a destination after saved-profile relaunch. Matching macOS crash reports and QtWidgets symbols place the fault in `QAccessibleTableCell::selectCell()` calling `QAbstractItemView::selectionModel()`. The output menu now uses the app's existing independently owned accessible rows, also used by the audio-source menu. This avoids the generic Qt table-cell selection path; Windows receives no runtime change. Earlier crashes and unsuccessful harness-development attempts remain retained.
