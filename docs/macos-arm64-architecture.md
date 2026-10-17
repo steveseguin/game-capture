@@ -1,10 +1,12 @@
 # macOS Apple Silicon architecture and implementation plan
 
+Current checkpoint (October 17, 2026): the port is integrated on `macos-main-integration` in [draft PR #7](https://github.com/steveseguin/game-capture/pull/7). The [latest signed candidate and menu-crash qualification](macos-choice-accessibility-2026-10-17.md) is runtime `5888246`; its packaged UI, virtual-camera/audio and short VT/x264 delivery workflows passed. Windows build/link gates passed on integration revision `2a5e9a0`, but actual packaged Windows workflows remain required. The public download is [Mac 0.2.64 Beta 2 — Experimental](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2); the newer candidate is not notarized or distributed. Historical evidence below remains tied to its original artifacts.
+
 Protocol boundary: follow the [VDO.Ninja source compatibility review](vdoninja-protocol-compatibility.md) for existing messages, authorization and BYE transport. Native lifecycle fixes must not invent VDO.Ninja commands or acknowledgements.
 
 Game Capture should keep its Qt interface, publishing protocols, and media routing in one codebase, with separate Windows and macOS implementations for capture, encoding, permissions, and operating-system services. The Mac implementation uses native VideoToolbox H.264/HEVC, directly linked x264 H.264, and a separate software VP9/AV1 worker using the bundled FFmpeg/libvpx/libaom helper. This limits Windows changes while giving Mac encoders direct control over keyframes and bitrate.
 
-Status: implementation in progress on `macos-arm64`. The parity ledger below records current capabilities and remaining work; evidence sections bind each workflow to its actual development artifact. The initial architecture review used source revision `ad5217b8d2600c08b5a3307727ab5a7fd005a57b` on 2026-10-14. Historical artifact results do not certify later builds or release readiness.
+Status: implementation began on `macos-arm64`; current integration and qualification are linked above. The parity ledger below records capabilities and remaining work; evidence sections bind each workflow to its actual development artifact. The initial architecture review used source revision `ad5217b8d2600c08b5a3307727ab5a7fd005a57b` on 2026-10-14. Historical artifact results do not certify later builds or release readiness.
 
 The preceding local development package was source candidate 10 / download candidate 6. Its [resumed extracted GUI and x264 endurance qualification](#extracted-gui-and-foreground-source-cadence-2026-10-16) passed, including thirty minutes of 720p60 video and the subsequent live controls. Windows packaged regression testing and the remaining release requirements are still open.
 
