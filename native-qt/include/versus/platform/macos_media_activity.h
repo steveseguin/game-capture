@@ -1,4 +1,5 @@
 #pragma once
+#include <chrono>
 #include <memory>
 
 namespace versus::platform {
@@ -17,5 +18,20 @@ private:
 };
 
 bool macMediaActivityActive();
+
+// A worker-owned, one-shot timer. Strict dispatch deadlines avoid the large
+// sleep coalescing observed on macOS 14 VMs without spinning or changing the
+// machine's power settings. Destruction cancels the timer.
+class MacFrameWaiter {
+public:
+    MacFrameWaiter();
+    ~MacFrameWaiter();
+    MacFrameWaiter(const MacFrameWaiter &) = delete;
+    MacFrameWaiter &operator=(const MacFrameWaiter &) = delete;
+    bool waitUntil(std::chrono::steady_clock::time_point deadline);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 } // namespace versus::platform
