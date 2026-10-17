@@ -26,6 +26,7 @@ All results below identify this exact signed executable. Publisher and browser r
 | Fifteen-minute four-viewer room | Both encoders passed all ninety intervals, continuous received PCM monitoring, subsequent controls/rejoin and shutdown. Three 720p30 scene receivers and one 360p30 preview shared the publisher Mac. |
 | Existing guest refresh and seeded controls | Both encoders passed the existing `refreshConnection` path, retaining the logical guest owner across transport replacement, then eight randomized controls each and 256 total local HTTP requests (224 expected rejections, 32 health successes). |
 | GUI lifecycle | Both encoders passed two Go Live → Stop Live cycles with decoded output and clean shutdown. |
+| Saved WHIP credential migration | Beta 1 saved a private Keychain profile; Beta 2 reused its unchanged reference without endpoint/token re-entry. VT and x264 passed authenticated publication, decoded video/stereo, static/silence/resumption, late reception, local server restart/recovery, shutdown and owned-profile deletion. |
 | Beta artifact replacement | Beta 1 → Beta 2 passed through Launch Services with both identities verified and seven private GUI preferences retained. Core app version remains 0.2.64. |
 | Published download and launch | Installed Chrome downloaded the published ZIP with its original quarantine. Normal macOS Open handling, App Translocation, GUI launch/relaunch, same-artifact replacement, private preferences and capture-off behavior passed. |
 | 1080p60 moving detail | Both encoders passed two minutes at 8 Mbps with selected-window audio, continuous received PCM monitoring and subsequent controls. |
@@ -43,10 +44,22 @@ The initial source-package gate rejected a sparse checkout before archive creati
 - A new packaged Windows build from the integrated source, followed by actual Windows capture, encoder, room, recovery and output workflows. The existing stable Windows 0.2.64 artifact does not qualify these shared changes. The repository's Windows workflow needs a prepared self-hosted runner; none was registered when checked.
 - Fresh-machine and minimum macOS 14.2 installation/permission flows, plus another Apple Silicon Mac. Existing-machine quarantine and replacement workflows cannot substitute for these.
 - Physical camera/microphone hotplug and busy-device recovery, permission denial/revocation, sleep/wake, display changes and audio-route changes in a coordinated session.
-- Longer representative gameplay and an independent receiver machine/network, including confirmation of the earlier 1080p60 finding. Replacement now covers the advanced toggle plus stream ID, room, label, viewer limit, audio gain and limiter state in private preferences. Other profiles/credentials and broader receiver coverage remain open.
+- Longer representative gameplay and an independent receiver machine/network, including confirmation of the earlier 1080p60 finding. Replacement now covers the advanced toggle plus stream ID, room, label, viewer limit, audio gain and limiter state in private preferences. A saved WHIP endpoint/token now also passes Beta 1 → Beta 2 reuse with both encoders; other destination profiles/credentials and broader receiver coverage remain open.
 - A trusted remote RTMPS endpoint and the intended production services. Public WHIP relay success is separate evidence and does not qualify RTMPS.
 
 The stable Windows release must remain unchanged. Keep the Mac release explicitly experimental until these workflows are completed and any failures are resolved.
+
+## Saved WHIP profile follow-up
+
+The source artifact for profile creation was signed Beta 1 (`cb01f0ef684975158d592593f9b5116e5a850c83891d7b84f88a525fabd336a9`); publication after relaunch used signed Beta 2 (`2c1bfb2bc873c4c2c998034ec7ed5a311c2d0c3b99dd0d203305fef5ded1fad3`). Both deep signatures verified before execution. The workflow uses two retained bundle locations with one private settings directory: it establishes credential reuse across binaries, not an Applications-folder replacement, fresh-machine Keychain access, or a new quarantine flow.
+
+The saved settings contained an opaque Keychain reference and no plaintext endpoint/token. Beta 2 retained that reference and authenticated successfully without credential arguments or re-entry. Both encoders delivered moving H.264 and stereo Opus, static/silent/resumed content, late-viewer media, and media after a local MediaMTX restart. VT delivered 177 distinct source identities in its initial six-second observation, x264 174. These are short functional observations, not performance benchmarks. Both temporary Keychain items were deleted during owned-resource cleanup. Raw settings, endpoints and control credentials stay local.
+
+The VT workflow used the default encoder choice and verified actual VT hardware; the subsequent x264 workflow explicitly selected software in the GUI and verified software output. Native accessibility actions operated the actual controls. An initial attempt stopped before profile creation because the previous mouse-click action required foreground focus; it remains failed. Switching menu/source selection to native accessibility actions fixed that harness limitation, without changing the app or media acceptance criteria.
+
+The [WHIP harness](https://github.com/steveseguin/game-capture/blob/macos-production-readiness/native-qt/e2e/macos-whip-publish.js) accepts `--gui=true --relaunch-app="/path/to/new/Game Capture.app"` alongside its existing old `--app`, fixture/server/helper and report arguments. Use `--gui-encoder=x264` for the software run; default is `videotoolbox`. Keep the two bundle identities explicit and use fresh private reports. This adds coverage for one WHIP profile; other protocol credentials, Keychain denial/locking and physical devices remain open.
+
+Evidence: `macos-keychain-beta-migration/07c47449-68d4-48a3-8d11-b2920d61b420` (VT), `macos-keychain-beta-migration/4cd3e367-9ad2-4db1-93ee-ac7691eb3aab` (x264), and failed initial attempt `macos-keychain-beta-migration/9c7648cf-93d9-42de-b861-ffccfeacda03`. Their new local freeze is `macos-keychain-migration-evidence/16c287e7-e419-41f6-83e1-2b36d9fff4f7/manifest.json`; prior frozen evidence is unchanged.
 
 ## Retained media measurements
 
