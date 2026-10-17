@@ -13,6 +13,10 @@ A free, open-source app for streaming games, app windows, and webcams to **VDO.N
 
 [Windows release notes](https://github.com/steveseguin/game-capture/releases/latest) · [Mac release notes, source & checksums](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2)
 
+[![Game Capture on macOS with a demo window selected and Go Live controls](docs/macos-app-screenshot.png)](https://steveseguin.github.io/game-capture/macos-guide.html)
+
+*macOS experimental beta shown.*
+
 ## Quick start
 
 1. Download the version for your computer. On Mac, extract the ZIP and move **Game Capture.app** to Applications.
@@ -26,7 +30,7 @@ The production version supports Windows hardware encoders, Spout2 sources, optio
 
 ### macOS beta
 
-Apple Silicon (M-series) only, built for **macOS 14.2+**. Uses **Apple VideoToolbox** hardware H.264 or **x264** software H.264. The app is Developer ID signed and notarized.
+Apple Silicon (M-series) only, built for **macOS 14.2+**. Uses **Apple VideoToolbox** hardware H.264 or **x264** software H.264. The app is Developer ID signed and notarized. See the [Mac setup guide](https://steveseguin.github.io/game-capture/macos-guide.html) for installation, permissions, audio, and troubleshooting.
 
 This is an early port with incomplete feature parity. Minimum-OS and clean-machine compatibility remain unverified; packaged workflows were tested on an M1 running macOS 26.4.1. See the [Mac testing status and open findings](docs/macos-beta2-validation-2026-10-17.md) before using it.
 
