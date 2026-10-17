@@ -22,6 +22,11 @@ const result={started:new Date().toISOString(),executableSha256:hash(exe),helper
 result.receiverProtocol=opts['receiver-protocol']||'rtsp';
 result.receiverVersion=execFileSync(ffmpeg,['-version'],{encoding:'utf8'}).split('\n')[0];
 result.probeSha256=hash(ffprobe);
+if(opts.gui){
+  result.uiHelperSha256=hash(path.resolve(opts['ui-helper']));
+  result.uiHelperSourceSha256=hash(path.join(__dirname,'macos-ui-control.mm'));
+  fs.copyFileSync(path.join(__dirname,'macos-ui-control.mm'),path.join(report,'macos-ui-control.mm'));
+}
 const children=new Set();let server;
 function launch(program,args,name){
   const log=fs.createWriteStream(path.join(report,name+'.log'));
@@ -116,7 +121,7 @@ function decode(file,seconds,staticAndSilent=false){
     if(opts.gui){
       const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']});
       await waitFor(()=>{assert.equal(publisher.exitCode,null,'GUI exited');const tree=ui('dump');fs.writeFileSync(path.join(report,id+'-startup-ui.txt'),tree);return tree.includes('sourceModeSelect');},15000,'Source controls did not become accessible');
-      async function click(name){try{await waitFor(()=>{try{ui('bounds',name);return true;}catch{return false;}},8000,'Control not visible/frontmost: '+name);const audit=ui('click',name);entry.mouseEvents??=[];entry.mouseEvents.push({query:name,audit});fs.writeFileSync(path.join(report,id+'-mouse-events.json'),JSON.stringify(entry.mouseEvents,null,2));await sleep(250);}catch(error){
+      async function click(name){try{await waitFor(()=>{try{ui('bounds',name);return true;}catch{return false;}},8000,'Control not visible/frontmost: '+name);const audit=ui('click',name);entry.mouseEvents??=[];entry.mouseEvents.push({query:name,audit});fs.writeFileSync(path.join(report,id+'-mouse-events.json'),JSON.stringify(entry.mouseEvents,null,2));await sleep(250);return JSON.parse(audit);}catch(error){
         fs.writeFileSync(path.join(report,id+'-failed-click-audit.json'),JSON.stringify({status:error.status,stdout:String(error.stdout||''),stderr:String(error.stderr||'')}));
         // An obstructing system dialog may itself be a screen-permission request.
         // Preserve the AX/driver evidence without causing another screen capture prompt.
@@ -129,8 +134,14 @@ function decode(file,seconds,staticAndSilent=false){
         const after=JSON.parse(ui('bounds',value));assert.deepEqual(after,before,'Popup bounds moved before selection');
         entry.uiSelections??=[];entry.uiSelections.push({control:name,value,bounds:after,input:'native mouse open and row click'});
         fs.writeFileSync(path.join(report,id+'-mouse-selections.json'),JSON.stringify(entry.uiSelections,null,2));
-        await click(value);
-        try { await waitFor(()=>JSON.parse(ui('dump')).some(row=>row.AXIdentifier?.endsWith('.'+name)&&row.AXTitle===value),
+        const selected=await click(value);
+        // Device rows append default-device and format details to the search
+        // label. Require the committed control to match the exact clicked row.
+        assert.equal(typeof selected.targetTitle,'string');
+        assert(selected.targetTitle.includes(value),'Clicked row did not match requested selection');
+        entry.uiSelections.at(-1).expectedTitle=selected.targetTitle;
+        fs.writeFileSync(path.join(report,id+'-mouse-selections.json'),JSON.stringify(entry.uiSelections,null,2));
+        try { await waitFor(()=>JSON.parse(ui('dump')).some(row=>row.AXIdentifier?.endsWith('.'+name)&&row.AXTitle===selected.targetTitle),
           5000,'Popup selection did not commit: '+name); }
         catch(error){fs.writeFileSync(path.join(report,id+'-selection-failure-ui.txt'),ui('dump'));throw error;}
       }
@@ -144,6 +155,9 @@ function decode(file,seconds,staticAndSilent=false){
       await choose('cameraResolutionSelect','960x540');
       await choose('microphoneDeviceSelect','BlackHole 2ch');
       ui('press','advancedToggle');await sleep(250);
+      // Expanded settings can extend below the viewport on shorter displays.
+      // Move the app's own scrollbar before the guarded native pointer click.
+      ui('scroll-to','outputSelect');await sleep(250);
       await choose('outputSelect',({rtmp:'RTMP / RTMPS',srt:'SRT (caller)',rtsp:'RTSP / VRChat (TCP)','rtsp-udp':'RTSP (UDP)',udp:'UDP / MPEG-TS (LAN)',rist:'RIST'})[protocol]);
       ui('set','outputUrlInput',url);if(protocol==='rtmp')ui('set','outputSecretInput',stream);if(protocol==='srt')ui('set','outputStreamIdInput','publish:'+stream);
       await sleep(700);fs.writeFileSync(path.join(report,id+'-ui.txt'),ui('dump'));ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');

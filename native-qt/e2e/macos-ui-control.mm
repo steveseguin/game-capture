@@ -3,6 +3,8 @@
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #include <cstdio>
+#include <algorithm>
+#include <cmath>
 #include <string>
 id attribute(AXUIElementRef element, CFStringRef key) {
     CFTypeRef value = nullptr;
@@ -51,7 +53,7 @@ AXUIElementRef findMenu(AXUIElementRef element, NSString *title, int depth = 0) 
 void dump(AXUIElementRef element, NSMutableArray *items, int depth = 0) {
     if (depth > 24 || items.count > 1200) return;
     auto row = [NSMutableDictionary new]; row[@"depth"] = @(depth);
-    for (NSString *key in @[@"AXRole",@"AXSubrole",@"AXIdentifier",@"AXTitle",@"AXDescription",@"AXValue",@"AXEnabled",@"AXSelected",@"AXMinimized",@"AXFocused",@"AXMenuItemCmdChar",@"AXMenuItemCmdModifiers"])
+    for (NSString *key in @[@"AXRole",@"AXSubrole",@"AXIdentifier",@"AXTitle",@"AXDescription",@"AXValue",@"AXMinValue",@"AXMaxValue",@"AXOrientation",@"AXEnabled",@"AXSelected",@"AXMinimized",@"AXFocused",@"AXMenuItemCmdChar",@"AXMenuItemCmdModifiers"])
         if (id value = attribute(element,(__bridge CFStringRef)key); [value isKindOfClass:NSString.class] || [value isKindOfClass:NSNumber.class]) row[key] = value;
     [items addObject:row];
     for (id child in attribute(element,kAXChildrenAttribute)) dump((__bridge AXUIElementRef)child,items,depth+1);
@@ -102,14 +104,27 @@ int main(int argc,char **argv) { @autoreleasepool {
         // Use the target app's accessible scrollbar, without global mouse or
         // keyboard events. This also reveals footer controls on small screens.
         auto area = find(app,@"mainScrollArea");
-        if (!area) { CFRelease(app); return 3; }
-        id bar = attribute(area,kAXVerticalScrollBarAttribute);
+        id bar = area ? attribute(area,kAXVerticalScrollBarAttribute) : nil;
+        // Qt can flatten the scroll area out of the Mac AX tree while still
+        // exposing its named vertical scrollbar as a window child.
+        auto direct = bar ? nullptr : find(app,@"mainScrollArea.qt_scrollarea_vcontainer.QScrollBar");
+        if (direct && [attribute(direct,kAXRoleAttribute) isEqualToString:@"AXScrollBar"])
+            bar = (__bridge id)direct;
         id maximum = bar ? attribute((__bridge AXUIElementRef)bar,kAXMaxValueAttribute) : nil;
-        const AXError error = [maximum isKindOfClass:NSNumber.class]
+        // Qt 6.9 exposes numeric accessibility limits as NSString values.
+        bool numeric = [maximum isKindOfClass:NSNumber.class];
+        if ([maximum isKindOfClass:NSString.class]) {
+            NSScanner *scanner = [NSScanner scannerWithString:maximum];
+            double value = 0;
+            numeric = [scanner scanDouble:&value] && scanner.isAtEnd;
+        }
+        const AXError error = numeric
             ? AXUIElementSetAttributeValue((__bridge AXUIElementRef)bar,kAXValueAttribute,(__bridge CFTypeRef)maximum)
             : kAXErrorAttributeUnsupported;
         if (error) fprintf(stderr,"Could not scroll target app to its footer: %d\n",error);
-        CFRelease(area); CFRelease(app); return error ? 4 : 0;
+        if(direct)CFRelease(direct);
+        if(area)CFRelease(area);
+        CFRelease(app); return error ? 4 : 0;
     }
     if (argc < 4) { CFRelease(app); return 2; }
     if (action == "press-menu") {
@@ -183,6 +198,30 @@ int main(int argc,char **argv) { @autoreleasepool {
         id button = [attribute(element,kAXRoleAttribute) isEqualToString:@"AXWindow"]
             ? attribute(element,kAXCloseButtonAttribute) : nil;
         error = button ? AXUIElementPerformAction((__bridge AXUIElementRef)button,kAXPressAction) : kAXErrorNoValue;
+    } else if (action == "scroll-to") {
+        auto bar = find(app,@"mainScrollArea.qt_scrollarea_vcontainer.QScrollBar");
+        CGPoint targetOrigin{},barOrigin{}; CGSize targetSize{},barSize{};
+        id position=attribute(element,kAXPositionAttribute), dimensions=attribute(element,kAXSizeAttribute);
+        id barPosition=bar ? attribute(bar,kAXPositionAttribute) : nil;
+        id barDimensions=bar ? attribute(bar,kAXSizeAttribute) : nil;
+        id current=bar ? attribute(bar,kAXValueAttribute) : nil;
+        id minimum=bar ? attribute(bar,kAXMinValueAttribute) : nil;
+        id maximum=bar ? attribute(bar,kAXMaxValueAttribute) : nil;
+        if (bar && [attribute(bar,kAXRoleAttribute) isEqualToString:@"AXScrollBar"] &&
+            position && dimensions && barPosition && barDimensions &&
+            [current respondsToSelector:@selector(doubleValue)] &&
+            [minimum respondsToSelector:@selector(doubleValue)] && [maximum respondsToSelector:@selector(doubleValue)] &&
+            AXValueGetValue((__bridge AXValueRef)position,kAXValueTypeCGPoint,&targetOrigin) &&
+            AXValueGetValue((__bridge AXValueRef)dimensions,kAXValueTypeCGSize,&targetSize) &&
+            AXValueGetValue((__bridge AXValueRef)barPosition,kAXValueTypeCGPoint,&barOrigin) &&
+            AXValueGetValue((__bridge AXValueRef)barDimensions,kAXValueTypeCGSize,&barSize) &&
+            targetSize.height>0 && barSize.height>0) {
+            const double low=[minimum doubleValue], high=[maximum doubleValue];
+            const double desired=[current doubleValue]+targetOrigin.y+targetSize.height/2-barOrigin.y-barSize.height/2;
+            if(std::isfinite(low)&&std::isfinite(high)&&std::isfinite(desired)&&low<=high)
+                error=AXUIElementSetAttributeValue(bar,kAXValueAttribute,(__bridge CFTypeRef)@(std::clamp(desired,low,high)));
+        }
+        if(bar)CFRelease(bar);
     } else if (action == "click" || action == "bounds") {
         CGPoint origin{}; CGSize size{};
         id position = attribute(element,kAXPositionAttribute), dimensions = attribute(element,kAXSizeAttribute);
