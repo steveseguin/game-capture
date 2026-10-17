@@ -1,0 +1,45 @@
+name: Mac Independent Browser Receiver
+
+on:
+  push:
+    branches: [macos-independent-receiver]
+  workflow_dispatch:
+    inputs:
+      stream:
+        description: Owned synthetic fixture stream, supplied by the local sender
+        required: true
+        type: string
+      encoder:
+        description: Packaged Mac sender encoder
+        required: true
+        type: choice
+        options: [videotoolbox, x264]
+
+permissions:
+  contents: read
+
+jobs:
+  receiver:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install pinned receiver tooling
+        working-directory: native-qt
+        run: |
+          npm ci --ignore-scripts
+          npx --no-install playwright install --with-deps chromium
+      - name: Verify independent decoded picture and stereo PCM
+        working-directory: native-qt
+        run: node e2e/macos-independent-receiver.js
+      - name: Preserve allowlisted receiver observations
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mac-independent-receiver-${{ github.run_id }}
+          path: native-qt/qa/reports/independent-receiver/export/
+          retention-days: 7
+          if-no-files-found: error
