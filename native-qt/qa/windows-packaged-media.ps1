@@ -48,11 +48,12 @@ try {
     $result.session = @{ interactive = [Environment]::UserInteractive; processSessionId = (Get-Process -Id $PID).SessionId }
     $result.videoControllers = @(Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion)
     & $python (Join-Path $repo 'native-qt/e2e/diagnostics-snapshot-packaged-e2e.py') --publisher $exe --reports (Join-Path $report 'diagnostics') *> (Join-Path $report 'private-diagnostics.log')
-    if ($LASTEXITCODE -ne 0) { throw 'Packaged diagnostics workflow failed' }
-    $result.steps += @{ name = 'packaged-diagnostics-shutdown'; kind = 'application workflow'; passed = $true }
+    $diagnosticsPassed = $LASTEXITCODE -eq 0
+    $result.steps += @{ name = 'packaged-diagnostics-shutdown'; kind = 'application workflow'; passed = $diagnosticsPassed }
     & $node (Join-Path $repo 'native-qt/e2e/windows-hosted-media.js') "--publisher=$exe" "--reports=$(Join-Path $report 'media')" "--manifest-sha256=$manifestSha"
-    if ($LASTEXITCODE -ne 0) { throw 'Packaged Windows media workflow failed' }
-    $result.steps += @{ name = 'packaged-software-window-media'; kind = 'application workflow'; passed = $true }
+    $mediaPassed = $LASTEXITCODE -eq 0
+    $result.steps += @{ name = 'packaged-software-window-media'; kind = 'application workflow'; passed = $mediaPassed }
+    if (-not $diagnosticsPassed -or -not $mediaPassed) { throw "Packaged workflows incomplete: diagnostics=$diagnosticsPassed media=$mediaPassed" }
     $result.passed = $true
 } catch {
     $result.error = $_.Exception.Message

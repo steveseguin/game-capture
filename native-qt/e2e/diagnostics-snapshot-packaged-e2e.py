@@ -29,17 +29,50 @@ def main():
                                   wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE]
     kernel.CreateFileW.restype = wintypes.HANDLE
     kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.ReadFile.argtypes = [wintypes.HANDLE, wintypes.LPVOID, wintypes.DWORD,
+                               ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID]
+    kernel.ReadFile.restype = wintypes.BOOL
+
+    def shared_read(path):
+        # A normal observer must permit atomic rename. Python's default file
+        # open can deny delete sharing, turning this into the locked case.
+        # https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+        handle = kernel.CreateFileW(str(path), 0x80000000, 7, None, 3, 0, None)
+        if handle == wintypes.HANDLE(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            chunks = []
+            buffer = ctypes.create_string_buffer(65536)
+            count = wintypes.DWORD()
+            while True:
+                if not kernel.ReadFile(handle, buffer, len(buffer), ctypes.byref(count), None):
+                    raise ctypes.WinError(ctypes.get_last_error())
+                if not count.value:
+                    return b''.join(chunks).decode('utf-8')
+                chunks.append(buffer.raw[:count.value])
+        finally:
+            kernel.CloseHandle(handle)
+
+    def save():
+        (run / 'results.json').write_text(json.dumps(dict(publisher=str(publisher),
+            sha256=hashlib.sha256(publisher.read_bytes()).hexdigest(),
+            harnessSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            observerShareMode='FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE',
+            results=results), indent=2), encoding='utf-8')
 
     def record(name, passed, **details):
         results.append(dict(name=name, passed=passed, **details))
+        save()
         print(name, passed, details)
 
+    save()
     for locked in (False, True):
         output = run / ('locked.json' if locked else 'snapshot.json')
         original = '{"previous":"retain this snapshot"}'
         output.write_text(original, encoding='utf-8')
         discovery = run / ('locked-control.json' if locked else 'control.json')
         process = subprocess.Popen([str(publisher), '--local-control',
+            f'--settings-dir={run / ("settings-locked" if locked else "settings-normal")}',
             f'--local-control-discovery={discovery}', f'--diagnostics-out={output}'],
             env=dict(os.environ, LOCALAPPDATA=str(run)), creationflags=subprocess.CREATE_NO_WINDOW)
         handle = None
@@ -64,10 +97,10 @@ def main():
                 def observe():
                     while not stop.is_set():
                         try:
-                            value = output.read_text(encoding='utf-8')
+                            value = shared_read(output)
                             reads.append(1)
                             json.loads(value)
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, UnicodeDecodeError):
                             invalid.append(1)
                         except OSError:
                             pass # Windows can briefly deny a read during replacement.
@@ -83,6 +116,8 @@ def main():
             stop.set()
             if observer:
                 observer.join()
+            record('quit-exits-cleanly', process.returncode == 0, locked=locked, exitCode=process.returncode)
+            record('quit-removes-discovery', not discovery.exists(), locked=locked)
             if locked:
                 record('failed-replacement-preserves-snapshot', output.read_text(encoding='utf-8') == original)
             else:
@@ -90,6 +125,8 @@ def main():
                        reads=len(reads), incomplete=len(invalid))
                 content = json.loads(output.read_text(encoding='utf-8'))
                 record('shutdown-exports-current-diagnostics', bool(content) and 'previous' not in content)
+        except Exception as error:
+            record('workflow-completed', False, locked=locked, error=str(error))
         finally:
             stop.set()
             if observer:
@@ -99,8 +136,7 @@ def main():
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=5)
-    (run / 'results.json').write_text(json.dumps(dict(publisher=str(publisher),
-        sha256=hashlib.sha256(publisher.read_bytes()).hexdigest(), results=results), indent=2), encoding='utf-8')
+    save()
     print('Results:', run)
     return 0 if all(result['passed'] for result in results) else 1
 

@@ -62,6 +62,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   viewerBrowser=await chromium.launch({headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
   const viewer=await receiver(viewerBrowser,stream,publisher);
   result.phases.moving=await observe(viewer,6000);result.initialDistinct=requireMoving(result.phases.moving,'Initial Windows software stream');save();
+  assert.equal(result.phases.moving.width,640);assert.equal(result.phases.moving.height,360);
   const diagnostics=await api('/diagnostics');
   result.activeEncoder=diagnostics.video.active_encoder;result.hardwareEncoder=diagnostics.video.hardware_encoder;
   assert.equal(result.hardwareEncoder,false,'Explicit software request used hardware');
@@ -70,6 +71,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     encodeFailures:diagnostics.video.encode_failures,encodeTimeouts:diagnostics.video.encode_timeouts};
   await source.evaluate(()=>{fixture.paused=true;});await sleep(1000);
   result.phases.static=await observe(viewer,2500);
+  assert(!result.phases.static.observerError);assert.equal(result.phases.static.identityReadFailures,0);
   assert.equal(new Set(result.phases.static.observations.map(x=>x.id)).size,1,'Static picture changed');
   assert(result.phases.static.observations.length>=10,'Static picture was not paced');save();
   await source.evaluate(()=>{fixture.paused=false;});await source.setViewportSize({width:680,height:420});await sleep(800);
