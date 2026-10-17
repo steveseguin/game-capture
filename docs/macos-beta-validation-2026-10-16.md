@@ -7,7 +7,7 @@ The Apple Silicon release remains **experimental**. This work resolves the earli
 - Release: [macOS 0.2.62 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1).
 - Signed ZIP SHA-256: `2e51db7ef109e01d7d14b6787fd8d7a6b8bd14e05e725d7185e0cf0fbdec306b`.
 - Extracted executable SHA-256: `25b4b113702c82a46056095350bbb01c3567c50998fecc066b49407335220c43`.
-- Apple M1, 8 GiB RAM, macOS 26.4.1. No application binary, bundled dependency, signing identity or release asset changed.
+- Apple M1, 8 GiB RAM, macOS 26.4.1. No released application binary, bundled dependency, signing identity or release asset changed. Candidate source changes are identified separately below.
 - External-output workflows use an owned OBS virtual-camera fixture, BlackHole stereo input, a local MediaMTX 1.21.2 server, and independent FFmpeg receivers. They do not exercise physical cameras/microphones or remote production services.
 
 ## RTMP finding resolved
@@ -69,13 +69,37 @@ The first continuous x264 attempt reproduced an identity rejection in its 400–
 
 The reader now samples three separated rows and requires two complete identities to agree. Frame ordering, maximum-step and cadence requirements remain unchanged; an ambiguous read is rejected. It retains disagreement images as well as rejected-frame images. An offline regression gate uses the actual received PNG. In real signed-app controls, a small one-row overlay produced **1,570 recovered frames** during a passing sixty-second VT/audio workflow, while a deliberate whole-frame reversal was still rejected (`882 → 683`, all three rows agreed on 683).
 
+The passing thirty-minute x264 run also retained one natural cursor occlusion: rows decoded `[25479, 9095, 9095]`, while the visible label was 9095. The top-row bit-14 sample was gray (154); the other two were black. The accepted sequence remained 9094 → 9095 → 9096. Offline review also found no rejected identity step across any of the 179 interval boundaries in either completed endurance run; that is not coverage of pixels between observation intervals.
+
 This explains the reproduced x264 rejection. The older VT failure did not retain its rejected pixels, so the same cause cannot be established retrospectively.
 
 ### Calibrated recorded-media timing
 
 The A/V workflow records a generated canvas/audio reference and the received stream, matching numbered visual flashes to audio pulses. The first analyzer incorrectly treated decoded audio as a gapless timeline, producing a false drift reading. Its correction maps each detected sample through its own decoded frame timestamp. The original analysis remains preserved.
 
-Offline controls measured identical media at 0 ms and deliberate audio shifts at exactly +150 ms and −150 ms; both shifted cases were rejected. Corrected analysis of the initial sixty-second signed VT recording matched 28 pulses, with additional received skew from **−32 to +23.5 ms**, median −19.5 ms, within the preset 50 ms limit. This measures paired events in recorded media, not physical display/speaker latency, HTML/OBS presentation, or continuous recording coverage between pulses. Long-run drift and additional encoder coverage remain pending.
+Offline controls measured identical media at 0 ms and deliberate audio shifts at exactly +150 ms and −150 ms; both shifted cases were rejected. Corrected analysis of the initial sixty-second signed VT recording matched 28 pulses, with additional received skew from **−32 to +23.5 ms**, median −19.5 ms, within the preset 50 ms limit. This measures paired events in recorded media, not physical display/speaker latency, HTML/OBS presentation, or continuous recording coverage between pulses. The long-run results below extend this initial calibration.
+
+The subsequent signed **VT 720p60 long-run comparison passed**. Initial and final recording starts were 1,817.878 seconds apart, with the same publisher active throughout. The two sixty-second phases matched 28 and 29 pulses. Additional skew ranged from −30.5 to +41.5 ms initially and −43.5 to −17 ms finally; median offset changed from −12 to −28 ms, a −16 ms drift within the preset 30 ms limit. Every paired event stayed within the preset 50 ms skew limit. All 372 periodic publisher/receiver health samples and clean shutdown passed. This qualifies the bounded start/end comparison, not continuous A/V measurements during the hold. The x264 comparison failed as described below.
+
+A second offline calibration isolates the drift decision: deliberate +40 ms and −40 ms changes between two copied phases were measured correctly and rejected, while each phase individually remained inside the 50 ms skew limit. These controls use recorded media with no claimed elapsed application run. They ran sequentially at lower CPU priority during part of the unrecorded x264 hold; that workload is retained in its evidence.
+
+The equivalent signed **x264 long-run comparison failed**. Its initial 28 paired events had additional skew from −17.5 to +34.5 ms (median −0.5 ms). The final 28 had −60.5 to −36.5 ms (median −45.25 ms). The **−44.75 ms median drift exceeded the 30 ms limit**, and some final events exceeded the 50 ms skew limit. All 372 health observations, source/receiver media-content checks and publisher shutdown passed; those successes do not override the timing failure. This remains a production blocker.
+
+Offline review of receiver statistics found video jitter-buffer delay increasing from approximately 61 to 111 ms between phases, while audio increased from approximately 36 to 37 ms. These are differences of cumulative delay divided by emitted-count differences, following the [WebRTC statistics definition](https://www.w3.org/TR/webrtc-stats/#dom-rtcinboundrtpstreamstats-jitterbufferdelay). This is consistent with the measured offset change but does not establish whether the cause is the publisher clock, receiver synchronization or recording behavior. No timing limit was relaxed and the failed artifacts are retained.
+
+A separate native-backend diagnostic delivered 5,671 callbacks of 512 stereo frames at 48 kHz. The app currently truncates each callback duration, accumulating approximately 11.25 ms of timestamp loss per thirty minutes at that size. That is insufficient to explain the complete measured drift. A Mac-only candidate now carries the fractional duration between callbacks and clears it when the capture clock re-anchors. The Windows calculation is unchanged. Two-hour arithmetic checks across several callback sizes, variable-size/reset cases and both readiness/integrated Mac application compiler gates passed. These are gates only. This candidate is **not in the released binary and has not passed packaged application testing**; a new signed package and both long-run timing workflows are required. The machine has less than 0.5 GiB of free disk, limiting further package construction without additional space.
+
+### Four-viewer room follow-up
+
+Both signed VT and x264 workflows passed a thirty-second four-viewer load followed by the complete room control/rejoin workflow. Each run had three 720p30 HQ scene receivers and one independent 360p30 x264 director preview. Each encoder passed 1,264 consecutive 100 ms PCM windows across the four receivers, with stereo/channel/isolation checks and advancing audio packets. Video ranged from 29.897–29.997 fps for VT and 29.890–29.996 fps for x264. Compressed raw observations and summary hashes were independently checked. This short load is not sustained room endurance, calibrated A/V timing or physical playback.
+
+### 1080p observer qualification
+
+An installed-Chrome 1080p60 moving-detail attempt rejected disagreeing barcode rows during its initial picture check. The presentation observer previously sampled the live video element three times. It now freezes one `VideoFrame`, uses that image for all rows and retained failure pixels, and reports callback errors explicitly. That removed initial row disagreements in subsequent attempts; the original attempt did not save rejected pixels and is retained as failed.
+
+A subsequent three-minute attempt decoded about 60 fps according to Chrome counters, but simultaneous decoded/presentation pixel observers processed only about 19 fps and the workflow failed. A single-crop optimization improved observed throughput, but duplicate pixel observers remained below target; that diagnostic attempt was intentionally stopped through the owned publisher's Quit command. The runner now uses one decoded-content observer plus presentation callback timing during performance intervals. Initial and functional-control presentation checks still inspect pixels. Content, frame-order, cadence, dimension and audio requirements remain unchanged; presentation timing alone cannot satisfy a content assertion. These diagnostic attempts do not qualify 1080p output.
+
+With that measurement correction, both encoders completed all three-minute 1080p60/8 Mbps moving-detail intervals and subsequent functional controls, but **both failed sustained performance**. VT missed the target in 8/18 intervals (54.518–59.930 received fps); x264 missed in 11/18 (53.962–58.873 fps). The threshold remains 95% of requested/source cadence. All 1,833 VT and 1,836 x264 continuous audio windows passed. In a failing VT interval, publisher dropped frames rose from 10 to 40 while receiver decoding also slowed, so this is not explained solely by observer throughput. Host snapshots show substantial remote-desktop CPU activity; the connection was left intact. Confirm this workload in a clean local session or with an independent receiver machine before attributing a cause or claiming 1080p60 qualification. The earlier 720p60 endurance passes do not qualify this heavier workload.
 
 ### Real browser download and replacement
 
@@ -108,7 +132,14 @@ Raw recordings, logs, private local-control files and interval payloads remain i
 - Corrected-reader occlusion control: `macos-three-row-occlusion-control/bb44bb85-a5d1-45db-97e6-edf15baf33ff`.
 - Corrected-reader reversal rejection: `macos-three-row-negative-control/af34cbb0-8f8a-453e-840f-6d522eddea9b`.
 - A/V initial recording: `macos-signed-av-calibration/828e3929-449a-4989-9e60-a29d8772132a`; corrected analysis: `macos-av-analysis-correction/5432f129-8d8b-46a7-9f00-56799b53482c`.
+- Long-run VT A/V comparison: `macos-signed-av-drift/93259a69-8466-41d8-8577-e750d56391fe`.
+- Offline drift-specific calibration: `macos-av-drift-calibration/51150480-7c46-4109-b7af-be4747b7edd0`.
 - Offline A/V calibration: `macos-av-analyzer-calibration/3ac342ee-5f76-46b8-ad78-21c27c3842e4`.
+- Fractional-clock arithmetic/compiler gate: `macos-sample-clock-gate/80ca03c1-e496-46b6-972e-70b066ef2689`; integrated application compile gate: `macos-integrated-clock-compile-gate/269fbead-c043-42bf-9725-7d6d422068d3`.
+- Failed 1080p60 workload with corrected observer: `macos-signed-1080p-chrome-detail/b0be8865-743a-4ca4-b71e-1812a1ae5d94`. Earlier diagnostic attempts: `d56a3830-a395-4526-88d5-5d2c8d2c43fa`, `f49a8b2d-c169-4531-81c3-203fbaf67e4c`, and intentionally stopped `3bd0d2ee-8519-443d-9f8c-77d8e39b91ea` in the same category.
+- Four-viewer room qualification: `macos-signed-room-four-viewer-qualification/5df2b76e-12c9-412a-bf0d-f13a530142d1`.
+- Native callback diagnostic: `macos-audio-clock-diagnostic/56ecf122-7396-4bce-b393-643b060b69ab`.
+- Failed x264 long A/V comparison: `macos-signed-av-drift/9ffbef4c-c15b-4f4e-b6c8-f9d266b77fc9`.
 - Chrome download: `macos-desktop-browser-download/ee0a52ea-37b8-4642-87cd-47f2dc6f255e`.
 - Quarantined replacement: `macos-quarantined-replacement-launch/2eeb89a2-7875-4aea-a9f4-9c9ae4b08b6b`.
 
@@ -138,7 +169,7 @@ node native-qt/e2e/macos-av-sync.js \
   --source-ui-helper=native-qt/build-macos-arm64/bin/macos-ui-control
 ```
 
-The expanded room runner accepts `--extra-scenes=2 --performance-seconds=900 --compact-performance-report=true`, in addition to its explicit app, camera fixture, audio fixture and report arguments. That observes four actual browser receivers: one 360p preview and three 720p scene views at 30 fps. It samples stereo audio during each interval; it does not replace continuous audio or A/V-drift coverage. Its new four-viewer execution remains pending at this checkpoint.
+The expanded room runner accepts `--extra-scenes=2 --performance-seconds=900 --compact-performance-report=true --continuous-audio=true`, in addition to its explicit app, camera fixture, audio fixture and report arguments. That observes four actual browser receivers: one 360p preview and three 720p scene views at 30 fps. With `--continuous-audio=true`, it retains consecutive received PCM windows and advancing packet/concealment counters for every receiver, plus the existing periodic spectra. This does not measure calibrated A/V drift. Both encoders passed the initial thirty-second four-viewer workflow and subsequent controls; the fifteen-minute expansion remains pending.
 
 For Windows integration regression, build and freeze a **new package from the integrated candidate**, record its source revision and artifact-manifest digest, and pass that package to the existing release-readiness workflow. Reusing the frozen Windows 0.2.64 production package would not qualify these shared changes. The GitHub workflows require a prepared Windows self-hosted runner; none was registered when checked.
 
@@ -147,7 +178,7 @@ For Windows integration regression, build and freeze a **new package from the in
 - Investigate any recurrence of the early audio-concealment transient with the new retained PCM/counters. Both thirty-minute VT and x264 workflows now passed. The original VT identity rejection has insufficient saved evidence to establish its cause retrospectively.
 - Fresh-machine download/launch and permissions, cross-version upgrade, minimum macOS 14.2 and another Apple Silicon Mac. Quarantined Chrome download/launch and same-version replacement passed on this existing machine.
 - Physical device hotplug/busy recovery, permission denial/revocation, sleep/wake and display/audio-device changes.
-- Long-run calibrated A/V drift with both encoders; broader sustained gameplay, resolutions, room load and receiver/network coverage. The short VT recorded-media timing analysis passed its calibrated 50 ms limit.
+- Resolve the failed x264 long-run A/V comparison and complete expanded room/workload coverage. VT passed its long-run recorded-media skew/drift limits. The 1080p60 moving-detail workload failed sustained delivery with both encoders on this cohosted M1 setup; it needs clean-session or independent-receiver confirmation. Broader sustained gameplay and receiver/network coverage remain open.
 - Remote services and trusted RTMPS, plus remaining advanced-feature qualification. Local protocol success is not a production-service interoperability claim.
 - Packaged Windows regression of the port's shared-code changes before those changes enter a future Windows release. The independently qualified Windows v0.2.64 production release is unchanged by this work.
 
