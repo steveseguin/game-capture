@@ -2185,3 +2185,18 @@ An initial room attempt failed the fifteen-second prompt-cleanup check after gue
 [macOS 0.2.64 Beta 1](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1) now publishes the same frozen, signed candidate as a separate prerelease, with matching full source/build materials and checksums. Published ZIP SHA-256 is `6b72ea7a21e27c8baf6bafa8fb179ceb4260a3d133d8ba8a88bfcf199c0e3814`; source SHA-256 is `27533cbea44bd73e3bce216368e2c0bbafe4da6e6d33d79552d5095fd7badb53`. The previous Mac assets and Windows production release/body/assets stayed unchanged, and Windows remains GitHub's latest stable release.
 
 `macos-browser-download.js` accepts an explicit beta tag, matching filename and SHA-256 together while retaining the original beta defaults. The new public ZIP passed an installed-Chrome download with original quarantine, then normal Open handling, App Translocation, GUI launch/relaunch, private preference retention, capture-off and clean shutdown. Both launched executable hashes matched the signed candidate. These are existing-machine workflows, not minimum-OS, fresh permissions or production qualification. The intermittent natural guest-cleanup finding remains open despite subsequent passing workflows and the deliberately exercised bounded fallback.
+
+
+### Mac frame deadlines, 2026-10-17
+
+The media worker continues to use the shared `video::detail::FrameWaiter`. Platform timing stays behind that interface:
+
+| Location | Responsibility |
+| --- | --- |
+| `include/versus/video/frame_waiter.h` | Select the existing Windows waitable timer, the Mac waiter, or the generic sleep fallback. Windows timing behavior is unchanged. |
+| `include/versus/platform/macos_media_activity.h` | Declare the noncopyable Mac timer owner behind a C++ PIMPL. Shared callers do not import Objective-C or dispatch types. |
+| `src/platform/macos/media_activity.mm` | Own a strict dispatch timer, private user-initiated queue and semaphore for each media worker. Recheck deadlines after wakeup; cancel on destruction. Callbacks retain only their semaphore. |
+
+This avoids the severe ordinary-wait coalescing observed in macOS 14 VMs without spinning or changing machine-wide settings. Strict timers remain best effort. Capture, timestamp calculations, encoder selection, output transport and VDO.Ninja messages are unchanged by this three-file fix.
+
+Runtime `77e887a` was rebuilt into a signed/notarized candidate. Packaged VT/x264 workflows, 12 external-output cases, room fuzz, two fresh macOS 14 x264 workflows and separate Windows compilation gates are recorded in the [artifact-bound qualification report](macos-frame-timer-2026-10-17.md). Recorder-clock failures and older VM failures are retained. The public Mac beta is still experimental; current-artifact endurance, GUI upgrade, physical-device/privacy and real Windows application coverage remain open.
