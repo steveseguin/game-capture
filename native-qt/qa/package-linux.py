@@ -72,7 +72,7 @@ def main():
         dependencies += ", ffmpeg (>= 7:6.1), qt6-wayland, xdg-desktop-portal, pipewire, ca-certificates"
         control = stage / "DEBIAN"
         control.mkdir()
-        (control / "control").write_text(f"Package: game-capture\nVersion: {version}\nArchitecture: {architecture}\nMaintainer: Game Capture contributors <noreply@vdo.ninja>\nSection: video\nPriority: optional\nDepends: {dependencies}\nDescription: Native Game Capture for Linux (development)\n Linux parity qualification remains in progress; see linux-parity.json.\n")
+        (control / "control").write_text(f"Package: game-capture\nVersion: {version}\nArchitecture: {architecture}\nMaintainer: Game Capture contributors <noreply@vdo.ninja>\nSection: video\nPriority: optional\nDepends: {dependencies}\nRecommends: gnome-keyring\nDescription: Native Game Capture for Linux (development)\n Linux parity qualification remains in progress; see linux-parity.json.\n")
         # Preserve notices for all statically linked fetched dependencies.
         materials = []
         for dependency in sorted((build / "_deps").glob("*-src")):

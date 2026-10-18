@@ -4,10 +4,10 @@
 #include "versus/platform/capabilities.h"
 #if defined(__APPLE__) || defined(__linux__)
 #include "versus/platform/app_paths.h"
+#include "versus/platform/output_profiles.h"
 #endif
 #ifdef __APPLE__
 #include "versus/platform/macos_capture.h"
-#include "versus/platform/macos_output_profiles.h"
 #include "versus/platform/macos_audio_choices.h"
 #include <QStandardItemModel>
 #endif
@@ -113,7 +113,7 @@ static QString canonicalResolution(const QString &text) {
 
 // Output URLs can contain credentials too. Protect the whole profile with the
 // current Windows user's key, rather than persisting just the token securely.
-#ifndef __APPLE__
+#if !defined(__APPLE__) && !defined(__linux__)
 static QByteArray protectOutputProfiles(const QByteArray &input, bool decrypt) {
 #ifdef _WIN32
     if (input.isEmpty()) return {};
@@ -1141,11 +1141,15 @@ void MainWindow::loadPersistedSettings() {
 
     onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
     outputProfiles_.clear();
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     const auto storedProfiles = platform::loadOutputProfiles(
         QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()));
     outputProfilesReadable_ = storedProfiles.ok();
     lastSavedOutputProfiles_ = storedProfiles.value;
+#ifdef __linux__
+    outputProfileStatus_->setText(storedProfiles.error);
+    outputProfileStatus_->setVisible(!storedProfiles.ok());
+#endif
     if (!storedProfiles.ok()) {
         spdlog::warn("[UI] {}", storedProfiles.error.toStdString());
         QTimer::singleShot(0, this, [this, message = storedProfiles.error] { updateStatus(message, "error"); });
@@ -1236,7 +1240,7 @@ void MainWindow::savePersistedSettings() {
                 {"passphrase", QString::fromStdString(config.passphrase)}, {"latencyMs", config.latencyMs},
                 {"aacBitrateKbps", config.aacBitrateKbps}});
         }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         if (outputProfilesReadable_) {
             const auto reference = QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray());
             const auto data = QJsonDocument(profiles).toJson(QJsonDocument::Compact);
@@ -1244,8 +1248,8 @@ void MainWindow::savePersistedSettings() {
                 return !profile.url.empty() || !profile.bearerToken.empty() || !profile.streamKey.empty() ||
                     !profile.passphrase.empty() || !profile.streamId.empty();
             });
-            // Normal window/VDO use needs no Keychain item. Avoid repeated
-            // Keychain writes when unrelated UI settings are saved.
+            // Normal window/VDO use needs no secret-store item. Avoid repeated
+            // secret-store writes when unrelated UI settings are saved.
             if ((hasDestination || !reference.isEmpty()) && data != lastSavedOutputProfiles_) {
                 const auto saved = platform::saveOutputProfiles(data, reference);
                 if (saved.ok()) {
@@ -1253,6 +1257,13 @@ void MainWindow::savePersistedSettings() {
                     lastSavedOutputProfiles_ = data;
                     settings.setValue("output/protocol", name);
                 } else {
+#ifdef __linux__
+                    // Do not retry a failed autosave on every keystroke. The
+                    // session may still publish; restart after repairing storage.
+                    outputProfilesReadable_ = false;
+                    outputProfileStatus_->setText(saved.error);
+                    outputProfileStatus_->show();
+#endif
                     spdlog::warn("[UI] {}", saved.error.toStdString());
                     updateStatus(saved.error, "error");
                 }
@@ -1281,10 +1292,14 @@ bool MainWindow::resetPersistedSettingsToDefaults() {
     }
 
     QSettings settings = makeUiSettings();
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     const auto deleted = platform::deleteOutputProfiles(
         QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()));
     if (!deleted.ok()) {
+#ifdef __linux__
+        outputProfileStatus_->setText(deleted.error);
+        outputProfileStatus_->show();
+#endif
         spdlog::warn("[UI] {}", deleted.error.toStdString());
         return false;
     }
@@ -1326,6 +1341,8 @@ void MainWindow::onResetToDefaults() {
         "and the saved window layout.\n\n"
 #ifdef __APPLE__
         "It does not uninstall Game Capture, change macOS privacy permissions, or delete logs.",
+#elif defined(__linux__)
+        "Saved output destinations are removed from your desktop password store. It does not uninstall Game Capture, change system permissions, or delete logs.",
 #else
         "It does not uninstall Game Capture, change Windows Firewall rules, or delete logs.",
 #endif
@@ -1913,6 +1930,14 @@ void MainWindow::setupUI() {
     outputForm_->addRow(outputHelp_);
     advancedForm->addRow(outputPanel_);
     outputPanel_->hide();
+#ifdef __linux__
+    outputProfileStatus_ = new QLabel(this);
+    outputProfileStatus_->setObjectName("outputProfileStorageStatus");
+    outputProfileStatus_->setWordWrap(true);
+    outputProfileStatus_->setStyleSheet(QString("color: %1;").arg(COLOR_RED));
+    advancedForm->addRow(outputProfileStatus_);
+    outputProfileStatus_->hide();
+#endif
 
     roomInput_ = new QLineEdit(this);
     roomInput_->setObjectName("roomInput");

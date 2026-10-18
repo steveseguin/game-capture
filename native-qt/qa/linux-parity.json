@@ -106,8 +106,8 @@
     {
       "id": "profiles",
       "required": true,
-      "status": "missing",
-      "remaining": "Linux Secret Service destination storage and locked/unavailable store handling without plaintext fallback"
+      "status": "bounded-e2e-passed",
+      "remaining": "Packaged X11 GUI persistence, relaunch, update, locked-store protection, damaged/missing/ambiguous references, bounded unavailable/stalled service, store restart recovery and reset passed with real private GNOME Keyring. Wayland GUI, other providers, in-place unlocking, interruption during a committed remote mutation, fresh desktop password-store provisioning, clean installation and Windows/macOS regression remain. Actual destination publishing is qualified separately."
     },
     {
       "id": "automation",
@@ -1183,6 +1183,476 @@
       },
       "finding": "Authenticated 2000-to-1000 kbps reduction and restoration, rejected unauthorized control, decoded identities during both transitions, measured received rates, static pacing, resize, late viewer and source-loss cleanup passed.",
       "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/0da4fa97-1a63-4e73-bda3-d9b9b98d629d/results.json",
+      "reportSha256": "ea02c29240c39119b31ce5e11f80ae0847bff1d3ab5621ad548720eff3b53c3a",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "c4d93c47f02848d8966af2624fc0bd60136f25395ba910155101bb0d55fade98",
+      "guiHelperSha256": "1a93b64e9f4e39e4f01d7b0c14a5d58de94ec4c1c1265480d84184c09170643d",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [],
+      "finding": "Fixture queried accessibility before GUI construction completed.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/5aa4b2bb-126e-4a59-ba55-9d096b11359f/results.json",
+      "reportSha256": "fe519f1c3f4cffd6056f4aac8c9e8919801a97b8f42f0a4bfadc7cfa0ec6730f",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "7f4a870ffd538646fdd5a3c0bd1b8294b1cf234c5a23dca94a9118fb605bb239",
+      "guiHelperSha256": "1a93b64e9f4e39e4f01d7b0c14a5d58de94ec4c1c1265480d84184c09170643d",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [],
+      "finding": "Fixture forced AT_SPI_BUS_ADDRESS, preventing Qt 6.4 accessibility bridge initialization.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/681e0aa0-990f-4c4f-b7b2-de52071721bc/results.json",
+      "reportSha256": "a1e33c1eaf3846de4c891381a5cd30382c22e46d5645f0ebedcd7a6e46efcf2b",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "3755c13ec87ccbfcd60916540c35026e68ff0665b8af26af271ca334013796ec",
+      "guiHelperSha256": "52f3470da7a022aa3185d7722e5c473e6acb7ac68a169cf83a92b498fa3f81ab",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.525793083943427
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "99c1adb9cfbd7cc4eb2e30bab65a59b8c7a6068cd6f4d9df442030030f7c1163",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        }
+      ],
+      "finding": "Synchronous AT-SPI QAction blocked inside modal confirmation; fixture now clicks confirmed owned menu item.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/6eb59dee-647e-4af8-8b82-0f29254efb4a/results.json",
+      "reportSha256": "9282e3f1361e1b2a4b7c1d48833e35509ba634dbcd82f6d6206a15f13eb65e4b",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "d26cd28e89bffe93176408b2a92d4736aa3096b2017baf2c9fa8b3cdada4a3a0",
+      "guiHelperSha256": "147bfb0f34e98c34278535e083a101f8c6c3d1a78ca02233e040a787a3fb78a7",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.518626168021001
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "1cfea313414fba08abe239ada0e6b34f57cca9a6f150f59b3e59f7cfc06889c5",
+          "itemCount": 1
+        }
+      ],
+      "finding": "Fixture did not recognize Qt credential Show control as a check box.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/86495540-99f2-4901-ac36-aef814693f95/results.json",
+      "reportSha256": "860437fa1bcc82009ad5db1863a0d8d271d48053a027054bf9f4c2849aafd1ab",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "4aa10d15c573921c93c5f63164d549c2ac8a6214d33dd01154eff8283c306376",
+      "guiHelperSha256": "4ddddfa2f4f0bd9e9ece3580b7462057b2c7ea10b1d64085462b17062c86fba0",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 0.48946342000272125
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "299e9ff843965666dd8618703b3a96b5384df3a11aa4f5e743d9dd13d261e2c8",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        },
+        {
+          "name": "locked-relaunch-and-reset-preserved-reference"
+        }
+      ],
+      "finding": "Fixture CLI unlock did not unlock running owned keyring; workflow now explicitly qualifies store restart with password instead.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/8a7cea95-2405-4ef4-92f2-a5675f377d9a/results.json",
+      "reportSha256": "58245f488a4ff05e973fbb9aacde11cbeb20889c75b55880a1dee33a9be0f6a4",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "e8807c677d550d0756ebd0e45033800d03d787da22c4ec9a0c5cf3ec4afb1f9c",
+      "guiHelperSha256": "d91ec472313efe1bde0a6e4918d479be6a67d9dab5e65db6f0d42fdf02b2927a",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.40799404506106
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "79c90e57dc8afe0a6575105ce558db21222b3f7f0d0ec1355695dfd660c79eae",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        }
+      ],
+      "finding": "Fixture did not support showmenu accessibility action.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/8e819135-acdd-49c7-9282-ed82e428da8d/results.json",
+      "reportSha256": "3272cadb43b92347380084ef37535b5c375a99d1342184b3474319e2a50175ba",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "804f5f45d3a090161e12102fd0416d6e07a2f7a9322391fd247d86eed9bd1172",
+      "guiHelperSha256": "4ddddfa2f4f0bd9e9ece3580b7462057b2c7ea10b1d64085462b17062c86fba0",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.52594704402145
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "40ee915954778807106581bd13a01ca83bec2bf5544894c12fe1d1c8d2dcbffd",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        },
+        {
+          "name": "locked-relaunch-and-reset-preserved-reference"
+        }
+      ],
+      "finding": "Owned GNOME keyring control socket path exceeded AF_UNIX path limit, breaking fixture unlock.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/94ca8420-a4a1-45c5-aa00-f71dd2c47677/results.json",
+      "reportSha256": "403828f8307b1522063c7087cfb3aed4853aefdf374292d9fbfab7e19819480a",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "e8807c677d550d0756ebd0e45033800d03d787da22c4ec9a0c5cf3ec4afb1f9c",
+      "guiHelperSha256": "3e5bee09b2cc89f958dbc7a9236f481883bbddc0c5ec1470e44051c4a91b4eea",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.416425044997595
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "5fb47f36abde244631a88a681a068c3a646ca3f7945a75388004d0b5d7395efb",
+          "itemCount": 1
+        }
+      ],
+      "finding": "Fixture credential Show lookup did not include check box role.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/a239c1d3-8d40-47a4-b546-2d7fdf84d134/results.json",
+      "reportSha256": "3c8796bb594e7484944185c1f96039231f49927d4a82ef6098313711a6a6f1af",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "7ab8169f300f7a418b4266310cb6e1e46a0da7ad7a8abc70617a73e93c399557",
+      "guiHelperSha256": "1a93b64e9f4e39e4f01d7b0c14a5d58de94ec4c1c1265480d84184c09170643d",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [],
+      "finding": "Fixture forced AT_SPI_BUS_ADDRESS, preventing Qt 6.4 accessibility bridge initialization.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/ac8ac21b-8a4c-46bb-b405-05d26dc5983d/results.json",
+      "reportSha256": "6b1b6eeb88eaabaf4b001ffab099e48b97ef439a680d4c9ea11bb2e77ba56818",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "3755c13ec87ccbfcd60916540c35026e68ff0665b8af26af271ca334013796ec",
+      "guiHelperSha256": "bd8617e831230ebb80dd243f3b69d232062e0dec5d27ce2272cd1e2eb2e04711",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.422035806928761
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "8582068ca14aed331a4f2b7fc9d6482858f0d7657bbd4f60b8875ebdfee2df23",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        }
+      ],
+      "finding": "Fixture refocused main window while owned Qt menu was open.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/ae85ed25-2fb9-408a-a323-6dad31c2242a/results.json",
+      "reportSha256": "285e1345f642bfd7aa8c6c894cf6b35db400ea8c5768a1eae40f0be7555bc31d",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "d26cd28e89bffe93176408b2a92d4736aa3096b2017baf2c9fa8b3cdada4a3a0",
+      "guiHelperSha256": "3e5bee09b2cc89f958dbc7a9236f481883bbddc0c5ec1470e44051c4a91b4eea",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.508083855966106
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "cb0dac15f39bb165933c93a79f2e2a169c9f9bcf58dc7cbdbb7336598f461cfc",
+          "itemCount": 1
+        }
+      ],
+      "finding": "Fixture credential Show lookup used unsuitable geometry.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/de4cffd4-3c60-45f2-8cc1-9d2013e144ea/results.json",
+      "reportSha256": "b683236061b0339da1dcfe210820f64013600634ae44f10b2b515fdf73428e97",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "60ee7eab43d4d744d8cfd1d4a6e759d9f9d212164ff4ca08b6e2ab84d15cf385",
+      "guiHelperSha256": "1a93b64e9f4e39e4f01d7b0c14a5d58de94ec4c1c1265480d84184c09170643d",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [],
+      "finding": "Fixture forced AT_SPI_BUS_ADDRESS, preventing Qt 6.4 accessibility bridge initialization.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/f344100a-0644-4763-91fc-04db810ab6cb/results.json",
+      "reportSha256": "f49f7de4600ca3339734d93b17b6ba2b980e899c9492d165934bb6640ee04aa6",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "d26cd28e89bffe93176408b2a92d4736aa3096b2017baf2c9fa8b3cdada4a3a0",
+      "guiHelperSha256": "1a93b64e9f4e39e4f01d7b0c14a5d58de94ec4c1c1265480d84184c09170643d",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.514401714899577
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "9333c60806ade09bcf54861d80caabbaef66d64e8617c1cd2b23559c74f09652",
+          "itemCount": 1
+        }
+      ],
+      "finding": "Fixture invoked ambiguous GI get_text method; use explicit Atspi.Text interface.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/fa7c546c-7c36-4112-b227-1ac0c4c603a9/results.json",
+      "reportSha256": "996aea7e24ae0e7e078d8598e66e8890c12faebbd1ca69ffea4c1a7cd37fbf5e",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "2fcaf52ed7a9e0202f4a8ee768dba4b88bf12ca14dcfc4b4863a8bdfffe0c112",
+      "guiHelperSha256": "4ddddfa2f4f0bd9e9ece3580b7462057b2c7ea10b1d64085462b17062c86fba0",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 0.4755063409684226
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "3ad24df01260567a9e3b1b6c911e729c4cf53c24648113e9623778361df9d09b",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        },
+        {
+          "name": "locked-relaunch-and-reset-preserved-reference"
+        },
+        {
+          "name": "store-restart-unlocked-and-relaunch-restored-preserved-profiles"
+        },
+        {
+          "name": "missing-item-not-recreated-by-autosave"
+        },
+        {
+          "name": "corrupt-profile-not-overwritten"
+        },
+        {
+          "name": "ambiguous-reference-not-overwritten"
+        },
+        {
+          "name": "unsupported-reference-preserved"
+        },
+        {
+          "name": "unavailable-store-bounded-and-preserved",
+          "startupSeconds": 0.7303168809739873,
+          "firstSaveSeconds": 0.13636138092260808
+        },
+        {
+          "name": "stall-store-bounded-and-preserved",
+          "startupSeconds": 3.6305170319974422,
+          "firstSaveSeconds": 3.143215125077404
+        }
+      ],
+      "finding": "All persistence, damaged-entry and service-failure phases passed; final reset fixture mousemove --sync waited at unchanged pointer coordinates. Removed unnecessary synchronization.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-output-profiles/fdd92a0a-0b32-4b00-9bff-ccf5e5039b09/results.json",
+      "reportSha256": "7e987a7511fbb4eae6a3d6a6b59f4583bf2d61c767fdce59d5652b5e7a06a493",
+      "executableSha256": "aefdbec34c70f31c39b79414e0a385e328aa076be470f329bf05974efdc3daa6",
+      "manifestSha256": "a7da9a6f9435d4ee4d2c6671936a4257a2654faf1f255cacbe2a893e3d468ec4",
+      "harnessSha256": "7fa59a206157053514dc033ac5b51bf5bce6e7ba65cd6c59ed4f1c087d77dbca",
+      "guiHelperSha256": "1a93b64e9f4e39e4f01d7b0c14a5d58de94ec4c1c1265480d84184c09170643d",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": false,
+      "completedPhases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 9.513687279890291
+        }
+      ],
+      "finding": "Fixture expected only one INI file but update-check.ini also exists; use exact private application INI.",
+      "limits": "Incomplete packaged GUI workflow; not qualification. Early iterations copied but did not execute a frozen UI helper. Final qualification must use frozen helpers and the complete workflow."
+    },
+    {
+      "backend": "linux-output-profiles-final",
+      "report": "native-qt/qa/reports/linux-output-profiles/b9d68a04-27f6-4fc9-9c40-9296d9446bab/results.json",
+      "reportSha256": "862b6869aa0ad82fd55e12fc83bba0a7e9ad7b6845689427166ae30e8684d290",
+      "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+      "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+      "harnessSha256": "2fcaf52ed7a9e0202f4a8ee768dba4b88bf12ca14dcfc4b4863a8bdfffe0c112",
+      "guiHelperSha256": "31632d0144ed88a2583ea262e12affc92a1248be359c670a8e2386a1473ffc63",
+      "failureFixtureSha256": "0c92f5689655ae916907bb4c259aea6b87ac4045e67eff361a2be8ff5fd69cd6",
+      "passed": true,
+      "phases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 0.46622953400947154
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "d695114078789a24b72cdb3b83672133e6274bd18c27931d41dfb173cdc73aa4",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        },
+        {
+          "name": "locked-relaunch-and-reset-preserved-reference"
+        },
+        {
+          "name": "store-restart-unlocked-and-relaunch-restored-preserved-profiles"
+        },
+        {
+          "name": "missing-item-not-recreated-by-autosave"
+        },
+        {
+          "name": "corrupt-profile-not-overwritten"
+        },
+        {
+          "name": "ambiguous-reference-not-overwritten"
+        },
+        {
+          "name": "unsupported-reference-preserved"
+        },
+        {
+          "name": "unavailable-store-bounded-and-preserved",
+          "startupSeconds": 0.7159582499880344,
+          "firstSaveSeconds": 0.14005094405729324
+        },
+        {
+          "name": "stall-store-bounded-and-preserved",
+          "startupSeconds": 3.6253491340903565,
+          "firstSaveSeconds": 3.143564768950455
+        },
+        {
+          "name": "reset-deleted-owned-item-and-reference"
+        },
+        {
+          "name": "no-plaintext-credentials-in-settings-logs-or-keyring-files"
+        }
+      ],
+      "finding": "Real packaged Qt GUI saved and restored all seven output profiles, URLs and credentials, SRT stream ID/latency and RTMP AAC bitrate. Updates kept one reference/item. Locked autosave and reset, missing/corrupt/ambiguous/unsupported references and unavailable/stalled stores preserved settings. Store restart/relaunch recovered saved values; successful reset deleted item/reference. No synthetic credential markers appeared in settings, logs or on-disk keyring files.",
+      "limits": "Extracted Ubuntu DEB on this host with X11/Xvfb and private GNOME Keyring. Excludes media publishing, Wayland GUI, other Secret Service providers, in-place unlock without daemon restart, clean-install dependencies and Windows/macOS regression."
     }
   ],
   "host_environment": {
@@ -1201,7 +1671,7 @@
     "hdmi_reference": "Independent FFmpeg capture reproduces multiple scanout identities in individual frames; this host has no usable NVIDIA display driver. The bounded functional camera fixture changes identity at 10 Hz, not a 60 fps fidelity qualification."
   },
   "development_commands": [
-    "sudo apt-get install cmake ninja-build qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-composite0-dev ffmpeg libpulse-dev",
+    "sudo apt-get install cmake ninja-build qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-composite0-dev ffmpeg libpulse-dev libsecret-1-dev",
     "cmake -S native-qt -B native-qt/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DVERSUS_BUILD_TESTS=OFF",
     "cmake --build native-qt/build-linux --target game-capture -j 4",
     "python3 native-qt/qa/package-linux.py --build native-qt/build-linux",
@@ -1214,7 +1684,8 @@
     "WAYLAND_DISPLAY=wayland-0 node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=apps --backend=wayland",
     "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --codec=vp9|av1 --external=true --gui=true",
     "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --codec=h264|vp9|av1 --rate-control=true --noise-grid=40x23 --target-bitrate=1000",
-    "python3 native-qt/e2e/linux-codec-rate-reference.py --workflow-report=<external-encoder-results.json> --output=<new-reference-directory> --noise-grid=160x90|80x45|40x23 (independent calibration, not application testing)"
+    "python3 native-qt/e2e/linux-codec-rate-reference.py --workflow-report=<external-encoder-results.json> --output=<new-reference-directory> --noise-grid=160x90|80x45|40x23 (independent calibration, not application testing)",
+    "xvfb-run -a python3 native-qt/e2e/linux-output-profiles.py --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports>"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -1270,5 +1741,22 @@
     "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
     "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
     "qualification": "Development checkpoint only: extracted Ubuntu DEB on this host, X11/Xvfb, bounded 640x360/30 CLI and 960x540/30 GUI. No clean-install, default 720p60, physical Xorg, endurance, hardware or Windows/macOS qualification."
+  },
+  "output_profile_regression_gates": {
+    "classification": "Gates only; not application testing.",
+    "passed": [
+      "PlatformCapabilitiesGate"
+    ],
+    "log": "native-qt/build-linux-profiles-gates.log",
+    "logSha256": "e192bb73d0a0e06250db08733b74a092a88b1c7e5012b95678636a22b81cb075",
+    "cross_platform": "macOS implementation unchanged behind shared header; Windows/macOS builds and runtime regression qualification remain open."
+  },
+  "output_profile_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-37ffef79181c-3feae0445e5f.deb",
+    "sha256": "9ef799e222df5d6ca5d625e71ac8b0cb35e9cead55e682604523511b2b131284",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-37ffef79181c-3feae0445e5f",
+    "manifestSha256": "18239dbf103b3f61298badd745c193791a610d45046f56b0b90e85d53f9fd8bb",
+    "executableSha256": "37ffef79181c4763a54516bb1e3bc3526c7fbff0e744538249065ab76e7ed01e",
+    "qualification": "Extracted Ubuntu DEB on this host with X11/Xvfb and private GNOME Keyring. Excludes media publishing, Wayland GUI, other Secret Service providers, in-place unlock without daemon restart, clean-install dependencies and Windows/macOS regression."
   }
 }

@@ -42,6 +42,8 @@ For application audio, choose **Selected window/app audio**. X11 can use the sel
 
 For software video, leave **FFmpeg Path** and **FFmpeg Options** empty to use the native Linux encoder. VP9 and AV1 also support an external FFmpeg helper: enter a path, custom options, or both. Options alone use the system FFmpeg. The CLI equivalents are `--ffmpeg-path=/path/to/ffmpeg` and `--ffmpeg-options="-threads 2"`. H.264 and HEVC use the native encoder; HEVC receiver compatibility is still unqualified.
 
+Saved output destinations use your desktop's Secret Service password store, such as GNOME Keyring. Keep its default collection unlocked while editing destinations. URLs and credentials are stored together there; the settings file holds only a reference. If storage fails, a message appears beside the output settings and those changes remain session-only. Repair or unlock the store and restart Game Capture to restore saved profiles. **File → Reset to Defaults** also removes the saved destination entry. Linux builds require `libsecret-1-dev` in addition to the media dependencies.
+
 ## Help and development
 
 - [Website](https://steveseguin.github.io/game-capture/gamecapture.html) · [Screenshots & demos](media-assets/README.md) · [Setup guide](https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja)

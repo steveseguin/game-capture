@@ -38,7 +38,7 @@ def press(node):
         component.grab_focus()
     interface = node.get_action_iface()
     names = [name.casefold() for name in action_names(node)]
-    for name in ["press", "click", "toggle"]:
+    for name in ["press", "click", "toggle", "showmenu"]:
         if name in names and interface.do_action(names.index(name)):
             time.sleep(.15)
             pump()
@@ -49,7 +49,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "value", "source"])
+    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -68,11 +68,15 @@ def main():
     if app is None:
         raise RuntimeError("Application is absent from AT-SPI")
     if args.command != "dump" and os.environ.get("QT_QPA_PLATFORM") == "xcb":
-        windows = subprocess.check_output(["xdotool", "search", "--onlyvisible", "--pid", str(args.pid),
-                                           "--name", "^Game Capture - Powered by VDO.Ninja$"], text=True, timeout=3).split()
-        if len(windows) != 1:
-            raise RuntimeError("Expected one owned Game Capture main window")
-        subprocess.run(["xdotool", "windowfocus", "--sync", windows[0]], check=True, timeout=3)
+        focus = subprocess.run(["xdotool", "getwindowfocus", "getwindowpid"], text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3)
+        # Preserve focus in owned menus/dialogs. Refocusing the main window can
+        # dismiss a menu, and Qt popups can inherit the main window's title.
+        if focus.returncode or focus.stdout.strip() != str(args.pid):
+            windows = subprocess.check_output(["xdotool", "search", "--onlyvisible", "--pid", str(args.pid),
+                                               "--name", "^Game Capture - Powered by VDO.Ninja$"], text=True, timeout=3).split()
+            if len(windows) != 1:
+                raise RuntimeError("Expected one owned Game Capture main window")
+            subprocess.run(["xdotool", "windowfocus", "--sync", windows[0]], check=True, timeout=3)
 
     def find(role, name):
         pump()
@@ -107,13 +111,40 @@ def main():
         time.sleep(.25); pump()
         if not any(node.get_role_name() == "combo box" and node.get_name() == selected for node in nodes(app)):
             raise RuntimeError("Combo did not select the requested value")
-    elif args.command == "text":
+    elif args.command in ["text", "read-text", "reveal"]:
         matches = [node for node in nodes(app) if node.get_role_name() in ["text", "password text"] and node.get_name() == args.name]
         if len(matches) != 1:
             raise RuntimeError("Text control is absent or ambiguous")
         field = matches[0]
-        if not field.get_editable_text_iface().set_text_contents(args.value):
+        if args.command == "reveal":
+            buttons = [node for node in nodes(field.get_parent()) if node.get_role_name() in ["push button", "toggle button", "check box"] and node.get_name() == "Show"]
+            if len(buttons) != 1:
+                raise RuntimeError("Expected one credential reveal button in " + field.get_parent().get_role_name() + "; found " + str(len(buttons)))
+            press(buttons[0])
+        elif args.command == "read-text":
+            print(json.dumps(Atspi.Text.get_text(field.get_text_iface(), 0, -1)))
+        elif not field.get_editable_text_iface().set_text_contents(args.value):
             raise RuntimeError("Could not edit text control")
+    elif args.command == "menu":
+        matches = [node for node in nodes(app) if node.get_role_name() in ["menu", "menu item"] and node.get_name() == args.name]
+        if len(matches) != 1:
+            raise RuntimeError("Menu item is absent or ambiguous")
+        item = matches[0]
+        if 'showmenu' in [name.casefold() for name in action_names(item)]:
+            press(item)
+        else:
+            # QAction's synchronous AT-SPI action can wait inside a modal
+            # dialog. Click the confirmed owned menu item normally instead.
+            if os.environ.get('QT_QPA_PLATFORM') != 'xcb':
+                raise RuntimeError('Menu click fixture requires X11')
+            bounds = item.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+            if bounds.width <= 0 or bounds.height <= 0 or not item.get_state_set().contains(Atspi.StateType.SHOWING):
+                raise RuntimeError('Menu item is not visible')
+            owner = subprocess.check_output(['xdotool', 'getwindowfocus', 'getwindowpid'], text=True, timeout=3).strip()
+            if owner != str(args.pid):
+                raise RuntimeError('Owned menu does not hold focus')
+            subprocess.run(['xdotool', 'mousemove', str(bounds.x + bounds.width//2), str(bounds.y + bounds.height//2), 'click', '1'], check=True, timeout=3)
+            time.sleep(.2)
     elif args.command == "value":
         field = find("spin button", args.name)
         value = float(args.value)

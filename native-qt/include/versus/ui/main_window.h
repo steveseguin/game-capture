@@ -188,9 +188,12 @@ class MainWindow : public QMainWindow {
     QString previousOutput_ = QStringLiteral("vdo");
     bool switchingOutput_ = false;
     QHash<QString, output::Config> outputProfiles_;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     bool outputProfilesReadable_ = true;
     QByteArray lastSavedOutputProfiles_;
+#endif
+#ifdef __linux__
+    QLabel *outputProfileStatus_ = nullptr;
 #endif
     QComboBox *audioChannelsSelect_ = nullptr;
     QCheckBox *includeMicrophoneCheck_ = nullptr;
