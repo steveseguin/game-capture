@@ -24,8 +24,8 @@ const systemAudio=opts['system-audio']==='true';result.systemAudio=systemAudio;
 const expectedPermission=opts['expect-microphone-permission'];
 result.expectInputWarning=opts['expect-input-warning']==='true';
 if(expectedPermission){
-  assert(['not_determined','denied','restricted'].includes(expectedPermission));assert(!systemAudio);
-  result.scope='Packaged GUI with existing unavailable microphone permission: visible warning, received video without audio, Stop, and restart with No microphone. No privacy setting is changed.';
+  assert(['not_determined','denied','restricted','granted'].includes(expectedPermission));assert(!systemAudio);
+  result.scope='Packaged GUI with an explicitly expected existing microphone permission: input/warning behavior, received media, Stop, and restart with No microphone. Granted permission also checks live mute/unmute. No privacy setting is changed.';
   result.expectedMicrophonePermission=expectedPermission;
 }
 assert(!systemAudio||result.expectedLossStatus==='reported','System-audio preservation requires the fixed candidate');
@@ -176,7 +176,7 @@ async function stop(entry,discovery){
     if(expectedPermission){
       await listed(true);await select();
       const warning=()=>{const row=find('microphoneWarningLabel');return row?.AXValue||row?.AXTitle||'';};
-      for(const phase of ['permission-unavailable','microphone-disabled']){
+      for(const phase of [expectedPermission==='granted'?'permission-granted':'permission-unavailable','microphone-disabled']){
         if(phase==='microphone-disabled'){
           ui('press','microphoneDeviceSelect');
           await waitFor(()=>rows().some(r=>r.AXTitle==='No microphone'),5000,'No microphone choice absent');
@@ -193,10 +193,19 @@ async function stop(entry,discovery){
         const page=await receiver(browser,stream,publisher);
         item.video=await video(page);item.audio=await observeAudio(page);item.before=await api('/diagnostics');item.beforeUi=audioRows();
         item.warning=warning();save();
-        assert(item.audio.spectra.length>=25&&item.audio.spectra.every(s=>s.rms<.0005),'Unexpected received audio');
-        assert(item.audio.tracks.every(t=>(t.packetsReceived||0)===0),'Unexpected received audio packets');
-        assert.equal(item.before.audio.active_microphone_source,'none');assert.equal(item.before.metrics.audio_packets_sent,0);
-        assert.equal(item.before.audio.include_microphone,phase==='permission-unavailable');
+        if(phase==='permission-granted'){
+          item.audio=await sound(page,item);assert.equal(item.before.audio.active_microphone_source,inputName);
+          assert(item.before.metrics.audio_packets_sent>0);assert.equal(item.warning,'','Active microphone produced a warning');
+          ui('press','microphoneMuteButton');await sleep(1200);item.mutedAudio=await silence(page);
+          assert.equal(warning(),'','Intentional mute produced an unavailable warning');
+          ui('press','microphoneMuteButton');item.unmutedAudio=await sound(page,item,'unmutedAudio');
+          assert.equal(warning(),'','Unmuted active microphone produced a warning');
+        }else{
+          assert(item.audio.spectra.length>=25&&item.audio.spectra.every(s=>s.rms<.0005),'Unexpected received audio');
+          assert(item.audio.tracks.every(t=>(t.packetsReceived||0)===0),'Unexpected received audio packets');
+          assert.equal(item.before.audio.active_microphone_source,'none');assert.equal(item.before.metrics.audio_packets_sent,0);
+        }
+        assert.equal(item.before.audio.include_microphone,phase!=='microphone-disabled');
         assert.equal(item.before.platform_permissions.microphone,expectedPermission);
         assert.equal(item.before.video.hardware_encoder,encoder==='videotoolbox');
         if(phase==='permission-unavailable'){
