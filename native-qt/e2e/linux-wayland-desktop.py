@@ -56,6 +56,7 @@ def main():
                QT_LINUX_ACCESSIBILITY_ALWAYS_ON='1', SECRET_SERVICE_BUS_NAME=service_name, GC_QA_WAYLAND_DESKTOP=str(report))
     result = {'scope':'Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.',
               'harnessSha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'serviceName':service_name,'originalOwners':originals,'passed':False}
+    result['sessionBusId'] = str(daemon.GetId())
     proxy = keyring = child = None
     print('Native Wayland fixture:', report, flush=True)
     try:
@@ -78,22 +79,40 @@ def main():
             # This child initializes libsecret after setting the service override.
             subprocess.run([sys.executable,'-c',"import gi; gi.require_version('Secret','1'); from gi.repository import Secret; s=Secret.Service.get_sync(Secret.ServiceFlags.OPEN_SESSION,None); c=Secret.Collection.for_alias_sync(s,'default',Secret.CollectionFlags.NONE,None); assert c and not c.get_locked()"],env=env,check=True,timeout=10)
             result['ownedStoreUnlocked']=True
-            child = subprocess.Popen(command,env=env,start_new_session=True); result['exitCode']=child.wait(); result['passed']=result['exitCode']==0
+            child = subprocess.Popen(command,env=env,start_new_session=True)
+            result['ownedPids'] = {'child':child.pid,'keyring':keyring.pid,'proxy':proxy.pid}
+            (report/'results.json').write_text(json.dumps(result,indent=2)+'\n')
+            result['exitCode']=child.wait(); result['passed']=result['exitCode']==0
     except Exception as error:
         result['error']=repr(error)
     finally:
-        if child and child.poll() is None:
-            os.killpg(child.pid,signal.SIGTERM)
-            try:child.wait(timeout=5)
-            except subprocess.TimeoutExpired:os.killpg(child.pid,signal.SIGKILL);child.wait(timeout=5)
-        for process in [keyring,proxy]:
-            if process and process.poll() is None:
-                process.terminate()
-                try:process.wait(timeout=5)
-                except subprocess.TimeoutExpired:process.kill();process.wait(timeout=5)
-        result['storeRetired']=not bus.name_has_owner(service_name)
-        result['originalOwnersUnchanged']={name:owner(name) for name in originals}==originals
-        result['passed']=result['passed'] and result['storeRetired'] and result['originalOwnersUnchanged']
+        cleanup_errors = []
+        for name, process in [('child',child),('keyring',keyring),('proxy',proxy)]:
+            try:
+                if process and process.poll() is None:
+                    if name == 'child': os.killpg(process.pid,signal.SIGTERM)
+                    else: process.terminate()
+                    try: process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        if name == 'child': os.killpg(process.pid,signal.SIGKILL)
+                        else: process.kill()
+                        process.wait(timeout=5)
+            except Exception as error:
+                cleanup_errors.append(name+': '+repr(error))
+        result['ownedProcessesRetired'] = all(process is None or process.poll() is not None for process in [child,keyring,proxy])
+        # Desktop failure may disconnect this bus. Preserve the child outcome
+        # and cleanup evidence even when ownership can no longer be queried.
+        result.update(storeRetired=None, originalOwnersUnchanged=None, sessionBusUnchanged=None)
+        try:
+            result['sessionBusUnchanged'] = str(daemon.GetId()) == result['sessionBusId']
+            result['storeRetired']=not bus.name_has_owner(service_name)
+            result['originalOwnersUnchanged']={name:owner(name) for name in originals}==originals
+        except Exception as error:
+            cleanup_errors.append('session bus: '+repr(error))
+        if cleanup_errors: result['cleanupErrors'] = cleanup_errors
+        result['passed']=bool(result['passed'] and result['ownedProcessesRetired'] and
+                              result['storeRetired'] and result['originalOwnersUnchanged'] and
+                              result['sessionBusUnchanged'] and not cleanup_errors)
         (report/'results.json').write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps({'report':str(report),'passed':result['passed'],'error':result.get('error')}),flush=True)
     return 0 if result['passed'] else 1
