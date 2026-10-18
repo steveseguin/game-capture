@@ -1191,7 +1191,10 @@ void TestWebRtcClient::testVideoSendAcrossRemoteClose() {
         receiver->shutdown();
         remoteCloseObserved = waitUntil([&] {
             return sender->connectionState() != ConnectionState::Connected;
-        }, std::chrono::seconds(30));
+        // Local loopback teardown has been observed at the 30-second ICE
+        // boundary. Leave scheduling margin; this is fixture setup, not a
+        // user-visible disconnect latency assertion.
+        }, std::chrono::seconds(45));
         // State callbacks can precede the final DTLS transport destruction.
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }, {}, {});
