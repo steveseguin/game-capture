@@ -13,10 +13,10 @@ permissions:
   contents: read
 
 env:
-  CANDIDATE_ASSET_ID: 651523057
-  CANDIDATE_ARCHIVE_SHA256: c0ea7d6cbaccc08a976ce9b85c3e2a845347009168f34de7f26fddb0f17c5289
-  CANDIDATE_EXECUTABLE_SHA256: 17314b8f7eea037e113e7b8d465ca39dc23d7b9d1d1189644c2d7c90f15c0e6c
-  CANDIDATE_REVISION: 5888246ab9c443b459393bd44cfdf5bee9ba99be
+  CANDIDATE_ASSET_ID: 652069022
+  CANDIDATE_ARCHIVE_SHA256: 33c649b8596f93895548b4e1578957b87f61218a9623e809e14f06a50bf522dc
+  CANDIDATE_EXECUTABLE_SHA256: cea19c786e764670927ce00399b32db3ef5c5310ccc2ffe3820a7483d7f05d9d
+  CANDIDATE_REVISION: 325b70822a6172d874534c7910df0d7e544f1e7f
 
 jobs:
   acquire:
@@ -30,8 +30,8 @@ jobs:
       - name: Download and verify draft app and corresponding source
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_ASSET_ID: 651523052
-          SOURCE_SHA256: e48ec432e0f773e959bacf059b05b3a9ef4daa0cbaf43901d8efd9bf92693353
+          SOURCE_ASSET_ID: 652069026
+          SOURCE_SHA256: a230f50584180e02ca99a9e5df055bac5859442ab820b6d88e1095f6b9b33457
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/candidate"
