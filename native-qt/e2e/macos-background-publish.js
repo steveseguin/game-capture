@@ -9,6 +9,8 @@ const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=
 assert.equal(process.platform,'darwin');
 for(const name of ['app','fixture','reports'])assert(opts[name],'Missing --'+name);
 const syphon=opts.source==='syphon',association=opts['syphon-alpha']||'straight';
+const fixtureSource=opts['fixture-source']?path.resolve(opts['fixture-source']):path.join(__dirname,syphon?'macos-syphon-fixture.mm':'macos-alpha-fixture.mm');
+assert(fs.statSync(fixtureSource).isFile(),'Fixture source must be retained with its binary');
 assert(['straight','premultiplied'].includes(association));
 const sourceSize=opts['source-size']||'640x360';
 assert(['640x360','1280x720','1920x1080'].includes(sourceSize),'Unsupported --source-size');
@@ -65,7 +67,7 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={scope:'Packaged window or Syphon background composition in an ordinary browser; GUI restores saved background/color settings and uses real Go Live/Stop; combo/color-picker interaction, physical devices and Windows excluded',
   source:syphon?'syphon':'window',sourceSize:[sourceWidth,sourceHeight],association,lifecycle,loss,gui,codec,encoder,mode,ffmpegOptions,observationSeconds,color:rgb,cycles:[],executableSha256:hash(exe),fixtureSha256:hash(fixture),
-  harnessSha256:hash(__filename),qtCocoaSha256:hash(path.resolve(opts.app,'Contents/PlugIns/platforms/libqcocoa.dylib')),passed:false};
+  fixtureSourceSha256:hash(fixtureSource),harnessSha256:hash(__filename),qtCocoaSha256:hash(path.resolve(opts.app,'Contents/PlugIns/platforms/libqcocoa.dylib')),passed:false};
 result.interactControls=interactControls;
 result.expectMediaActivity=expectMediaActivity;
 result.microphoneDevice=microphone||null;
@@ -229,7 +231,7 @@ async function observeDecodedIdentities(page,seconds){return page.evaluate(async
       return Number.isFinite(state.publishedFrames)&&Number.isFinite(state.time);
     },5000,'Owned Syphon state unavailable');return state;
   }
-  if(syphon)fs.copyFileSync(path.join(__dirname,'macos-syphon-fixture.mm'),path.join(report,'macos-syphon-fixture.mm'));
+  fs.copyFileSync(fixtureSource,path.join(report,path.basename(fixtureSource)));
   if(withAudio){
     // The helper refuses any device whose name is not BlackHole, and never
     // changes defaults. No physical output or input is selected by this fixture.
