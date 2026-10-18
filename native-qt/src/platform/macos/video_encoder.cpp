@@ -16,11 +16,17 @@ extern "C" {
 #include <condition_variable>
 #include <cstring>
 #include <mutex>
+#include <thread>
 #include <spdlog/spdlog.h>
 
 namespace versus::platform {
 using namespace video;
 namespace {
+int keyframeInterval(const EncoderConfig &config) {
+    return config.lowLatency ? std::max(1, std::min(config.gopSize, config.frameRate))
+                             : std::max(1, config.gopSize);
+}
+
 bool setInteger(VTCompressionSessionRef session, CFStringRef property, int value, bool required = true) {
     CFNumberRef number = CFNumberCreate(nullptr, kCFNumberIntType, &value);
     const auto result = VTSessionSetProperty(session, property, number);
@@ -170,7 +176,7 @@ struct MacVideoEncoder::State {
             setProperty(session, kVTCompressionPropertyKey_ProfileLevel,
                 hevc ? kVTProfileLevel_HEVC_Main_AutoLevel : kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel) &&
             setInteger(session, kVTCompressionPropertyKey_ExpectedFrameRate, config.frameRate) &&
-            setInteger(session, kVTCompressionPropertyKey_MaxKeyFrameInterval, std::max(1, config.gopSize)) &&
+            setInteger(session, kVTCompressionPropertyKey_MaxKeyFrameInterval, keyframeInterval(config)) &&
             setInteger(session, kVTCompressionPropertyKey_AverageBitRate, config.bitrate * 1000) &&
             setProperty(session, kVTCompressionPropertyKey_ColorPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2) &&
             setProperty(session, kVTCompressionPropertyKey_TransferFunction, kCVImageBufferTransferFunction_sRGB) &&
@@ -202,7 +208,8 @@ struct MacVideoEncoder::State {
         param.i_timebase_num = 1; param.i_timebase_den = 10000000;
         param.b_vfr_input = 0;
         param.i_bframe = 0;
-        param.i_keyint_max = std::max(1, config.gopSize);
+        param.i_threads = static_cast<int>(std::clamp(std::thread::hardware_concurrency() / 2, 1u, 4u));
+        param.i_keyint_max = keyframeInterval(config);
         param.i_keyint_min = 1;
         param.b_repeat_headers = 1; param.b_annexb = 1;
         param.rc.i_rc_method = X264_RC_ABR;

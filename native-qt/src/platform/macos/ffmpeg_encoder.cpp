@@ -34,7 +34,7 @@ QStringList arguments(const EncoderConfig &c) {
         colorFilter += ",setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=smpte170m:range=limited";
     }
     const int threads = std::clamp(int(std::max(1u, std::thread::hardware_concurrency()) / 2), 1,
-        c.width * int64_t(c.height) <= 1280 * 720 ? 4 : 8);
+        c.codec == VideoCodec::AV1 || c.width * int64_t(c.height) <= 1280 * 720 ? 4 : 8);
     std::vector<std::string> args = {"-hide_banner", "-loglevel", "error", "-nostats", "-nostdin",
         "-filter_threads", "1", "-f", "rawvideo", "-pix_fmt", c.enableAlpha ? "gray" : "bgra",
         "-video_size", std::to_string(c.width) + "x" + std::to_string(c.height),
@@ -44,7 +44,8 @@ QStringList arguments(const EncoderConfig &c) {
             "-minrate", std::to_string(rate) + "k", "-maxrate", std::to_string(rate) + "k",
             "-bufsize", std::to_string(rate * 2) + "k", "-usage", "realtime", "-cpu-used", "8",
             "-threads", std::to_string(threads), "-row-mt", "1", "-lag-in-frames", "0", "-auto-alt-ref", "0",
-            "-g", std::to_string(std::max(1, c.gopSize)), "-pix_fmt", "yuv420p"});
+            "-g", std::to_string(c.lowLatency ? std::max(1, std::min(c.gopSize, c.frameRate))
+                                             : std::max(1, c.gopSize)), "-pix_fmt", "yuv420p"});
         if (c.alphaBackgroundMode != AlphaBackgroundMode::None) {
             // Composited window backgrounds have sharp flat-color boundaries.
             // Screen-content tuning plus a quality floor limits motion-edge
