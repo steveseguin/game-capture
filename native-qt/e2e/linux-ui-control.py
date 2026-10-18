@@ -50,7 +50,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "close-window", "paste", "copy"])
+    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "footer", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -151,6 +151,30 @@ def main():
             time.sleep(.5); pump()
             if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
                 raise RuntimeError("Desktop switcher did not activate the owned application")
+    elif args.command == "footer":
+        for node in nodes(app):
+            if node.get_role_name() == 'scroll bar':
+                rect = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+                if rect.height > rect.width:
+                    value = node.get_value_iface()
+                    assert value.set_current_value(value.get_maximum_value()), 'Could not reveal footer'
+        time.sleep(.3);pump()
+        frame = find('frame', 'Game Capture - Powered by VDO.Ninja')
+        assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), 'Owned application is not active'
+        bounds = geometry(frame)
+        def visible(node):
+            rect = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+            assert node.get_state_set().contains(Atspi.StateType.SHOWING)
+            assert rect.width > 0 and rect.height > 0
+            assert bounds[0] <= rect.x and bounds[1] <= rect.y
+            assert rect.x+rect.width <= bounds[0]+bounds[2] and rect.y+rect.height <= bounds[1]+bounds[3], 'Footer control is clipped'
+            return [rect.x,rect.y,rect.width,rect.height]
+        button = find('push button', 'Go live')
+        result = {'frame':bounds,'goLiveBounds':visible(button),'goLiveEnabled':button.get_state_set().contains(Atspi.StateType.SENSITIVE)}
+        if args.name:
+            label = find('label', args.name)
+            result.update(message=label.get_name(),messageBounds=visible(label))
+        print(json.dumps(result))
     elif args.command == "preview":
         for node in nodes(app):
             if node.get_role_name() == "scroll bar":

@@ -10,6 +10,7 @@ const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
 }));
 assert.equal(process.platform, 'linux');
 const gui = opts.gui === 'true', wayland = gui && opts.backend === 'wayland';
+const guiBusyRetry = opts['gui-busy-retry'] === 'true';if(guiBusyRetry)assert(gui);
 if (gui) {
   assert(wayland ? process.env.GC_QA_WAYLAND_DESKTOP : process.env.GC_QA_PRIVATE_DESKTOP, 'Use the matching owned desktop wrapper');
   assert(opts['source-wayland-socket'] && path.isAbsolute(opts['source-wayland-socket']), 'Explicit host Wayland socket required for the physical HDMI source');
@@ -34,7 +35,7 @@ for (const name of ['linux-camera-publish.js', 'macos-media-receiver.js']) fs.co
 if (gui) for (const name of ['linux-ui-control.py', 'linux-preview-observer.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
 if (wayland) for (const name of ['linux-portal-select.py','linux-virtual-monitor.py']) fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const result = {
-  gui, backend:gui?(wayland?'wayland':'x11'):null,
+  gui, guiBusyRetry, backend:gui?(wayland?'wayland':'x11'):null,
   scope:'Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification',
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
@@ -46,6 +47,7 @@ if (gui) {
   result.guiHelperSha256=sha(path.join(report,'linux-ui-control.py'));
   result.previewObserverSha256=sha(path.join(report,'linux-preview-observer.py'));
 }
+if(guiBusyRetry)result.scope+='; visible GUI busy-camera failure while an owned publisher streams, uninterrupted owner reception and successful explicit retry after releasing the owner.';
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 result.harnesses=Object.fromEntries(fs.readdirSync(report).filter(n=>/\.(js|py)$/.test(n)).map(n=>[n,sha(path.join(report,n))]));
 const children = []; let sourceBrowser, viewerBrowser, monitor, keyboard, keyboardDirectory;
@@ -159,6 +161,30 @@ async function shutdown(entry) {
         }
         ui('source',opts['camera-label']);ui('text','Stream ID or VDO.Ninja URL',entry.stream);ui('text','Stream password','false');
         outcome.idlePreview=preview('idle','none');assert(outcome.idlePreview.description.includes('Camera opens when streaming starts'));
+        if(guiBusyRetry){
+          const owner=publish('owner-cycle-'+cycle,env,true);const check={};outcome.busyStartup=check;
+          await waitFor(()=>{assert.equal(owner.child.exitCode,null,'Camera owner exited');return fs.existsSync(owner.discovery);},15000,'Camera owner discovery missing');owner.control=JSON.parse(fs.readFileSync(owner.discovery));
+          await waitFor(async()=>(await api(owner.control,'/diagnostics')).app.live,15000,'Camera owner did not publish');
+          const ownerPage=await receiver(viewerBrowser,owner.stream,owner.child);check.before=await observe(ownerPage,3000);requireMoving(check.before,'Camera owner before GUI attempt');assert.equal(check.before.width,640);assert.equal(check.before.height,360);
+          check.ownerBefore=await api(owner.control,'/diagnostics');assert.equal(check.ownerBefore.source.source_id,opts['camera-id']);
+          ui('activate');check.startControls=JSON.parse(ui('footer'));assert(check.startControls.goLiveEnabled);ui('press','Go live');
+          let message;
+          await waitFor(()=>{
+            const rows=JSON.parse(ui('dump')),label=rows.find(r=>r.role==='label'&&r.name.includes('Device or resource busy')&&r.name.includes('another app'));
+            const go=rows.find(r=>r.role==='push button'&&r.name==='Go live'&&r.states.includes('sensitive'));
+            if(label&&go){message=label.name;return true;}return false;
+          },15000,'No actionable busy-camera error and retry control');
+          check.failed=await api(entry.control,'/diagnostics');assert(!check.failed.app.live&&!check.failed.app.capturing);assert.equal(check.failed.peer_counts.total,0);assert.equal(check.failed.video.frames_captured,0);
+          check.visibleError=JSON.parse(ui('footer',message));assert(check.visibleError.goLiveEnabled);
+          const screenshot=path.join(report,`cycle-${cycle}-busy-error.png`);
+          if(wayland)execFileSync('gnome-screenshot',['-w','-f',screenshot],{env,timeout:10000});
+          else execFileSync('python3',['-c','from PIL import ImageGrab;import sys;x,y,w,h=map(int,sys.argv[1:5]);ImageGrab.grab().crop((x,y,x+w,y+h)).save(sys.argv[5])',...check.visibleError.frame.map(String),screenshot],{env,timeout:10000});
+          check.screenshot={file:path.basename(screenshot),sha256:sha(screenshot)};
+          check.failedPreview=preview('busy-failed','none');check.after=await observe(ownerPage,3000);requireMoving(check.after,'Camera owner after failed GUI attempt');
+          check.ownerAfter=await api(owner.control,'/diagnostics');assert(check.ownerAfter.app.live&&check.ownerAfter.app.capturing);assert(check.ownerAfter.video.frames_sent>check.ownerBefore.video.frames_sent);
+          await ownerPage.close();await shutdown(owner);check.ownerExitCode=owner.child.exitCode;check.released=true;save();
+          ui('activate');assert(JSON.parse(ui('footer')).goLiveEnabled);
+        }
         ui('press','Go live');await waitFor(async()=>(await api(entry.control,'/diagnostics')).app.live,15000,'Camera GUI did not publish');
       }
       const page = await receiver(viewerBrowser, entry.stream, entry.child);
