@@ -68,6 +68,11 @@ def main():
     try:
         data = request('CreateSession', [], {'session_handle_token': 'gc_reference_' + uuid.uuid4().hex})
         session = str(data['session_handle'])
+        def session_closed(details):
+            result['sessionClosedSignal'] = True
+        bus.add_signal_receiver(session_closed, signal_name='Closed',
+                                dbus_interface='org.freedesktop.portal.Session',
+                                bus_name=service, path=session)
         request('SelectSources', [dbus.ObjectPath(session)], {'types': dbus.UInt32(2), 'multiple': dbus.Boolean(False)})
         pending = request('Start', [dbus.ObjectPath(session), ''], wait=False)
         pump(2)
@@ -77,7 +82,19 @@ def main():
         if args.close_mode in ('request', 'request-session'):
             dbus.Interface(bus.get_object(service, pending), 'org.freedesktop.portal.Request').Close(timeout=5)
         if args.close_mode in ('session', 'request-session'):
-            dbus.Interface(bus.get_object(service, session), 'org.freedesktop.portal.Session').Close(timeout=5)
+            try:
+                dbus.Interface(bus.get_object(service, session), 'org.freedesktop.portal.Session').Close(timeout=5)
+                result['sessionCloseReply'] = 'success'
+            except dbus.DBusException as error:
+                # Request.Close can retire the session before this second call.
+                # Require its actual Closed signal; backend survival alone is insufficient.
+                pump(.2)
+                if (args.close_mode != 'request-session'
+                        or error.get_dbus_name() not in ('org.freedesktop.DBus.Error.UnknownMethod',
+                                                        'org.freedesktop.DBus.Error.UnknownObject')
+                        or not result.get('sessionClosedSignal')):
+                    raise
+                result['sessionCloseReply'] = 'already-closed-with-signal'
         session = None
         pump(2)
         result['backendSurvivedClose'] = same_owner(owner)

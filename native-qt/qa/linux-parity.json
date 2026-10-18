@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived."
     },
     {
       "id": "x11-window",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived."
     },
     {
       "id": "profiles",
@@ -126,7 +126,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open. Physical camera X11 GUI Stop/restart and app relaunch passed twice, with decoded media and preview identities after reopening; a competing CLI open did not interrupt the GUI camera. Hotplug and broader camera recovery remain open. Native Wayland external-output Stop/restart passed across seven protocols; local server recovery, RTMP helper-stall recovery and late direct receivers passed. Pending-permission GNOME crash was reproduced again during fixture failure and remains a release gap; healthy consent/restart runs kept the portal owner stable."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open. Physical camera X11 GUI Stop/restart and app relaunch passed twice, with decoded media and preview identities after reopening; a competing CLI open did not interrupt the GUI camera. Hotplug and broader camera recovery remain open. Native Wayland external-output Stop/restart passed across seven protocols; local server recovery, RTMP helper-stall recovery and late direct receivers passed. Pending-permission GNOME crash was reproduced again during fixture failure and remains a release gap; healthy consent/restart runs kept the portal owner stable. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived."
     },
     {
       "id": "packaging",
@@ -16504,6 +16504,386 @@
         }
       ],
       "finding": "Packaged actual GUI destination editing, secret-backed profile relaunch without capture, independent decoded video/stereo audio/silence, server recovery or late direct receiver, Stop/Go live and owned worker cleanup passed. Native Wayland uses fresh real portal consent at initial startup and restart; RTMP also passed helper-stall recovery. Bounded local 960x540/30 software H264 with virtual input only."
+    },
+    {
+      "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+      "harnessSha256": "69758e3213221bfa2d186b1bd510a550117ec097dd9b8af44a592390dd233f00",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "requested": {
+        "noTray": false,
+        "tray": false,
+        "trayCopyFocus": false,
+        "trayCopy": "tray",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": true,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.4061',)",
+        "survived": true
+      },
+      "pendingQuit": {
+        "passed": true,
+        "appStopped": true,
+        "elapsedMs": 206
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "backend": "linux-wayland-portal-backport-pending-quit",
+      "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/pending-quit/618a6959-658c-44bf-a9a1-8cb4eaf4d2e5/results.json",
+      "reportSha256": "6b0b7501a22689a503285308ca311ab0e5237d96aa6b2c9144ef15e8eddb5b73",
+      "passed": true,
+      "classification": "Conditional packaged end-to-end application testing with an isolated upstream GNOME 46.2 backport; distribution desktop remains unqualified for pending cancellation.",
+      "portalExecutableSha256": "399d06b17bc3477ab200d57eb63d8d06678ffa8f772a22bcbc281c54cacf5fda",
+      "finding": "Packaged Qt GUI Go live opened pending native permission. Local-control Quit exited normally in 206 ms, closed the dialog, removed discovery and preserved the patched portal owner.",
+      "decodedPhases": []
+    },
+    {
+      "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+      "harnessSha256": "69758e3213221bfa2d186b1bd510a550117ec097dd9b8af44a592390dd233f00",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "requested": {
+        "noTray": false,
+        "tray": false,
+        "trayCopyFocus": false,
+        "trayCopy": "tray",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": true,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.4061',)",
+        "survived": true
+      },
+      "pendingStop": {
+        "passed": true,
+        "appStopped": true,
+        "elapsedMs": 345
+      },
+      "guiRestartPassed": true,
+      "exitCode": 0,
+      "exitSignal": null,
+      "initialDistinct": 178,
+      "backend": "linux-wayland-portal-backport-pending-stop",
+      "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/pending-stop/572078ec-ff62-46cf-8372-bddebc1a6868/results.json",
+      "reportSha256": "1a44ae55ead2a96dc5214f5c8ef2e5c9f0e5a5cdbf1a49459b2b425dcf5bb09c",
+      "passed": true,
+      "classification": "Conditional packaged end-to-end application testing with an isolated upstream GNOME 46.2 backport; distribution desktop remains unqualified for pending cancellation.",
+      "portalExecutableSha256": "399d06b17bc3477ab200d57eb63d8d06678ffa8f772a22bcbc281c54cacf5fda",
+      "finding": "Packaged Qt GUI Go live opened pending native permission. Local-control Stop returned to idle in 345 ms with zero captured frames; fresh permission restored decoded moving/static video, resize and late viewer. Stop/fresh-consent restart, decoded restarted media and clean Quit passed.",
+      "decodedPhases": [
+        "moving",
+        "static",
+        "resized",
+        "late",
+        "restarted"
+      ]
+    },
+    {
+      "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+      "harnessSha256": "69758e3213221bfa2d186b1bd510a550117ec097dd9b8af44a592390dd233f00",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "requested": {
+        "noTray": false,
+        "tray": false,
+        "trayCopyFocus": false,
+        "trayCopy": "tray",
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": true,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.4061',)",
+        "survived": true
+      },
+      "portalCancellation": {
+        "passed": true,
+        "noFramesCaptured": true,
+        "retryEnabled": true
+      },
+      "previewModeSwitchPassed": true,
+      "guiRestartPassed": true,
+      "exitCode": 0,
+      "exitSignal": null,
+      "initialDistinct": 178,
+      "backend": "linux-wayland-portal-backport-cancel-preview",
+      "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/cancel-preview/fa182b89-c4d2-412a-a917-cfbb96aabb3c/results.json",
+      "reportSha256": "d2dd9495aa05b045b83a920df8e20372f27fc3819495bc9919a5b78a28963456",
+      "passed": true,
+      "classification": "Conditional packaged end-to-end application testing with an isolated upstream GNOME 46.2 backport; distribution desktop remains unqualified for pending cancellation.",
+      "portalExecutableSha256": "399d06b17bc3477ab200d57eb63d8d06678ffa8f772a22bcbc281c54cacf5fda",
+      "finding": "Packaged Qt GUI user Cancel/retry, live preview pixel identity, idle/source-mode guidance, decoded moving/static video, native resize, late viewer, Stop clearing and fresh-consent restart passed against the patched desktop.",
+      "decodedPhases": [
+        "moving",
+        "static",
+        "resized",
+        "late",
+        "restarted"
+      ],
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "300dc60f5de148d216395fcff7dff8759f7b88a1f56c6785a0d4a2101fcac6f1"
+        },
+        "camera-mode": {
+          "role": "label",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        "window-mode-restored": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "48978a543f8ae53a06d7c557f0090612475de86ce1996d2e6ac5c99cbf4e195b"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "25eb5847c0d92a29ac2d03aa55fb8a67f06ae9e082ad64f5c1503b4e87275d6c"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "63848235e3a93ae41e23bc2264f2e7981b413468d6cfb4d5ba9eb96ea4fab7ba"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "bda335218f78a9af5a7041b74fa3ee25b7334e21ad2f4145e860972787e11d0b"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "c3345ded5f6230b37951d45a7a7f4e0efc3f485d18fe32efe95d0fef7f6d1899"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "300dc60f5de148d216395fcff7dff8759f7b88a1f56c6785a0d4a2101fcac6f1"
+        },
+        "restarted-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "bda335218f78a9af5a7041b74fa3ee25b7334e21ad2f4145e860972787e11d0b"
+        },
+        "restarted-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "c3345ded5f6230b37951d45a7a7f4e0efc3f485d18fe32efe95d0fef7f6d1899"
+        }
+      }
     }
   ],
   "host_environment": {
@@ -16550,7 +16930,8 @@
     "xvfb-run -a -s \"-screen 0 1440x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- node native-qt/e2e/linux-camera-publish.js --gui=true --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<exact V4L2 id> --camera-label=<unique camera label> --hdmi-loopback=true --source-wayland-socket=<absolute socket for the physical HDMI display>",
     "xvfb-run -a -s \"-screen 0 1440x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- python3 native-qt/e2e/linux-camera-unavailable.py --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports>",
     "WAYLAND_DISPLAY=wayland-0 python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-whip-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports>",
-    "WAYLAND_DISPLAY=wayland-0 python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-mux-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --helper-stall=true"
+    "WAYLAND_DISPLAY=wayland-0 python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-mux-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --helper-stall=true",
+    "python3 native-qt/qa/build-gnome-portal-backport.py --source=<local GNOME portal git clone with pinned commits> --output=<new isolated directory> (dependency build gate only; does not install/activate a service)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -16752,13 +17133,13 @@
     "referenceReport": "native-qt/qa/reports/linux-portal-cancel-reference/3cf746d0-ad0c-433b-a5ca-fc0db66cc4fc/results.json",
     "referenceReportSha256": "0d292c5ccf7fe5a2ce16ff98f7d480cf5e7b80ea08c8a9bf33803cdf39b9b938",
     "finding": "A standalone private D-Bus client created its own screencast session, selected window sources, left Start pending, then called only Request.Close. GNOME backend disappeared before client disconnect; journal records SIGSEGV. No Game Capture process or media permission was involved. Session.Close-only followed by client disconnect also crashed in an earlier diagnostic; that first process exited before writing results, so it is not treated as a complete comparison.",
-    "inference": "Installed GNOME 46.2 source frees the pending dialog without clearing the session pointer; the portal frontend automatically closes unsuccessful sessions. This matches an upstream fixed freed-dialog access, but no host stack trace or patched-backend rerun has yet established the exact crash root cause.",
+    "inference": "The stripped host core reaches g_object_unref. Combined upstream fixes clear the freed session dialog pointer and disconnect stale callbacks. With both applied to upstream GNOME 46.2, independent close variants and packaged pending Stop/Quit workflows now preserve the backend owner and leave no exported request/session objects. This supports the upstream lifetime-fault diagnosis; individual patch contributions and an exact symbolized vendor frame were not isolated.",
     "upstreamFixes": [
       "https://github.com/GNOME/xdg-desktop-portal-gnome/commit/9a4dffaf775f6bdb372768f568167fa2c1187257",
       "https://github.com/GNOME/xdg-desktop-portal-gnome/commit/056029c6506dd1e7bd285943099e9fcc091cff8b"
     ],
     "portalContract": "https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html",
-    "remaining": "Obtain and qualify an Ubuntu-compatible portal fix; rerun pending Stop/retry and pending Quit with stable backend owner, clean journal and no leaked sessions. Do not claim production readiness or hide crashes with retry/delay. No desktop package or service override was installed.",
+    "remaining": "Deliver and qualify a maintained Ubuntu-compatible portal update. The backport builder does not install or activate anything. Qualification used a temporary user-service override; it was removed and the exact vendor binary restored. Installed distribution GNOME 46.2 remains affected. Broader portal policy/revocation/suspend coverage remains open.",
     "restorationReport": "native-qt/qa/reports/linux-wayland-recovery/desktop-restored.json",
     "restorationReportSha256": "dad73ab85bbbdf69b569ac02e23b7481af5c1fa3dfd8b6a4334afcfb5462b291"
   },
@@ -17138,6 +17519,203 @@
     "log": {
       "path": "native-qt/build-linux-wayland-output-gates.log",
       "sha256": "e415ca3b6983c161eb2c4d5de8685b99bd6dcc5c3e94d9d926a06c913f61176f"
+    }
+  },
+  "wayland_portal_backport_checkpoint": {
+    "qualification": "Conditional packaged E2E on temporary upstream GNOME 46.2 backport, software H264 960x540/30, native GNOME Wayland. Pending Quit, pending Stop/retry and granted/cancelled capture/preview/publishing regression passed. This is not a shipped desktop dependency fix, full parity, hardware/audio/endurance or Windows/macOS regression qualification.",
+    "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/results.json",
+    "reportSha256": "e3775204551c62a060f5d4d6d782df1081a5b13f9fdeb1c2aa81de399e0c902d",
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-b30bf2c97e0b-a93b2efb3a86.deb",
+      "sha256": "4358de4ea2652c3d18be83f922d6230bd93837e2f2e7a50992a24485f1fa8ff0",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-b30bf2c97e0b-a93b2efb3a86",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c"
+    },
+    "portalBuild": {
+      "classification": "Build gate only; not application testing or a deployed desktop fix.",
+      "upstream": "https://github.com/GNOME/xdg-desktop-portal-gnome",
+      "baseCommit": "72d01648ab872c8d849c298fdd9f4d33b5eb820d",
+      "sourceArchiveSha256": "81b9121d3950e63851ac5878b0700373f24c48d85e498e2d8c1005b010a013b0",
+      "patches": [
+        {
+          "commit": "9a4dffaf775f6bdb372768f568167fa2c1187257",
+          "url": "https://github.com/GNOME/xdg-desktop-portal-gnome/commit/9a4dffaf775f6bdb372768f568167fa2c1187257",
+          "sha256": "35157a537ad059df6269fda7f3c3e3ebf5abab89b7a6c0518ac9d99ed4cdfab4"
+        },
+        {
+          "commit": "056029c6506dd1e7bd285943099e9fcc091cff8b",
+          "url": "https://github.com/GNOME/xdg-desktop-portal-gnome/commit/056029c6506dd1e7bd285943099e9fcc091cff8b",
+          "sha256": "dfcaae5ab02e5dbc1cb0b1c5d800e5e6995cd20a0ccc49d5c8ab728795e0e681"
+        }
+      ],
+      "builderSha256": "e6d32c1908a7062b63ea7c94858ff838e1c337f8ab153807c2e8a791b8343334",
+      "architecture": "x86_64",
+      "commands": [
+        [
+          "meson",
+          "setup",
+          "/tmp/game-capture-qa-tools/portal46-reproducible/build",
+          "/tmp/game-capture-qa-tools/portal46-reproducible/source",
+          "--buildtype=debugoptimized",
+          "--prefix=/usr",
+          "-Dsystemd=disabled"
+        ],
+        [
+          "ninja",
+          "-C",
+          "/tmp/game-capture-qa-tools/portal46-reproducible/build",
+          "-j4"
+        ]
+      ],
+      "dependencies": {
+        "xdg-desktop-portal": "1.18.4",
+        "libadwaita-1": "1.5.0",
+        "gtk4": "4.14.5",
+        "glib-2.0": "2.80.0",
+        "gnome-desktop-4": "44.0",
+        "gnome-bg-4": "44.0"
+      },
+      "binary": "/tmp/game-capture-qa-tools/portal46-reproducible/build/src/xdg-desktop-portal-gnome",
+      "binarySha256": "399d06b17bc3477ab200d57eb63d8d06678ffa8f772a22bcbc281c54cacf5fda",
+      "screencastSourceSha256": "f8e5c41750de9814b9ab18170892ae2649f830b0e21dd772b456d76febbfa764",
+      "logs": {
+        "configure.log": "b05ac0d93863024cd4b2425d2dc9e2e53fb33e4da16376e77c9d9fcc5f499e85",
+        "build.log": "eeab63435fa959c5ec3acbd762e3c99ac9814dd62aabc4d4e412e78ddd6503f0"
+      }
+    },
+    "portalBefore": {
+      "pid": 2716674,
+      "exe": "/usr/libexec/xdg-desktop-portal-gnome",
+      "sha256": "cf6839a8003098a7a4d710d520b8fcd9afbba6bbd21931bc0e420ac724b79bc7",
+      "owner": "(':1.4054',)"
+    },
+    "portalDuring": {
+      "pid": 2716716,
+      "exe": "/tmp/game-capture-qa-tools/portal46-reproducible/build/src/xdg-desktop-portal-gnome",
+      "sha256": "399d06b17bc3477ab200d57eb63d8d06678ffa8f772a22bcbc281c54cacf5fda",
+      "owner": "(':1.4061',)"
+    },
+    "portalRestored": {
+      "pid": 2719682,
+      "exe": "/usr/libexec/xdg-desktop-portal-gnome",
+      "sha256": "cf6839a8003098a7a4d710d520b8fcd9afbba6bbd21931bc0e420ac724b79bc7",
+      "owner": "(':1.4241',)"
+    },
+    "restorationPassed": true,
+    "noExportedSessionsBeforeOrAfter": true,
+    "referenceDiagnostics": [
+      {
+        "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/reference-request/bbfeaff5-7952-4bf1-92a7-159e90a831a7/results.json",
+        "reportSha256": "a8716a18405e06546bc4070d267937135b80a6b6bba70d508abffbef7ba082b8",
+        "classification": "Independent desktop portal comparison, not application testing.",
+        "mode": "request",
+        "harnessSha256": "06eca022aea90c52b4634280edaf8747b5c6f787a741fe94599b117781295fc9",
+        "responses": {
+          "CreateSession": 0,
+          "SelectSources": 0
+        },
+        "backendOwnerBefore": ":1.4061",
+        "sessionClosedSignal": true,
+        "backendSurvivedClose": true,
+        "backendSurvivedDisconnect": true,
+        "passed": true,
+        "backendSurvivedCleanup": true,
+        "journalSha256": "e1ef181e875513b164ef3cec532d7541333baa2dcd71cce0db773aa81afb3515"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/reference-session/7ea4fbc5-79e0-4fd7-abed-b5a31aa22918/results.json",
+        "reportSha256": "107d2d038ccecee05897f480e82f85946a7e2f955ea5a63165f3927dab148405",
+        "classification": "Independent desktop portal comparison, not application testing.",
+        "mode": "session",
+        "harnessSha256": "06eca022aea90c52b4634280edaf8747b5c6f787a741fe94599b117781295fc9",
+        "responses": {
+          "CreateSession": 0,
+          "SelectSources": 0
+        },
+        "backendOwnerBefore": ":1.4061",
+        "sessionCloseReply": "success",
+        "backendSurvivedClose": true,
+        "backendSurvivedDisconnect": true,
+        "passed": true,
+        "backendSurvivedCleanup": true,
+        "journalSha256": "0efaf5511f9777041d63deb397bd0025063f60ad42dc9d7b6febbcbedba09217"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/reference-request-session/27fea9e1-583d-4b09-85bf-d470a5086574/results.json",
+        "reportSha256": "d4f36c866d79685faa6b74fa7dbd027a4aff165b15614d979212f75b178397a4",
+        "classification": "Independent desktop portal comparison, not application testing.",
+        "mode": "request-session",
+        "harnessSha256": "06eca022aea90c52b4634280edaf8747b5c6f787a741fe94599b117781295fc9",
+        "responses": {
+          "CreateSession": 0,
+          "SelectSources": 0
+        },
+        "backendOwnerBefore": ":1.4061",
+        "sessionClosedSignal": true,
+        "sessionCloseReply": "already-closed-with-signal",
+        "backendSurvivedClose": true,
+        "backendSurvivedDisconnect": true,
+        "passed": true,
+        "backendSurvivedCleanup": true,
+        "journalSha256": "b299ef89daa3bf0b9b5b0f116b4b499c06373c68b9792a025731d22301672e70"
+      }
+    ],
+    "earlierAttempts": [
+      {
+        "report": "native-qt/qa/reports/linux-portal-backport/7e737e26-3df7-42a9-acde-e59636b23927/results.json",
+        "reportSha256": "316e61c478d7c3821f6f3092174bae8dac34743f8c94783ae657acb7f007af71",
+        "passed": false,
+        "classification": "Diagnostic/fixture attempt, not application testing.",
+        "finding": "Runner path-construction error before any diagnostic/app step; vendor service restored."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-portal-backport/6375f3be-c3f4-4206-9f56-9e47a202fb37/results.json",
+        "reportSha256": "795c7b0e51715cfe14e0ec9e290e95e4cff6f29752ec00b2484697b0b5c508dc",
+        "passed": false,
+        "classification": "Diagnostic/fixture attempt, not application testing.",
+        "finding": "Request and Session diagnostics passed. Combined close rejected an already retired session; backend survived. No app testing reached; vendor service restored."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-portal-backport/9f14ca9b-bde6-4a46-b508-1861eb857993/results.json",
+        "reportSha256": "32bcc9d31fbc3b5c2531efe8cfcf7ab866db115d4d606a8ae15c94f2868430af",
+        "passed": false,
+        "classification": "Diagnostic/fixture attempt, not application testing.",
+        "finding": "Combined-close observer listened on a different D-Bus connection and missed the unicast Closed signal. Corrected to use the owning client connection. Backend survived; no app testing reached; vendor service restored."
+      }
+    ],
+    "hostChanges": "Added 65 build/development dependency packages with Mesa/runtime versions held at their existing values for those transactions. No pre-existing package upgraded. Restored original automatic-install markings for explicitly pinned Mesa packages. No portal package installed, no persistent service override, no application production code changed.",
+    "remaining": "Provide a maintained Ubuntu distribution/backport delivery path and qualify the installed dependency. Current distro 46.2-0ubuntu1 still crashes on pending cancellation; do not mark that release requirement complete.",
+    "builder": "native-qt/qa/build-gnome-portal-backport.py",
+    "buildGate": {
+      "report": "native-qt/build-linux/portal-backport-gates.json",
+      "reportSha256": "ebd47733af0777fd35e258b7a81edce8376f351b2137361081e49a011544be8d",
+      "classification": "Build, syntax and source/provenance gates only; not application testing.",
+      "passed": true,
+      "files": {
+        "native-qt/qa/build-gnome-portal-backport.py": "43dbb2bbd4394fd3ab4cda0e946b1593f8d663077ad1a5e1f4f3ba703e9a5993",
+        "native-qt/e2e/linux-portal-cancel-reference.py": "06eca022aea90c52b4634280edaf8747b5c6f787a741fe94599b117781295fc9"
+      },
+      "finalBuilderManifest": "native-qt/build-linux/portal-backport-final/build-manifest.json",
+      "finalBuilderManifestSha256": "57a148930cd08fcd2fcfdd8c9b601d117dce8cfabd89683bab6f13ad9e8540a0",
+      "checks": [
+        "Pinned upstream source and patch digests",
+        "Meson/Ninja build against installed libraries",
+        "Nested output directory patch application produces identical patched screencast source",
+        "Python AST parse",
+        "git diff --check"
+      ]
+    },
+    "builderNote": "The final builder additionally isolates git apply when output is nested in a repository. Its full build gate produced identical patched screencast source bytes. The temporary-service workflows used the exact earlier candidate binary identified in portalBuild, not the final gate binary.",
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-portal-backport/3da93d48-a243-40f1-8661-e6b98afebdbc/cleanup.json",
+      "reportSha256": "a900023d03fe1d7d1cf11d965e07eab01743b35998bd594aa781de41748f0c7b",
+      "passed": true,
+      "restoredVendorPID": 2719682,
+      "vendorSha256": "cf6839a8003098a7a4d710d520b8fcd9afbba6bbd21931bc0e420ac724b79bc7",
+      "overrideRemoved": true,
+      "ownedApplicationProcessesRemaining": [],
+      "ownedSecretStoresRetired": true,
+      "portalCrashRecords": false
     }
   }
 }
