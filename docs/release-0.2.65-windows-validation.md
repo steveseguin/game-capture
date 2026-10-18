@@ -152,3 +152,20 @@ Application and installer signatures identify Social Stream Ninja and include
 timestamps. This host reports an untrusted certificate root; signing does not
 establish SmartScreen reputation. Builds and qualification run locally, with
 no requested GitHub Actions build.
+
+## Additional signed-package startup repeats — October 18
+
+Three cold and three explicitly warmed private WHIP-to-RTSP receiver workflows
+used the unchanged signed 0.2.65 executable and its 720p60/4 Mbps defaults. All six
+recordings decoded cleanly with captured audio, changing pictures and increasing
+timestamps at 59.97–59.99 fps. Received RTP frame-marker timestamps also remained
+increasing in every repeat, with no trace parsing errors. The received browser
+picture was visually inspected.
+
+These short repeats did not reproduce the earlier intermittent receiver-file
+timestamp issue and do not erase it. A parallel diagnostic campaign using the
+shared sender implementation in Desktop Studio reproduced backward FFmpeg demux
+clock steps despite increasing RTP timestamps; a prior RTSP DESCRIBE plus 500 ms
+warm-up avoided them in three separate receiver starts. This supports a receiver
+clock-initialization explanation, not a claim that every server or cold start is
+now fixed. No application binary was changed for these diagnostic workflows.
