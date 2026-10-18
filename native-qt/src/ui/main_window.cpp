@@ -1752,15 +1752,6 @@ void MainWindow::setupUI() {
         savePersistedSettings();
     });
     layout->addLayout(microphoneLayout);
-#ifdef __APPLE__
-    microphoneWarningLabel_ = new QLabel(this);
-    microphoneWarningLabel_->setObjectName("microphoneWarningLabel");
-    microphoneWarningLabel_->setTextFormat(Qt::PlainText);
-    microphoneWarningLabel_->setWordWrap(true);
-    microphoneWarningLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_YELLOW));
-    microphoneWarningLabel_->hide();
-    layout->addWidget(microphoneWarningLabel_);
-#endif
 
     auto *captureSplitter = new QSplitter(Qt::Horizontal, this);
     captureSplitter->setChildrenCollapsible(false);
@@ -2322,6 +2313,16 @@ void MainWindow::setupUI() {
     statusLabel_->setWordWrap(true);
     statusLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     layout->addWidget(statusLabel_);
+#ifdef __APPLE__
+    microphoneWarningLabel_ = new QLabel(this);
+    microphoneWarningLabel_->setObjectName("microphoneWarningLabel");
+    microphoneWarningLabel_->setTextFormat(Qt::PlainText);
+    microphoneWarningLabel_->setWordWrap(true);
+    microphoneWarningLabel_->setAlignment(Qt::AlignCenter);
+    microphoneWarningLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_YELLOW));
+    microphoneWarningLabel_->hide();
+    layout->addWidget(microphoneWarningLabel_);
+#endif
 
     // Operator-facing connection health
     auto *healthLayout = new QGridLayout();
