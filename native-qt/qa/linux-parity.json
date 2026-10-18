@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged CLI and GUI selection/lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Finer 10 ms receiver levels expose a delayed dip after full stream recreation; continuous qualification is incomplete. Healthy direct monitors now survive output moves, with targeted repeated-move evidence in linux_app_monitor_retention_checkpoint. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_audio_observer_controls_checkpoint: observer-lifecycle controls reproduce the delayed restart dip, while independent source PCM and native input/output level envelopes stay stable. Encoder/send/receiver and waveform-level investigation remain required; the failure is not waived."
+      "remaining": "Packaged CLI and GUI selection/lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Finer 10 ms receiver levels expose a delayed dip after full stream recreation; continuous qualification is incomplete. Healthy direct monitors now survive output moves, with targeted repeated-move evidence in linux_app_monitor_retention_checkpoint. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_audio_observer_controls_checkpoint: observer-lifecycle controls reproduce the delayed restart dip, while independent source PCM and native input/output level envelopes stay stable. Encoder/send/receiver and waveform-level investigation remain required; the failure is not waived. See linux_audio_received_waveform_checkpoint: encoded Opus continuity/post-onset levels are clean, while retained Web Audio has at least 448 exact-zero frames. Actual receiver playout and browser processing remain to be isolated; the failure remains open."
     },
     {
       "id": "system-audio",
@@ -23663,6 +23663,373 @@
         "sha256": "87289851cde463e2fc710cb49ffab52bbed302c66c9683016b00440e308ca339",
         "passed": true
       }
+    },
+    {
+      "case": "recording",
+      "report": "native-qt/qa/reports/linux-audio-received-recording/49ebd9c9-0bca-48be-9cd0-fecfb62ee1df/results.json",
+      "reportSha256": "25a7c7f764d2b5de803503a0040c6deaa1d4cd7343a13634abcaf0dd09ab1050",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "receivedFailures": [
+        {
+          "frame": 1441504,
+          "rms": [
+            0.04136567257817461,
+            0.03642323357398461
+          ]
+        },
+        {
+          "frame": 1444384,
+          "rms": [
+            0.041368322507901345,
+            0.03641737981595536
+          ]
+        }
+      ],
+      "badWindowPcmBudget": 2,
+      "receiverCounterDeltas": {
+        "packetsLost": 0,
+        "concealedSamples": 0,
+        "concealmentEvents": 0,
+        "insertedSamplesForDeceleration": 0,
+        "removedSamplesForAcceleration": 0
+      },
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-received-recording/49ebd9c9-0bca-48be-9cd0-fecfb62ee1df/resume-source-analysis.json",
+        "sha256": "371b153947fea674c2754aefe67a308368fbf28b47dd519fdea3a0a79be21842",
+        "minimum10msRmsAfterSettling": 0.10496056494604585,
+        "lowWindowsAfterSettling": 0,
+        "clippedSamples": 0
+      },
+      "resumeReceiverAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-received-recording/49ebd9c9-0bca-48be-9cd0-fecfb62ee1df/resume-receiver-analysis.json",
+        "sha256": "e2c8d0182d6fa7d4671bd1839da016d261702938941860463153a1b4e6dc7cdb",
+        "minimum10msRmsAfterSettling": 0.1045225686404951,
+        "lowWindowsAfterSettling": 0,
+        "clippedSamples": 0,
+        "maximumFramePtsDiscontinuityMs": 7.0,
+        "nonmonotonicAudioFrames": 0,
+        "scope": "Decode the independent received-track recording, retaining audio frame PTS.\n\nMediaRecorder re-encodes Opus; this is not the original network bitstream or a\nphysical playback measurement. Initial onset and every 10 ms RMS window are\nretained. The 500 ms post-onset summary does not waive any continuous observer\nfailures, nor does concatenated PCM imply a gapless recording timeline.\n"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-received-recording/49ebd9c9-0bca-48be-9cd0-fecfb62ee1df/host-cleanup.json",
+        "sha256": "9aae58531df0c4f6af956cdaa46461dbd3f09ea616b1183193d6f934eb7e25c5",
+        "passed": true
+      }
+    },
+    {
+      "case": "encoded",
+      "report": "native-qt/qa/reports/linux-audio-encoded-copy/c8474c93-5a30-44dc-883c-4209d774fd94/results.json",
+      "reportSha256": "9fe4e3dadba8f4780ae3c7b760fe4afc8b89695623c83d5b0e41144ed7ebc863",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "receivedFailures": [
+        {
+          "frame": 1444384,
+          "rms": [
+            0.03954344026786007,
+            0.0398077488286729
+          ]
+        }
+      ],
+      "badWindowPcmBudget": 2,
+      "receiverCounterDeltas": {
+        "packetsLost": 0,
+        "concealedSamples": 0,
+        "concealmentEvents": 0,
+        "insertedSamplesForDeceleration": 0,
+        "removedSamplesForAcceleration": 0
+      },
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-copy/c8474c93-5a30-44dc-883c-4209d774fd94/resume-source-analysis.json",
+        "sha256": "1f8bb9553542994488e15783b945246948835748013df938775abe45321787ca",
+        "minimum10msRmsAfterSettling": 0.10504281684146592,
+        "lowWindowsAfterSettling": 0,
+        "clippedSamples": 0
+      },
+      "resumeReceiverAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-copy/c8474c93-5a30-44dc-883c-4209d774fd94/resume-receiver-analysis.json",
+        "sha256": "f3c5a5f5edca07244b9ff91eb8a0490732c92eb306dfb3b08feb17c291212b70",
+        "minimum10msRmsAfterSettling": 0.10435171444911738,
+        "lowWindowsAfterSettling": 0,
+        "clippedSamples": 0,
+        "maximumFramePtsDiscontinuityMs": 7.0,
+        "nonmonotonicAudioFrames": 0,
+        "scope": "Decode the independent received-track recording, retaining audio frame PTS.\n\nMediaRecorder re-encodes Opus; this is not the original network bitstream or a\nphysical playback measurement. Initial onset and every 10 ms RMS window are\nretained. The 500 ms post-onset summary does not waive any continuous observer\nfailures, nor does concatenated PCM imply a gapless recording timeline.\n"
+      },
+      "encoded": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-copy/c8474c93-5a30-44dc-883c-4209d774fd94/received-opus-analysis.json",
+        "sha256": "b31bac8b8c64b5c5b332cf1c9745f558868ed9371169db0da0c467e5cb436bba",
+        "encodedSha256": "85d5138c0f0d6ef51697ef117a2d9a8241a814139fa1c471aba066f7cd7b93f3",
+        "decodedSha256": "ff246aa15ba43b2e0087192141ce640dd7df875f6677a0d686880d7d4646df46",
+        "libopusVersion": "libopus 1.4",
+        "rtpDiscontinuities": 0,
+        "originalPhaseLevelChecksPassed": true,
+        "originalPhaseLowPackets": [],
+        "firstToneArrivalFromPhaseStartMs": 147.199951171875,
+        "postOnsetSettlingMs": 500,
+        "postOnsetPackets": 410,
+        "postOnsetMinimumRms": 0.10434971029473437,
+        "scope": "Arrival-based post-onset summary is additional localization evidence only. Original phase failures are retained; this is not a replacement acceptance rule or calibrated alignment with Web Audio."
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-copy/c8474c93-5a30-44dc-883c-4209d774fd94/host-cleanup.json",
+        "sha256": "38eab87217c1bd623def5877e9db2b91189830b3cf2ca506019eae9aadfcb186",
+        "passed": true
+      }
+    },
+    {
+      "case": "waveform",
+      "report": "native-qt/qa/reports/linux-audio-encoded-waveform/36212879-182f-4d40-9eea-b32d51989498/results.json",
+      "reportSha256": "a6af08349d32fb62ff5b155dba36c8f243cb353e1d047ba1bb68d2a22ad2bcd9",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "receivedFailures": [
+        {
+          "frame": 1405952,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1406432,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1406912,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1407392,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1407872,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1408352,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1408832,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1409312,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1409792,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1410272,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1410752,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1411232,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1411712,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1412192,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1412672,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1413152,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1413632,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1414112,
+          "rms": [
+            2.117126722063094e-05,
+            0
+          ]
+        },
+        {
+          "frame": 1444352,
+          "rms": [
+            0.028872606718505812,
+            0.02547791751306387
+          ]
+        }
+      ],
+      "badWindowPcmBudget": 16,
+      "receiverCounterDeltas": {
+        "packetsLost": 0,
+        "concealedSamples": 0,
+        "concealmentEvents": 0,
+        "insertedSamplesForDeceleration": 0,
+        "removedSamplesForAcceleration": 0
+      },
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-waveform/36212879-182f-4d40-9eea-b32d51989498/resume-source-analysis.json",
+        "sha256": "5bc57c42291335368839eed6ed568964e10b8d2c7feddf44b18293ff52b616d4",
+        "minimum10msRmsAfterSettling": 0.10496056494604585,
+        "lowWindowsAfterSettling": 0,
+        "clippedSamples": 0
+      },
+      "resumeReceiverAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-waveform/36212879-182f-4d40-9eea-b32d51989498/resume-receiver-analysis.json",
+        "sha256": "7311cd42edb6556aa8d8374562dfc24225af6829951e851483dcef67890eee0e",
+        "minimum10msRmsAfterSettling": 0.10456754772418125,
+        "lowWindowsAfterSettling": 0,
+        "clippedSamples": 0,
+        "maximumFramePtsDiscontinuityMs": 7.0,
+        "nonmonotonicAudioFrames": 0,
+        "scope": "Decode the independent received-track recording, retaining audio frame PTS.\n\nMediaRecorder re-encodes Opus; this is not the original network bitstream or a\nphysical playback measurement. Initial onset and every 10 ms RMS window are\nretained. The 500 ms post-onset summary does not waive any continuous observer\nfailures, nor does concatenated PCM imply a gapless recording timeline.\n"
+      },
+      "encoded": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-waveform/36212879-182f-4d40-9eea-b32d51989498/received-opus-analysis.json",
+        "sha256": "262c73c40ad54e308e79700ee412645ba4cea013211ef44e9552ee9c4bc7c1fc",
+        "encodedSha256": "7ecc2ed87d03345d46e607f688c2cb9d0daf3c96e79ea2fd243e92a6e7532261",
+        "decodedSha256": "f1d67fa05052ca5a8e272b4dfa252dffec66b9282b4ae2c8209df2e01b074954",
+        "libopusVersion": "libopus 1.4",
+        "rtpDiscontinuities": 0,
+        "originalPhaseLevelChecksPassed": false,
+        "originalPhaseLowPackets": [
+          {
+            "rtpTimestamp": 3369089628,
+            "observedAtMs": 1792350317308.9001,
+            "firstFrame": 1444320,
+            "frames": 480,
+            "rms": [
+              2.0345887850864095e-34,
+              2.0345869483764863e-34
+            ]
+          },
+          {
+            "rtpTimestamp": 3369090108,
+            "observedAtMs": 1792350317328.1,
+            "firstFrame": 1444800,
+            "frames": 480,
+            "rms": [
+              2.0345887850864095e-34,
+              2.0345869483764863e-34
+            ]
+          },
+          {
+            "rtpTimestamp": 3369090588,
+            "observedAtMs": 1792350317338.8,
+            "firstFrame": 1445280,
+            "frames": 480,
+            "rms": [
+              2.0345887850864095e-34,
+              2.0345869483764863e-34
+            ]
+          }
+        ],
+        "firstToneArrivalFromPhaseStartMs": 534.60009765625,
+        "postOnsetSettlingMs": 500,
+        "postOnsetPackets": 411,
+        "postOnsetMinimumRms": 0.10468740964445725,
+        "scope": "Arrival-based post-onset summary is additional localization evidence only. Original phase failures are retained; this is not a replacement acceptance rule or calibrated alignment with Web Audio."
+      },
+      "waveform": {
+        "rowFrame": 1444352,
+        "rowFrames": 4800,
+        "channelZeroRuns": [
+          [
+            {
+              "startInRow": 0,
+              "endInRow": 448,
+              "frames": 448,
+              "touchesRowStart": true,
+              "touchesRowEnd": false
+            }
+          ],
+          [
+            {
+              "startInRow": 0,
+              "endInRow": 448,
+              "frames": 448,
+              "touchesRowStart": true,
+              "touchesRowEnd": false
+            }
+          ]
+        ],
+        "minimumSilenceMs": 9.333333333333334,
+        "scope": "Exact zero samples retained on both channels. Run touches row start, so 448 frames is a lower bound, not its complete duration. No sample-clock alignment to RTP is claimed."
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-encoded-waveform/36212879-182f-4d40-9eea-b32d51989498/host-cleanup.json",
+        "sha256": "d899937e91153be85c997c256db6e89bb62f4eb498b624b9f348c7e3ef314971",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -23734,7 +24101,8 @@
     "linux-av-sync.js --source-reference=desktop --trace-audio=true opts into bounded Linux selected-app input/output timing metadata, writes linux-audio-timing.csv, and verifies its complete footer/hash through linux-audio-timing-report.py. Positive input age means assigned sample time precedes arrival. Trace is disabled in ordinary runs and is not endurance qualification; no PCM content is logged.",
     "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true records continuous received PCM summaries across app-stream transitions plus opt-in native timing metadata. All clock/integrity windows are checked; only intentional full-source pause/resume has 500 ms content settling. 100 ms tone-window success does not exclude sub-window glitches. Original raw batches and helper hashes are retained.",
     "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true --app-output-moves=3 alternates the selected owned app between its original output and the owned fixture output. Each transition retains continuous 10 ms RMS and 100 ms tone evidence, native timing, and request/completion timestamps. Range 1..5; repeats require the continuous diagnostic. Only full-source pause/resume has 500 ms content settling.",
-    "With --continuous-app-audio=true, --app-snapshot-context=persistent reuses a snapshot observer created before startup settling; fresh remains the default. --app-resume-snapshot-delay-ms=2200 delays only the resume snapshot; 1200 is default. --app-resume-reference=true records bounded independent PCM from the owned playback stream through parec and analyzes 10 ms levels/channel isolation. Native opt-in traces add RMS/hole metadata; the analyzer accepts both trace schemas."
+    "With --continuous-app-audio=true, --app-snapshot-context=persistent reuses a snapshot observer created before startup settling; fresh remains the default. --app-resume-snapshot-delay-ms=2200 delays only the resume snapshot; 1200 is default. --app-resume-reference=true records bounded independent PCM from the owned playback stream through parec and analyzes 10 ms levels/channel isolation. Native opt-in traces add RMS/hole metadata; the analyzer accepts both trace schemas.",
+    "With --continuous-app-audio=true, --app-resume-recording=true retains a bounded received-track MediaRecorder WebM plus frame-PTS-aware PCM analysis; --app-encoded-audio=true copies incoming Opus with RTCRtpScriptTransform, forwards original frames unchanged, and decodes copies with libopus. Both preserve existing continuous checks and failed results. Linux continuous PCM capture retains up to sixteen bad 100 ms windows per drain; shared default remains two."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -28377,5 +28745,39 @@
     },
     "ownedProcessesRemaining": [],
     "remaining": "Capture independently decoded encoded/sent audio or a receiver recording independent of Web Audio to locate the dip, and compare actual waveforms if needed. Do not shift timestamps, loosen level thresholds, or dismiss the failure as observer behavior. Startup A/V skew/calibration, final-package X11/Wayland endurance, Wayland throughput, PulseAudio recovery, mixed/physical audio, and every other parity row remain open."
+  },
+  "linux_audio_received_waveform_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20.deb",
+      "sha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16"
+    },
+    "productionChange": "None. Reused independent MediaRecorder helper; added bounded incoming Opus copy/direct libopus decode and configurable bounded bad-window PCM retention. Shared observer default remains two PCM windows; Linux continuous fixture requests sixteen. No thresholds or production timestamps changed.",
+    "evidence": [
+      {
+        "case": "recording",
+        "report": "native-qt/qa/reports/linux-audio-received-recording/49ebd9c9-0bca-48be-9cd0-fecfb62ee1df/results.json",
+        "sha256": "25a7c7f764d2b5de803503a0040c6deaa1d4cd7343a13634abcaf0dd09ab1050",
+        "passed": false
+      },
+      {
+        "case": "encoded",
+        "report": "native-qt/qa/reports/linux-audio-encoded-copy/c8474c93-5a30-44dc-883c-4209d774fd94/results.json",
+        "sha256": "9fe4e3dadba8f4780ae3c7b760fe4afc8b89695623c83d5b0e41144ed7ebc863",
+        "passed": false
+      },
+      {
+        "case": "waveform",
+        "report": "native-qt/qa/reports/linux-audio-encoded-waveform/36212879-182f-4d40-9eea-b32d51989498/results.json",
+        "sha256": "a6af08349d32fb62ff5b155dba36c8f243cb353e1d047ba1bb68d2a22ad2bcd9",
+        "passed": false
+      }
+    ],
+    "findings": "All three packaged lifecycle workflows retain the restart Web Audio failure; other continuous phases pass. Independent source and received-track re-encoded recordings have stable 10 ms levels. Two incoming Opus captures have complete RTP timestamp continuity and stable decoded levels after tone onset. The final run retains at least 448 exact zero samples on both Web Audio channels in the later dip. Loss, concealment and acceleration/deceleration counters do not increase across restart.",
+    "limits": "MediaRecorder has recurring frame PTS discontinuities up to 7 ms, so concatenated PCM does not prove a gapless timeline. Final run also has a longer initial silence and its original phase-based encoded level check fails; this is preserved, not waived. Additional onset-based analysis localizes the later dip only. Worker arrival times and Web Audio frames are not absolutely calibrated. Chrome receiver was headless/muted; actual user playback is not yet measured. Encoded copy introduces a transform, but the dip also occurs without it. No cause or production fix is claimed.",
+    "ownedProcessesRemaining": [],
+    "gates": "JavaScript syntax, Python AST, source diff and archived evidence/hash checks are sanity/integrity gates, not application testing. The three packaged E2E workflows are testing and remain failed. Final setup-error file-descriptor cleanup is inspection/syntax-gated only; the exercised success path is unchanged.",
+    "next": "Measure normal receiver playback through an owned null sink with mute removed, compare continuous Web Audio, decoded Opus and playout PCM without feeding it back into capture. Verify element audio state and actual sink routing. Investigate browser pull/resampling/pacing only from evidence; keep existing failures and all parity gaps open."
   }
 }

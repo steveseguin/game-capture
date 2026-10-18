@@ -41,4 +41,5 @@ function analyze(batch,{silent=false,transition=false}={}) {
     gaps:full.gaps,clippedSamples:full.clippedSamples,missingChannelFrames:full.missingChannelFrames,
     invalidSamples:full.invalidSamples,errors};
 }
-module.exports={start:page=>audio.start(page,{shortWindowRmsFloor}),drain:audio.drain,stop:audio.stop,analyze};
+// Retain enough bounded PCM to include a delayed dip after intentional silence.
+module.exports={start:page=>audio.start(page,{shortWindowRmsFloor,badWindowPcmBudget:16}),drain:audio.drain,stop:audio.stop,analyze};
