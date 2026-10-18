@@ -20,3 +20,5 @@ Hosted receiver runs: [VT 39079337086](https://github.com/steveseguin/game-captu
 Remaining work includes disconnect-counter classification, longer independent-receiver runs, broader receiver/physical-device coverage, minimum-OS hardware VT, privacy and sleep/wake transitions, trusted remote RTMPS, broader accessibility, and candidate browser-download qualification. The earlier independent recorder-clock failures also remain open; this run measures continuous received PCM, not recording timestamps or lip sync.
 
 Freeze `0f1759e7-253c-4fd4-ae4a-8bab3a9499f1` indexes 72 local files; manifest SHA-256 `7f2880c07f680a9358184470b5bbac39ce2d623d209ab7d3eb1d2706d4a3b8eb`. [Measurements and evidence index](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-17-apple-m1-independent) include both encoder observations and the Windows attempts. Raw settings, session requests, accessibility data, credentials and logs remain local.
+
+Follow-up: [viewer teardown diagnostics and retained regression failures](macos-viewer-teardown-2026-10-17.md).
