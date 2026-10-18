@@ -23,7 +23,7 @@
       "id": "x11-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Current packaged browser-window workflow covers moving/static content, resize, late viewer, source-loss exit and discovery cleanup. Physical Xorg, obscured/minimized windows, cursor, reconnect, mixed DPI/multiple displays and gameplay remain. Xvfb packaged covered-window idle thumbnails and live/resized preview now passed pixel identities. Physical Xorg/compositor variations and minimized-window preview remain open. A new DAMAGE-driven package now passes CLI and Qt GUI moving/static/resized/late-viewer workflows, exact preview, zero readbacks after source drawing stops, final-picture retention, resumed drawing and clean Stop/source-destruction exit. A private X server with DAMAGE disabled passes the retained timed path. This is still Xvfb qualification; physical Xorg, minimized/obscured windows and sustained 60fps remain open."
+      "remaining": "Current packaged browser-window workflow covers moving/static content, resize, late viewer, source-loss exit and discovery cleanup. Physical Xorg, obscured/minimized windows, cursor, reconnect, mixed DPI/multiple displays and gameplay remain. Xvfb packaged covered-window idle thumbnails and live/resized preview now passed pixel identities. Physical Xorg/compositor variations and minimized-window preview remain open. A new DAMAGE-driven package now passes CLI and Qt GUI moving/static/resized/late-viewer workflows, exact preview, zero readbacks after source drawing stops, final-picture retention, resumed drawing and clean Stop/source-destruction exit. A private X server with DAMAGE disabled passes the retained timed path. This is still Xvfb qualification; physical Xorg, minimized/obscured windows and sustained 60fps remain open. All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified."
     },
     {
       "id": "camera",
@@ -66,7 +66,7 @@
       "id": "software-encoding",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified. Linux helper resolution now prefers /usr/bin/ffmpeg after explicit overrides; default-helper VP9/AV1 regression qualification remains open. Bounded default 1280x720/60 software H264 at 4000 kbps now passes decoded pulse identities, >=95% delivery and cadence thresholds for 36 five-second intervals with continuous selected-app PCM. This is controlled low-detail X11 content; long-run/high-motion and native Wayland profile qualification remain open, and paired A/V timing is unresolved as recorded in av_timing_baseline_checkpoint. The later 31-minute run exposes recurring default-profile X11 picture repetition despite continuing capture/decode counts and clean audio. This supersedes any inference of sustained qualification from the three-minute pilot; the encoder/capture stage still needs attribution. The recurring X11 repetition has now been attributed before shared submission by a six-minute native trace. The DAMAGE-driven capture candidate passes a 30-second 720p60 cadence/PCM pilot; long-run delivery and independent A/V calibration remain unqualified."
+      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified. Linux helper resolution now prefers /usr/bin/ffmpeg after explicit overrides; default-helper VP9/AV1 regression qualification remains open. Bounded default 1280x720/60 software H264 at 4000 kbps now passes decoded pulse identities, >=95% delivery and cadence thresholds for 36 five-second intervals with continuous selected-app PCM. This is controlled low-detail X11 content; long-run/high-motion and native Wayland profile qualification remain open, and paired A/V timing is unresolved as recorded in av_timing_baseline_checkpoint. The later 31-minute run exposes recurring default-profile X11 picture repetition despite continuing capture/decode counts and clean audio. This supersedes any inference of sustained qualification from the three-minute pilot; the encoder/capture stage still needs attribution. The recurring X11 repetition has now been attributed before shared submission by a six-minute native trace. The DAMAGE-driven capture candidate passes a 30-second 720p60 cadence/PCM pilot; long-run delivery and independent A/V calibration remain unqualified. All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified."
     },
     {
       "id": "hardware-encoding",
@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum)."
+      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum). All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified. See x11_damage_endurance_checkpoint for all interval decisions, timing phases, resource range and cleanup."
     },
     {
       "id": "arm-portability",
@@ -21507,6 +21507,77 @@
         ]
       },
       "interpretation": "New package passes the bounded 30-second 720p60 delivery/PCM pilot. Overall result fails because one paired A/V pulse reaches about +66 ms; the median is about -12 ms. This does not qualify absolute timing, the long-run cadence fix or endurance."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-xdamage-endurance-x11/3514ee08-2a99-42e0-bf0f-d9378631e96b/results.json",
+      "reportSha256": "00b4481d2feed0eb877dc7010d187f326a911b2c734090ccd6546f460743592f",
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "passed": false,
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "e6e8ffdf1364f73a07d258a5b08993635127ab230bdd0070043e6e05e2b448e9",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432"
+      },
+      "audit": {
+        "report": "native-qt/qa/reports/linux-xdamage-endurance-x11/3514ee08-2a99-42e0-bf0f-d9378631e96b/endurance-audit.json",
+        "sha256": "9cae147eb0db7ab347f555ffce0961e846aa38b5cfca83ea786155252bc5c0ac",
+        "scope": "Offline integrity and recomputation audit of one already completed packaged E2E run; not a separate application workflow",
+        "reportSha256": "00b4481d2feed0eb877dc7010d187f326a911b2c734090ccd6546f460743592f",
+        "packageSha256": "648e9da8cb96aa642650703de3223a6d3758246fcc3855c74be62604dbbf36a8",
+        "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+        "intervals": 372,
+        "failures": [],
+        "audioFailures": [],
+        "diagnosticFailures": [],
+        "summaryMismatches": [],
+        "decodedObservationSeconds": 1860.7405007324264,
+        "continuousPcmSeconds": 1880.799999999993,
+        "receivedFpsRange": [
+          59.39406059394061,
+          60.11583782704214
+        ],
+        "rssKiBRange": [
+          116360,
+          128388
+        ],
+        "cadenceAndPcmPassed": true,
+        "overallPassed": false,
+        "analysisPassed": false,
+        "medianDriftMs": -10.499999999996845,
+        "longRunDriftQualified": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "medianAdditionalOffsetMs": -30.99999999999703,
+            "rangeAdditionalOffsetMs": [
+              -42.00000000000159,
+              76.00000000000007
+            ]
+          },
+          {
+            "name": "final",
+            "passed": true,
+            "medianAdditionalOffsetMs": -41.499999999993875,
+            "rangeAdditionalOffsetMs": [
+              -49.99999999999005,
+              -36.99999999999548
+            ]
+          }
+        ],
+        "auditSha256": "c0b700e1ccfd3cd6013ab28f19280f678879f92d4f07fcf79179aff0230e11b8"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-xdamage-endurance-x11/3514ee08-2a99-42e0-bf0f-d9378631e96b/host-cleanup.json",
+        "sha256": "e11777cdab5c044ec7ddbf090e835ec6b49a23b2107e48199bbfac46acecc4ef",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -24731,5 +24802,87 @@
       "passed": true
     },
     "remaining": "Run this exact package for >=30 minutes with tracing disabled to verify sustained distinct-picture delivery across the previously recurring failure periods. Independent absolute A/V timing calibration remains unresolved; no offset or threshold relaxation was introduced. Native Wayland performance, physical Xorg/compositor variants, minimized/obscured windows, high-motion content, physical devices and integrated Windows/macOS runtime regression remain unqualified."
+  },
+  "x11_damage_endurance_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-a2e29d461624-6a8cf029bf69.deb",
+      "sha256": "648e9da8cb96aa642650703de3223a6d3758246fcc3855c74be62604dbbf36a8",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-a2e29d461624-6a8cf029bf69",
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd"
+    },
+    "productionCommit": "670487533d29e95bf94a7f2e768346754d236b80",
+    "evidence": {
+      "report": "native-qt/qa/reports/linux-xdamage-endurance-x11/3514ee08-2a99-42e0-bf0f-d9378631e96b/results.json",
+      "reportSha256": "00b4481d2feed0eb877dc7010d187f326a911b2c734090ccd6546f460743592f",
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "passed": false,
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "e6e8ffdf1364f73a07d258a5b08993635127ab230bdd0070043e6e05e2b448e9",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432"
+      },
+      "audit": {
+        "report": "native-qt/qa/reports/linux-xdamage-endurance-x11/3514ee08-2a99-42e0-bf0f-d9378631e96b/endurance-audit.json",
+        "sha256": "9cae147eb0db7ab347f555ffce0961e846aa38b5cfca83ea786155252bc5c0ac",
+        "scope": "Offline integrity and recomputation audit of one already completed packaged E2E run; not a separate application workflow",
+        "reportSha256": "00b4481d2feed0eb877dc7010d187f326a911b2c734090ccd6546f460743592f",
+        "packageSha256": "648e9da8cb96aa642650703de3223a6d3758246fcc3855c74be62604dbbf36a8",
+        "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+        "intervals": 372,
+        "failures": [],
+        "audioFailures": [],
+        "diagnosticFailures": [],
+        "summaryMismatches": [],
+        "decodedObservationSeconds": 1860.7405007324264,
+        "continuousPcmSeconds": 1880.799999999993,
+        "receivedFpsRange": [
+          59.39406059394061,
+          60.11583782704214
+        ],
+        "rssKiBRange": [
+          116360,
+          128388
+        ],
+        "cadenceAndPcmPassed": true,
+        "overallPassed": false,
+        "analysisPassed": false,
+        "medianDriftMs": -10.499999999996845,
+        "longRunDriftQualified": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "medianAdditionalOffsetMs": -30.99999999999703,
+            "rangeAdditionalOffsetMs": [
+              -42.00000000000159,
+              76.00000000000007
+            ]
+          },
+          {
+            "name": "final",
+            "passed": true,
+            "medianAdditionalOffsetMs": -41.499999999993875,
+            "rangeAdditionalOffsetMs": [
+              -49.99999999999005,
+              -36.99999999999548
+            ]
+          }
+        ],
+        "auditSha256": "c0b700e1ccfd3cd6013ab28f19280f678879f92d4f07fcf79179aff0230e11b8"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-xdamage-endurance-x11/3514ee08-2a99-42e0-bf0f-d9378631e96b/host-cleanup.json",
+        "sha256": "e11777cdab5c044ec7ddbf090e835ec6b49a23b2107e48199bbfac46acecc4ef",
+        "passed": true
+      }
+    },
+    "interpretation": "All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified.",
+    "remaining": "Resolve the absolute A/V reference and startup timing before claiming calibrated skew/drift. Isolate native Wayland source/compositor/PipeWire throughput, then run its separate >=30-minute default-profile workflow. Full parity requirements remain in force."
   }
 }
