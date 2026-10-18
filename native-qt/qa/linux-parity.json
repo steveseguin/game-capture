@@ -35,19 +35,19 @@
       "id": "application-audio",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged automatic X11 window/process selection including Chrome child audio and suspend/resume, explicit Wayland CLI selection with real portal capture, and X11 GUI app selection passed. Dynamic child/same-process streams, stream removal/recreation, output moves, late viewer, app exit, stale-selection rejection and explicit reselection passed. Native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed microphone continuity on app loss, Wayland GUI and A/V drift/endurance remain. Root-process exit intentionally stops its app capture; no automatic replacement by name."
+      "remaining": "Packaged automatic X11 window/process selection including Chrome child audio and suspend/resume, explicit Wayland CLI selection with real portal capture, and X11 GUI app selection passed. Dynamic child/same-process streams, stream removal/recreation, output moves, late viewer, app exit, stale-selection rejection and explicit reselection passed. Native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed microphone continuity on app loss, A/V drift/endurance remain. Root-process exit intentionally stops its app capture; no automatic replacement by name. Native Wayland GUI explicit app selection, child/same-process streams, output moves, app loss, stale selection and explicit reselection with fresh portal restart now passed. Wayland placeholder correctly requests explicit app selection."
     },
     {
       "id": "system-audio",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and X11 GUI default-output capture, decoded stereo, silence, system/mic mixing, mute and 50/50 gain passed. Output changes, audio-server loss, Wayland GUI, timestamp/drift and endurance qualification remain."
+      "remaining": "Packaged CLI and X11 GUI default-output capture, decoded stereo, silence, system/mic mixing, mute and 50/50 gain passed. Output changes, audio-server loss, timestamp/drift and endurance qualification remain. Native Wayland GUI routing, silence, late viewer, half-gain mixing, mute and persisted settings passed. Windows communications-output mode remains missing: Linux capabilities hide it and the backend rejects it; implement a usable Linux equivalent or obtain an explicit platform exception. Selected-app audio is not silently counted as completion of that workflow."
     },
     {
       "id": "microphone",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, Wayland GUI and long-run clock drift remain."
+      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, long-run clock drift remain. Native Wayland GUI explicit owned input selection, mute/unmute, input removal, video continuity, no silent reopen, mixing and persisted settings passed. This remains virtual-device routing evidence, not physical microphone qualification."
     },
     {
       "id": "audio-codecs",
@@ -101,7 +101,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Preview, tray/reopen, full keyboard/accessibility, remaining errors and other output combinations stay open."
     },
     {
       "id": "profiles",
@@ -119,7 +119,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint."
     },
     {
       "id": "packaging",
@@ -6965,6 +6965,302 @@
           "identityReadFailures": 0
         }
       }
+    },
+    {
+      "backend": "linux-wayland-audio-gui-before-label-fix",
+      "report": "native-qt/qa/reports/linux-wayland-audio-gui/208242ea-a2f4-4a8b-993c-2be944ab2bdb/results.json",
+      "reportSha256": "3f537d12ca10ecba8f5b96d0c14dfc7b99e877d2687ef6f61adcf8eec79054c7",
+      "passed": true,
+      "finding": "Previous package passed native Wayland GUI system, owned microphone and mix routing; decoded stereo/silence/late viewer, mute/unmute preserving video, explicit input removal/recreation without silent reopening, half gain, Stop, clean Quit and restored settings without capture. This predates the audio-app placeholder correction.",
+      "scope": "Extracted Ubuntu DEB; bounded Wayland portal H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "matrix": "gui",
+      "captureBackend": "wayland",
+      "executableSha256": "ba216e7d3515095410e3435cf8c952bb8fda70d54cd5659097b392e0c5b77263",
+      "manifestSha256": "4f91d6566286ff3bdb85d9d229dff047ee188eef2af2b5bc3752d6864a390637",
+      "harnessSha256": "ceb1ff4a31aca91a975c3dc9abda851e570c176ee7b74f82a029f7a8387e0472",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "portalJournalSha256": "a059a0f6490e77f1adb73ac8f867fdc862522689e372291a8f238ba4e5557c44",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "cases": [
+        {
+          "name": "system",
+          "passed": true,
+          "guiStopSettled": true,
+          "audioObservations": {
+            "audio": 30,
+            "silence": 30,
+            "lateAudio": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            }
+          }
+        },
+        {
+          "name": "microphone",
+          "passed": true,
+          "guiStopSettled": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterInputLoss": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 85,
+              "identityReadFailures": 0
+            },
+            "videoAfterInputLoss": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            }
+          }
+        },
+        {
+          "name": "mix",
+          "passed": true,
+          "mixedRmsAtHalfGain": 0.06473919014551272,
+          "guiStopSettled": true,
+          "settingsRestoredWithoutCapture": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 86,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "backend": "linux-wayland-application-audio-gui",
+      "report": "native-qt/qa/reports/linux-wayland-audio-gui/0b1cb803-340a-4ed3-be1b-97cc86c302af/results.json",
+      "reportSha256": "c98ce0914173b50dcb84facc15070ac36912462320aaae4929c14cae2b264cf6",
+      "passed": true,
+      "finding": "Final package passed real Wayland GUI explicit application selection using the corrected Choose an audio app placeholder. Decoded stereo excludes unrelated system playback. Child and same-process stream changes, removal/recreation, output move, late viewer, audio-app exit with video continuing, stale-selection refusal, fresh portal restart and explicit reselection passed. GNOME backend owner remained stable and journal contained no crash.",
+      "scope": "Extracted Ubuntu DEB; bounded Wayland portal H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "matrix": "apps-gui",
+      "captureBackend": "wayland",
+      "executableSha256": "6eea0ceaaa4b7c0d8fd75d77e52446e7ae21e51a98a6ce63e90840dfec9a6de6",
+      "manifestSha256": "a6b6390d9ad8cf90dfd5ea3f0dbc821adda49a4e69c8551ba2ade8fc0c388cf4",
+      "harnessSha256": "3981f6bc986f1d8836c08b46ccc6518b7896b2070441efc3e94ce60343443993",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "portalJournalSha256": "27cc65d18e849eed5694d316e5ff5464d8d33030bc0e2ae1e152e6fdc6667861",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "cases": [
+        {
+          "name": "selected-app",
+          "passed": true,
+          "noAudioAfterAppExit": true,
+          "guiStopSettled": true,
+          "staleAppNotReplaced": true,
+          "audioObservations": {
+            "audio": 30,
+            "childJoined": 30,
+            "childRemoved": 30,
+            "secondStreamSameProcess": 30,
+            "secondStreamRemoved": 30,
+            "noStreams": 30,
+            "streamRecreated": 30,
+            "outputMoved": 30,
+            "lateAudio": 30,
+            "afterExplicitReselection": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 85,
+              "identityReadFailures": 0
+            },
+            "videoAfterAppExit": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            },
+            "videoWithStaleApp": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "backend": "linux-wayland-audio-gui-final-package",
+      "report": "native-qt/qa/reports/linux-wayland-audio-final-wayland/25af5432-fc4b-4ef5-bb6a-1b46039cf230/results.json",
+      "reportSha256": "b50d66609c18fbe755338a05fd4ef7bb63b13eec28daf839a7fc36f0cf04431a",
+      "passed": true,
+      "finding": "Final package passed all three native Wayland GUI audio routes: system output, explicit owned input and half-gain mix. Decoded stereo/silence/late viewer, mute/unmute preserving video, input removal with video continuing, no silent reopening, settled Stop, clean Quit and restored source/input/gains without capture passed. GNOME backend stayed running.",
+      "scope": "Extracted Ubuntu DEB; bounded Wayland portal H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "matrix": "gui",
+      "executableSha256": "6eea0ceaaa4b7c0d8fd75d77e52446e7ae21e51a98a6ce63e90840dfec9a6de6",
+      "manifestSha256": "a6b6390d9ad8cf90dfd5ea3f0dbc821adda49a4e69c8551ba2ade8fc0c388cf4",
+      "harnessSha256": "3981f6bc986f1d8836c08b46ccc6518b7896b2070441efc3e94ce60343443993",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "portalJournalSha256": "3ef85e3800c0d699219703bf5fcd9b00efc52e462faa3396da067959b873bd0f",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "cases": [
+        {
+          "name": "system",
+          "passed": true,
+          "guiStopSettled": true,
+          "audioObservations": {
+            "audio": 30,
+            "silence": 30,
+            "lateAudio": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 85,
+              "identityReadFailures": 0
+            }
+          }
+        },
+        {
+          "name": "microphone",
+          "passed": true,
+          "guiStopSettled": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterInputLoss": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "videoAfterInputLoss": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            }
+          }
+        },
+        {
+          "name": "mix",
+          "passed": true,
+          "mixedRmsAtHalfGain": 0.06476971001517305,
+          "guiStopSettled": true,
+          "settingsRestoredWithoutCapture": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 85,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 88,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ]
+    },
+    {
+      "backend": "linux-wayland-audio-x11-regression",
+      "report": "native-qt/qa/reports/linux-wayland-audio-final-x11/d73ba427-243f-47ec-94ab-7a8e59595897/results.json",
+      "reportSha256": "88ea7bb085eeaa121cb1b7e1fb72fe2168c32e6055ad544a56d66499f6d29f62",
+      "passed": true,
+      "finding": "Same final package passed X11 GUI explicit app selection with the unchanged automatic-X11 placeholder, decoded stereo excluding unrelated playback, child/same-process stream changes, output move, late viewer, app exit with video continuity, stale-app refusal, explicit reselection, Stop and clean Quit.",
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "matrix": "apps-gui",
+      "executableSha256": "6eea0ceaaa4b7c0d8fd75d77e52446e7ae21e51a98a6ce63e90840dfec9a6de6",
+      "manifestSha256": "a6b6390d9ad8cf90dfd5ea3f0dbc821adda49a4e69c8551ba2ade8fc0c388cf4",
+      "harnessSha256": "3981f6bc986f1d8836c08b46ccc6518b7896b2070441efc3e94ce60343443993",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "cases": [
+        {
+          "name": "selected-app",
+          "passed": true,
+          "noAudioAfterAppExit": true,
+          "guiStopSettled": true,
+          "staleAppNotReplaced": true,
+          "audioObservations": {
+            "audio": 30,
+            "childJoined": 30,
+            "childRemoved": 30,
+            "secondStreamSameProcess": 30,
+            "secondStreamRemoved": 30,
+            "noStreams": 30,
+            "streamRecreated": 30,
+            "outputMoved": 30,
+            "lateAudio": 30,
+            "afterExplicitReselection": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            },
+            "videoAfterAppExit": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "videoWithStaleApp": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ]
     }
   ],
   "host_environment": {
@@ -7004,7 +7300,8 @@
     "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --portal-cancel=true (active GNOME Wayland session; owned uinput helper requires sudo)",
     "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --portal-cancel=true --source-loss=true",
     "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --pending-quit=true (or --pending-stop=true); currently expected to expose GNOME 46.2 portal crash",
-    "python3 native-qt/e2e/linux-portal-cancel-reference.py --reports=<reports> --close-mode=request (independent desktop diagnostic; reproduces a portal crash on installed GNOME 46.2, not application qualification)"
+    "python3 native-qt/e2e/linux-portal-cancel-reference.py --reports=<reports> --close-mode=request (independent desktop diagnostic; reproduces a portal crash on installed GNOME 46.2, not application qualification)",
+    "node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --matrix=gui|apps-gui (real GNOME portal and owned keyboard helper; serial audio fixtures)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -7238,5 +7535,26 @@
     "log": "native-qt/build-linux-wayland-recovery-gates.log",
     "logSha256": "29aa7bc018053b97c52eb2decc7e60b0d78c83b558116ac713ab9fc4eec3da72",
     "passed": true
+  },
+  "wayland_audio_gui_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-6eea0ceaaa4b-7520e862ad25.deb",
+    "sha256": "fb2e91b087c43811c0b13e215cb7cf063a923cbca6a0768bf2dd3b28f65eae43",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-6eea0ceaaa4b-7520e862ad25",
+    "manifestSha256": "a6b6390d9ad8cf90dfd5ea3f0dbc821adda49a4e69c8551ba2ade8fc0c388cf4",
+    "executableSha256": "6eea0ceaaa4b7c0d8fd75d77e52446e7ae21e51a98a6ce63e90840dfec9a6de6",
+    "qualification": "Development checkpoint. Exact extracted Ubuntu DEB passed native GNOME Wayland Qt GUI system/owned microphone/mix and explicit application-audio workflows, software H264 960x540/30 and stereo Opus. UI label now requests explicit app selection on Wayland; X11 automatic-window label and app-audio regression passed. Native Wayland portal owner/journal checks passed across these granted-capture workflows. Physical microphones, communications-output equivalent, native PipeWire/JACK app streams, default endpoint changes, audio-server loss, A/V drift/endurance, pending permission cancellation and broader parity remain open.",
+    "cleanupReport": "native-qt/qa/reports/linux-wayland-audio-gui/cleanup.json",
+    "cleanupReportSha256": "2ba4e8d5323f0cbf714c0a40e81698f105e9acbbd7e8fb22877f8cd701c2446b"
+  },
+  "wayland_audio_gui_gates": {
+    "classification": "Build, package creation and JavaScript syntax are gates, not application testing.",
+    "passed": true,
+    "buildLog": "native-qt/build-linux-wayland-audio-gui.log",
+    "buildLogSha256": "c0f358cb967b1ad40354fc029a463fc5e63bccdb366b89f9c0c906dec70525b9",
+    "commands": [
+      "cmake --build native-qt/build-linux --target game-capture -j 4",
+      "python3 native-qt/qa/package-linux.py --build native-qt/build-linux",
+      "node --check native-qt/e2e/linux-audio-publish.js"
+    ]
   }
 }

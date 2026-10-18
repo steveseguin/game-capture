@@ -1,7 +1,7 @@
 'use strict';
-// Packaged X11 video + real PipeWire/Pulse routes -> hosted browser decoding.
+// Packaged X11/Wayland video + real PipeWire/Pulse routes -> hosted browser decoding.
 // Owned virtual input qualifies routing, not a physical microphone or A/V drift.
-const fs = require('fs'), path = require('path'), crypto = require('crypto');
+const fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const assert = require('assert/strict'), {spawn, execFileSync} = require('child_process');
 const {chromium} = require('playwright');
 const {receiver, observe, requireMoving, observeAudio, waitFor, sleep} = require('./macos-media-receiver');
@@ -13,7 +13,7 @@ assert.equal(process.platform, 'linux');
 const matrix = opts.matrix || 'routes';
 const wayland = opts.backend === 'wayland', automaticApp = matrix === 'apps-auto';
 const gui = matrix === 'gui' || matrix === 'apps-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto'].includes(matrix));
-assert(!wayland || (apps && !gui && !automaticApp), 'Wayland audio qualification currently uses the explicit CLI app selector');
+assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const exe = path.resolve(opts.publisher), bundle = path.resolve(path.dirname(exe), '../..');
@@ -27,15 +27,22 @@ for (const item of manifest.payload.files) {
 }
 const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(report, {recursive:true});
 for (const name of ['linux-audio-publish.js', 'macos-media-receiver.js', 'audio-settings-packaged-e2e.js', 'linux-ui-control.py', 'linux-app-audio-source.py', 'linux-portal-select.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
-const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : 'default system output and owned virtual microphone'}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, Wayland GUI, endurance and A/V drift excluded.`,
+const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : 'default system output and owned virtual microphone'}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.`,
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
   codecReceiverSha256:sha(path.join(__dirname, 'audio-settings-packaged-e2e.js')),
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
+  portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 const pactl = (...args) => execFileSync('pactl', args, {encoding:'utf8', timeout:5000}).trim();
-const modules = [], tones = []; let sourceBrowser, viewerBrowser, publisher, log, control, discovery, appSource, portalSelector;
+const modules = [], tones = []; let sourceBrowser, viewerBrowser, publisher, log, control, discovery, appSource, portalSelector, keyboardServer, keyboardDirectory, portalOwner;
+const startedAtSeconds = Math.floor(Date.now() / 1000);
+const checkPortalOwner = () => {
+  const owner = execFileSync('gdbus', ['call', '--session', '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus', '--method', 'org.freedesktop.DBus.GetNameOwner', 'org.freedesktop.impl.portal.desktop.gnome'], {encoding:'utf8', timeout:5000, stdio:['ignore', 'pipe', 'pipe']}).trim();
+  if (portalOwner) assert.equal(owner, portalOwner, 'GNOME portal restarted during audio workflow');
+  else { portalOwner = owner; result.portalBackend = {name:'org.freedesktop.impl.portal.desktop.gnome', owner}; }
+};
 async function api(route, body) {
   const response = await fetch(control.base_url + route, {method:body ? 'POST' : 'GET',
     headers:{Authorization:'Bearer ' + control.token, 'Content-Type':'application/json'},
@@ -120,6 +127,14 @@ function barriers() {
     if (wayland) { env.XDG_SESSION_TYPE = 'wayland'; env.WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || 'wayland-0'; env.QT_QPA_PLATFORM = 'wayland'; }
     else { env.XDG_SESSION_TYPE = 'x11'; delete env.WAYLAND_DISPLAY; env.QT_QPA_PLATFORM = 'xcb'; }
     if (gui) env.QT_LINUX_ACCESSIBILITY_ALWAYS_ON = '1';
+    if (gui && wayland) {
+      keyboardDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-wayland-keys-')); fs.chmodSync(keyboardDirectory, 0o700);
+      env.GC_QA_KEYBOARD_SOCKET = path.join(keyboardDirectory, 'input.sock');
+      keyboardServer = spawn('sudo', ['-n', 'python3', path.join(__dirname, 'linux-portal-select.py'), '--keyboard-server=' + env.GC_QA_KEYBOARD_SOCKET], {env, stdio:['pipe', 'pipe', 'pipe']});
+      keyboardServer.closed = new Promise(resolve => keyboardServer.once('close', resolve));
+      let ready = ''; keyboardServer.stdout.on('data', data => ready += data); keyboardServer.stderr.on('data', data => process.stderr.write(data));
+      await waitFor(() => { assert.equal(keyboardServer.exitCode, null, 'Owned keyboard exited'); return ready.includes('ready'); }, 10000, 'Owned keyboard not ready');
+    }
     const suffix = crypto.randomBytes(6).toString('hex'), sinkName = 'gc_qa_' + suffix, sourceName = sinkName + '_input';
     const defaultSink = pactl('get-default-sink'); result.defaultSink = defaultSink;
     modules.push(pactl('load-module', 'module-null-sink', 'sink_name=' + sinkName, 'rate=48000', 'channels=2'));
@@ -181,27 +196,41 @@ function barriers() {
       log = fs.createWriteStream(path.join(report, fixture.name + '-private-publisher.log'));
       publisher = spawn(exe, args, {cwd:bundle, env, stdio:['ignore', 'pipe', 'pipe']});
       publisher.stdout.pipe(log, {end:false}); publisher.stderr.pipe(log, {end:false});
-      if (wayland) {
-        portalSelector = spawn('python3', [path.join(__dirname, 'linux-portal-select.py'), '--title=' + title, '--output=' + path.join(report, 'portal-selection.json')], {env, stdio:['ignore', 'pipe', 'pipe']});
+      let selectionNumber = 0;
+      const selectPortal = () => {
+        const output = path.join(report, fixture.name + '-portal-' + (++selectionNumber) + '.json');
+        portalSelector = spawn('python3', [path.join(__dirname, 'linux-portal-select.py'), '--title=' + title, '--output=' + output], {env, stdio:['ignore', 'pipe', 'pipe']});
+        portalSelector.output = output;
         portalSelector.stdout.pipe(log, {end:false}); portalSelector.stderr.pipe(log, {end:false});
-      }
+      };
+      const selectedPortal = async () => {
+        await waitFor(() => portalSelector.exitCode !== null, 10000, 'Portal selection did not finish');
+        assert.equal(portalSelector.exitCode, 0); assert(JSON.parse(fs.readFileSync(portalSelector.output)).passed); checkPortalOwner();
+      };
+      if (wayland && !gui) selectPortal();
 
       publisher.closed = new Promise(resolve => publisher.once('close', resolve));
       publisher.on('error', error => { entry.launchError = String(error); });
       await waitFor(() => { assert.equal(publisher.exitCode, null, 'Publisher exited at startup'); assert(!entry.launchError); return fs.existsSync(discovery); }, 15000, 'No control discovery');
       control = JSON.parse(fs.readFileSync(discovery)); assert.equal(control.pid, publisher.pid);
-      if (wayland) await waitFor(() => { assert.equal(publisher.exitCode, null); return fs.readFileSync(path.join(report, fixture.name + '-private-publisher.log'), 'utf8').includes('[Headless] Going live'); }, 75000, 'Portal selection/startup did not finish');
-      const ui = (...arguments_) => execFileSync('python3', [path.join(__dirname, 'linux-ui-control.py'), String(publisher.pid), ...arguments_], {env, encoding:'utf8', timeout:10000, stdio:['ignore', 'pipe', 'pipe']});
+      if (wayland && !gui) await waitFor(() => { assert.equal(publisher.exitCode, null); return fs.readFileSync(path.join(report, fixture.name + '-private-publisher.log'), 'utf8').includes('[Headless] Going live'); }, 75000, 'Portal selection/startup did not finish');
+      const ui = (...arguments_) => execFileSync('python3', [path.join(__dirname, 'linux-ui-control.py'), String(publisher.pid), ...arguments_], {env, encoding:'utf8', timeout:wayland ? 60000 : 10000, stdio:['ignore', 'pipe', 'pipe']});
+      const goLive = async () => {
+        if (wayland) selectPortal();
+        ui('press', 'Go live');
+        await waitFor(async () => (await api('/diagnostics')).app.live, wayland ? 30000 : 15000, 'GUI did not go live');
+        if (wayland) await selectedPortal();
+      };
       if (gui) {
         ui('press', 'Show advanced settings');
         ui('choose', 'Auto (Hardware, then Software)', 'Software (x264 / VP9 / AV1 / HEVC)');
         ui('choose', '1280x720', '960x540'); ui('choose', '60', '30');
-        ui('source', title); ui('text', 'Stream ID or VDO.Ninja URL', stream); ui('text', 'Stream password', 'false');
+        ui('source', wayland ? 'Choose a window' : title); ui('text', 'Stream ID or VDO.Ninja URL', stream); ui('text', 'Stream password', 'false');
         if (fixture.input) ui('choose-prefix', 'No microphone', 'GameCaptureOwnedQAInput');
         const audioMode = JSON.parse(ui('dump')).find(row => row.role === 'combo box' && ['No audio', 'Selected window/app audio'].includes(row.name))?.name;
         assert(audioMode, 'Initial audio choice missing');
         ui('choose', audioMode, apps ? 'Selected window/app audio' : fixture.mode === 'default-output' ? 'System audio (all apps)' : 'Selected microphone/input');
-        if (apps) ui('choose', 'Selected X11 window (automatic)', 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
+        if (apps) ui('choose', wayland ? 'Choose an audio app' : 'Selected X11 window (automatic)', 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
         ui('press', 'Audio encoding');
         // The shared UI defaults to RED. Select plain Opus for the route/mute
         // workflow; the separate codec matrix exercises both RED receivers.
@@ -209,9 +238,9 @@ function barriers() {
         if (controls.find(row => row.name === 'Packet-loss protection (RED, experimental)').states.includes('checked')) ui('press', 'Packet-loss protection (RED, experimental)');
         if (fixture.mix) { ui('value', 'Game Audio Gain', '50'); ui('value', 'Mic Gain', '50'); }
         fs.writeFileSync(path.join(report, fixture.name + '-ui-before-live.json'), ui('dump'));
-        ui('press', 'Go live');
-        await waitFor(async () => (await api('/diagnostics')).app.live, 15000, 'GUI did not go live');
+        await goLive();
       }
+      if (wayland && !gui) await selectedPortal();
       if (matrix === 'codecs') {
         const directory = path.join(report, fixture.name); fs.mkdirSync(directory);
         const logFile = path.join(report, fixture.name + '-private-publisher.log');
@@ -317,15 +346,15 @@ function barriers() {
         assert.equal(after.audio.active_microphone_source, 'none');
         entry.guiStopSettled = true;
         fs.writeFileSync(path.join(report, fixture.name + '-ui-stopped.json'), ui('dump'));
-        execFileSync('python3', ['-c', 'from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
+        if (wayland) execFileSync('gnome-screenshot', ['-f', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
+        else execFileSync('python3', ['-c', 'from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
       }
       if (gui && apps) {
         appSource = await startApp(defaultSink);
         ui('press', 'Refresh audio apps');
         const stale = JSON.parse(ui('dump')).find(row => row.role === 'combo box' && row.name.includes('[unavailable; select again]'));
         assert(stale, 'Closed selected app was silently replaced');
-        ui('press', 'Go live');
-        await waitFor(async () => (await api('/diagnostics')).app.live, 15000, 'Stale-app video restart failed');
+        await goLive();
         const staleViewer = await receiver(viewerBrowser, stream, publisher);
         entry.videoWithStaleApp = await observe(staleViewer, 3000); requireMoving(entry.videoWithStaleApp, 'Stale audio app preserves video');
         const before = await api('/diagnostics'); await sleep(1000); const after = await api('/diagnostics');
@@ -334,8 +363,7 @@ function barriers() {
         await staleViewer.close(); ui('press', 'Stop streaming');
         await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Stale-app stop did not finish');
         ui('choose', stale.name, 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
-        ui('press', 'Go live');
-        await waitFor(async () => (await api('/diagnostics')).app.live, 15000, 'Reselected app did not go live');
+        await goLive();
         const restarted = await receiver(viewerBrowser, stream, publisher);
         entry.afterExplicitReselection = await observeAudio(restarted); requireAudio(entry.afterExplicitReselection, 'Explicit app reselection', {excluded:true});
         await restarted.close(); ui('press', 'Stop streaming');
@@ -368,10 +396,21 @@ function barriers() {
     if (publisher) { try { await quit(); } catch { publisher?.kill(); if (publisher) await publisher.closed; } }
     if (portalSelector && portalSelector.exitCode === null) portalSelector.kill();
     if (appSource) { try { await appSource.stop(); } catch (error) { result.fixtureCleanupError = String(error); result.passed = false; process.exitCode = 1; } }
+    if (keyboardServer) { keyboardServer.stdin.end(); await waitFor(() => keyboardServer.exitCode !== null, 8000, 'Owned keyboard did not stop'); await keyboardServer.closed; }
+    if (keyboardDirectory) fs.rmdirSync(keyboardDirectory);
     if (sourceBrowser) await sourceBrowser.close(); if (viewerBrowser) await viewerBrowser.close();
     for (const source of tones) { clearInterval(source.timer); source.child.stdin.destroy(); if (source.child.exitCode === null) source.child.kill(); }
     for (const module of modules.reverse()) { try { pactl('unload-module', module); } catch (error) { result.cleanupError = String(error); result.passed = false; process.exitCode = 1; } }
     if (log) await new Promise(resolve => log.end(resolve));
+    if (wayland) {
+      await sleep(2000);
+      try {
+        const journal = execFileSync('journalctl', ['--user', '-u', 'xdg-desktop-portal.service', '-u', 'xdg-desktop-portal-gnome.service', '--since=@' + startedAtSeconds, '--no-pager', '-o', 'short-iso'], {encoding:'utf8', timeout:5000});
+        const file = path.join(report, 'portal-journal.log'); fs.writeFileSync(file, journal); result.portalJournalSha256 = sha(file);
+        assert(!/status=\d+\/(?:SEGV|ABRT)|Failed with result 'core-dump'/.test(journal), 'Portal service crashed');
+        if (portalOwner) { checkPortalOwner(); result.portalBackend.survived = true; }
+      } catch (error) { result.portalAuditError = String(error); result.passed = false; process.exitCode = 1; }
+    }
     save(); console.log(JSON.stringify({report, passed:result.passed, error:result.error, cleanupError:result.cleanupError}));
   }
 })();

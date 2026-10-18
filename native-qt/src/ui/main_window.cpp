@@ -3034,7 +3034,9 @@ void MainWindow::refreshAudioApplications() {
     const auto label = audioApplicationSelect_->currentText();
     QSignalBlocker blocker(audioApplicationSelect_);
     audioApplicationSelect_->clear();
-    audioApplicationSelect_->addItem("Selected X11 window (automatic)", 0u);
+    const bool wayland = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") ||
+        qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland";
+    audioApplicationSelect_->addItem(wayland ? "Choose an audio app" : "Selected X11 window (automatic)", 0u);
     audio::WindowAudioCaptureCore capture;
     for (const auto &session : capture.GetAudioSessions()) {
         const auto name = session.displayName.empty() ? session.executableName : session.displayName;
