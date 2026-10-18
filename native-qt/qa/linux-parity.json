@@ -84,7 +84,7 @@
       "id": "vdo-rooms",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged X11 CLI protected rooms and signaling recovery passed previously. Exact packaged X11 and native GNOME Wayland Qt GUI now passed room/password/input/software-encoder configuration, enabled and disabled director controls, bounded wrong-password rejection, authorized/unauthorized requests, HQ/LQ media and GUI Stop/fresh-consent restart. Enabled runs passed real guest lifecycle, director resolution/bitrate/mute/keyframe controls and late scene; disabled runs passed the shared Windows UI contract. Room-quality-disabled/HQ-only behavior, persisted room settings across app relaunch, generated protected room/share links and Open Share Link, GUI signaling-proxy recovery, TURN/WAN/packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
+      "remaining": "Packaged X11 CLI protected rooms and signaling recovery passed previously. Exact packaged X11 and native GNOME Wayland Qt GUI now passed room/password/input/software-encoder configuration, enabled and disabled director controls, bounded wrong-password rejection, authorized/unauthorized requests, HQ/LQ media and GUI Stop/fresh-consent restart. Enabled runs passed real guest lifecycle, director resolution/bitrate/mute/keyframe controls and late scene; disabled runs passed the shared Windows UI contract. Packaged X11 and native Wayland GUI now also passed HQ-only 1280x720 routing for director/scene/guest, LQ re-enablement, and two clean relaunches restoring room credentials, quality preference, encoder/resolution/fps/input while idle before explicit source reselection/Go live. Each phase verified decoded moving video and stereo audio; four fresh Wayland portal selections passed. Generated protected room/share links and Open Share Link, GUI signaling-proxy recovery, TURN/WAN/packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
     },
     {
       "id": "whip",
@@ -18070,6 +18070,343 @@
         }
       },
       "finding": "Exact extracted Ubuntu DEB configured through actual Qt controls: room, real password, explicit owned microphone, software H264, 1280x720/30, default 640x360 LQ, director-control checkbox and accessible control-token field. Wrong-password receiver received no media during the bounded negative observation. Nineteen shared Windows director UI rejection checks plus valid-token rejection passed while controls were disabled and media continued. GUI Stop settled capture counters; Go live restored decoded HQ/LQ video and stereo audio. Two explicit native GNOME permission selections passed with stable portal owner through cleanup. Stdout and GUI native logs contained neither generated password nor control token."
+    },
+    {
+      "backend": "x11",
+      "report": "native-qt/qa/reports/linux-room-settings-x11-enabled/43029edb-4986-4085-ad1c-25ddc7502c55/results.json",
+      "reportSha256": "8f18ec2ee3731c161cd95c290fa66ff4478d64b4e3aa627bf07d04a6d8464328",
+      "wrapperReport": "native-qt/qa/reports/linux-room-settings-x11-desktop/3d7dd362-9d4c-4064-8c7a-0402fffcd014/results.json",
+      "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "desktop": {
+        "backend": "x11",
+        "gui": true,
+        "portalSelections": [],
+        "configuredThroughGui": true,
+        "controlTokenAccessible": true,
+        "remoteControlEnabled": true,
+        "restoredLaunches": 2
+      },
+      "phases": [
+        {
+          "name": "hq-configured",
+          "roomQualityLq": false,
+          "receivers": {
+            "director": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 119,
+              "assignedRole": "director",
+              "assignedTier": "hq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 117,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 112,
+              "assignedRole": "guest",
+              "assignedTier": "hq"
+            }
+          },
+          "passed": true
+        },
+        {
+          "name": "hq-restored",
+          "roomQualityLq": false,
+          "receivers": {
+            "director": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 119,
+              "assignedRole": "director",
+              "assignedTier": "hq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 118,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 118,
+              "assignedRole": "guest",
+              "assignedTier": "hq"
+            }
+          },
+          "passed": true
+        },
+        {
+          "name": "lq-enabled",
+          "roomQualityLq": true,
+          "receivers": {
+            "director": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 113,
+              "assignedRole": "director",
+              "assignedTier": "lq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 120,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 116,
+              "assignedRole": "guest",
+              "assignedTier": "lq"
+            }
+          },
+          "passed": true
+        },
+        {
+          "name": "lq-restored",
+          "roomQualityLq": true,
+          "receivers": {
+            "director": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 113,
+              "assignedRole": "director",
+              "assignedTier": "lq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 117,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 117,
+              "assignedRole": "guest",
+              "assignedTier": "lq"
+            }
+          },
+          "passed": true
+        }
+      ],
+      "scope": "Extracted DEB; GUI room configuration, HQ-only and dual-tier roles, clean relaunch with same settings, explicit source reselection and Go live; owned window and virtual stereo input. No physical device or endurance qualification.",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387",
+      "harnesses": {
+        "linux-room-settings.js": "eb91232373b1f50c7b75f7e792d72bbc2f794d4dc764c8a422b164bd5e4ff78f",
+        "linux-room-fixture.js": "8ba9690531100ed5b22049fd944c51b7c03ae559312a02eeddd8369ad91714f5",
+        "linux-ui-control.py": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+        "linux-portal-select.py": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "director-room-e2e.js": "bb63a5326cde4777fbc53e7f6d3b052448555057c189737f9046cee80deeef3a"
+      },
+      "credentialLogsChecked": [
+        {
+          "file": "publisher-1.log",
+          "sha256": "a1b626e3bcdaa71175190ea696f890de5f3bb03b058783e4d0b0fb82580e46da"
+        },
+        {
+          "file": "publisher-2.log",
+          "sha256": "9fcb5a6586559db44a051e7e8569c50a5915c459d24c1774cb684c3b07a2610f"
+        },
+        {
+          "file": "publisher-3.log",
+          "sha256": "202d9fa0186cac7e28e4e45c910af36946963e51c768efecd704335c71255f4f"
+        },
+        {
+          "file": "private-state/GameCapture/logs/game-capture-debug.log",
+          "sha256": "4b0d37219f50e02fd4b9402126fd79acc1ae4ba253665bee9f0bda2dc1701c0e"
+        }
+      ]
+    },
+    {
+      "backend": "wayland",
+      "report": "native-qt/qa/reports/linux-room-settings-wayland-enabled/c956c8d1-c5fa-4d0f-81d0-e5f9a2d53cfb/results.json",
+      "reportSha256": "c0faa5783ab281f0b69be6434c176923f4401234785dea63738e0854ceff1179",
+      "wrapperReport": "native-qt/qa/reports/linux-room-settings-wayland-desktop/a0825c2e-5ced-42a0-9ef4-4ce793a7b07d/results.json",
+      "wrapperSha256": "1b252a9266ae31b956eaba4ab02590d1c523167e889245d248ffea4d4c414e56",
+      "passed": true,
+      "desktop": {
+        "backend": "wayland",
+        "gui": true,
+        "portalSelections": [
+          {
+            "file": "room-portal-1.json",
+            "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+          },
+          {
+            "file": "room-portal-2.json",
+            "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+          },
+          {
+            "file": "room-portal-3.json",
+            "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+          },
+          {
+            "file": "room-portal-4.json",
+            "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+          }
+        ],
+        "portalOwner": "(':1.4241',)",
+        "configuredThroughGui": true,
+        "controlTokenAccessible": true,
+        "remoteControlEnabled": true,
+        "restoredLaunches": 2,
+        "portalSurvived": true
+      },
+      "phases": [
+        {
+          "name": "hq-configured",
+          "roomQualityLq": false,
+          "receivers": {
+            "director": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 116,
+              "assignedRole": "director",
+              "assignedTier": "hq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 117,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 97,
+              "assignedRole": "guest",
+              "assignedTier": "hq"
+            }
+          },
+          "passed": true
+        },
+        {
+          "name": "hq-restored",
+          "roomQualityLq": false,
+          "receivers": {
+            "director": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 118,
+              "assignedRole": "director",
+              "assignedTier": "hq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 118,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 98,
+              "assignedRole": "guest",
+              "assignedTier": "hq"
+            }
+          },
+          "passed": true
+        },
+        {
+          "name": "lq-enabled",
+          "roomQualityLq": true,
+          "receivers": {
+            "director": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 116,
+              "assignedRole": "director",
+              "assignedTier": "lq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 120,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 98,
+              "assignedRole": "guest",
+              "assignedTier": "lq"
+            }
+          },
+          "passed": true
+        },
+        {
+          "name": "lq-restored",
+          "roomQualityLq": true,
+          "receivers": {
+            "director": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 115,
+              "assignedRole": "director",
+              "assignedTier": "lq"
+            },
+            "scene": {
+              "width": 1280,
+              "height": 720,
+              "distinctFrames": 117,
+              "assignedRole": "scene",
+              "assignedTier": "hq"
+            },
+            "guest": {
+              "width": 640,
+              "height": 360,
+              "distinctFrames": 116,
+              "assignedRole": "guest",
+              "assignedTier": "lq"
+            }
+          },
+          "passed": true
+        }
+      ],
+      "scope": "Extracted DEB; GUI room configuration, HQ-only and dual-tier roles, clean relaunch with same settings, explicit source reselection and Go live; owned window and virtual stereo input. No physical device or endurance qualification.",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387",
+      "harnesses": {
+        "linux-room-settings.js": "eb91232373b1f50c7b75f7e792d72bbc2f794d4dc764c8a422b164bd5e4ff78f",
+        "linux-room-fixture.js": "8ba9690531100ed5b22049fd944c51b7c03ae559312a02eeddd8369ad91714f5",
+        "linux-ui-control.py": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+        "linux-portal-select.py": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "director-room-e2e.js": "bb63a5326cde4777fbc53e7f6d3b052448555057c189737f9046cee80deeef3a"
+      },
+      "credentialLogsChecked": [
+        {
+          "file": "publisher-1.log",
+          "sha256": "53525e56db4a2a40d99d62a1a4791d545565419962dcab40a61372f065c61238"
+        },
+        {
+          "file": "publisher-2.log",
+          "sha256": "1b07060c2aea4749c72be23326ef2e2cd937f37161f6adc4315d0eee59b662ee"
+        },
+        {
+          "file": "publisher-3.log",
+          "sha256": "152d91c44833c537ca034fc6861e23a368567faea06371872960ad2cad799ae7"
+        },
+        {
+          "file": "private-state/GameCapture/logs/game-capture-debug.log",
+          "sha256": "dcbda7af1a085007e4d2cc5532a0c3a318f784fcee82454908155c1bf1d2a34f"
+        }
+      ]
     }
   ],
   "host_environment": {
@@ -18120,7 +18457,8 @@
     "python3 native-qt/qa/build-gnome-portal-backport.py --source=<local GNOME portal git clone with pinned commits> --output=<new isolated directory> (dependency build gate only; does not install/activate a service)",
     "xvfb-run -a -s \"-screen 0 1600x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --password-protected=true --signaling-recovery=true (shared room assertions, Linux adapter; --remote-control=disabled selects disabled UI contract instead)",
     "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --preview=true --system-resources=true (appropriate isolated X11/native Wayland desktop wrapper required)",
-    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --password-protected=true --remote-control=<enabled|disabled> (X11 wrapper requires an owned Xvfb DISPLAY; native Wayland uses owned keyboard and explicit portal consent)"
+    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --password-protected=true --remote-control=<enabled|disabled> (X11 wrapper requires an owned Xvfb DISPLAY; native Wayland uses owned keyboard and explicit portal consent)",
+    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-settings.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (X11 requires an owned Xvfb DISPLAY; verifies HQ-only, LQ enablement and two clean relaunches with explicit source reselection)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -19101,5 +19439,309 @@
       "reportSha256": "2d7bb6af08e748c30496091014c3d50cd3aed47b1cb70aed8ee505e3e19cba58",
       "passed": true
     }
+  },
+  "room_settings_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-c243429eb61a-cfe2e5874341.deb",
+      "sha256": "770a0f98ae487e3d462834a15db7a06b690d6f1bc0da8da36656fd28b83aa400",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-c243429eb61a-cfe2e5874341",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387"
+    },
+    "qualification": "Packaged private X11 and native GNOME Wayland Qt GUI: configure protected HQ-only room; Stop/clean Quit/relaunch with saved room/stream/password/control-token/encoder/fps/resolution/input/quality preference and zero capture before explicit source reselection; verify HQ-only media again; enable LQ through GUI after Stop; relaunch and verify saved LQ preference. Each of four phases per backend decodes moving publisher video and separate-channel stereo audio in hosted director, scene and real synthetic-camera guest UI; director also receives guest publication. HQ-only has all roles 1280x720 and no LQ encoder; dual tier has director/guest 640x360 and scene 1280x720. Three app launches and four fresh capture starts per backend. GUI Stop followed by local-API clean Quit.",
+    "productionChange": "None; existing shared room policy and settings implementation reused. QA-only helper extensions and dedicated workflow.",
+    "reports": [
+      {
+        "backend": "x11",
+        "report": "native-qt/qa/reports/linux-room-settings-x11-enabled/43029edb-4986-4085-ad1c-25ddc7502c55/results.json",
+        "reportSha256": "8f18ec2ee3731c161cd95c290fa66ff4478d64b4e3aa627bf07d04a6d8464328",
+        "wrapperReport": "native-qt/qa/reports/linux-room-settings-x11-desktop/3d7dd362-9d4c-4064-8c7a-0402fffcd014/results.json",
+        "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true,
+        "desktop": {
+          "backend": "x11",
+          "gui": true,
+          "portalSelections": [],
+          "configuredThroughGui": true,
+          "controlTokenAccessible": true,
+          "remoteControlEnabled": true,
+          "restoredLaunches": 2
+        },
+        "phases": [
+          {
+            "name": "hq-configured",
+            "roomQualityLq": false,
+            "receivers": {
+              "director": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 119,
+                "assignedRole": "director",
+                "assignedTier": "hq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 117,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 112,
+                "assignedRole": "guest",
+                "assignedTier": "hq"
+              }
+            },
+            "passed": true
+          },
+          {
+            "name": "hq-restored",
+            "roomQualityLq": false,
+            "receivers": {
+              "director": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 119,
+                "assignedRole": "director",
+                "assignedTier": "hq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 118,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 118,
+                "assignedRole": "guest",
+                "assignedTier": "hq"
+              }
+            },
+            "passed": true
+          },
+          {
+            "name": "lq-enabled",
+            "roomQualityLq": true,
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 113,
+                "assignedRole": "director",
+                "assignedTier": "lq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 120,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 116,
+                "assignedRole": "guest",
+                "assignedTier": "lq"
+              }
+            },
+            "passed": true
+          },
+          {
+            "name": "lq-restored",
+            "roomQualityLq": true,
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 113,
+                "assignedRole": "director",
+                "assignedTier": "lq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 117,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 117,
+                "assignedRole": "guest",
+                "assignedTier": "lq"
+              }
+            },
+            "passed": true
+          }
+        ]
+      },
+      {
+        "backend": "wayland",
+        "report": "native-qt/qa/reports/linux-room-settings-wayland-enabled/c956c8d1-c5fa-4d0f-81d0-e5f9a2d53cfb/results.json",
+        "reportSha256": "c0faa5783ab281f0b69be6434c176923f4401234785dea63738e0854ceff1179",
+        "wrapperReport": "native-qt/qa/reports/linux-room-settings-wayland-desktop/a0825c2e-5ced-42a0-9ef4-4ce793a7b07d/results.json",
+        "wrapperSha256": "1b252a9266ae31b956eaba4ab02590d1c523167e889245d248ffea4d4c414e56",
+        "passed": true,
+        "desktop": {
+          "backend": "wayland",
+          "gui": true,
+          "portalSelections": [
+            {
+              "file": "room-portal-1.json",
+              "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+            },
+            {
+              "file": "room-portal-2.json",
+              "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+            },
+            {
+              "file": "room-portal-3.json",
+              "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+            },
+            {
+              "file": "room-portal-4.json",
+              "sha256": "94f2157e5feee8bc122246842789f271d82eda9022b9a562d621c923d97600bb"
+            }
+          ],
+          "portalOwner": "(':1.4241',)",
+          "configuredThroughGui": true,
+          "controlTokenAccessible": true,
+          "remoteControlEnabled": true,
+          "restoredLaunches": 2,
+          "portalSurvived": true
+        },
+        "phases": [
+          {
+            "name": "hq-configured",
+            "roomQualityLq": false,
+            "receivers": {
+              "director": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 116,
+                "assignedRole": "director",
+                "assignedTier": "hq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 117,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 97,
+                "assignedRole": "guest",
+                "assignedTier": "hq"
+              }
+            },
+            "passed": true
+          },
+          {
+            "name": "hq-restored",
+            "roomQualityLq": false,
+            "receivers": {
+              "director": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 118,
+                "assignedRole": "director",
+                "assignedTier": "hq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 118,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 98,
+                "assignedRole": "guest",
+                "assignedTier": "hq"
+              }
+            },
+            "passed": true
+          },
+          {
+            "name": "lq-enabled",
+            "roomQualityLq": true,
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 116,
+                "assignedRole": "director",
+                "assignedTier": "lq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 120,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 98,
+                "assignedRole": "guest",
+                "assignedTier": "lq"
+              }
+            },
+            "passed": true
+          },
+          {
+            "name": "lq-restored",
+            "roomQualityLq": true,
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 115,
+                "assignedRole": "director",
+                "assignedTier": "lq"
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 117,
+                "assignedRole": "scene",
+                "assignedTier": "hq"
+              },
+              "guest": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 116,
+                "assignedRole": "guest",
+                "assignedTier": "lq"
+              }
+            },
+            "passed": true
+          }
+        ]
+      }
+    ],
+    "gates": {
+      "report": "native-qt/build-linux/room-settings-gates.json",
+      "reportSha256": "650cb2d7b18ec53f865a19149b0c43381fbf5d285c64a4fd0eeaa3ebdbcdc96e",
+      "classification": "Source provenance and syntax gates; not application testing."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-room-settings-wayland-enabled/c956c8d1-c5fa-4d0f-81d0-e5f9a2d53cfb/host-cleanup.json",
+      "reportSha256": "6ffdfba4f67182354894c1ed0f6c144b924d691b3b891ee9bbdb3811c3aaf85f",
+      "passed": true
+    },
+    "remaining": "Generated protected room/share links and Open Share Link; GUI signaling outage; TURN/WAN and packet-loss variants; guest refresh/fuzz/abrupt-loss variants; default 720p60 and calibrated long-run A/V/endurance; Windows/macOS integrated regression. Physical microphones remain unqualified. Granted portal capture/restart does not resolve stock GNOME pending-request cancellation crash or its maintained delivery requirement."
   }
 }

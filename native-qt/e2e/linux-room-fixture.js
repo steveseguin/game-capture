@@ -93,21 +93,42 @@ async function create(opts,report){
     await source.bringToFront();await sleep(1000);
     await waitFor(()=>{assert.equal(tone.exitCode,null,'Owned stereo source exited');assert(!error,error);return frames>4800;},5000,'Owned tone not ready');
     await source.screenshot({path:path.join(report,'linux-source.png')});
-    async function startGui(publisher,control,api,config){
+    async function startGui(publisher,control,api,config,restored=false){
       const ui=(...args)=>execFileSync('python3',[helper,String(publisher.pid),...args],{env,encoding:'utf8',timeout:wayland?60000:12000,stdio:['ignore','pipe','pipe']});
       const rows=()=>JSON.parse(ui('dump'));
       await waitFor(()=>{try{return rows().some(r=>['Go live','Go live unavailable'].includes(r.name));}catch{return false;}},20000,'Room GUI not accessible');
-      assert(!(await api(control,'/diagnostics')).app.capturing,'Room GUI launched with capture active');
-      ui('press','Show advanced settings');ui('choose','Auto (Hardware, then Software)','Software (x264 / VP9 / AV1 / HEVC)');
-      ui('choose','60','30');assert(rows().some(r=>r.role==='combo box'&&r.name==='1280x720'));
-      const mic=rows().find(r=>r.role==='combo box'&&['No microphone','Linux default microphone/input'].includes(r.name));assert(mic);
-      ui('choose-prefix',mic.name,inputLabel);ui('choose','Selected window/app audio','Selected microphone/input');
-      ui('text','Stream ID or VDO.Ninja URL',config.stream);ui('text','Stream password',config.password);ui('text','Room',config.room);
-      ui('press','Enable director control via data channel');ui('text','Control token',config.remoteToken);
-      if(!config.remoteEnabled)ui('press','Enable director control via data channel');
-      assert(rows().find(r=>r.name==='Use 640x360 for room guests/directors/viewers').states.includes('checked'));
-      assert.equal(rows().find(r=>r.name==='Enable director control via data channel').states.includes('checked'),config.remoteEnabled);
-      assert.equal(JSON.parse(ui('read-text','Room')),config.room);
+      const idle=await api(control,'/diagnostics');
+      assert(!idle.app.capturing&&!idle.app.live,'Room GUI launched with capture active');
+      assert.equal(idle.video.frames_captured,0,'Room GUI captured before explicit selection');
+      const qualityName='Use 640x360 for room guests/directors/viewers';
+      const requested=config.roomQualityLq??true;
+      const checked=name=>rows().find(r=>r.name===name).states.includes('checked');
+      const read=name=>JSON.parse(ui('read-text',name));
+      if(rows().some(r=>r.name==='Show advanced settings'))ui('press','Show advanced settings');
+      if(restored){
+        assert.equal(read('Stream ID or VDO.Ninja URL'),config.stream);
+        assert.equal(read('Room'),config.room);
+        for(const [name,value] of [['Stream password',config.password],['Control token',config.remoteToken]]){
+          ui('reveal',name);try{assert.equal(read(name),value,'Saved credential mismatch');}finally{ui('reveal',name);}
+        }
+        for(const name of ['Software (x264 / VP9 / AV1 / HEVC)','30','1280x720','Selected microphone/input'])
+          assert(rows().some(r=>r.role==='combo box'&&r.name===name),'Saved setting missing: '+name);
+        assert(rows().some(r=>r.role==='combo box'&&r.name.startsWith(inputLabel)),'Saved microphone missing');
+        assert.equal(checked(qualityName),requested);
+        evidence.restoredLaunches=(evidence.restoredLaunches||0)+1;
+      }else{
+        ui('choose','Auto (Hardware, then Software)','Software (x264 / VP9 / AV1 / HEVC)');
+        ui('choose','60','30');assert(rows().some(r=>r.role==='combo box'&&r.name==='1280x720'));
+        const mic=rows().find(r=>r.role==='combo box'&&['No microphone','Linux default microphone/input'].includes(r.name));assert(mic);
+        ui('choose-prefix',mic.name,inputLabel);ui('choose','Selected window/app audio','Selected microphone/input');
+        ui('text','Stream ID or VDO.Ninja URL',config.stream);ui('text','Stream password',config.password);ui('text','Room',config.room);
+        ui('press','Enable director control via data channel');ui('text','Control token',config.remoteToken);
+        if(!config.remoteEnabled)ui('press','Enable director control via data channel');
+        if(checked(qualityName)!==requested)ui('press',qualityName);
+      }
+      assert.equal(checked(qualityName),requested);
+      assert.equal(checked('Enable director control via data channel'),config.remoteEnabled);
+      assert.equal(read('Room'),config.room);
       ui('source',wayland?'Choose a window':title);
       evidence.configuredThroughGui=true;evidence.controlTokenAccessible=true;evidence.remoteControlEnabled=config.remoteEnabled;
       async function goLive(){
@@ -120,11 +141,18 @@ async function create(opts,report){
         ui('press','Go live');await waitFor(async()=>{if(wayland)assert(selector.exitCode===null||selector.exitCode===0,'Portal selection failed');return (await api(control,'/diagnostics')).app.live;},30000,'Room GUI did not go live');
         if(wayland){await waitFor(()=>selector.exitCode!==null,10000,'Portal selector did not finish');await selector.closed;assert.equal(selector.exitCode,0);assert(JSON.parse(fs.readFileSync(selected)).passed);evidence.portalSelections.push({file:path.basename(selected),sha256:sha(selected)});checkPortal();}
       }
-      await goLive();
-      return {restart:async()=>{
+      async function stop(){
         ui('press','Stop streaming');await waitFor(async()=>{const d=await api(control,'/diagnostics');return !d.app.live&&!d.app.capturing;},10000,'Room Stop did not retire capture');
         const before=await api(control,'/diagnostics');await sleep(500);assert.equal((await api(control,'/diagnostics')).video.frames_captured,before.video.frames_captured);
-        const resolution=JSON.parse(ui('read-text','Custom stream resolution')).match(/^(\d+)x(\d+)$/);assert(resolution);
+      }
+      await goLive();
+      return {stop,goLive,setRoomQuality:async enabled=>{
+        const d=await api(control,'/diagnostics');assert(!d.app.capturing&&!d.app.live);
+        if(checked(qualityName)!==enabled)ui('press',qualityName);
+        assert.equal(checked(qualityName),enabled);
+      },restart:async()=>{
+        await stop();
+        const resolution=read('Custom stream resolution').match(/^(\d+)x(\d+)$/);assert(resolution);
         await goLive();evidence.stopRestartPassed=true;return {width:Number(resolution[1]),height:Number(resolution[2])};
       }};
     }
