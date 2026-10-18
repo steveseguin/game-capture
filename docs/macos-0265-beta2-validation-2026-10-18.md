@@ -29,6 +29,25 @@ The runtime delta from Beta 1 consists of the Mac capture implementation and `__
 
 No VDO.Ninja API or signaling command was added. The resize workflow uses the existing authenticated `requestVideoHack` width/height messages; fixture stdin commands are private QA controls.
 
+## Live control pressure follow-up
+
+The same public-downloaded Beta 2 executable passes **816 bounded HTTP requests**
+while VT and x264 publish 720p60/4 Mbps window video and selected-application stereo.
+Malformed/authentication/framing requests returned their expected statuses. Idle,
+trickled-header and incomplete-body clients closed after 9.86–10.01 seconds; each
+48-client burst admitted 32 and rejected 16. Authenticated control recovered, and
+a pipelined quit was not executed.
+
+All ten five-second media intervals pass: **1,498 decoded frames and 25.1 seconds
+of continuous stereo PCM per encoder**, with no encoder failures/timeouts and
+maximum decoded arrival gaps of 64.7 ms (VT) / 64.5 ms (x264). Subsequent audio
+silence/resume, static, resize, late-viewer and shutdown/source-loss workflows pass.
+This adds bounded local-control resilience coverage, not quality or endurance.
+No application runtime or VDO.Ninja API changed.
+
+[Artifact-bound report and raw numeric evidence](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-control-pressure)
+require access to the private benchmark repository.
+
 ## Remaining qualification
 
 Keep Mac experimental. Physical minimum-OS/privacy/device/VoiceOver, sleep/wake, display/audio-route changes, broader Windows hardware/audio/installer coverage and matched OBS/FFmpeg/WHIP/gameplay quality remain open. Earlier unexplained VFR alpha pixels, hosted-motion, recorder-clock and abrupt-viewer-close findings remain recorded. The [released Beta 1 thirty-minute endurance](https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md) belongs to its earlier executable and is not claimed for Beta 2.
