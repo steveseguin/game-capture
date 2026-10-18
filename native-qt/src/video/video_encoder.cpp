@@ -5,6 +5,9 @@
 #ifdef __APPLE__
 #include "versus/platform/macos_ffmpeg.h"
 #include "versus/platform/macos_encoder.h"
+#elif defined(__linux__)
+#include "versus/platform/posix_ffmpeg.h"
+#include "versus/platform/linux_encoder.h"
 #endif
 
 #include <spdlog/spdlog.h>
@@ -710,6 +713,8 @@ bool envFlagEnabled(const char *name) {
 std::filesystem::path resolveFfmpegPathImpl(const std::string &configuredPath) {
 #ifdef __APPLE__
     return platform::resolveMacFfmpeg(configuredPath);
+#elif defined(__linux__)
+    return platform::resolvePosixFfmpeg(configuredPath);
 #else
     const std::string configured = trimCopyForPath(configuredPath);
     if (!configured.empty()) {
@@ -765,6 +770,8 @@ std::filesystem::path resolveFfmpegPathImpl(const std::string &configuredPath) {
 bool isBundledFfmpegPath(const std::filesystem::path &path) {
 #ifdef __APPLE__
     return platform::isBundledMacFfmpeg(path);
+#elif defined(__linux__)
+    return platform::isBundledPosixFfmpeg(path);
 #else
     if (path.empty()) {
         return false;
@@ -958,6 +965,9 @@ CommandCaptureResult runCommandCapture(const std::filesystem::path &exe, const s
 #ifdef __APPLE__
     const auto result = platform::runMacFfmpegProbe(exe, args);
     return {result.output, result.started, result.timedOut, result.exitCode};
+#elif defined(__linux__)
+    const auto result = platform::runPosixFfmpegProbe(exe, args);
+    return {result.output, result.started, result.timedOut, result.exitCode};
 #else
     return {};
 #endif
@@ -1010,7 +1020,7 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     const auto modified = std::filesystem::last_write_time(resolved, modifiedError);
     const std::string cacheKey =
         (info.userOverride ? "user:" : "auto:") +
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         resolved.lexically_normal().string(); // APFS can be case sensitive.
 #else
         toLowerCopy(resolved.lexically_normal().string());
@@ -5026,6 +5036,8 @@ class VideoEncoder::Impl {
 
 #elif defined(__APPLE__)
 class VideoEncoder::Impl : public versus::platform::MacVideoEncoder {};
+#elif defined(__linux__)
+class VideoEncoder::Impl : public versus::platform::LinuxVideoEncoder {};
 #else
 // Non-Windows stub
 class VideoEncoder::Impl {
@@ -5217,7 +5229,7 @@ bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
     if (sourceTimestamp == std::numeric_limits<int64_t>::min()) {
         return false;
     }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     bool ok = impl_->encode(frame, packet, sourceTimestamp, presentationTimestamp);
 #else
     (void)presentationTimestamp;

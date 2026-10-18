@@ -2,8 +2,10 @@
 
 #include "versus/ui/update_checker.h"
 #include "versus/platform/capabilities.h"
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 #include "versus/platform/app_paths.h"
+#endif
+#ifdef __APPLE__
 #include "versus/platform/macos_capture.h"
 #include "versus/platform/macos_output_profiles.h"
 #include "versus/platform/macos_audio_choices.h"
@@ -552,7 +554,7 @@ QIcon makeBrandTrayFallbackIcon() {
 }
 
 QString defaultLogFolderPath() {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     return platform::logDirectory();
 #else
     QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
@@ -2176,6 +2178,11 @@ void MainWindow::setupUI() {
 #ifdef __APPLE__
         encoderSelect_->addItem("Apple VideoToolbox", QVariant("videotoolbox"));
         encoderSelect_->addItem("Software (x264 / VP9 / AV1)", QVariant("software"));
+#elif defined(__linux__)
+        // Additional devices are exposed when their runtime backend is usable.
+        if (QFileInfo::exists("/dev/nvidiactl"))
+            encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
+        encoderSelect_->addItem("Software (x264 / VP9 / AV1 / HEVC)", QVariant("software"));
 #else
         encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
         encoderSelect_->addItem("FFmpeg NVENC (Advanced)", QVariant("ffmpeg_nvenc"));

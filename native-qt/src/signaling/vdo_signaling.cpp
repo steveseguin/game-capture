@@ -1,5 +1,7 @@
 #ifdef __APPLE__
 #include "versus/platform/macos_network.h"
+#elif defined(__linux__)
+#include "versus/platform/linux_network.h"
 #endif
 #include "versus/signaling/vdo_signaling.h"
 
@@ -924,6 +926,13 @@ bool VdoSignaling::connect(const std::string &server, const std::function<bool()
     const auto roots = platform::macSystemCaCertificatesPem();
     if (roots.empty()) {
         spdlog::error("[Signaling] No macOS system CA certificates are available");
+        return false;
+    }
+    wsConfig.caCertificatePemFile = roots;
+#elif defined(__linux__)
+    const auto roots = platform::linuxSystemCaCertificatesPem();
+    if (roots.empty()) {
+        spdlog::error("[Signaling] No Linux system CA certificates are available");
         return false;
     }
     wsConfig.caCertificatePemFile = roots;

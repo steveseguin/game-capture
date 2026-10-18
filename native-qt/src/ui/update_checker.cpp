@@ -1,4 +1,5 @@
 #include "versus/ui/update_checker.h"
+#include <QAuthenticator>
 
 #include <QCoreApplication>
 #include <QDateTime>

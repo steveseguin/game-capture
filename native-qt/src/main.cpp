@@ -35,7 +35,7 @@
 #include "versus/ui/main_window.h"
 #include "versus/video/window_capture.h"
 #include "versus/platform/capabilities.h"
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 #include "versus/platform/app_paths.h"
 #endif
 
@@ -62,7 +62,7 @@ std::string resolveLogFilePath() {
     std::error_code ec;
     std::filesystem::create_directories(logDir, ec);
     return (logDir / "game-capture-debug.log").string();
-#elif defined(__APPLE__)
+#elif defined(__APPLE__) || defined(__linux__)
     return QDir(versus::platform::logDirectory()).filePath("game-capture-debug.log").toStdString();
 #else
     return "game-capture-debug.log";

@@ -219,12 +219,16 @@ if(APPLE)
     list(APPEND VERSUS_PLATFORM_SOURCES src/platform/macos/media_activity.mm src/platform/macos/syphon_capture.mm src/platform/macos/app_paths.cpp src/platform/macos/window_capture.mm
         src/platform/macos/source_list.cpp include/versus/platform/macos_source_list.h
         src/platform/macos/audio_choices.cpp include/versus/platform/macos_audio_choices.h
-        src/platform/macos/video_encoder.cpp src/platform/macos/ffmpeg_encoder.cpp src/platform/macos/ffmpeg.cpp src/platform/macos/system_resources.cpp src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm)
+        src/platform/macos/video_encoder.cpp src/platform/macos/ffmpeg_encoder.cpp src/platform/macos/ffmpeg.cpp src/platform/posix/ffmpeg.cpp src/platform/macos/system_resources.cpp src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm)
     set_source_files_properties(src/platform/macos/media_activity.mm src/platform/macos/syphon_capture.mm src/platform/macos/window_capture.mm src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     set(VERSUS_PLATFORM_LIBRARIES "-framework ScreenCaptureKit" "-framework CoreMedia"
         "-framework CoreVideo" "-framework CoreGraphics" "-framework Foundation"
         "-framework VideoToolbox" "-framework CoreAudio" "-framework AVFoundation" "-framework Security" "-framework LocalAuthentication" versus-x264 versus-syphon)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    include(cmake/platform-linux.cmake)
 endif()
 
 set(VERSUS_COMMON_SOURCES
@@ -694,6 +698,9 @@ if(VERSUS_BUILD_TESTS)
     if(APPLE)
         target_sources(test_vdo_signaling_lifecycle PRIVATE src/platform/macos/network.mm)
         target_link_libraries(test_vdo_signaling_lifecycle PRIVATE Qt6::Network "-framework Foundation")
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        target_sources(test_vdo_signaling_lifecycle PRIVATE src/platform/linux/network.cpp)
+        target_link_libraries(test_vdo_signaling_lifecycle PRIVATE Qt6::Network)
     endif()
     add_test(NAME VdoSignalingLifecycleGate COMMAND test_vdo_signaling_lifecycle)
     versus_set_qt_test_environment(VdoSignalingLifecycleGate)

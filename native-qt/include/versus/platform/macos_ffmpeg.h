@@ -1,16 +1,8 @@
 #pragma once
-#include <filesystem>
-#include <string>
-#include <vector>
+#include "versus/platform/posix_ffmpeg.h"
 namespace versus::platform {
-struct FfmpegCommandResult {
-    std::string output;
-    bool started = false;
-    bool timedOut = false;
-    int exitCode = -1;
-};
-std::filesystem::path resolveMacFfmpeg(const std::string &configured);
-bool isBundledMacFfmpeg(const std::filesystem::path &path);
-bool isMacFfmpegOverride(const std::string &configured, const std::filesystem::path &resolved);
-FfmpegCommandResult runMacFfmpegProbe(const std::filesystem::path &executable, const std::vector<std::string> &arguments);
+inline auto resolveMacFfmpeg(const std::string &path) { return resolvePosixFfmpeg(path); }
+inline bool isBundledMacFfmpeg(const std::filesystem::path &path) { return isBundledPosixFfmpeg(path); }
+inline bool isMacFfmpegOverride(const std::string &configured, const std::filesystem::path &resolved) { return isPosixFfmpegOverride(configured, resolved); }
+inline auto runMacFfmpegProbe(const std::filesystem::path &path, const std::vector<std::string> &args) { return runPosixFfmpegProbe(path, args); }
 }

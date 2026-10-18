@@ -70,6 +70,7 @@ native-qt/build-*.txt
 native-qt/qa/reports/
 native-qt/e2e/reports/
 native-qt/e2e/__pycache__/
+native-qt/qa/__pycache__/
 
 /.vt-apikey
 /native-qt/.vt-apikey

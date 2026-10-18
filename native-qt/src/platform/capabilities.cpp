@@ -17,6 +17,9 @@ const Capabilities &capabilities() {
     // and gate targets. A launchable bundle alone cannot capture or publish.
     static constexpr Capabilities value{
         "macOS", true, true, false, true, true, false, true, ""};
+#elif defined(__linux__)
+    static constexpr Capabilities value{
+        "Linux", true, true, false, false, false, false, true, ""};
 #else
     static constexpr Capabilities value{
         "Unknown", false, false, false, false, false, false, false,

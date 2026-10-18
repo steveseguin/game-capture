@@ -477,7 +477,7 @@ struct Session::Impl {
                         // session once the endpoint is reachable. Limit this to
                         // one refresh, including on deliberately high-latency links.
                         if (config.protocol == Protocol::Srt && allowStartupRefresh &&
-                            std::max(ageMs, int64_t(startupMs)) > std::max(1500, config.latencyMs + 750))
+                            std::max<int64_t>(ageMs, startupMs) > std::max(1500, config.latencyMs + 750))
                             throw OutputError("SRT connected with stale startup media; refreshing the live session.", false, true);
                     }
                     if (advanced) {

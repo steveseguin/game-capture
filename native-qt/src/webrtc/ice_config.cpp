@@ -1,5 +1,7 @@
 #ifdef __APPLE__
 #include "versus/platform/macos_network.h"
+#elif defined(__linux__)
+#include "versus/platform/linux_network.h"
 #endif
 #include "versus/webrtc/ice_config.h"
 
@@ -485,6 +487,10 @@ TurnRegistryHttpResponse fetchTurnRegistryHttp(const TurnRegistryRequest &reques
 #elif defined(__APPLE__)
 TurnRegistryHttpResponse fetchTurnRegistryHttp(const TurnRegistryRequest &request) {
     return platform::macFetchTurnRegistry(request);
+}
+#elif defined(__linux__)
+TurnRegistryHttpResponse fetchTurnRegistryHttp(const TurnRegistryRequest &request) {
+    return platform::linuxFetchTurnRegistry(request);
 }
 #else
 TurnRegistryHttpResponse fetchTurnRegistryHttp(const TurnRegistryRequest & /*request*/) {

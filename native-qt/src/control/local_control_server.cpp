@@ -1,5 +1,5 @@
 #include "versus/control/local_control_server.h"
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
 #include "versus/platform/app_paths.h"
 #endif
 
@@ -65,7 +65,7 @@ QByteArray reasonPhrase(int status) {
 }
 
 QString appDataPath(const QString &leaf) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     return QDir(platform::dataDirectory()).filePath(leaf);
 #else
 #ifdef _WIN32

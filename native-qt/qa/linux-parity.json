@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "goal": "Linux x86-64 Windows functional parity, reusing the shared Windows/macOS core; Ubuntu 24.04 Wayland and X11 qualification; ARM64-ready boundaries without ARM64 delivery",
+  "baseline": {
+    "windows": "bc28b07ecff507bbae3d2fad7476aa328011ed5f",
+    "macos": "bc502f433040c7e4f48992289fca897c7fb96d39"
+  },
+  "completion_policy": "Every required row needs exact packaged-artifact end-to-end evidence, or an explicitly accepted platform exception. Build/unit checks are gates, never application testing. Missing devices remain unqualified. No row is waived by an early milestone.",
+  "requirements": [
+    {
+      "id": "shared-core",
+      "required": true,
+      "status": "implemented-unqualified",
+      "remaining": "Windows/macOS regression qualification of integrated branch and shared POSIX extraction"
+    },
+    {
+      "id": "wayland-window",
+      "required": true,
+      "status": "bounded-e2e-passed",
+      "remaining": "Packaged GNOME portal selection, moving/static H264 reception, native resize, late viewer and source-loss cleanup passed. Denial/cancellation/revocation, suspend/restore, cursor and GUI preview remain."
+    },
+    {
+      "id": "x11-window",
+      "required": true,
+      "status": "bounded-e2e-passed",
+      "remaining": "Current packaged browser-window workflow covers moving/static content, resize, late viewer, source-loss exit and discovery cleanup. Physical Xorg, obscured/minimized windows, cursor, reconnect, mixed DPI/multiple displays and gameplay remain."
+    },
+    {
+      "id": "camera",
+      "required": true,
+      "status": "bounded-e2e-passed",
+      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, permission errors and GUI preview remain; multi-plane devices unsupported."
+    },
+    {
+      "id": "application-audio",
+      "required": true,
+      "status": "missing",
+      "remaining": "PipeWire per-application routing, explicit selector when portal video cannot be matched, process/helper lifetimes and exclusion of unrelated sources"
+    },
+    {
+      "id": "system-audio",
+      "required": true,
+      "status": "missing",
+      "remaining": "Output monitor selection, mute/silence/device changes"
+    },
+    {
+      "id": "microphone",
+      "required": true,
+      "status": "missing",
+      "remaining": "Discovery, physical input, explicit selection, format conversion, mute/gain/mixing, hotplug and recovery"
+    },
+    {
+      "id": "audio-codecs",
+      "required": true,
+      "status": "shared-unqualified",
+      "remaining": "Opus 128 kbps default, mono/stereo, PCM/RED negotiation, simultaneous fallback viewers, bitrate overrides and decoded audio"
+    },
+    {
+      "id": "software-encoding",
+      "required": true,
+      "status": "implemented-unqualified",
+      "remaining": "H264/x264, VP9, HEVC, AV1; actual output identities/color/quality/cadence, live bitrate/keyframes and timestamps; custom FFmpeg path/options backend"
+    },
+    {
+      "id": "hardware-encoding",
+      "required": true,
+      "status": "unqualified",
+      "remaining": "NVIDIA path requires working accessible driver. NVENC probe currently fails CUDA_ERROR_NO_DEVICE. Future hardware backends remain extensible; never claim unavailable devices qualified."
+    },
+    {
+      "id": "vdo-direct",
+      "required": true,
+      "status": "shared-unqualified",
+      "remaining": "GUI/CLI publishing, generated links, password, late viewers, reconnect, TURN and browser/OBS delivery"
+    },
+    {
+      "id": "vdo-rooms",
+      "required": true,
+      "status": "shared-unqualified",
+      "remaining": "HQ/LQ, director controls and authorization, overrides/restoration, guest lifecycle and multi-viewer recovery"
+    },
+    {
+      "id": "whip",
+      "required": true,
+      "status": "shared-unqualified",
+      "remaining": "Authenticated endpoints, HTTPS, ICE/TURN, redirects, media and interruption/recovery"
+    },
+    {
+      "id": "mux-outputs",
+      "required": true,
+      "status": "shared-unqualified",
+      "remaining": "RTMP/RTMPS, SRT, RTSP TCP/UDP, UDP MPEG-TS, RIST with AAC, saved profiles and reconnect"
+    },
+    {
+      "id": "alpha",
+      "required": true,
+      "status": "partial",
+      "remaining": "Desktop capture currently emits opaque pixels. Establish transparent Linux producer-sharing equivalent and Linux OBS plugin receiver; prove paired VP9 masks, backgrounds, geometry and recovery. Spout2/Syphon APIs are platform-specific, their workflow is not waived."
+    },
+    {
+      "id": "gui",
+      "required": true,
+      "status": "shared-unqualified",
+      "remaining": "Feature-capability-driven choices, preview, saved settings, keyboard/accessibility, tray/reopen, update links, permission and actionable errors"
+    },
+    {
+      "id": "profiles",
+      "required": true,
+      "status": "missing",
+      "remaining": "Linux Secret Service destination storage and locked/unavailable store handling without plaintext fallback"
+    },
+    {
+      "id": "automation",
+      "required": true,
+      "status": "partial",
+      "remaining": "Local API paths wired; MCP launch/discovery/diagnostics and Linux permissions; headless consent limits must be explicit"
+    },
+    {
+      "id": "recovery",
+      "required": true,
+      "status": "unqualified",
+      "remaining": "Repeated start/stop, capture/device/network loss, suspend/resume, shutdown during startup and all owned worker cleanup"
+    },
+    {
+      "id": "packaging",
+      "required": true,
+      "status": "in-progress",
+      "remaining": "Ubuntu amd64 DEB, dependency/source/license manifests, clean installation/uninstall/upgrade and launched exact-package evidence"
+    },
+    {
+      "id": "endurance",
+      "required": true,
+      "status": "missing",
+      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence"
+    },
+    {
+      "id": "arm-portability",
+      "required": true,
+      "status": "in-progress",
+      "remaining": "Keep codec/capture core free of x86-only intrinsics; dispatch pixel layouts by negotiated metadata. ARM package/qualification is deferred by scope."
+    }
+  ],
+  "evidence": [
+    {
+      "backend": "x11",
+      "report": "native-qt/qa/reports/linux-window-publish/ed218dc4-ff70-42d4-950b-060bd49437b7/results.json",
+      "reportSha256": "ea204663e16062710d629f2dd8a9a74a00531b4d5b20960eb795e32d819c97be",
+      "executableSha256": "85df4aa81a30e2784bd1294a54ccde4b65d145726a65be69105961778ef624e7",
+      "manifestSha256": "ba398e7027048253449d83fe54020fd38f462d9c6c82729a7ca660aaa1c430d1",
+      "harnessSha256": "7452873a54ea11809d8bc3d9f102a608b2d0bc5329a73d81ad514fb5c5c26b5c",
+      "passed": true,
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "initialDistinctFrames": 176,
+      "phases": [
+        "moving",
+        "static",
+        "resized",
+        "late"
+      ],
+      "sourceLossExit": 3,
+      "limits": "Bounded software H264 video-only workflow; no endurance or full-platform qualification."
+    },
+    {
+      "backend": "wayland",
+      "report": "native-qt/qa/reports/linux-wayland-publish/1d9ead3e-74ea-4610-8f83-51ed7515d3dc/results.json",
+      "reportSha256": "d88c7a6bb173d7d37cd2f29581ae9c583160c3f045c856f3e96bd16754e6daf4",
+      "executableSha256": "85df4aa81a30e2784bd1294a54ccde4b65d145726a65be69105961778ef624e7",
+      "manifestSha256": "ba398e7027048253449d83fe54020fd38f462d9c6c82729a7ca660aaa1c430d1",
+      "harnessSha256": "2433ca4b9dc3c2b6b8fa9b32a090a5f089e8caefa411003ae6656ad1f34b1634",
+      "passed": true,
+      "requested": {
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "initialDistinctFrames": 179,
+      "phases": [
+        "moving",
+        "static",
+        "resized",
+        "late"
+      ],
+      "sourceLossExit": 3,
+      "limits": "Bounded software H264 video-only workflow; no endurance or full-platform qualification.",
+      "reportCorrection": "Original report scope text incorrectly says X11; requested.backend and frozen harness identify Wayland. Native viewport fix resolved clipping in the Chromium fixture; prior failed reports retained."
+    },
+    {
+      "backend": "v4l2",
+      "report": "native-qt/qa/reports/linux-camera-publish/15e459c8-e64c-4ada-bad0-8db1ab809032/results.json",
+      "reportSha256": "57c1a89bc7ec042f6487f07fb67358e249db738695ddad6fda952466d0d3767f",
+      "executableSha256": "cdff6fac22fe3c47a1a0aae8617abf26de0f947910bce10030d68fed6eacb713",
+      "manifestSha256": "95a19a9620b0c5659b425f88a4a230104f04e1ba41eee1b437f015db192095cb",
+      "harnessSha256": "1360094a1e87beb380f9a10a0abf17bf8c157517ad381e488bab9fbe401fb726",
+      "passed": true,
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 640,
+        "height": 360,
+        "fps": 30,
+        "audio": "none"
+      },
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "cycles": [
+        {
+          "cycle": 0,
+          "distinctMovingFrames": 55,
+          "passed": true,
+          "busyPreservedOriginal": true,
+          "exitCode": 0
+        },
+        {
+          "cycle": 1,
+          "distinctMovingFrames": 55,
+          "passed": true,
+          "busyPreservedOriginal": false,
+          "exitCode": 0
+        }
+      ],
+      "limits": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification"
+    },
+    {
+      "backend": "independent-physical-HDMI-reference",
+      "report": "native-qt/qa/reports/linux-camera-preflight/results.json",
+      "reportSha256": "874e9f973b817b301371e6bdcd63427f19c3baab2481468ca4ea6292e1567260",
+      "finding": "With Game Capture closed, independent FFmpeg V4L2 capture found three distinct scanline identities in 3/90 frames. Camera functional fixture now holds each identity 100 ms, preserving strict decode checks; high-motion fidelity unqualified."
+    },
+    {
+      "backend": "v4l2",
+      "report": "native-qt/qa/reports/linux-camera-publish/daba3c4e-9a7b-4c69-9b89-3db4317cb788/results.json",
+      "reportSha256": "5c7d028adc9bcf6c84d32feaa6726876918fe05e90fa6f4f48dc068f38cdb2bb",
+      "executableSha256": "a582c9ff69e3fe59e2a9e902584b4388561e83bdb0cf0ba50c903baad7ec13b0",
+      "passed": false,
+      "finding": "Second instance format probing interrupted the first UVC stream. Fixed by acquiring the driver handle with S_FMT before TRY_FMT."
+    },
+    {
+      "backend": "v4l2",
+      "report": "native-qt/qa/reports/linux-camera-publish/e42b6e2e-b543-4a7e-b65c-e9c88dd3d004/results.json",
+      "reportSha256": "eda24de549a0a1cf526a34b86f6c2375766641461511395fac5a75f5d7635a10",
+      "executableSha256": "cdff6fac22fe3c47a1a0aae8617abf26de0f947910bce10030d68fed6eacb713",
+      "passed": false,
+      "finding": "Three scanlines in a physical HDMI frame contained distinct consecutive source IDs. Independent FFmpeg reproduced input tearing; high-motion fidelity remains unqualified."
+    }
+  ],
+  "host_environment": {
+    "os": "Ubuntu 24.04.3 x86-64",
+    "cpu": "AMD Ryzen 5 5500",
+    "gpu": "NVIDIA GTX 750 Ti",
+    "driver_finding": "Installed nvidia-driver-595-open kernel module rejects this GPU for missing GSP. Recursive NVIDIA udev events starved input and camera discovery. No hardware encoder has been qualified.",
+    "temporary_repair": {
+      "path": "/run/udev/rules.d/71-nvidia.rules",
+      "value": "symlink to /dev/null",
+      "effect": "Masks failing NVIDIA hotplug auto-loader until reboot; device manager restarted; camera ACLs and input discovery recovered.",
+      "restore": "After correcting the driver, remove only this runtime override and restart systemd-udevd. Reboot also removes /run override."
+    },
+    "connected_camera": "Cam Link 4K stable V4L2 by-id path, 1280x720 YUYV at 60 fps; this host desktop wired over HDMI. Bounded packaged H264 reception passed; high-motion source fidelity remains open.",
+    "input_sources": "Onboard analog stereo input and digital output monitor; no physical microphone signal qualified",
+    "hdmi_reference": "Independent FFmpeg capture reproduces multiple scanout identities in individual frames; this host has no usable NVIDIA display driver. The bounded functional camera fixture changes identity at 10 Hz, not a 60 fps fidelity qualification."
+  },
+  "development_commands": [
+    "sudo apt-get install cmake ninja-build qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-composite0-dev ffmpeg",
+    "cmake -S native-qt -B native-qt/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DVERSUS_BUILD_TESTS=OFF",
+    "cmake --build native-qt/build-linux --target game-capture -j 4",
+    "python3 native-qt/qa/package-linux.py --build native-qt/build-linux",
+    "npm ci --prefix native-qt",
+    "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --reports=<reports> --manifest-sha256=<sha256>",
+    "WAYLAND_DISPLAY=wayland-0 node native-qt/e2e/linux-window-publish.js --backend=wayland --publisher=<extracted>/usr/bin/game-capture --reports=<reports> --manifest-sha256=<sha256>",
+    "node native-qt/e2e/linux-camera-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<exact V4L2 id> --hdmi-loopback=true"
+  ],
+  "regression_gates": {
+    "classification": "Gates only; these do not constitute application testing.",
+    "passed": [
+      "PlatformCapabilitiesGate",
+      "CameraCaptureTest",
+      "VdoSignalingLifecycleGate",
+      "IceConfigTest",
+      "LocalControlServerTest"
+    ],
+    "log": "native-qt/build-linux-gates-run.log",
+    "logSha256": "54f269c6e290400bdf0f1c45c96d72732e3dd7af3533c4087fcbf83cdd076b74",
+    "secret_guard": "Pinned Gitleaks 8.30.1 staged scan passed; local commit and push hooks installed."
+  }
+}
