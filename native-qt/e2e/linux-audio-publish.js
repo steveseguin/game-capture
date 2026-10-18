@@ -22,7 +22,10 @@ assert(!previewHelperUnavailable || (previewBeforeLive && !previewServiceLoss), 
 const previewCoreStartupDown = opts['preview-core-startup-down'] === 'true';
 const unavailableCoreAction = opts['unavailable-core-action'] || 'preview';
 assert(['preview','go-live'].includes(unavailableCoreAction) && (previewCoreStartupDown || unavailableCoreAction === 'preview'), 'Unavailable-core action requires the core-startup fixture');
-assert(!previewBeforeLive || (wayland && matrix === 'gui' && opts.case === 'mix'), 'Audio preview promotion requires Wayland GUI mixed audio');
+assert(!previewBeforeLive || (wayland && ((matrix === 'gui' && opts.case === 'mix') ||
+  (matrix === 'communications-gui' && opts.case === 'communications' && communicationsMix) ||
+  (matrix === 'apps-gui' && opts.case === 'selected-app'))),
+  'Audio preview promotion requires a supported Wayland GUI audio route');
 assert(opts['combined-audio-loss'] !== 'true' || (communications && communicationsMix), 'Combined loss requires communications mixing');
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
 const audioServerLoss = opts['audio-server-loss'] === 'true';
@@ -394,7 +397,7 @@ function barriers() {
         assert.equal(!!communicationsLabel, communications, 'Communications device row visibility differs from the selected audio mode');
         fs.writeFileSync(path.join(report, fixture.name + '-ui-before-live.json'), beforeLive);
         if(previewBeforeLive){
-          entry.localPreview={};
+          entry.localPreview={audioRoute:fixture.mode,microphoneConfigured:!!fixture.mix};
           const localOnly=async(active,audioAvailable=true,videoAvailable=true)=>{
             if(previewHelperUnavailable)assert.equal(pactl('get-default-sink'),defaultSink,'Owned default output changed while configuring local preview');
             const d=await api('/diagnostics');
@@ -558,7 +561,9 @@ function barriers() {
           await source.evaluate(()=>{fixture.staticId=null;});
           await goLive(true);
           const promoted=await api('/diagnostics');
-          assert(!promoted.app.window_preview&&promoted.app.capturing&&promoted.app.primary_audio_capturing&&promoted.app.microphone_capturing);
+          assert(!promoted.app.window_preview&&promoted.app.capturing&&promoted.app.primary_audio_capturing);
+          assert.equal(promoted.app.microphone_capturing,!!fixture.mix,'Preview promotion opened an unexpected microphone route');
+          entry.localPreview.promotedApp=promoted.app;
           entry.localPreview.promotedNodes=captureNodes();
           assert.deepEqual(entry.localPreview.promotedNodes,entry.localPreview.beforePromotion.nodes,'Go live replaced the granted preview stream');
           entry.localPreview.promotedSameSession=true;save();
@@ -697,11 +702,11 @@ function barriers() {
         ui('press', 'Mute microphone'); await sleep(800);
         assert.equal((await api('/diagnostics')).audio.microphone_muted, true);
         entry.muted = await observeAudio(viewer);
-        requireAudio(entry.muted, fixture.name + ' GUI mute', {silent:!fixture.mix, microphoneOff:fixture.mix});
+        requireAudio(entry.muted, fixture.name + ' GUI mute', {silent:!fixture.mix, microphoneOff:fixture.mix, excluded:communications});
         entry.videoWhileMuted = await observe(viewer, 3000); requireMoving(entry.videoWhileMuted, 'GUI mute preserves video');
         ui('press', 'Unmute microphone'); await sleep(800);
         assert.equal((await api('/diagnostics')).audio.microphone_muted, false);
-        entry.unmuted = await observeAudio(viewer); requireAudio(entry.unmuted, 'GUI unmute', {microphone:fixture.mix, excluded:!fixture.mix});
+        entry.unmuted = await observeAudio(viewer); requireAudio(entry.unmuted, 'GUI unmute', {microphone:fixture.mix, excluded:communications || !fixture.mix});
       }
       if (gui && fixture.mix) {
         assert.equal(diagnostics.audio.primary_gain, .5); assert.equal(diagnostics.audio.additional_gain, .5);
