@@ -11,7 +11,11 @@ assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKT
 for(const k of ['publisher','manifest-sha256','reports'])assert(opts[k],k);
 const seconds=Number(opts.seconds||60),hold=Number(opts['hold-seconds']||0),analysisPython=opts['analysis-python']||'python3';
 const sourceReference=opts['source-reference']||'canvas';assert(['canvas','desktop'].includes(sourceReference));
+const receiverPlayback=opts['receiver-playback']||'muted';assert(['muted','owned-sink'].includes(receiverPlayback));
+const audibleReceiver=receiverPlayback==='owned-sink';
 const desktopReference=sourceReference==='desktop';
+const rtpTiming=opts['rtp-timing']==='true';
+if(rtpTiming)assert(desktopReference&&hold===0&&seconds<=60,'RTP timing copy requires a bounded desktop diagnostic');
 if(desktopReference)assert(!wayland&&hold===0&&seconds<=60,'Uncalibrated desktop reference is limited to a bounded X11 diagnostic');
 const fixtureTimingControl={outputAudioDelayMs:Number(opts['fixture-output-audio-delay-ms']||0),videoDelayMs:Number(opts['fixture-video-delay-ms']||0)};
 assert(Object.values(fixtureTimingControl).every(v=>[0,150].includes(v))&&fixtureTimingControl.outputAudioDelayMs+fixtureTimingControl.videoDelayMs<=150,'Use a single 150 ms stimulus delay or the zero control');
@@ -32,12 +36,14 @@ if(wayland)for(const name of ['linux-av-wayland.js','linux-source-monitor.py','l
 if(traceCapture){const name='linux-av-trace-report.js';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(desktopReference)for(const name of ['linux-av-desktop-reference.js','linux-av-compare-references.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(traceAudio){const name='linux-audio-timing-report.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
+if(rtpTiming)for(const name of ['linux-encoded-audio.js','linux-decode-opus-report.py','linux-av-rtp-report.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 const result={backend,traceCapture,traceAudio,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
-  sourceReference,diagnosticOnly:desktopReference,fixtureTimingControl,
+  sourceReference,receiverPlayback,rtpTiming,diagnosticOnly:desktopReference,fixtureTimingControl,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
 const pactl=(...a)=>execFileSync('pactl',a,{encoding:'utf8',timeout:5000}).trim();
 const modules=[],browsers=[],recordings=new Set();let server,child,log,control,discovery,page,continuous=false,launchError,logError,waylandFixture;
+let encodedAudio;
 const defaultSink=pactl('get-default-sink');result.defaultSink=defaultSink;
 const api=async(route,body)=>{const r=await fetch(control.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok);return r.json();};
 async function quit(){if(child&&child.exitCode===null){await api('/commands',{command:'quit'});await waitFor(()=>child.exitCode!==null,10000,'Publisher did not quit');}if(child){await child.closed;assert.equal(child.exitCode,0);assert(!fs.existsSync(discovery));}}
@@ -97,18 +103,38 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     const cdp=await sourceBrowser.newBrowserCDPSession(),info=await cdp.send('SystemInfo.getProcessInfo');const sourcePid=info.processInfo.find(p=>p.type==='browser').id;await cdp.detach();
     if(wayland)await waylandFixture.placeSource(source,sourcePid,title);
     result.sourcePid=sourcePid;result.sourceSize=await source.evaluate(()=>({width:innerWidth,height:innerHeight}));await source.screenshot({path:path.join(report,'source.png')});
-    const viewer=await chromium.launch({executablePath:browserPath,headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});browsers.push(viewer);result.browserVersion=viewer.version();
+    let receiverSink;
+    if(audibleReceiver){
+      const name=sink+'_receiver',moduleId=pactl('load-module','module-null-sink','sink_name='+name,'rate=48000','channels=2');
+      modules.push(moduleId);receiverSink={name,moduleId};result.receiverSink=receiverSink;save();
+    }
+    const viewer=await chromium.launch({executablePath:browserPath,headless:true,
+      env:receiverSink?{...env,PULSE_SINK:receiverSink.name}:env,
+      ...(audibleReceiver?{ignoreDefaultArgs:['--mute-audio']}:{}),
+      args:['--autoplay-policy=no-user-gesture-required',...(audibleReceiver?[]:['--mute-audio'])]});browsers.push(viewer);result.browserVersion=viewer.version();
     const stream='gclinuxav'+crypto.randomBytes(12).toString('hex');discovery=path.join(report,'private-control.json');
     child=spawn(exe,['--headless','--source=window','--window='+(wayland?'Choose a window':title),'--stream='+stream,'--password=false','--video-encoder=software','--video-codec=h264','--resolution=1280x720','--fps=60','--bitrate-kbps=4000','--audio-source=selected-window','--audio-process='+sourcePid,'--audio-codec=opus','--no-audio-red','--audio-channels=2','--audio-bitrate-kbps=128','--duration-ms='+((seconds*(hold?2:1)+hold+180)*1000),'--local-control','--local-control-port=0','--local-control-discovery='+discovery],{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
     child.on('error',e=>launchError=String(e));log=fs.createWriteStream(path.join(report,'private-publisher.log'));log.on('error',e=>logError=String(e));child.stdout.pipe(log,{end:false});child.stderr.pipe(log,{end:false});child.closed=new Promise(resolve=>child.once('close',()=>log.end(resolve)));
     if(wayland)waylandFixture.selectPortal(title);
     await waitFor(()=>{assert(!launchError,launchError);assert.equal(child.exitCode,null);return fs.existsSync(discovery);},15000,'No publisher discovery');control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,child.pid);
     if(wayland)await waylandFixture.selectedPortal();
-    page=await receiver(viewer,stream,child);await sleep(3000);result.continuousAudio=await audio.start(page);continuous=true;
+    if(rtpTiming)result.rtpClockAnchor={...JSON.parse(execFileSync('python3',['-c','import time,json;print(json.dumps({"monotonicNs":time.clock_gettime_ns(time.CLOCK_MONOTONIC),"wallNs":time.time_ns()}))'],{encoding:'utf8',timeout:5000})),scope:'Linux CLOCK_MONOTONIC anchor for RTP wrap disambiguation only; not independent A/V calibration.'};
+    page=await receiver(viewer,stream,child,rtpTiming?async p=>{encodedAudio=await require('./linux-encoded-audio').install(p,report);}:undefined);
+    if(encodedAudio){result.encodedAudioSelectedId=await encodedAudio.select();save();}
+    await sleep(3000);
+    if(audibleReceiver){
+      const owned=JSON.parse(pactl('--format=json','list','sinks')).find(s=>s.name===receiverSink.name);
+      assert(owned&&String(owned.owner_module)===receiverSink.moduleId,'Receiver sink ownership changed');
+      result.receiverPlaybackStreams=JSON.parse(pactl('--format=json','list','sink-inputs')).filter(s=>s.sink===owned.index);
+      assert(result.receiverPlaybackStreams.length,'Receiver did not route playback to its owned sink');
+      result.receiverMediaElements=await page.evaluate(()=>[...document.querySelectorAll('video,audio')].map(e=>({tag:e.tagName,muted:e.muted,volume:e.volume,paused:e.paused,audioTracks:e.srcObject?.getAudioTracks().map(t=>({enabled:t.enabled,readyState:t.readyState}))})));
+      assert(result.receiverMediaElements.some(e=>!e.muted&&!e.paused&&e.volume>0&&e.audioTracks?.some(t=>t.enabled&&t.readyState==='live')),'Receiver has no unmuted playing audio');save();
+    }
+    result.continuousAudio=await audio.start(page);continuous=true;
     let previous=null,index=0;
     async function sample(duration=5000){
       assert(!logError,logError);assert.equal(child.exitCode,null);await source.evaluate(()=>{fixture.trace=[];});
-      const observed=await video.observe(page,duration),trace=await source.evaluate(()=>fixture.trace),pcm=await audio.drain(page),diagnostics=await api('/diagnostics');
+      const observed=await video.observe(page,duration,{rtpMetadata:rtpTiming}),trace=await source.evaluate(()=>fixture.trace),pcm=await audio.drain(page),diagnostics=await api('/diagnostics');
       const audioCheck=audio.analyze(pcm,duration/1000-.35),elapsed=(observed.ended-observed.started)/1000;
       const stamps=observed.observations.filter(f=>f.stamp!==null).map(f=>f.stamp),distinct=new Set(stamps).size,sourceDistinct=new Set(trace.map(f=>f.stamp)).size;
       const gaps=observed.observations.slice(1).map((f,i)=>(f.mediaTime-observed.observations[i].mediaTime)*1000).sort((a,b)=>a-b);
@@ -137,6 +163,7 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     }
     await phase('initial');if(hold){for(let n=0;n<hold;n+=5)await sample(Math.min(5,hold-n)*1000);await phase('final');}
     result.sourceFixture=await source.evaluate(()=>({frames:fixture.frames,epoch:fixture.epoch,events:fixture.events}));await page.screenshot({path:path.join(report,'receiver.png')});
+    if(encodedAudio){result.encodedAudio=await encodedAudio.stop();encodedAudio=null;save();}
     await audio.stop(page);continuous=false;await quit();result.recordingWorkflowPassed=true;save();
     const analyzer=spawn(analysisPython,[path.join(report,'macos-analyze-av-sync.py'),report,'--ffmpeg','/usr/bin/ffmpeg'],{stdio:['ignore','ignore','pipe']});let errors='';analyzer.stderr.on('data',d=>errors+=d);result.analysisExitCode=await new Promise(resolve=>analyzer.once('close',resolve));
     result.analysisErrors=errors;result.analysis=JSON.parse(fs.readFileSync(path.join(report,'av-analysis.json')));
@@ -155,6 +182,7 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     const errors=[];
     for(const r of recordings)try{await r.stop();}catch(e){errors.push(String(e));}
     if(continuous)try{await audio.stop(page);}catch(e){errors.push(String(e));}
+    if(encodedAudio)try{result.encodedAudio=await encodedAudio.stop();encodedAudio=null;}catch(e){errors.push(String(e));}
     if(waylandFixture)try{await waylandFixture.cancelPendingPortal();}catch(e){errors.push(String(e));}
     if(child&&child.exitCode===null)try{await quit();}catch(e){errors.push(String(e));child.kill();await child.closed;}
     for(const browser of browsers.reverse())try{await browser.close();}catch(e){errors.push(String(e));}
@@ -169,6 +197,10 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
       const f=path.join(report,'linux-audio-timing.csv');result.audioTrace.sha256=sha(f);result.audioTrace.bytes=fs.statSync(f).size;save();
       try{execFileSync(analysisPython,[path.join(report,'linux-audio-timing-report.py'),report],{encoding:'utf8',timeout:30000});const analysis=path.join(report,'linux-audio-timing.json');result.audioTrace.analysisSha256=sha(analysis);result.audioTrace.analysis=JSON.parse(fs.readFileSync(analysis));assert(result.audioTrace.analysis.traceComplete);}catch(e){errors.push(String(e));}
     }else if(traceAudio&&child)errors.push('Requested native audio timing trace is missing');
+    if(rtpTiming&&traceCapture&&result.analysis&&result.encodedAudio)try{
+      save();execFileSync(analysisPython,[path.join(report,'linux-av-rtp-report.py'),report],{encoding:'utf8',timeout:30000});
+      const file=path.join(report,'rtp-av-analysis.json');result.rtpAnalysis={path:path.basename(file),sha256:sha(file)};
+    }catch(e){result.rtpAnalysisError=String(e);result.passed=false;result.diagnosticPassed=false;}
     if(waylandFixture)try{await waylandFixture.close();}catch(e){errors.push(String(e));}
     if(errors.length){result.cleanupErrors=errors;result.passed=false;}save();process.exitCode=result.passed?0:1;console.log(JSON.stringify({report,passed:result.passed,error:result.error}));
   }

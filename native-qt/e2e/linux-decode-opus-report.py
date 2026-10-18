@@ -8,9 +8,8 @@ from array import array
 import argparse,base64,ctypes as C,ctypes.util,gzip,hashlib,json,math,sys
 from pathlib import Path
 
-def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('report',type=Path);args=parser.parse_args()
-    meta=json.loads((args.report/'received-opus.json').read_text());raw=(args.report/meta['path']).read_bytes()
+def decode(report):
+    meta=json.loads((report/'received-opus.json').read_text());raw=(report/meta['path']).read_bytes()
     assert not meta['error'] and not meta['writeError'] and hashlib.sha256(raw).hexdigest()==meta['sha256']
     packets=[json.loads(line) for line in raw.splitlines()];assert len(packets)==meta['frames']==meta['workerFrames']
     stream=next(s for s in meta['streams'] if s['id']==meta['selectedId']);assert stream['codec']['mimeType'].lower()=='audio/opus' and stream['codec']['clockRate']==48000
@@ -35,12 +34,17 @@ def main():
             observations.append({'rtpTimestamp':stamp,'observedAtMs':p['observedAtMs'],'firstFrame':len(audio)//2,'frames':count,'rms':levels})
             audio.extend(pcm)
     finally:lib.opus_decoder_destroy(decoder)
+    return meta,audio,observations,discontinuities,lib.opus_get_version_string().decode()
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('report',type=Path);args=parser.parse_args()
+    meta,audio,observations,discontinuities,version=decode(args.report)
     phase=json.loads(gzip.decompress((args.report/'streamRecreated-continuous.json.gz').read_bytes()))
     checked=[r for r in observations if phase['started']+500<=r['observedAtMs']<=phase['ended']];assert checked
     if sys.byteorder!='little':audio.byteswap()
     data=audio.tobytes()
     with (args.report/'received-opus-decoded.f32le').open('xb') as out:out.write(data)
-    result={'scope':__doc__,'libopusVersion':lib.opus_get_version_string().decode(),'encodedSha256':meta['sha256'],
+    result={'scope':__doc__,'libopusVersion':version,'encodedSha256':meta['sha256'],
         'selectedId':meta['selectedId'],'decodedSha256':hashlib.sha256(data).hexdigest(),'decodedFrames':len(audio)//2,
         'rtpDiscontinuities':discontinuities,'resumeSettlingMs':500,'resumePackets':len(checked),
         'resumeMinimumRms':min(v for r in checked for v in r['rms']),

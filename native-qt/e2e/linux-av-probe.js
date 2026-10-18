@@ -1,14 +1,27 @@
 'use strict';
 // Decode the shared A/V fixture's 24-bit pulse/phase and inverse barcode from
 // actual received VideoFrames. Kept separate from presentation callback timing.
-async function observe(page, milliseconds) {
-  return page.evaluate(async milliseconds => {
+async function observe(page, milliseconds, {rtpMetadata=false}={}) {
+  return page.evaluate(async ({milliseconds,rtpMetadata}) => {
     const track = window.reviewPCs.filter(p => p.connectionState === 'connected')
       .flatMap(p => p.getReceivers()).map(r => r.track).find(t => t?.kind === 'video' && t.readyState === 'live');
     if (!track || typeof MediaStreamTrackProcessor !== 'function') throw Error('No decoded video track/processor');
+    const element=rtpMetadata?[...document.querySelectorAll('video')].find(v=>!v.paused&&v.videoWidth):null;
+    if(rtpMetadata&&!element)throw Error('No playing video for RTP metadata');
     const clone = track.clone(), reader = new MediaStreamTrackProcessor({track:clone, maxBufferSize:4}).readable.getReader();
     const canvas = new OffscreenCanvas(320,180), g = canvas.getContext('2d',{willReadFrequently:true});
     const observations = []; let invalid = 0, width = 0, height = 0;
+    const presentation=[];let presentationCallback,presentationError=null;
+    const presented=(now,m)=>{
+      if(presentation.length>=1000){presentationError='Presentation metadata bound exceeded';return;}
+      if(!Number.isInteger(m.rtpTimestamp)||m.rtpTimestamp<0||m.rtpTimestamp>0xffffffff||!Number.isFinite(m.mediaTime)){
+        presentationError='Presentation callback lacks RTP timestamp';return;
+      }
+      presentation.push({now,mediaTime:m.mediaTime,rtpTimestamp:m.rtpTimestamp,presentedFrames:m.presentedFrames,
+        captureTime:m.captureTime,receiveTime:m.receiveTime,presentationTime:m.presentationTime,expectedDisplayTime:m.expectedDisplayTime});
+      presentationCallback=element.requestVideoFrameCallback(presented);
+    };
+    if(element)presentationCallback=element.requestVideoFrameCallback(presented);
     const started = performance.timeOrigin + performance.now();
     const timer = setTimeout(() => reader.cancel().catch(() => {}), milliseconds);
     try {
@@ -43,8 +56,10 @@ async function observe(page, milliseconds) {
           observations.push({stamp:valid?stamp:null,mediaTime:frame.timestamp/1e6,wall:performance.timeOrigin+performance.now()});
         } finally {frame.close();}
       }
-    } finally {clearTimeout(timer);await reader.cancel().catch(()=>{});reader.releaseLock();clone.stop();}
-    return {started,ended:performance.timeOrigin+performance.now(),width,height,invalid,observations,method:'MediaStreamTrackProcessor; pulse/phase plus inverse barcode'};
-  },milliseconds);
+    } finally {clearTimeout(timer);if(element)element.cancelVideoFrameCallback(presentationCallback);await reader.cancel().catch(()=>{});reader.releaseLock();clone.stop();}
+    if(presentationError)throw Error(presentationError);
+    return {started,ended:performance.timeOrigin+performance.now(),width,height,invalid,observations,
+      ...(rtpMetadata?{presentation,pageTimeOrigin:performance.timeOrigin}:{}),method:'MediaStreamTrackProcessor; pulse/phase plus inverse barcode'};
+  },{milliseconds,rtpMetadata});
 }
 module.exports={observe};
