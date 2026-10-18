@@ -5,7 +5,7 @@
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const {spawn, execFileSync} = require('child_process');
 const {chromium} = require('playwright');
-const {sleep, waitFor, receiver, observe, requireMoving, observeAudio} = require('./macos-media-receiver');
+const {sleep, waitFor, receiver, observe, observeDecoded, requireMoving, observeAudio} = require('./macos-media-receiver');
 const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
   const at = arg.indexOf('='); return [arg.slice(2,at),arg.slice(at+1)];
 }));
@@ -17,6 +17,10 @@ const codec=opts.codec||'h264';
 if (!['h264','av1'].includes(codec) || (codec==='av1' && (opts.gui || opts.encoder!=='software')))
   throw Error('AV1 camera workflow requires --codec=av1 --encoder=software in CLI mode');
 const microphone = opts['microphone-device'];
+const bitrateSteps=opts['bitrate-steps']?.split(',').map(v=>v==='false'?false:Number(v))||[];
+if(bitrateSteps.length && (opts.gui || bitrateSteps.length>8 || bitrateSteps.some(v=>v!==false&&(!Number.isInteger(v)||v<250||v>20000))))
+  throw Error('Bitrate steps require CLI publishing and up to eight 250–20000 kbps requests or false');
+const remoteToken=crypto.randomBytes(24).toString('hex');
 if (microphone && !opts['tone-helper']) throw Error('Microphone workflow requires the controlled BlackHole --tone-helper');
 const app = path.resolve(opts.app), executable = path.join(app,'Contents/MacOS/game-capture');
 if (!fs.existsSync(path.join(app,'Contents/Frameworks'))) throw Error('Use a deployed bundle');
@@ -66,19 +70,22 @@ function requireMicrophone(observation, silent = false) {
       tone.on('exit',()=>children.delete(tone));
       await waitFor(()=>{if(tone.exitCode!==null)throw Error('Tone fixture failed: '+toneErrors);return toneReady.includes('READY');},5000,'Tone fixture did not start');
     }
-    browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+    browser=await chromium.launch({headless:true,...(opts['browser-executable']?{executablePath:path.resolve(opts['browser-executable'])}:{}),args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+    result.browserVersion=browser.version();
+    if(opts['browser-executable'])result.browserExecutableSha256=hash(path.resolve(opts['browser-executable']));
     const encoders=opts.encoder?[opts.encoder]:['videotoolbox','x264'];
     if(encoders.some(e=>!(codec==='av1'?['software']:['videotoolbox','x264']).includes(e)))throw Error('Unknown encoder');
     for(const encoder of encoders) {
       const entry={encoder,passed:false};result.cases.push(entry);
       const stream='maccam'+crypto.randomBytes(12).toString('hex');
       const discovery=path.join(report,encoder+'-control.json');
-      const width=encoder==='videotoolbox'?640:960,height=encoder==='videotoolbox'?360:540,fps=encoder==='videotoolbox'?30:24;
+      const width=bitrateSteps.length?1920:encoder==='videotoolbox'?640:960,height=bitrateSteps.length?1080:encoder==='videotoolbox'?360:540,fps=bitrateSteps.length?30:encoder==='videotoolbox'?30:24;
       const env=Object.fromEntries(Object.entries(process.env).filter(([key])=>!/^(QT_|DYLD_|GAME_CAPTURE_)/.test(key)));
       const publisher=spawn(executable,[...(opts.gui?['--temporary-settings']:['--headless']), '--source=camera',`--camera-id=${opts['camera-device']}`,
         `--stream=${stream}`,'--password=false','--audio-source=none',`--video-encoder=${encoder}`,`--video-codec=${codec}`,
         ...(microphone ? ['--include-microphone',`--microphone-device=${microphone}`] : []),
-        `--width=${width}`,`--height=${height}`,`--fps=${fps}`,'--bitrate-kbps=2000','--duration-ms=120000',
+        `--width=${width}`,`--height=${height}`,`--fps=${fps}`,'--bitrate-kbps=2000',`--duration-ms=${120000+bitrateSteps.length*15000}`,
+        ...(bitrateSteps.length?['--remote-control',`--remote-token=${remoteToken}`]:[]),
         '--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],{cwd:report,env,stdio:['ignore','pipe','pipe']});
       children.add(publisher);const log=fs.createWriteStream(path.join(report,encoder+'.log'));
       publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
@@ -98,6 +105,35 @@ function requireMicrophone(observation, silent = false) {
       const page=await receiver(browser,stream,publisher);
       entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder,'video/'+codec);
       entry.orientation=await orientation(page);
+      if(bitrateSteps.length){
+        // Existing VDO.Ninja main.js postMessage contract: targetBitrate and
+        // remote are forwarded through session.sendRequest to the chosen peer.
+        entry.bitrateChanges=[];
+        const snapshot=async()=>({epochMs:Date.now(),diagnostics:await api(control,'/diagnostics'),receiver:await page.evaluate(async()=>{
+          const tracks=[];for(const pc of window.reviewPCs)for(const v of (await pc.getStats()).values())
+            if(v.type==='inbound-rtp'&&v.kind==='video')tracks.push({...v});return tracks;
+        })});
+        const request=token=>page.evaluate(({rate,token})=>{
+          const ids=Object.keys(window.session?.rpcs||{});if(ids.length!==1)throw Error('Expected one controlled publisher');
+          return !!window.session.sendRequest({targetBitrate:rate,remote:token},ids[0]);
+        },{rate:4000,token});
+        entry.unauthorizedBefore=await snapshot();
+        if(!await request(remoteToken+'-invalid'))throw Error('Could not send negative authorization control');
+        await sleep(1000);entry.unauthorizedAfter=await snapshot();
+        if(entry.unauthorizedAfter.diagnostics.video.configured_bitrate_kbps!==2000)throw Error('Unauthorized bitrate changed publisher');
+        for(const rate of bitrateSteps){
+          const row={request:rate,expectedKbps:rate===false?2000:rate,before:await snapshot()};entry.bitrateChanges.push(row);
+          if(!await page.evaluate(({rate,token})=>{
+            const ids=Object.keys(window.session?.rpcs||{});if(ids.length!==1)throw Error('Expected one controlled publisher');
+            return !!window.session.sendRequest({targetBitrate:rate,remote:token},ids[0]);
+          },{rate,token:remoteToken}))throw Error('Existing targetBitrate request did not send');
+          await waitFor(async()=> (await api(control,'/diagnostics')).video.configured_bitrate_kbps===row.expectedKbps,10000,'Target bitrate did not apply');
+          row.applied=await snapshot();
+          [row.presentation,row.decoded]=await Promise.all([observe(page,10000),observeDecoded(page,10000,null,'camera',true)]);
+          requireMoving(row.presentation,'Bitrate presentation');requireMoving(row.decoded,'Bitrate decoded');row.after=await snapshot();
+          console.log(JSON.stringify({encoder,requestedBitrate:rate,configuredBitrate:row.after.diagnostics.video.configured_bitrate_kbps}));
+        }
+      }
       if (microphone) {
         entry.audio=await observeAudio(page);requireMicrophone(entry.audio);
         if (opts.gui) {
