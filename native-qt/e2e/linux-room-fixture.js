@@ -12,7 +12,6 @@ function verify(opts){
   assert.equal(process.platform,'linux');
   assert(['x11','wayland'].includes(opts.backend||'x11'));
   assert(opts.backend!=='wayland'||opts.gui==='true','Wayland room adapter requires GUI consent');
-  assert(opts.gui!=='true'||opts['signaling-recovery']!=='true','GUI signaling proxy configuration is not yet qualified');
   assert.equal(Number(opts['performance-seconds']||0),0,'Timed room qualification needs a calibrated Linux source');
   const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
   const file=path.join(bundle,'release-artifact-manifest.json');
@@ -146,7 +145,15 @@ async function create(opts,report){
         const before=await api(control,'/diagnostics');await sleep(500);assert.equal((await api(control,'/diagnostics')).video.frames_captured,before.video.frames_captured);
       }
       await goLive();
-      return {stop,goLive,setRoomQuality:async enabled=>{
+      return {stop,goLive,recoveryState:async recovering=>{
+        let status;
+        await waitFor(()=>{
+          const dump=rows();status=dump.find(r=>r.role==='label'&&(recovering?/attempting to reconnect|still reconnecting/i.test(r.name):r.name==='Reconnected to signaling server.'));
+          const stop=dump.find(r=>r.role==='push button'&&r.name==='Stop streaming');
+          return status&&stop&&stop.states.includes('sensitive');
+        },10000,'GUI recovery notice/Stop action missing');
+        return {message:status.name,stopAvailable:true};
+      },setRoomQuality:async enabled=>{
         const d=await api(control,'/diagnostics');assert(!d.app.capturing&&!d.app.live);
         if(checked(qualityName)!==enabled)ui('press',qualityName);
         assert.equal(checked(qualityName),enabled);

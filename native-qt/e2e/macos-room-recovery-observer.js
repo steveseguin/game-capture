@@ -33,12 +33,13 @@ async function sample(participant, milliseconds) {
   return {video, audio, distinctFrames, decodedFps, stereoSamples};
 }
 
-async function begin({proxy, diagnostics, participants, evidence}) {
+async function begin({proxy, diagnostics, participants, evidence, onState}) {
   evidence.beforeProxy = proxy.snapshot();
   evidence.before = {};
   for (const participant of participants) evidence.before[participant.name] = await identity(participant, true);
   proxy.fault('reject'); evidence.outageStarted = Date.now();
   await waitFor(async () => (await diagnostics()).app.reconnecting, 8000, 'Room publisher did not enter signaling recovery');
+  if(onState)evidence.guiDuring=await onState(true);
   evidence.during = Object.fromEntries(await Promise.all(participants.map(async participant =>
     [participant.name, await sample(participant, 15000)])));
   evidence.outageDiagnostics = await diagnostics(); evidence.duringProxy = proxy.snapshot();
@@ -57,6 +58,7 @@ async function begin({proxy, diagnostics, participants, evidence}) {
     await waitFor(async () => proxy.snapshot().forwardedConnections > evidence.beforeProxy.forwardedConnections &&
       !(await diagnostics()).app.reconnecting, 45000, 'Room publisher did not reconnect');
     evidence.reconnectMs = Date.now() - restored;
+    if(onState)evidence.guiAfter=await onState(false);
     evidence.after = Object.fromEntries(await Promise.all(survivors.map(async participant => {
       const peer = await identity(participant);
       assert.deepEqual(peer, evidence.before[participant.name]);

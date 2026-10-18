@@ -58,7 +58,7 @@ const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiver
   ...(linux?{manifestSha256:linuxPackage.manifestSha256,linuxFixtureSha256:linuxPackage.fixtureSha256,backend:opts.backend||'x11',gui:opts.gui==='true'}:{}),
   scope:(linux?`Extracted Ubuntu DEB, ${opts.backend==='wayland'?'native Wayland':'private X11'} window, ${opts.gui==='true'?'Qt GUI':'CLI'} and owned virtual stereo input`:'Packaged controlled camera/input')+' with real VDO.Ninja director, scene and guest camera-join UI; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
 for(const name of ['macos-room-publish.js','macos-room-fuzz-plan.js','macos-live-control-fuzz.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
-if(linux)for(const name of ['linux-room-fixture.js','linux-system-resource-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+if(linux)for(const name of ['linux-room-fixture.js','linux-system-resource-observer.js','linux-signaling-tcp-fault.js','linux-signaling-route.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const children=new Set(),proxies=new Map();let browser,linuxFixture;
 function launch(program,args,name){const log=fs.createWriteStream(path.join(report,name+'.log'));
   const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(k)));
@@ -138,7 +138,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       if(passwordProtected)entry.passwordNotExposedInLog=true;
     }
     const config={baseUrl:'https://vdo.ninja/',streamId:stream,room,password,timeoutMs:30000};
-    const proxy=recoverSignaling?await createSignalingProxy():null;if(proxy)proxies.set(proxy,entry);
+    const proxy=recoverSignaling?(linux&&opts.gui==='true'?await require('./linux-signaling-tcp-fault').create(report):await createSignalingProxy()):null;if(proxy)proxies.set(proxy,entry);
     const discovery=path.join(report,encoder+'-control.json');
     const publisherArgs=linux&&opts.gui==='true'?['--settings-dir='+path.join(report,encoder+'-private-settings'),'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`]:['--headless',...(linux?linuxFixture.sourceArgs:['--source=camera',`--camera-id=${opts['camera-device']}`]),`--stream=${stream}`,`--room=${room}`,`--password=${password}`,...(proxy?['--server='+proxy.url]:[]),
       ...(linux?linuxFixture.audioArgs:['--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`]),`--video-encoder=${encoder}`,'--video-codec=h264','--resolution=1280x720','--fps=30','--bitrate-kbps=4000',
@@ -147,6 +147,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return fs.existsSync(discovery);},15000,'No local control');const control=JSON.parse(fs.readFileSync(discovery));
     let guiSession;
     if(linux&&opts.gui==='true'){
+      if(proxy){assert(!(await api(control,'/diagnostics')).app.live);await proxy.attach(publisher,exe);entry.guiSignalingFault='Publisher-only cgroup route to opaque TLS TCP gate; application server URL and certificate verification unchanged';}
       entry.gui=linuxFixture.evidence;
       guiSession=await linuxFixture.startGui(publisher,control,api,{stream,room,password,remoteToken,remoteEnabled});
     }
@@ -430,7 +431,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       survivors=[{name:'director',page:dir,uuid,width:640,height:360},{name:'scene',page:scene,uuid:sceneUuid,width:1280,height:720}];
       entry.recovery={};
       restoreSignaling=await roomRecovery.begin({proxy,diagnostics:()=>api(control,'/diagnostics'),evidence:entry.recovery,
-        participants:[...survivors,{name:'guest',page:viewer,uuid:viewerUuid,width:640,height:360}]});
+        participants:[...survivors,{name:'guest',page:viewer,uuid:viewerUuid,width:640,height:360}],onState:guiSession?.recoveryState});
     }
     if(guestRefresh){
       const before=(await api(control,'/diagnostics')).peers.find(p=>p.room.role==='guest');assert(before);
