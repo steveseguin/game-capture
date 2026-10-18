@@ -39,7 +39,10 @@ def main():
     reader = csv.DictReader(io.StringIO('\n'.join(lines[:-1])))
     expected = ['stage','now100ns','wallMs','estimated100ns','assigned100ns','frames','stream',
                 'latencyUs','negative','timed','reset','kept','coveredFrames','outputFrame','activeTaps']
-    assert reader.fieldnames == expected
+    level_fields = ['rmsLeftMicro','rmsRightMicro','silentHole']
+    assert reader.fieldnames in (expected, expected+level_fields)
+    levels = reader.fieldnames == expected+level_fields
+    if levels: expected += level_fields
     rows = []
     for raw_row in reader:
         assert raw_row['stage'] in ('input', 'output') and None not in raw_row
@@ -73,6 +76,13 @@ def main():
               'outputBlocksYoungerThan29ms': sum(age(r) < 29 for r in outputs),
               'earlyOutputBlocksWithIncompleteCoverage': sum(age(r) < 29 and r['coveredFrames'] < r['frames']*r['activeTaps'] for r in outputs),
               'maximumActiveTaps': max(r['activeTaps'] for r in rows)}
+    if levels:
+        assert all(0 <= r['rmsLeftMicro'] <= 1000000000 and 0 <= r['rmsRightMicro'] <= 1000000000 and r['silentHole'] in (0,1) for r in rows)
+        assert all(r['silentHole']==0 for r in outputs)
+        result['levelEvidence'] = {'scope':'Opt-in per-channel RMS envelopes, quantized to 1e-6; not PCM or an absolute timing reference.',
+            'inputSilentHoles':sum(r['silentHole'] for r in inputs),
+            'inputSilentHoleFrames':sum(r['frames'] for r in inputs if r['silentHole']),
+            'lowActiveOutputBlocksAfter2s':sum(r['activeTaps']>0 and min(r['rmsLeftMicro'],r['rmsRightMicro'])<50000 for r in later_outputs)}
     with (args.report/'linux-audio-timing.json').open('x') as out:
         json.dump(result, out, indent=2)
         out.write('\n')

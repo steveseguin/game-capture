@@ -41,7 +41,7 @@ class ProcessTimingTrace {
         if (fd < 0) { spdlog::warn("[LinuxAudio] Could not create timing trace"); return; }
         file_ = ::fdopen(fd, "w");
         if (!file_) { ::close(fd); spdlog::warn("[LinuxAudio] Could not open timing trace"); return; }
-        std::fputs("stage,now100ns,wallMs,estimated100ns,assigned100ns,frames,stream,latencyUs,negative,timed,reset,kept,coveredFrames,outputFrame,activeTaps\n", file_);
+        std::fputs("stage,now100ns,wallMs,estimated100ns,assigned100ns,frames,stream,latencyUs,negative,timed,reset,kept,coveredFrames,outputFrame,activeTaps,rmsLeftMicro,rmsRightMicro,silentHole\n", file_);
     }
     ~ProcessTimingTrace() {
         if (!file_) return;
@@ -51,7 +51,8 @@ class ProcessTimingTrace {
         if (flushFailed || closeFailed) spdlog::warn("[LinuxAudio] Timing trace write failed");
     }
     bool enabled() const { return file_ != nullptr; }
-    void record(const char *stage, int64_t now, std::initializer_list<int64_t> values) {
+    void record(const char *stage, int64_t now, std::initializer_list<int64_t> values,
+                const std::vector<float> &samples, bool silentHole = false) {
         if (!file_) return;
         if (rows_ >= 100000) { truncated_ = true; return; }
         ++rows_;
@@ -59,7 +60,14 @@ class ProcessTimingTrace {
             std::chrono::system_clock::now().time_since_epoch()).count();
         std::fprintf(file_, "%s,%lld,%lld", stage, static_cast<long long>(now), static_cast<long long>(wall));
         for (const auto value : values) std::fprintf(file_, ",%lld", static_cast<long long>(value));
-        std::fputc('\n', file_);
+        double energy[2]{};
+        for (size_t i = 0; i < samples.size(); ++i) energy[i % 2] += double(samples[i]) * samples[i];
+        // Envelope metadata only, rounded to 1e-6 and bounded even for abnormal
+        // finite sample values. No individual PCM samples enter the trace.
+        const auto level = [&](int channel) {
+            return static_cast<long long>(std::min(1e9, std::sqrt(energy[channel] / (samples.size() / 2)) * 1e6));
+        };
+        std::fprintf(file_, ",%lld,%lld,%d\n", level(0), level(1), silentHole);
     }
   private:
     FILE *file_ = nullptr;
@@ -420,7 +428,7 @@ struct WindowAudioCaptureCore::LinuxImpl {
                     if (timingTrace.enabled()) timingTrace.record("input", now, {
                         estimatedTime, epoch + block.first * 10000000 / 48000, frames, index,
                         static_cast<int64_t>(latency), negative, timed, clockReset, kept, 0,
-                        outputFrame, static_cast<int64_t>(taps.size())});
+                        outputFrame, static_cast<int64_t>(taps.size())}, block.samples, data == nullptr);
                     if (kept) {
                         if (tap.blocks.size() >= 128) { fail("Application audio backlog exceeded its bound."); return; }
                         tap.blocks.push_back(std::move(block));
@@ -462,7 +470,7 @@ struct WindowAudioCaptureCore::LinuxImpl {
                 }
                 if (timingTrace.enabled()) timingTrace.record("output", webrtc::mediaTime100ns(), {
                     0, chunk.captureTime100ns, 480, 0, 0, 0, 0, 0, 0, coveredFrames,
-                    outputFrame, static_cast<int64_t>(taps.size())});
+                    outputFrame, static_cast<int64_t>(taps.size())}, chunk.samples);
                 deliver(std::move(chunk), callback); outputFrame += 480;
             }
         }

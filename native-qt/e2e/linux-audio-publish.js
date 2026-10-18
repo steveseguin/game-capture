@@ -4,7 +4,7 @@
 const fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
 const assert = require('assert/strict'), {spawn, execFileSync} = require('child_process');
 const {chromium} = require('playwright');
-const {receiver, observe, requireMoving, observeAudio, waitFor, sleep} = require('./macos-media-receiver');
+const {receiver, observe, requireMoving, observeAudio, closeAudioObserver, waitFor, sleep} = require('./macos-media-receiver');
 const {receive} = require('./audio-settings-packaged-e2e');
 const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
   const at = arg.indexOf('='); return [arg.slice(2, at), arg.slice(at + 1)];
@@ -23,6 +23,14 @@ const appOutputMoves=Number(opts['app-output-moves']||1);
 assert(Number.isInteger(appOutputMoves)&&appOutputMoves>=1&&appOutputMoves<=5,'App output moves must be 1..5');
 assert(appOutputMoves===1||continuousApps,'Repeated output moves require the continuous app diagnostic');
 const continuity=continuousApps?require('./linux-app-audio-continuity'):null;
+const snapshotContext=opts['app-snapshot-context']||'fresh';
+const resumeSnapshotDelayMs=Number(opts['app-resume-snapshot-delay-ms']||1200);
+assert(['fresh','persistent'].includes(snapshotContext)&&[1200,2200].includes(resumeSnapshotDelayMs),'Invalid snapshot observer control');
+assert(continuousApps||(snapshotContext==='fresh'&&resumeSnapshotDelayMs===1200),'Snapshot controls require continuous app diagnostics');
+const persistentSnapshot=snapshotContext==='persistent';
+const resumeReference=opts['app-resume-reference']==='true';
+assert(!resumeReference||continuousApps,'Independent source reference requires continuous app diagnostics');
+const appReference=resumeReference?require('./linux-app-audio-reference'):null;
 assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -38,6 +46,7 @@ for (const item of manifest.payload.files) {
 const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(report, {recursive:true});
 for (const name of ['linux-audio-publish.js', 'macos-media-receiver.js', 'audio-settings-packaged-e2e.js', 'linux-ui-control.py', 'linux-app-audio-source.py', 'linux-portal-select.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
 if(continuousApps)for(const name of ['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+if(resumeReference)for(const name of ['linux-app-audio-reference.js','linux-audio-reference-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : (communications ? 'explicit communications output and owned virtual microphone' : 'default system output and owned virtual microphone')}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.`,
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
@@ -46,10 +55,14 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
+if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
+if(resumeReference)result.sourceReferenceHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-audio-reference-report.py'].map(n=>[n,sha(path.join(report,n))]));
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 const pactl = (...args) => execFileSync('pactl', args, {encoding:'utf8', timeout:5000}).trim();
 const modules = [], tones = []; let sourceBrowser, viewerBrowser, publisher, log, control, discovery, appSource, portalSelector, keyboardServer, keyboardDirectory, portalOwner;
 let continuousPage=null;
+let snapshotPage=null;
+let sourceReference=null;
 const startedAtSeconds = Math.floor(Date.now() / 1000);
 const checkPortalOwner = () => {
   const owner = execFileSync('gdbus', ['call', '--session', '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus', '--method', 'org.freedesktop.DBus.GetNameOwner', 'org.freedesktop.impl.portal.desktop.gnome'], {encoding:'utf8', timeout:5000, stdio:['ignore', 'pipe', 'pipe']}).trim();
@@ -312,6 +325,7 @@ function barriers() {
         await quit(); entry.passed = true; save(); continue;
       }
       const viewer = await receiver(viewerBrowser, stream, publisher);
+      if(persistentSnapshot){entry.snapshotPrepared=await observeAudio(viewer,null,{reuseContext:true,prepareOnly:true});snapshotPage=viewer;}
       if(continuousApps){entry.continuousObserver=await continuity.start(viewer);continuousPage=viewer;entry.continuous=[];}
       const continuousSample=async(label,settings={})=>{
         if(!continuousApps)return;
@@ -320,7 +334,7 @@ function barriers() {
         entry.continuous.push({label,file,sha256:sha(path.join(report,file)),...continuity.analyze(batch,settings)});save();
       };
       entry.video = await observe(viewer, 3000); requireMoving(entry.video, fixture.name + ' video');
-      entry.audio = await observeAudio(viewer); requireAudio(entry.audio, fixture.name, {microphone:fixture.mix, excluded:communications || apps || fixture.name === 'microphone'}); save();
+      entry.audio = await observeAudio(viewer,null,{reuseContext:persistentSnapshot,traceObserver:continuousApps}); requireAudio(entry.audio, fixture.name, {microphone:fixture.mix, excluded:communications || apps || fixture.name === 'microphone'}); save();
       await continuousSample('initial');
       const diagnostics = await api('/diagnostics'); entry.audioDiagnostics = diagnostics.audio;
       assert.equal(diagnostics.audio.source_mode, fixture.mode);
@@ -330,9 +344,9 @@ function barriers() {
       if (fixture.input) assert(diagnostics.audio.active_microphone_source.includes('GameCaptureOwnedQAInput'));
       if (apps) {
         const sample = async (label, checks) => {
-          await sleep(1200);
+          await sleep(label==='streamRecreated'?resumeSnapshotDelayMs:1200);
           if (automaticApp) { entry[label + 'SourceClock'] = await source.evaluate(() => ({state:audioFixture.state, time:audioFixture.currentTime, baseLatency:audioFixture.baseLatency, outputLatency:audioFixture.outputLatency})); save(); }
-          const observation = await observeAudio(viewer);
+          const observation = await observeAudio(viewer,null,{reuseContext:persistentSnapshot,traceObserver:continuousApps});
           entry[label] = observation; requireAudio(observation, label, {excluded:true, ...checks}); save();
           await continuousSample(label,{silent:!!checks.silent,transition:label==='noStreams'||label==='streamRecreated'});
         };
@@ -348,7 +362,14 @@ function barriers() {
         await appSource.command({extra:true}); await sample('secondStreamSameProcess', {microphone:true});
         await appSource.command({extra:false}); await sample('secondStreamRemoved', {microphoneOff:true});
         await appSource.command({primary:false}); await sample('noStreams', {silent:true});
-        await appSource.command({primary:true}); await sample('streamRecreated', {microphoneOff:true});
+        await appSource.command({primary:true});
+        if(resumeReference)sourceReference=await appReference.start(report,appSource.child.pid);
+        await sample('streamRecreated', {microphoneOff:true});
+        if(sourceReference){
+          result.resumeSource=await sourceReference.stop();sourceReference=null;
+          execFileSync('python3',[path.join(report,'linux-audio-reference-report.py'),report],{encoding:'utf8',timeout:30000});
+          result.resumeSourceAnalysis={path:'resume-source-analysis.json',sha256:sha(path.join(report,'resume-source-analysis.json'))};save();
+        }
         entry.outputMoves=[];
         for(let move=0;move<appOutputMoves;move++) {
           const playback = JSON.parse(pactl('-f', 'json', 'list', 'sink-inputs')).filter(row => Number(row.properties['application.process.id']) === appSource.child.pid);
@@ -364,6 +385,7 @@ function barriers() {
         await late.close();
         await continuousSample('lateViewer');
         if(continuousPage){await continuity.stop(continuousPage);continuousPage=null;}
+        if(snapshotPage){await closeAudioObserver(snapshotPage);snapshotPage=null;entry.snapshotObserverClosed=true;}
         await appSource.stop();
         appSource = null; await sleep(1200);
         const beforeLoss = await api('/diagnostics'); await sleep(800); const afterLoss = await api('/diagnostics');
@@ -551,6 +573,8 @@ function barriers() {
   } catch (error) { result.error = String(error.stack || error); process.exitCode = 1; }
   finally {
     if(continuousPage)try{await continuity.stop(continuousPage);continuousPage=null;}catch(error){result.continuousCleanupError=String(error);result.passed=false;process.exitCode=1;}
+    if(snapshotPage)try{await closeAudioObserver(snapshotPage);snapshotPage=null;}catch(error){result.snapshotCleanupError=String(error);result.passed=false;process.exitCode=1;}
+    if(sourceReference)try{await sourceReference.stop();sourceReference=null;}catch(error){result.sourceReferenceCleanupError=String(error);result.passed=false;process.exitCode=1;}
     if (publisher) { try { await quit(); } catch { publisher?.kill(); if (publisher) await publisher.closed; } }
     if (portalSelector && portalSelector.exitCode === null) portalSelector.kill();
     if (appSource) { try { await appSource.stop(); } catch (error) { result.fixtureCleanupError = String(error); result.passed = false; process.exitCode = 1; } }

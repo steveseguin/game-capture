@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged CLI and GUI selection/lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Finer 10 ms receiver levels expose a delayed dip after full stream recreation; continuous qualification is incomplete. Healthy direct monitors now survive output moves, with targeted repeated-move evidence in linux_app_monitor_retention_checkpoint. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance."
+      "remaining": "Packaged CLI and GUI selection/lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Finer 10 ms receiver levels expose a delayed dip after full stream recreation; continuous qualification is incomplete. Healthy direct monitors now survive output moves, with targeted repeated-move evidence in linux_app_monitor_retention_checkpoint. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_audio_observer_controls_checkpoint: observer-lifecycle controls reproduce the delayed restart dip, while independent source PCM and native input/output level envelopes stay stable. Encoder/send/receiver and waveform-level investigation remain required; the failure is not waived."
     },
     {
       "id": "system-audio",
@@ -23282,6 +23282,387 @@
         "sha256": "afc7b15b2ef32a05da655ca3d360f27330e08651bff0dcc6ed7b94b741cc328f",
         "passed": true
       }
+    },
+    {
+      "case": "fresh",
+      "report": "native-qt/qa/reports/linux-audio-observer-fresh/6db2cba9-f554-4a7c-a634-52129add5530/results.json",
+      "reportSha256": "a654e2674c932f286441be5f71b3911f7c08134b1b87e2f7de50f5d7af77d8ed",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-observer-fresh/6db2cba9-f554-4a7c-a634-52129add5530/linux-audio-timing.json",
+        "sha256": "c078e975f33ff3379878c456d40de283bd061d5928b23c35f34617a75baa3f2e",
+        "traceComplete": true,
+        "levelEvidence": null
+      },
+      "snapshotObserver": {
+        "context": "fresh",
+        "resumeDelayMs": 1200,
+        "scope": "Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed."
+      },
+      "resumeComparison": {
+        "phaseWallMs": 4575.699951171875,
+        "observerTiming": {
+          "createdAtMs": 1792348501453.2,
+          "readyAtMs": 1792348501454.5999,
+          "observationStartedAtMs": 1792348501453.2,
+          "reused": false,
+          "observationEndedAtMs": 1792348504497.0999
+        },
+        "observationStartedFromBatchMs": 1523.300048828125,
+        "receiverDips": [
+          {
+            "firstFrame": 1444384,
+            "offsetFromFirstReturnedFrameMs": 1190.0,
+            "rms": [
+              0.04108891154744432,
+              0.03729304252624057
+            ]
+          }
+        ],
+        "receiverCounterDeltas": {
+          "packetsLost": 0,
+          "concealedSamples": 0,
+          "concealmentEvents": 0,
+          "insertedSamplesForDeceleration": 0,
+          "removedSamplesForAcceleration": 0
+        },
+        "scope": "PCM phase offsets and observer wall-clock times are retained separately; they are not calibrated absolute sample-time measurements."
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-fresh/6db2cba9-f554-4a7c-a634-52129add5530/host-cleanup.json",
+        "sha256": "bb5d6f9ab8a1a6428cf3d1f934f4944e9ff3d3bf0d60de0ddcf6f06a7e69bfd1",
+        "passed": true
+      }
+    },
+    {
+      "case": "persistent",
+      "report": "native-qt/qa/reports/linux-audio-observer-persistent/04d065fb-629a-418e-b72e-ffd090c6ef12/results.json",
+      "reportSha256": "5566c469184a0499664be855186f793eff31d00d55c3cbf25e9bf790e4044e49",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-observer-persistent/04d065fb-629a-418e-b72e-ffd090c6ef12/linux-audio-timing.json",
+        "sha256": "97c5497bc83cf1e1543dcdbb6dd0f130ce21a6d03a1adcc9ebde5ae7b3c32994",
+        "traceComplete": true,
+        "levelEvidence": null
+      },
+      "snapshotObserver": {
+        "context": "persistent",
+        "resumeDelayMs": 1200,
+        "scope": "Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed."
+      },
+      "resumeComparison": {
+        "phaseWallMs": 4570.7998046875,
+        "observerTiming": {
+          "createdAtMs": 1792348529707.1,
+          "readyAtMs": 1792348529708,
+          "observationStartedAtMs": 1792348560159.7,
+          "reused": true,
+          "observationEndedAtMs": 1792348563202.1
+        },
+        "observationStartedFromBatchMs": 1521.2998046875,
+        "receiverDips": [
+          {
+            "firstFrame": 1441504,
+            "offsetFromFirstReturnedFrameMs": 1130.0,
+            "rms": [
+              0.03933815425976901,
+              0.04078556788388563
+            ]
+          }
+        ],
+        "receiverCounterDeltas": {
+          "packetsLost": 0,
+          "concealedSamples": 0,
+          "concealmentEvents": 0,
+          "insertedSamplesForDeceleration": 0,
+          "removedSamplesForAcceleration": 0
+        },
+        "scope": "PCM phase offsets and observer wall-clock times are retained separately; they are not calibrated absolute sample-time measurements."
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-persistent/04d065fb-629a-418e-b72e-ffd090c6ef12/host-cleanup.json",
+        "sha256": "28895b75b40986b9d51bda32e2ca6031683cc633d61417678cf997b2d451e54e",
+        "passed": true
+      }
+    },
+    {
+      "case": "delayed",
+      "report": "native-qt/qa/reports/linux-audio-observer-delayed/2b4c0aff-2646-44f5-8e61-31ba8fa184ec/results.json",
+      "reportSha256": "c595f0625de0669fc38c231306a19db35aa93356f7808a971e16ac00d3f5ec6f",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-observer-delayed/2b4c0aff-2646-44f5-8e61-31ba8fa184ec/linux-audio-timing.json",
+        "sha256": "863d9dab666bf60184904359c888d3ea2c032cea845d18be05793ea47e043d93",
+        "traceComplete": true,
+        "levelEvidence": null
+      },
+      "snapshotObserver": {
+        "context": "fresh",
+        "resumeDelayMs": 2200,
+        "scope": "Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed."
+      },
+      "resumeComparison": {
+        "phaseWallMs": 5579.0,
+        "observerTiming": {
+          "createdAtMs": 1792348617599.8,
+          "readyAtMs": 1792348617601,
+          "observationStartedAtMs": 1792348617599.8,
+          "reused": false,
+          "observationEndedAtMs": 1792348620644
+        },
+        "observationStartedFromBatchMs": 2527.0,
+        "receiverDips": [
+          {
+            "firstFrame": 1446304,
+            "offsetFromFirstReturnedFrameMs": 1230.0,
+            "rms": [
+              0.03598084387966988,
+              0.03648309820336265
+            ]
+          }
+        ],
+        "receiverCounterDeltas": {
+          "packetsLost": 0,
+          "concealedSamples": 0,
+          "concealmentEvents": 0,
+          "insertedSamplesForDeceleration": 0,
+          "removedSamplesForAcceleration": 0
+        },
+        "scope": "PCM phase offsets and observer wall-clock times are retained separately; they are not calibrated absolute sample-time measurements."
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-delayed/2b4c0aff-2646-44f5-8e61-31ba8fa184ec/host-cleanup.json",
+        "sha256": "726ac80b2a46e2d69ddc751e1405f1e5aaacc6e90130047af57a39494df8ee65",
+        "passed": true
+      }
+    },
+    {
+      "case": "source",
+      "report": "native-qt/qa/reports/linux-audio-observer-source/3888e6c5-4e24-494c-83bb-73e54f539611/results.json",
+      "reportSha256": "b7d309ab59648f3206c12bad4acc8f377424acb340898b47eae6a35ebcba4366",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-observer-source/3888e6c5-4e24-494c-83bb-73e54f539611/linux-audio-timing.json",
+        "sha256": "22fd3394de9bcffceedfb57c034621dbb57f1699df6d5f7aa74577276b5d8926",
+        "traceComplete": true,
+        "levelEvidence": null
+      },
+      "snapshotObserver": {
+        "context": "persistent",
+        "resumeDelayMs": 1200,
+        "scope": "Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed."
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-source/3888e6c5-4e24-494c-83bb-73e54f539611/host-cleanup.json",
+        "sha256": "6f18dc36ccc8f67700ea6c3a4fc46ed176ae4b075194c6539b26613360b5189e",
+        "passed": true
+      }
+    },
+    {
+      "case": "reference",
+      "report": "native-qt/qa/reports/linux-audio-observer-reference/c216a796-32da-4d68-b305-6e32ad1dab35/results.json",
+      "reportSha256": "03a3af95b41e506bc51cfdd6fc3aafc54c0dad384f439eaa5ae24a6f809a46f8",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-observer-reference/c216a796-32da-4d68-b305-6e32ad1dab35/linux-audio-timing.json",
+        "sha256": "266967c860a5abb5d5bd1be48f9d787d0ce0de92de9023849f1f1810bbedeb82",
+        "traceComplete": true,
+        "levelEvidence": null
+      },
+      "snapshotObserver": {
+        "context": "persistent",
+        "resumeDelayMs": 1200,
+        "scope": "Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed."
+      },
+      "resumeComparison": {
+        "phaseWallMs": 4797.400146484375,
+        "observerTiming": {
+          "createdAtMs": 1792348789875.4,
+          "readyAtMs": 1792348789876.4,
+          "observationStartedAtMs": 1792348820571.8,
+          "reused": true,
+          "observationEndedAtMs": 1792348823613.7
+        },
+        "observationStartedFromBatchMs": 1747.400146484375,
+        "receiverDips": [
+          {
+            "firstFrame": 1444384,
+            "offsetFromFirstReturnedFrameMs": 1190.0,
+            "rms": [
+              0.04132131826501728,
+              0.036370838756932276
+            ]
+          }
+        ],
+        "receiverCounterDeltas": {
+          "packetsLost": 0,
+          "concealedSamples": 0,
+          "concealmentEvents": 0,
+          "insertedSamplesForDeceleration": 0,
+          "removedSamplesForAcceleration": 0
+        },
+        "scope": "PCM phase offsets and observer wall-clock times are retained separately; they are not calibrated absolute sample-time measurements."
+      },
+      "sourceReference": {
+        "report": "native-qt/qa/reports/linux-audio-observer-reference/c216a796-32da-4d68-b305-6e32ad1dab35/resume-source-analysis.json",
+        "sha256": "52ac78d1f5bade3f468dfa50b3476cf15d76877304b1614aa150834ff39e442d",
+        "rawSha256": "b9b82d86202c58531471724881e60ff957b1981e9eac2cbc2a25012eb32c9f88",
+        "seconds": 4.51,
+        "initialSettlingMs": 200,
+        "minimum10msRmsAfterSettling": 0.10493867403051475,
+        "routingPassedAfterSettling": true,
+        "continuityPassedAfterSettling": true
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-reference/c216a796-32da-4d68-b305-6e32ad1dab35/host-cleanup.json",
+        "sha256": "b3f33c0c828bf7520560e5d1a5e4c4d0dff478de07451a705b81fb449743a779",
+        "passed": true
+      }
+    },
+    {
+      "case": "levels",
+      "report": "native-qt/qa/reports/linux-audio-observer-levels/619840c4-8fe5-4e51-b244-10c06719d7b8/results.json",
+      "reportSha256": "402d10643fdb1cbe50ccca729069f5051f9238488c4bed824aaa80ddaaed472c",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-observer-levels/619840c4-8fe5-4e51-b244-10c06719d7b8/linux-audio-timing.json",
+        "sha256": "befdeed1fc322e1d431c94a18af8984c69ed89852087bf4772d0cc54d3d5450c",
+        "traceComplete": true,
+        "levelEvidence": {
+          "scope": "Opt-in per-channel RMS envelopes, quantized to 1e-6; not PCM or an absolute timing reference.",
+          "inputSilentHoles": 0,
+          "inputSilentHoleFrames": 0,
+          "lowActiveOutputBlocksAfter2s": 3
+        }
+      },
+      "snapshotObserver": {
+        "context": "persistent",
+        "resumeDelayMs": 1200,
+        "scope": "Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed."
+      },
+      "resumeComparison": {
+        "phaseWallMs": 4804.699951171875,
+        "observerTiming": {
+          "createdAtMs": 1792348998212.9,
+          "readyAtMs": 1792348998213.8,
+          "observationStartedAtMs": 1792349028920.9,
+          "reused": true,
+          "observationEndedAtMs": 1792349031963.3
+        },
+        "observationStartedFromBatchMs": 1754.199951171875,
+        "receiverDips": [
+          {
+            "firstFrame": 1444384,
+            "offsetFromFirstReturnedFrameMs": 1190.0,
+            "rms": [
+              0.0378609003020044,
+              0.040200131460772066
+            ]
+          }
+        ],
+        "receiverCounterDeltas": {
+          "packetsLost": 0,
+          "concealedSamples": 0,
+          "concealmentEvents": 0,
+          "insertedSamplesForDeceleration": 0,
+          "removedSamplesForAcceleration": 0
+        },
+        "scope": "PCM phase offsets and observer wall-clock times are retained separately; they are not calibrated absolute sample-time measurements."
+      },
+      "sourceReference": {
+        "report": "native-qt/qa/reports/linux-audio-observer-levels/619840c4-8fe5-4e51-b244-10c06719d7b8/resume-source-analysis.json",
+        "sha256": "371b153947fea674c2754aefe67a308368fbf28b47dd519fdea3a0a79be21842",
+        "rawSha256": "39663b729371024dcb04b1efa04a9b41ca2f91b4001ce7fa641458128999bb35",
+        "seconds": 4.51,
+        "initialSettlingMs": 200,
+        "minimum10msRmsAfterSettling": 0.10496056494604585,
+        "routingPassedAfterSettling": true,
+        "continuityPassedAfterSettling": true
+      },
+      "resumeNativeLevels": {
+        "scope": "Native input/output RMS after the declared 500 ms resume allowance. Stable envelopes do not establish waveform integrity or downstream behavior.",
+        "stages": {
+          "input": {
+            "blocks": 431,
+            "minimumRms": 0.104953,
+            "silentHoles": 0
+          },
+          "output": {
+            "blocks": 431,
+            "minimumRms": 0.105042,
+            "silentHoles": 0
+          }
+        }
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-levels/619840c4-8fe5-4e51-b244-10c06719d7b8/host-cleanup.json",
+        "sha256": "90daf98eda693cd40d665a6e80e579881b4a48bd71edd6b8b26b21a75ea98d37",
+        "passed": true
+      }
+    },
+    {
+      "case": "gui",
+      "report": "native-qt/qa/reports/linux-audio-observer-gui/557299e0-8558-4708-82e4-ed2a4ef37aa2/results.json",
+      "reportSha256": "5c743ad7a89c0764cf9b9fdd0582add22b1b40a24b804d97a33f6bdea832a929",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "defaultObserverResultShapePreserved": true,
+      "caseStages": [
+        "video",
+        "audio",
+        "healthyAudioHasNoWarning",
+        "childJoined",
+        "childRemoved",
+        "secondStreamSameProcess",
+        "secondStreamRemoved",
+        "noStreams",
+        "streamRecreated",
+        "outputMoves",
+        "outputMoved",
+        "lateAudio",
+        "noAudioAfterAppExit",
+        "appLossWarningVisible",
+        "videoAfterAppExit",
+        "guiStopSettled",
+        "audioWarningClearedOnStop",
+        "videoWithStaleApp",
+        "staleAppNotReplaced",
+        "staleAppWarningVisible",
+        "afterExplicitReselection",
+        "audioWarningClearedOnExplicitRestart"
+      ],
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-observer-gui/557299e0-8558-4708-82e4-ed2a4ef37aa2/host-cleanup.json",
+        "sha256": "87289851cde463e2fc710cb49ffab52bbed302c66c9683016b00440e308ca339",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -23352,7 +23733,8 @@
     "For real stimulus-delay response calibration, run three separate linux-av-sync.js --source-reference=desktop --seconds=30 workflows: zero, --fixture-output-audio-delay-ms=150, and --fixture-video-delay-ms=150. Only the desktop audio branch is delayed in the audio case. Analyze the completed report directories with linux-av-calibrate-desktop.py --baseline=... --audio-delay=... --video-delay=... --reports=... . delayResponsePassed is narrower than absolute timing or application qualification; deliberate controls are prohibited outside diagnostic mode.",
     "linux-av-sync.js --source-reference=desktop --trace-audio=true opts into bounded Linux selected-app input/output timing metadata, writes linux-audio-timing.csv, and verifies its complete footer/hash through linux-audio-timing-report.py. Positive input age means assigned sample time precedes arrival. Trace is disabled in ordinary runs and is not endurance qualification; no PCM content is logged.",
     "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true records continuous received PCM summaries across app-stream transitions plus opt-in native timing metadata. All clock/integrity windows are checked; only intentional full-source pause/resume has 500 ms content settling. 100 ms tone-window success does not exclude sub-window glitches. Original raw batches and helper hashes are retained.",
-    "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true --app-output-moves=3 alternates the selected owned app between its original output and the owned fixture output. Each transition retains continuous 10 ms RMS and 100 ms tone evidence, native timing, and request/completion timestamps. Range 1..5; repeats require the continuous diagnostic. Only full-source pause/resume has 500 ms content settling."
+    "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true --app-output-moves=3 alternates the selected owned app between its original output and the owned fixture output. Each transition retains continuous 10 ms RMS and 100 ms tone evidence, native timing, and request/completion timestamps. Range 1..5; repeats require the continuous diagnostic. Only full-source pause/resume has 500 ms content settling.",
+    "With --continuous-app-audio=true, --app-snapshot-context=persistent reuses a snapshot observer created before startup settling; fresh remains the default. --app-resume-snapshot-delay-ms=2200 delays only the resume snapshot; 1200 is default. --app-resume-reference=true records bounded independent PCM from the owned playback stream through parec and analyzes 10 ms levels/channel isolation. Native opt-in traces add RMS/hole metadata; the analyzer accepts both trace schemas."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -27911,5 +28293,89 @@
       "hypothesis": "The level dip occurs about 1.13\u20131.19 s into the recreation phase, near the harness sleep(1200) followed by observeAudio opening another AudioContext. Three candidate runs have no new loss, concealment, insertion or removal counter increments across this phase. This suggests a possible measurement or source-graph disturbance but does not establish causation.",
       "nextExperiment": "Keep continuous PCM active, compare the additional snapshot observer with a persistent/omitted snapshot control, and obtain independent source/sender evidence. Do not waive the dip or mark continuity qualified based on this correlation."
     }
+  },
+  "linux_audio_observer_controls_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20.deb",
+      "sha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16"
+    },
+    "baselinePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-0e6f9771336c-4a81123096f5.deb",
+      "sha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-0e6f9771336c-4a81123096f5",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c"
+    },
+    "evidence": [
+      {
+        "case": "fresh",
+        "report": "native-qt/qa/reports/linux-audio-observer-fresh/6db2cba9-f554-4a7c-a634-52129add5530/results.json",
+        "sha256": "a654e2674c932f286441be5f71b3911f7c08134b1b87e2f7de50f5d7af77d8ed",
+        "passed": false
+      },
+      {
+        "case": "persistent",
+        "report": "native-qt/qa/reports/linux-audio-observer-persistent/04d065fb-629a-418e-b72e-ffd090c6ef12/results.json",
+        "sha256": "5566c469184a0499664be855186f793eff31d00d55c3cbf25e9bf790e4044e49",
+        "passed": false
+      },
+      {
+        "case": "delayed",
+        "report": "native-qt/qa/reports/linux-audio-observer-delayed/2b4c0aff-2646-44f5-8e61-31ba8fa184ec/results.json",
+        "sha256": "c595f0625de0669fc38c231306a19db35aa93356f7808a971e16ac00d3f5ec6f",
+        "passed": false
+      },
+      {
+        "case": "source",
+        "report": "native-qt/qa/reports/linux-audio-observer-source/3888e6c5-4e24-494c-83bb-73e54f539611/results.json",
+        "sha256": "b7d309ab59648f3206c12bad4acc8f377424acb340898b47eae6a35ebcba4366",
+        "passed": false
+      },
+      {
+        "case": "reference",
+        "report": "native-qt/qa/reports/linux-audio-observer-reference/c216a796-32da-4d68-b305-6e32ad1dab35/results.json",
+        "sha256": "03a3af95b41e506bc51cfdd6fc3aafc54c0dad384f439eaa5ae24a6f809a46f8",
+        "passed": false
+      },
+      {
+        "case": "levels",
+        "report": "native-qt/qa/reports/linux-audio-observer-levels/619840c4-8fe5-4e51-b244-10c06719d7b8/results.json",
+        "sha256": "402d10643fdb1cbe50ccca729069f5051f9238488c4bed824aaa80ddaaed472c",
+        "passed": false
+      },
+      {
+        "case": "gui",
+        "report": "native-qt/qa/reports/linux-audio-observer-gui/557299e0-8558-4708-82e4-ed2a4ef37aa2/results.json",
+        "sha256": "5c743ad7a89c0764cf9b9fdd0582add22b1b40a24b804d97a33f6bdea832a929",
+        "passed": true
+      }
+    ],
+    "productionChange": "Only opt-in Linux trace metadata changes: quantized per-channel input/output RMS envelopes and Pulse silence-hole flags. No PCM samples are logged. Normal capture collects neither these levels nor timing rows; capture behavior and timestamps are unchanged.",
+    "controls": "The same packaged application and identical harness run with fresh observers, a persistent observer created before continuous startup settling, and fresh-observer creation delayed from 1200 ms to 2200 ms on resume. All checks and thresholds remain enabled. Each reproduces the post-recreation dip; the timing controls do not support the prior hypothesis that the additional observer causes it.",
+    "sourceReference": "An independent parec process records only the owned fixture playback ID with --monitor-stream; it never opens an unfiltered desktop mix. Two source-reference runs remain above 0.104 RMS in every 10 ms window after declared 200 ms reference startup settling, with correct channel/isolation tones and no clipping. Their receiver recordings still show the dip. The first attempted reference failed before recording because pactl JSON exposes monitor_source; that failure is retained and the lookup is corrected.",
+    "nativeLevels": {
+      "scope": "Native input/output RMS after the declared 500 ms resume allowance. Stable envelopes do not establish waveform integrity or downstream behavior.",
+      "stages": {
+        "input": {
+          "blocks": 431,
+          "minimumRms": 0.104953,
+          "silentHoles": 0
+        },
+        "output": {
+          "blocks": 431,
+          "minimumRms": 0.105042,
+          "silentHoles": 0
+        }
+      }
+    },
+    "interpretation": "The source-reference PCM and native input/output level envelopes remain stable through the failing resume interval. This narrows the next investigation toward encoder/send/receiver processing, but RMS envelopes cannot prove waveform continuity and no downstream cause is established. The received dip remains a qualification failure. The tracing-disabled packaged GUI workflow passes all existing selection, lifecycle, warnings, Stop and reselection checks, with the default observer result shape preserved.",
+    "gates": {
+      "report": "native-qt/build-linux/linux-audio-level-gates.json",
+      "sha256": "8c9b7cc1d1a368d0cc1f6f1a3bfe74b1929c83178d15313cd9199d7519595e0e",
+      "classification": "Build and source/package-integrity gates only; not application testing. Only Linux production audio code changed. Windows/macOS runtime remains unqualified."
+    },
+    "ownedProcessesRemaining": [],
+    "remaining": "Capture independently decoded encoded/sent audio or a receiver recording independent of Web Audio to locate the dip, and compare actual waveforms if needed. Do not shift timestamps, loosen level thresholds, or dismiss the failure as observer behavior. Startup A/V skew/calibration, final-package X11/Wayland endurance, Wayland throughput, PulseAudio recovery, mixed/physical audio, and every other parity row remain open."
   }
 }

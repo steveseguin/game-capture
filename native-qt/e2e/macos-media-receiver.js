@@ -221,8 +221,9 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
   },{milliseconds, peerUuid, fixtureLayout, captureIdentityFailures});
 }
 
-async function observeAudio(page, peerUuid = null) {
-  return page.evaluate(async peerUuid => {
+async function observeAudio(page, peerUuid = null, {reuseContext=false,prepareOnly=false,traceObserver=false} = {}) {
+  if(prepareOnly&&!reuseContext)throw Error('Preparing an observer requires a persistent context');
+  return page.evaluate(async ({peerUuid,reuseContext,prepareOnly,traceObserver}) => {
     const peers = peerUuid ? [window.session?.rpcs?.[peerUuid]] : window.reviewPCs;
     if (peers.some(pc => !pc)) throw Error('Requested receiver peer is absent');
     // A player can retry before its publisher is ready. Retired peer tracks
@@ -230,16 +231,28 @@ async function observeAudio(page, peerUuid = null) {
     const track = peers.filter(pc => pc.connectionState === 'connected')
       .flatMap(pc => pc.getReceivers()).map(r => r.track).find(t => t?.kind === 'audio' && t.readyState === 'live');
     if (!track) throw Error('No received audio track');
-    const context = new AudioContext({sampleRate:48000});
-    const source = context.createMediaStreamSource(new MediaStream([track]));
-    const analyser = context.createAnalyser(); analyser.fftSize = 8192; analyser.smoothingTimeConstant = 0;
-    const splitter = context.createChannelSplitter(2), channels = [context.createAnalyser(), context.createAnalyser()];
-    source.connect(splitter);
-    for (let i=0;i<2;i++) { channels[i].fftSize=8192; channels[i].smoothingTimeConstant=0; splitter.connect(channels[i],i); }
-    const mute = context.createGain(); mute.gain.value = 0;
-    source.connect(analyser); analyser.connect(mute);
-    channels.forEach(channel => channel.connect(mute)); mute.connect(context.destination);
-    await context.resume();
+    const cached=reuseContext?window.reviewAudioSnapshotObserver:null;
+    if(cached && (cached.track!==track || cached.context.state==='closed'))throw Error('Persistent observer track/context changed');
+    const observationStartedAtMs=performance.timeOrigin+performance.now();
+    let observer=cached;
+    if(!observer) {
+      const createdAtMs=performance.timeOrigin+performance.now();
+      const context = new AudioContext({sampleRate:48000});
+      const source = context.createMediaStreamSource(new MediaStream([track]));
+      const analyser = context.createAnalyser(); analyser.fftSize = 8192; analyser.smoothingTimeConstant = 0;
+      const splitter = context.createChannelSplitter(2), channels = [context.createAnalyser(), context.createAnalyser()];
+      source.connect(splitter);
+      for (let i=0;i<2;i++) { channels[i].fftSize=8192; channels[i].smoothingTimeConstant=0; splitter.connect(channels[i],i); }
+      const mute = context.createGain(); mute.gain.value = 0;
+      source.connect(analyser); analyser.connect(mute);
+      channels.forEach(channel => channel.connect(mute)); mute.connect(context.destination);
+      await context.resume();
+      observer={context,track,analyser,channels,createdAtMs,readyAtMs:performance.timeOrigin+performance.now()};
+      if(reuseContext)window.reviewAudioSnapshotObserver=observer;
+    }
+    const {context,analyser,channels}=observer;
+    const observerTiming={createdAtMs:observer.createdAtMs,readyAtMs:observer.readyAtMs,observationStartedAtMs,reused:!!cached};
+    if(prepareOnly)return observerTiming;
     const spectra = [], pcm = new Float32Array(analyser.fftSize);
     for (let i = 0; i < 30; ++i) {
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -263,7 +276,14 @@ async function observeAudio(page, peerUuid = null) {
         tracks.push({...value,codec:stats.get(value.codecId)?.mimeType,
           negotiatedCodecs:[...stats.values()].filter(item => item.type === 'codec' && /audio\//i.test(item.mimeType))});
     }
-    await context.close(); return {spectra,tracks};
-  }, peerUuid);
+    if(!reuseContext)await context.close();
+    return {spectra,tracks,...(traceObserver?{observerTiming:{...observerTiming,observationEndedAtMs:performance.timeOrigin+performance.now()}}:{})};
+  }, {peerUuid,reuseContext,prepareOnly,traceObserver});
 }
-module.exports = {sleep, waitFor, receiver, receiverAt, installReceiverProbe, observe, observeDecoded, requireMoving, observeAudio,decodeAnchoredRows};
+async function closeAudioObserver(page) {
+  return page.evaluate(async()=>{
+    const observer=window.reviewAudioSnapshotObserver;
+    if(observer){await observer.context.close();delete window.reviewAudioSnapshotObserver;}
+  });
+}
+module.exports = {sleep, waitFor, receiver, receiverAt, installReceiverProbe, observe, observeDecoded, requireMoving, observeAudio,closeAudioObserver,decodeAnchoredRows};
