@@ -137,6 +137,35 @@ completed. No application runtime change was required.
 [Original observations, retained failed attempt, source bindings and independent cadence audits](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip-cadence)
 are available in the private benchmark repository. Mac remains experimental.
 
+## Two-minute camera-to-WHIP follow-up
+
+The unchanged released Beta 2 completed another actual GUI workflow per encoder,
+including saved-profile relaunch, stereo/silence, held-image pacing, a late viewer,
+receiver-server restart/recovery, normal Quit and owned-profile cleanup. Each
+workflow adds twelve paired ten-second observations at 1920×1080/30 fps and a
+4 Mbps target, using the existing virtual camera/stereo fixtures and loopback
+MediaMTX with installed headless Chrome.
+
+| Encoder | Decoded images/s, window range | Presentation images/s, window range |
+| --- | ---: | ---: |
+| videotoolbox | 29.97–30.09 | 29.47–30.00 |
+| x264 | 29.89–30.10 | 29.50–30.00 |
+
+All 24 windows meet the 95% cadence criterion. Decoded identities have no missing
+or repeated values between each window's endpoints; native dropped-frame,
+encode-failure/timeout and send-failure deltas are zero. Receiver and HTML player
+drop counters also have zero deltas. Presentation callbacks omit some decoded
+images; the original observations are retained.
+
+Streaming continues between windows, but image observations have small gaps
+while counters are read. This is about 120 seconds of sampled image observation
+per encoder, not a gap-free recording or continuous audio qualification. It does
+not resolve the earlier startup callback counts or establish physical-camera,
+gameplay, thermal or production readiness. No application runtime was changed.
+
+[Raw evidence, exact commands, seven auditor controls and cleanup receipts](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip-two-minute)
+are published in the private benchmark repository.
+
 ## Remaining qualification
 
 Keep Mac experimental. Physical minimum-OS/privacy/device/VoiceOver, sleep/wake, display/audio-route changes, broader Windows hardware/audio/installer coverage and matched OBS/FFmpeg/WHIP/gameplay quality remain open. Earlier unexplained VFR alpha pixels, hosted-motion, recorder-clock and abrupt-viewer-close findings remain recorded. The [released Beta 1 thirty-minute endurance](https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md) belongs to its earlier executable; the new results above separately qualify this Beta 2 workflow.
