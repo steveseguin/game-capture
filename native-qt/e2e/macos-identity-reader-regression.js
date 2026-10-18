@@ -27,6 +27,10 @@ function stamp(row,id) {
 assert.equal(decodeAnchoredRows(rows.map(row=>stamp(row,900)),width).id,900);
 const ambiguous=decodeAnchoredRows(rows.map((row,i)=>stamp(row,100+i)),width);
 assert.equal(ambiguous.id,null);assert.equal(ambiguous.unreadable,true);
+for (const level of [0,128,255]) {
+  const missing=decodeAnchoredRows(Array.from({length:3},()=>Buffer.alloc(width*4,level)),width);
+  assert.equal(missing.id,null);assert.equal(missing.unreadable,true);assert.equal(missing.disagreement,true);
+}
 const observation={observations:Array.from({length:24},(_,i)=>({id:1000+i,mediaTime:i/60})),tracks:[{codec:'video/h264'}]};
 assert.equal(requireMoving(observation,'Ordered fixture'),24);
 assert.throws(()=>requireMoving({...observation,identityObserved:false},'Timing only'),/cannot verify moving content/);

@@ -6880,7 +6880,11 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                         if ((lastWarnMs == 0) || ((nowMsLocal - lastWarnMs) > 15000)) {
                             lastCpuWarningMs_.store(nowMsLocal, std::memory_order_relaxed);
                             emitRuntimeEvent(
+#ifdef __APPLE__
+                                "CPU encoder appears overloaded. Lower resolution/FPS or switch to Apple VideoToolbox.",
+#else
                                 "CPU encoder appears overloaded. Lower bitrate/resolution/FPS or switch to NVENC/QSV.",
+#endif
                                 false);
                         }
                         softwareOverloadSamples_.store(0, std::memory_order_relaxed);

@@ -22,16 +22,18 @@ function decodeAnchoredRows(rows, width) {
     return {id,cyan,magenta};
   });
   const match=decoded.find(row=>row&&decoded.filter(other=>other?.id===row.id).length>=2);
-  return {id:match?.id??null,rows:decoded,disagreement:decoded.some(row=>row?.id!==match?.id),
-    unreadable:!match&&decoded.some(Boolean)};
+  // Complete loss of all anchors is also a failed fixture observation. Otherwise
+  // gray/corrupt frames disappear from the count and can produce a false pass.
+  return {id:match?.id??null,rows:decoded,disagreement:!match||decoded.some(row=>row?.id!==match?.id),
+    unreadable:!match};
 }
 async function waitFor(check, timeout, message) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) { const value = await check(); if (value) return value; await sleep(200); }
   throw Error(message);
 }
-async function receiver(browser, stream, publisher) {
-  return receiverAt(browser, `https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput&stereo=1&ab=510&audiocodec=red`, publisher);
+async function receiver(browser, stream, publisher, setup) {
+  return receiverAt(browser, `https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput&stereo=1&ab=510&audiocodec=red`, publisher, setup);
 }
 async function installReceiverProbe(page) {
   await page.addInitScript({content:'globalThis.reviewDecodeIdentityRows = '+decodeAnchoredRows.toString()+';'});
@@ -42,9 +44,10 @@ async function installReceiverProbe(page) {
     }});
   });
 }
-async function receiverAt(browser, url, publisher) {
+async function receiverAt(browser, url, publisher, setup) {
   const page = await browser.newPage();
   await installReceiverProbe(page);
+  if (setup) await setup(page);
   await page.goto(url,
     {waitUntil:'domcontentloaded', timeout:45000});
   await waitFor(async () => {

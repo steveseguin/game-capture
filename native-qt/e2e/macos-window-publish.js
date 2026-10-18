@@ -38,6 +38,11 @@ const includeMic = opts['include-microphone'] === 'true';
 const usesMic = includeMic || audioMode === 'default-microphone';
 const mixedMic = includeMic && ['selected-window','default-output'].includes(audioMode);
 const performanceSeconds = Number(opts['performance-seconds'] || 0);
+const loadRecovery=opts['load-recovery']==='true';
+const encodedEvidence=opts['encoded-evidence']==='true';
+if(opts['encoded-evidence']&&(!['true','false'].includes(opts['encoded-evidence'])||!loadRecovery))
+  throw Error('--encoded-evidence requires the load-recovery workflow');
+if(opts['load-recovery']&&!['true','false'].includes(opts['load-recovery']))throw Error('--load-recovery must be true or false');
 const collectPerformanceFailures = opts['collect-performance-failures'] === 'true';
 if (opts['collect-performance-failures'] && (!['true','false'].includes(opts['collect-performance-failures']) || !performanceSeconds))
   throw Error('--collect-performance-failures must be true or false and requires a timed observation');
@@ -65,6 +70,8 @@ const bitrate = Number(opts['bitrate-kbps'] || (performanceSeconds ? 4000 : 1500
 if (![width,height,fps,bitrate].every(Number.isInteger) || width<320 || width>3840 || height<180 || height>2160 || width%2 || height%2 || fps<1 || fps>120 || bitrate<100 || bitrate>100000)
   throw Error('Invalid width, height, fps or bitrate-kbps');
 if (performanceSeconds && opts.gui) throw Error('Performance measurement requires the explicit headless publisher configuration');
+if(loadRecovery&&(opts.gui||codec!=='h264'||!performanceSeconds||width!==1280||height!==720||fps!==60||audioMode!=='selected-window'||usesMic))
+  throw Error('Load recovery requires headless H.264 1280x720@60, timed observation and selected-window audio');
 if (usesMic && (!opts['microphone-device'] || !opts['tone-helper']))
   throw Error('Microphone workflow requires an explicit existing BlackHole --microphone-device and compiled --tone-helper');
 if (opts.gui && (!opts['ui-helper'] || !mixedMic || opts.encoder !== 'videotoolbox' || opts['missing-input']))
@@ -73,6 +80,12 @@ const result = {receiverHarnessSha256:crypto.createHash('sha256').update(fs.read
   executableSha256:crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'), cases:[], passed:false};
 result.requested = {codec,width,height,fps,bitrateKbps:bitrate,performanceSeconds,windowSuspension};
 result.requested.motionPattern = motionPattern;
+if(loadRecovery)result.requested.loadRecovery=true;
+if(encodedEvidence) {
+  result.requested.encodedEvidence=true;
+  fs.copyFileSync(path.join(__dirname,'macos-encoded-receiver.js'),path.join(report,'macos-encoded-receiver.js'));
+}
+if(loadRecovery)fs.copyFileSync(path.join(__dirname,'macos-load-recovery.js'),path.join(report,'macos-load-recovery.js'));
 if (continuousAudioEnabled) result.requested.continuousAudio = true;
 if (collectPerformanceFailures) result.requested.collectPerformanceFailures = true;
 if (opts['fixture-start-id']) result.requested.fixtureStartId = fixtureStartId;
@@ -250,7 +263,7 @@ function saveReport() {
         ...(usesMic ? [`--microphone-device=${opts['missing-input'] ? 'game-capture-missing-input' : opts['microphone-device']}`] : []),
         ...(includeMic ? ['--include-microphone'] : []),
         ...(performanceSeconds ? ['--remote-control',`--remote-token=${remoteToken}`] : []),
-        `--width=${width}`,`--height=${height}`,`--fps=${fps}`,`--bitrate-kbps=${bitrate}`,`--duration-ms=${(performanceSeconds+180)*1000}`,
+        `--width=${width}`,`--height=${height}`,`--fps=${fps}`,`--bitrate-kbps=${bitrate}`,`--duration-ms=${(performanceSeconds+180+(loadRecovery?180:0))*1000}`,
         '--local-control', '--local-control-port=0', `--local-control-discovery=${discovery}`, `--diagnostics-out=${diagnostics}`],
         {cwd:report, env, stdio:['ignore','pipe','pipe']});
       children.add(child);
@@ -280,7 +293,7 @@ function saveReport() {
         ui('verify-selected',title);
         ui('press','goLiveButton');
       }
-      const page = await receiver(viewerBrowser, stream, child);
+      const page = await receiver(viewerBrowser, stream, child, encodedEvidence?require('./macos-encoded-receiver').install:undefined);
       if (audioMode !== 'none' && audioMode !== 'default-microphone' && opts['late-audio']) await startFixtureAudio();
       // Keep source and publisher measurements even when the first picture
       // observation fails, so a slow source/host is distinguishable from loss
@@ -427,6 +440,11 @@ function saveReport() {
           await continuousAudio.stop(page);
           for(const recording of audioRecordings) {await recording.stop();audioRecordings.delete(recording);}
         }
+      }
+      if(loadRecovery) {
+        entry.loadRecovery={};
+        await require('./macos-load-recovery')({source,page,stream,remoteToken,diagnostics:()=>api(control,'/diagnostics'),result:entry.loadRecovery,save:saveReport,
+          encoded:encodedEvidence?label=>require('./macos-encoded-receiver').drain(page,report,encoder+'-'+label):null});
       }
       if (audioMode !== 'none' || usesMic) {
         entry.audio = await observeAudio(page); requireAudio(entry.audio);
