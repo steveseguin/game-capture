@@ -13,6 +13,9 @@ const seconds=Number(opts.seconds||60),hold=Number(opts['hold-seconds']||0),anal
 const sourceReference=opts['source-reference']||'canvas';assert(['canvas','desktop'].includes(sourceReference));
 const desktopReference=sourceReference==='desktop';
 if(desktopReference)assert(!wayland&&hold===0&&seconds<=60,'Uncalibrated desktop reference is limited to a bounded X11 diagnostic');
+const fixtureTimingControl={outputAudioDelayMs:Number(opts['fixture-output-audio-delay-ms']||0),videoDelayMs:Number(opts['fixture-video-delay-ms']||0)};
+assert(Object.values(fixtureTimingControl).every(v=>[0,150].includes(v))&&fixtureTimingControl.outputAudioDelayMs+fixtureTimingControl.videoDelayMs<=150,'Use a single 150 ms stimulus delay or the zero control');
+if(Object.values(fixtureTimingControl).some(Boolean))assert(desktopReference,'Stimulus timing changes require the unqualified desktop diagnostic');
 // One receiver produces about 240 native trace rows/second at this fixed
 // 60fps profile. Six minutes leaves room for startup below the 100,000-row
 // limit; the offline analyzer also rejects an actually truncated trace.
@@ -28,7 +31,7 @@ if(wayland)for(const name of ['linux-av-wayland.js','linux-source-monitor.py','l
 if(traceCapture){const name='linux-av-trace-report.js';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(desktopReference)for(const name of ['linux-av-desktop-reference.js','linux-av-compare-references.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 const result={backend,traceCapture,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
-  sourceReference,diagnosticOnly:desktopReference,
+  sourceReference,diagnosticOnly:desktopReference,fixtureTimingControl,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
 const pactl=(...a)=>execFileSync('pactl',a,{encoding:'utf8',timeout:5000}).trim();
@@ -50,6 +53,18 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     // Generate a larger Linux source from the unchanged shared clocked fixture.
     let fixture=fs.readFileSync(path.join(report,'macos-av-source.html'),'utf8').replace('Owned Mac A/V Fixture',title).replace('width="960" height="540"','width="1280" height="720"').replace('frames:0,events:[]','frames:0,trace:[],events:[]').replace('fixture.frames++;requestAnimationFrame(draw);','fixture.trace.push({stamp,wall:performance.timeOrigin+performance.now()});if(fixture.trace.length>12000)fixture.trace.shift();fixture.frames++;requestAnimationFrame(draw);');
     if(desktopReference){
+      // Delay only the physical-output branch: the internal canvas/WebAudio
+      // reference remains an independent control for an audio-only perturbation.
+      if(fixtureTimingControl.outputAudioDelayMs){
+        const connection='tone.connect(output);tone.connect(audio.destination);';
+        assert(fixture.includes(connection),'Shared source audio routing changed');
+        fixture=fixture.replace(connection,`tone.connect(output);const delay=audio.createDelay(1);delay.delayTime.value=${fixtureTimingControl.outputAudioDelayMs/1000};tone.connect(delay);delay.connect(audio.destination);`);
+      }
+      if(fixtureTimingControl.videoDelayMs){
+        assert(fixture.includes('audio.currentTime-epoch')&&fixture.includes('audio.currentTime>=epoch&&phase<16'),'Shared source video clock changed');
+        fixture=fixture.replace('audio.currentTime-epoch',`audio.currentTime-epoch-${fixtureTimingControl.videoDelayMs/1000}`)
+          .replace('audio.currentTime>=epoch&&phase<16',`audio.currentTime>=epoch+${fixtureTimingControl.videoDelayMs/1000}&&phase<16`);
+      }
       // Observe Chrome's output-clock estimate without changing stimulus timing.
       // currentTime minus contextTime is not itself an output-latency estimate:
       // https://www.w3.org/TR/webaudio-1.1/#dom-audiocontext-getoutputtimestamp

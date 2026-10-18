@@ -67,7 +67,7 @@ def main():
                 event = source_events.get(pid, {})
                 timestamp = event.get('outputTimestamp', {})
                 if timestamp.get('contextTime', 0) > 0 and timestamp.get('performanceTime', 0) > 0:
-                    target = workflow['sourceFixture']['epoch'] + pid*2
+                    target = workflow['sourceFixture']['epoch'] + pid*2 + workflow.get('fixtureTimingControl', {}).get('outputAudioDelayMs', 0)/1000
                     estimate = event['timeOrigin'] + timestamp['performanceTime'] + (target-timestamp['contextTime'])*1000
                     measured_audio = desktop_metadata['anchorMs'] + desktop_pairs[pid]['audioSeconds']*1000
                     pairs[-1]['browserEstimatedOutputWallMs'] = estimate

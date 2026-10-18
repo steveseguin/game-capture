@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum). All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified. See x11_damage_endurance_checkpoint for all interval decisions, timing phases, resource range and cleanup. The three-way X11 reference diagnostic now confirms reference-path differences and receiver startup skew under both references; see av_desktop_reference_checkpoint. Absolute calibration and startup synchronization remain open."
+      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum). All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified. See x11_damage_endurance_checkpoint for all interval decisions, timing phases, resource range and cleanup. The three-way X11 reference diagnostic now confirms reference-path differences and receiver startup skew under both references; see av_desktop_reference_checkpoint. Absolute calibration and startup synchronization remain open. Desktop/Pulse and browser references now pass deliberate +/-150 ms stimulus-response controls; this does not establish the absolute zero offset or resolve receiver startup skew. See av_desktop_delay_controls_checkpoint."
     },
     {
       "id": "arm-portability",
@@ -21639,6 +21639,111 @@
         "sha256": "40ac10300460bda98bc33c38645e6563c32e23fb9c5c56bde7196b38a47d02dc",
         "passed": true
       }
+    },
+    {
+      "case": "zero",
+      "report": "native-qt/qa/reports/linux-av-reference-zero/64e15e72-d2bf-41ba-a94a-8c37ddcea608/results.json",
+      "reportSha256": "0eb54bb0db510804bd38414c5e85c84cd312e1ca72fc71e8d640e0e4f9011c5b",
+      "passed": false,
+      "scope": "Exact-package X11 A/V stimulus-delay diagnostic; positive/negative response calibration only.",
+      "fixtureTimingControl": {
+        "outputAudioDelayMs": 0,
+        "videoDelayMs": 0
+      },
+      "recordingWorkflowPassed": true,
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "c76709a3205354f0688bd041b68e1e8861b106bdd84302068fa66f9e823319ce",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+        "linux-av-compare-references.py": "e4303502b7f1356625a5220136517d13d1b121634334ad5342e0add8e3ccb8c7"
+      },
+      "comparison": {
+        "report": "native-qt/qa/reports/linux-av-reference-zero/64e15e72-d2bf-41ba-a94a-8c37ddcea608/reference-comparison.json",
+        "sha256": "02663376888ff1505bec387f049cb50a5254ed698aebc6373170b434ca8c480d"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-reference-zero/64e15e72-d2bf-41ba-a94a-8c37ddcea608/host-cleanup.json",
+        "sha256": "11c0a200099d0135968dfd7eead56b1a2171e9b81b917f84e2e25626f4be386c",
+        "passed": true
+      }
+    },
+    {
+      "case": "audio-delay",
+      "report": "native-qt/qa/reports/linux-av-reference-audio-delay/f62583b3-af7b-47c7-9165-cfa0ba26ba6e/results.json",
+      "reportSha256": "9f33e9bea490df82b8c69fcb96bfd56026fd1f34b78e82e00b224de4a90e07da",
+      "passed": false,
+      "scope": "Exact-package X11 A/V stimulus-delay diagnostic; positive/negative response calibration only.",
+      "fixtureTimingControl": {
+        "outputAudioDelayMs": 150,
+        "videoDelayMs": 0
+      },
+      "recordingWorkflowPassed": true,
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "c76709a3205354f0688bd041b68e1e8861b106bdd84302068fa66f9e823319ce",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+        "linux-av-compare-references.py": "e4303502b7f1356625a5220136517d13d1b121634334ad5342e0add8e3ccb8c7"
+      },
+      "comparison": {
+        "report": "native-qt/qa/reports/linux-av-reference-audio-delay/f62583b3-af7b-47c7-9165-cfa0ba26ba6e/reference-comparison.json",
+        "sha256": "c40d3d7a01e5bca85b19fb603ad23c0d09c869951f3f737724a9efe5cbaee2ba"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-reference-audio-delay/f62583b3-af7b-47c7-9165-cfa0ba26ba6e/host-cleanup.json",
+        "sha256": "5bcc7e785e1b34e3735aa79043c4606af85d6a5920cf7cea11c13d4f0a34fdb0",
+        "passed": true
+      }
+    },
+    {
+      "case": "video-delay",
+      "report": "native-qt/qa/reports/linux-av-reference-video-delay/97e1a554-ab8d-4002-9d1a-8da0cb2a2d28/results.json",
+      "reportSha256": "f72006a7d1cfca9968d76357ef6d9807eb1c09540794ce4e347e6a7a934733e2",
+      "passed": false,
+      "scope": "Exact-package X11 A/V stimulus-delay diagnostic; positive/negative response calibration only.",
+      "fixtureTimingControl": {
+        "outputAudioDelayMs": 0,
+        "videoDelayMs": 150
+      },
+      "recordingWorkflowPassed": true,
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "c76709a3205354f0688bd041b68e1e8861b106bdd84302068fa66f9e823319ce",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+        "linux-av-compare-references.py": "e4303502b7f1356625a5220136517d13d1b121634334ad5342e0add8e3ccb8c7"
+      },
+      "comparison": {
+        "report": "native-qt/qa/reports/linux-av-reference-video-delay/97e1a554-ab8d-4002-9d1a-8da0cb2a2d28/reference-comparison.json",
+        "sha256": "08493a308f887ca80633cecf7e339ec7e94c3b931a8a7873aad178d435e6321b"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-reference-video-delay/97e1a554-ab8d-4002-9d1a-8da0cb2a2d28/host-cleanup.json",
+        "sha256": "bbe2e6bea89ccdcb66dcf68f08c1b910d301b6b7478cb355023a21847e62b795",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -21705,7 +21810,8 @@
     "Run linux-av-sync.js --trace-capture=true with total requested capture <=240 seconds under the owned X11 wrapper for bounded native capture/submit identity diagnostics; frame-trace-analysis.json requires readable markers and exact capture joins. Keep tracing disabled for endurance.",
     "Run linux-av-sync.js --backend=wayland under linux-wayland-desktop.py. It owns a temporary 1440x1000 monitor, verifies a fully visible native 1280x720 source from monitor pixels, uses real portal consent, and restores the original layout. This requires the existing authorized keyboard fixture, GNOME Mutter ScreenCast, GStreamer and Pillow.",
     "For X11 DAMAGE regression use linux-window-publish.js --backend=x11 --idle-source=true under the private X11 wrapper; --gui=true --preview=true adds Qt/preview coverage. The source sends one final identity then stops drawing, while decoded output must remain paced and capture readbacks must stop. Separately run the ordinary CLI workflow on Xvfb with -extension DAMAGE to exercise timed fallback. Native trace diagnostics now allow up to 360 requested seconds at the fixed one-receiver 60fps profile; actual 100,000-row truncation is still rejected.",
-    "linux-av-sync.js --source-reference=desktop is an opt-in X11 diagnostic limited to <=60 seconds without hold. It records the owned X11 drawable and dedicated Pulse sink monitor with lossless H264/PCM using one common wall-clock offset, plus simultaneous canvas/WebAudio and receiver recordings. reference-comparison.json compares matching pulses and browser output-clock estimates. This mode deliberately keeps passed=false until independently calibrated; inspect recordingWorkflowPassed, diagnosticPassed, comparison and cleanup separately."
+    "linux-av-sync.js --source-reference=desktop is an opt-in X11 diagnostic limited to <=60 seconds without hold. It records the owned X11 drawable and dedicated Pulse sink monitor with lossless H264/PCM using one common wall-clock offset, plus simultaneous canvas/WebAudio and receiver recordings. reference-comparison.json compares matching pulses and browser output-clock estimates. This mode deliberately keeps passed=false until independently calibrated; inspect recordingWorkflowPassed, diagnosticPassed, comparison and cleanup separately.",
+    "For real stimulus-delay response calibration, run three separate linux-av-sync.js --source-reference=desktop --seconds=30 workflows: zero, --fixture-output-audio-delay-ms=150, and --fixture-video-delay-ms=150. Only the desktop audio branch is delayed in the audio case. Analyze the completed report directories with linux-av-calibrate-desktop.py --baseline=... --audio-delay=... --video-delay=... --reports=... . delayResponsePassed is narrower than absolute timing or application qualification; deliberate controls are prohibited outside diagnostic mode."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -25028,5 +25134,155 @@
       "sha256": "c23f373fe5d57efc7c6b578228ae42fccc04016ff9e078478d8163a89c99a031",
       "classification": "Syntax, JSON, whitespace and executed-harness/source-integrity gates only; not application testing. Actual packaged workflow evidence remains in the linked reports, with timing qualification incomplete."
     }
+  },
+  "av_desktop_delay_controls_checkpoint": {
+    "controls": [
+      {
+        "case": "zero",
+        "report": "native-qt/qa/reports/linux-av-reference-zero/64e15e72-d2bf-41ba-a94a-8c37ddcea608/results.json",
+        "reportSha256": "0eb54bb0db510804bd38414c5e85c84cd312e1ca72fc71e8d640e0e4f9011c5b",
+        "passed": false,
+        "scope": "Exact-package X11 A/V stimulus-delay diagnostic; positive/negative response calibration only.",
+        "fixtureTimingControl": {
+          "outputAudioDelayMs": 0,
+          "videoDelayMs": 0
+        },
+        "recordingWorkflowPassed": true,
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+        "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+        "harnesses": {
+          "linux-av-sync.js": "c76709a3205354f0688bd041b68e1e8861b106bdd84302068fa66f9e823319ce",
+          "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+          "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+          "linux-av-compare-references.py": "e4303502b7f1356625a5220136517d13d1b121634334ad5342e0add8e3ccb8c7"
+        },
+        "comparison": {
+          "report": "native-qt/qa/reports/linux-av-reference-zero/64e15e72-d2bf-41ba-a94a-8c37ddcea608/reference-comparison.json",
+          "sha256": "02663376888ff1505bec387f049cb50a5254ed698aebc6373170b434ca8c480d"
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-av-reference-zero/64e15e72-d2bf-41ba-a94a-8c37ddcea608/host-cleanup.json",
+          "sha256": "11c0a200099d0135968dfd7eead56b1a2171e9b81b917f84e2e25626f4be386c",
+          "passed": true
+        }
+      },
+      {
+        "case": "audio-delay",
+        "report": "native-qt/qa/reports/linux-av-reference-audio-delay/f62583b3-af7b-47c7-9165-cfa0ba26ba6e/results.json",
+        "reportSha256": "9f33e9bea490df82b8c69fcb96bfd56026fd1f34b78e82e00b224de4a90e07da",
+        "passed": false,
+        "scope": "Exact-package X11 A/V stimulus-delay diagnostic; positive/negative response calibration only.",
+        "fixtureTimingControl": {
+          "outputAudioDelayMs": 150,
+          "videoDelayMs": 0
+        },
+        "recordingWorkflowPassed": true,
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+        "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+        "harnesses": {
+          "linux-av-sync.js": "c76709a3205354f0688bd041b68e1e8861b106bdd84302068fa66f9e823319ce",
+          "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+          "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+          "linux-av-compare-references.py": "e4303502b7f1356625a5220136517d13d1b121634334ad5342e0add8e3ccb8c7"
+        },
+        "comparison": {
+          "report": "native-qt/qa/reports/linux-av-reference-audio-delay/f62583b3-af7b-47c7-9165-cfa0ba26ba6e/reference-comparison.json",
+          "sha256": "c40d3d7a01e5bca85b19fb603ad23c0d09c869951f3f737724a9efe5cbaee2ba"
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-av-reference-audio-delay/f62583b3-af7b-47c7-9165-cfa0ba26ba6e/host-cleanup.json",
+          "sha256": "5bcc7e785e1b34e3735aa79043c4606af85d6a5920cf7cea11c13d4f0a34fdb0",
+          "passed": true
+        }
+      },
+      {
+        "case": "video-delay",
+        "report": "native-qt/qa/reports/linux-av-reference-video-delay/97e1a554-ab8d-4002-9d1a-8da0cb2a2d28/results.json",
+        "reportSha256": "f72006a7d1cfca9968d76357ef6d9807eb1c09540794ce4e347e6a7a934733e2",
+        "passed": false,
+        "scope": "Exact-package X11 A/V stimulus-delay diagnostic; positive/negative response calibration only.",
+        "fixtureTimingControl": {
+          "outputAudioDelayMs": 0,
+          "videoDelayMs": 150
+        },
+        "recordingWorkflowPassed": true,
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+        "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+        "harnesses": {
+          "linux-av-sync.js": "c76709a3205354f0688bd041b68e1e8861b106bdd84302068fa66f9e823319ce",
+          "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+          "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+          "linux-av-compare-references.py": "e4303502b7f1356625a5220136517d13d1b121634334ad5342e0add8e3ccb8c7"
+        },
+        "comparison": {
+          "report": "native-qt/qa/reports/linux-av-reference-video-delay/97e1a554-ab8d-4002-9d1a-8da0cb2a2d28/reference-comparison.json",
+          "sha256": "08493a308f887ca80633cecf7e339ec7e94c3b931a8a7873aad178d435e6321b"
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-av-reference-video-delay/97e1a554-ab8d-4002-9d1a-8da0cb2a2d28/host-cleanup.json",
+          "sha256": "bbe2e6bea89ccdcb66dcf68f08c1b910d301b6b7478cb355023a21847e62b795",
+          "passed": true
+        }
+      }
+    ],
+    "calibration": {
+      "report": "native-qt/qa/reports/linux-av-desktop-delay-calibration/d9ed77bb-5167-44cf-859a-861bca6f60bc/calibration.json",
+      "sha256": "da4c7dd4027aa0097f9084c8fd46d44a61c6e730f28d5399342e27008bfa316f",
+      "analyzerSha256": "ef48e42424fd0d70b0f85a943d0e325e4d8d20b06443fcffd87ae828afdacaf9",
+      "delayResponsePassed": true,
+      "absoluteTimingCalibrated": false,
+      "maximumMedianResponseErrorMs": 30,
+      "comparisons": [
+        {
+          "case": "audio-delay",
+          "passed": true,
+          "desktop": {
+            "expectedDeltaMs": 150,
+            "medianMeasuredDeltaMs": 147.00000000000023,
+            "medianResponseErrorMs": -2.9999999999997726
+          },
+          "browser": {
+            "expectedDeltaMs": 0,
+            "medianMeasuredDeltaMs": -2.000000000000668,
+            "medianResponseErrorMs": -2.000000000000668
+          }
+        },
+        {
+          "case": "video-delay",
+          "passed": true,
+          "desktop": {
+            "expectedDeltaMs": -150,
+            "medianMeasuredDeltaMs": -162.99999999999937,
+            "medianResponseErrorMs": -12.999999999999375
+          },
+          "browser": {
+            "expectedDeltaMs": -150,
+            "medianMeasuredDeltaMs": -149.9999999999995,
+            "medianResponseErrorMs": 5.115907697472721e-13
+          }
+        }
+      ]
+    },
+    "interpretation": "Three separate packaged 30-second X11 workflows completed with all 18 cadence/PCM intervals passing and clean shutdown. A deliberate 150 ms delay in the desktop audio branch produced a +147 ms median desktop-reference change while the internal browser control changed -2 ms. A deliberate 150 ms video delay produced -163 ms in the desktop reference and -150 ms in the browser reference. All four response errors fit the prespecified 30 ms tolerance (one 60 Hz image period plus 10 ms phase quantization). Application skew limits were unchanged. These controls validate response direction/sensitivity, not the absolute zero offset or receiver startup synchronization.",
+    "ownedProcessesRemaining": [],
+    "remaining": "Measure Linux app-audio monitor arrival age and emitted chunk age before changing the 120 ms mixing hold. Correlate receiver startup buffering and qualify any fix with multi-stream/mixed-input/recovery workflows, calibrated software-input timing, native Wayland and the complete parity ledger."
   }
 }
