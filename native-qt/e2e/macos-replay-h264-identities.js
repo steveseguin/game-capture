@@ -28,26 +28,31 @@ fs.copyFileSync(__filename,path.join(directory,path.basename(__filename)));
 const log=fs.openSync(path.join(directory,'decode.log'),'wx');
 const child=spawn(ffmpeg,args,{stdio:['ignore','pipe',log]});
 fs.closeSync(log);
-let buffer=Buffer.alloc(0),error;
+// Fill one reusable frame buffer. Repeated concatenation of small pipe chunks
+// otherwise copies a multi-megabyte 4K strip hundreds of times per frame.
+const buffer=Buffer.allocUnsafe(frameBytes);
+let filled=0,error;
 const timeout=setTimeout(()=>{error=Error('Decode exceeded two minutes');child.kill('SIGKILL');},120000);
 child.on('error',e=>{error=e;});
 child.stdout.on('data',chunk=>{
-  buffer=Buffer.concat([buffer,chunk]);
-  while(buffer.length>=frameBytes) {
-    const pixels=buffer.subarray(0,frameBytes);
-    const rows=ys.map(y=>pixels.subarray((y-ys[0])*width*4,(y-ys[0]+1)*width*4));
+  let offset=0;
+  while(offset<chunk.length) {
+    const count=Math.min(frameBytes-filled,chunk.length-offset);
+    chunk.copy(buffer,filled,offset,offset+count);filled+=count;offset+=count;
+    if(filled<frameBytes)continue;
+    const rows=ys.map(y=>buffer.subarray((y-ys[0])*width*4,(y-ys[0]+1)*width*4));
     const decoded=decodeAnchoredRows(rows,width);
     result.frames.push({index:result.frames.length,id:decoded.id,rows:decoded.rows});
     result.identityReadFailures+=Number(decoded.unreadable);
     result.rowDisagreements+=Number(decoded.disagreement);
-    buffer=buffer.subarray(frameBytes);
+    filled=0;
   }
 });
 child.on('close',(code,signal)=>{
   clearTimeout(timeout);result.exitCode=code;result.signal=signal;
   try {
     if(error)throw error;
-    if(code!==0||signal||buffer.length)throw Error('Incomplete independent decode');
+    if(code!==0||signal||filled)throw Error('Incomplete independent decode');
     requireMoving({observations:result.frames,identityReadFailures:result.identityReadFailures,
       tracks:[{codec:'video/h264'}]},'Retained H.264 fixture');
     result.passed=true;
