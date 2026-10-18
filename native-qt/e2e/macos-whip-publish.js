@@ -166,7 +166,14 @@ function audioCheck(value,silent=false){
     }
     const appLog=await api(control,'/logs/recent?lines=1');if(fs.readFileSync(appLog.path,'utf8').includes(token))throw Error('Token leaked into application log');
     await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher did not quit');if(publisher.exitCode!==0||fs.existsSync(discovery))throw Error('Publisher shutdown failed');await publisher.closed;
-    if(!result.trace.some(t=>t.case===encoder&&t.method==='DELETE'))throw Error('WHIP session not deleted');
+    const finalDelete=result.trace.filter(t=>t.case===encoder&&t.method==='DELETE').at(-1);
+    if(!finalDelete||!finalDelete.authorized||![200,204].includes(finalDelete.status))throw Error('Final WHIP session deletion was not acknowledged');
+    const pathsResponse=await fetch(`http://127.0.0.1:${apiPort}/v3/paths/list`,{signal:AbortSignal.timeout(5000)});
+    if(!pathsResponse.ok)throw Error('Cannot verify stopped publisher at receiver server');
+    const stoppedPaths=await pathsResponse.json();if(!Array.isArray(stoppedPaths.items))throw Error('Invalid receiver-server path inventory');
+    const stoppedPath=stoppedPaths.items.find(item=>item.name===stream);
+    entry.serverAfterQuit={pathPresent:!!stoppedPath,ready:stoppedPath?.ready??false,sourcePresent:!!stoppedPath?.source};
+    if(stoppedPath&&(stoppedPath.ready!==false||stoppedPath.source!==null))throw Error('Receiver server retains a live publisher after Quit');
     if(turnDiscovery!=='none'){
       const trace=result.trace.filter(t=>t.case===encoder),posts=trace.filter(t=>t.method==='POST'),options=trace.filter(t=>t.method==='OPTIONS'&&t.status===204);
       if(!options.length||!posts.length||posts.some(t=>t.status!==201))throw Error('TURN workflow lacks successful WHIP negotiation');
