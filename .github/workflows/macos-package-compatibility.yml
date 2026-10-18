@@ -2,7 +2,7 @@ name: Mac Packaged Startup Compatibility
 
 on:
   push:
-    branches: [macos-hosted-compatibility]
+    branches: [macos-vt-beta3-hosted]
     paths:
       - .github/workflows/macos-package-compatibility.yml
       - native-qt/qa/macos-hosted-package.py
@@ -13,10 +13,10 @@ permissions:
   contents: read
 
 env:
-  CANDIDATE_ASSET_ID: 653388384
-  CANDIDATE_ARCHIVE_SHA256: f35f6852d8bc0b835211dc628fcd4d07b90e5580ccf7a64bb732fdead168b1db
-  CANDIDATE_EXECUTABLE_SHA256: 2a6354f12b92ac1d8ef2a415c76316ea8452b040503087c1b8ec716be69ad1b0
-  CANDIDATE_REVISION: ea1c552c6c833fecc16914e18710a589a6bb2db1
+  CANDIDATE_ASSET_ID: 654440552
+  CANDIDATE_ARCHIVE_SHA256: aae737d3f63490280feea6054f0c2e345b08ef51b676d6bda4d1cc736e5b537b
+  CANDIDATE_EXECUTABLE_SHA256: c0f3612991c1fb5bad48cd2ce999c889faf8c31acd0f9528dfed77beacda6c7a
+  CANDIDATE_REVISION: c7104c5cccce2878ded041489bf1285e409e9723
 
 jobs:
   acquire:
@@ -30,8 +30,8 @@ jobs:
       - name: Download and verify draft app and corresponding source
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_ASSET_ID: 653388383
-          SOURCE_SHA256: 4a614689d0df9eae9807dac69588b829c81dc11baac1e9f2992dd1dfbba0a1f2
+          SOURCE_ASSET_ID: 654440550
+          SOURCE_SHA256: 7e9abd43808431540f3f5eeaf1567319f623c3e497a89bf0f710dab9671f9544
         run: |
           set -euo pipefail
           mkdir "$RUNNER_TEMP/candidate"
