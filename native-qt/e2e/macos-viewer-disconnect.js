@@ -6,13 +6,14 @@ const {spawn}=require('child_process'),{chromium}=require('playwright');
 const {receiverAt,observe,requireMoving,observeAudio,sleep,waitFor}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 for(const key of ['app','reports','encoder','source-ui-helper','expected-executable-sha256'])assert(opts[key],key);
+const diagnosticSchema=opts['diagnostic-schema']||'classified';assert(['classified','legacy'].includes(diagnosticSchema));
 const leaveMode=opts['leave-mode']||'page-close';assert(['page-close','hangup'].includes(leaveMode));
 const closeObservationMs=Number(opts['close-observation-ms']||15000);assert(Number.isInteger(closeObservationMs)&&closeObservationMs>=15000&&closeObservationMs<=120000);
 const cycles=Number(opts.cycles||3);assert(Number.isInteger(cycles)&&cycles>=1&&cycles<=10);
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const result={scope:'Packaged Mac viewer close/rejoin with surviving-viewer video and stereo audio; same-host browser, no performance qualification',
-  encoder:opts.encoder,leaveMode,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],trackCloseObservations:[],harnesses:{},passed:false};
+  encoder:opts.encoder,leaveMode,diagnosticSchema,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],trackCloseObservations:[],harnesses:{},passed:false};
 for(const name of ['macos-viewer-disconnect.js','macos-independent-sender.js','macos-media-receiver.js']){
   const file=path.join(__dirname,name);result.harnesses[name]=sha(fs.readFileSync(file));fs.copyFileSync(file,path.join(report,name));
 }
@@ -73,7 +74,9 @@ async function picture(page,label){
     }return false;
   },60000,'Sender did not become ready');
   result.senderReport=path.relative(report,senderReport);result.sessionBindingSha256=sha(stream);
-  result.initial=snapshot(await diagnostics());assert(result.initial.reasons,'Candidate lacks classified send diagnostics');save();
+  result.initial=snapshot(await diagnostics());
+  if(diagnosticSchema==='classified')assert(result.initial.reasons,'Candidate lacks classified send diagnostics');
+  else assert.equal(result.initial.reasons,undefined,'Legacy comparison must use the legacy schema');save();
   browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
   result.browserVersion=browser.version();
   for(let index=0;index<cycles;index++){
@@ -93,8 +96,10 @@ async function picture(page,label){
     await sleep(500);entry.afterTracksClosed=snapshot(await diagnostics());
     assert.equal(entry.afterTracksClosed.encodeFailures,0);assert.equal(entry.afterTracksClosed.encodeTimeouts,0);
     const reasons=entry.afterTracksClosed.reasons;
-    for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(reasons[key],0,'Unexpected '+key);
-    assert.equal(Object.values(reasons).reduce((a,b)=>a+b,0),entry.afterTracksClosed.sendFailures,'Aggregate failure count differs from reason totals');
+    if(diagnosticSchema==='classified'){
+      for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(reasons[key],0,'Unexpected '+key);
+      assert.equal(Object.values(reasons).reduce((a,b)=>a+b,0),entry.afterTracksClosed.sendFailures,'Aggregate failure count differs from reason totals');
+    }
     entry.passed=true;save();
   }
   // The final fresh viewer proves reception still starts after the last close.
@@ -108,13 +113,15 @@ async function picture(page,label){
   result.lastCloseToSessionRemovalMs=Date.now()-lastClose;
   await sleep(500);result.final=snapshot(await diagnostics());save();
   assert.equal(result.final.encodeFailures,0);assert.equal(result.final.encodeTimeouts,0);
-  for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(result.final.reasons[key],0,'Final unexpected '+key);
-  assert.equal(Object.values(result.final.reasons).reduce((a,b)=>a+b,0),result.final.sendFailures);
+  if(diagnosticSchema==='classified'){
+    for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(result.final.reasons[key],0,'Final unexpected '+key);
+    assert.equal(Object.values(result.final.reasons).reduce((a,b)=>a+b,0),result.final.sendFailures);
+  }
   sender.stdin.end('finish\n');await waitFor(()=>sender.exitCode!==null,15000,'Sender cleanup did not finish');await sender.closed;
   const local=JSON.parse(fs.readFileSync(path.join(senderReport,'results.json')));assert.equal(sender.exitCode,0);assert(local.passed);
   assert.equal(local.executableSha256,result.expectedExecutableSha256);assert.equal(local.sessionBindingSha256,result.sessionBindingSha256);
   result.publisherExitCode=local.exitCode;result.publisherDiscoveryRemoved=!fs.existsSync(path.join(senderReport,'private-control.json'));
-  assert(result.publisherDiscoveryRemoved);result.observedUnavailableSends=result.final.reasons.track_unavailable+result.final.reasons.transport_unavailable;
+  assert(result.publisherDiscoveryRemoved);result.observedUnavailableSends=diagnosticSchema==='classified'?result.final.reasons.track_unavailable+result.final.reasons.transport_unavailable:null;
   result.completed=true;
   result.passed=result.trackCloseObservations.every(o=>o.within15Seconds);
   if(!result.passed){result.error='Track closure exceeded the unchanged 15-second bound; extended observations retained';process.exitCode=1;}
