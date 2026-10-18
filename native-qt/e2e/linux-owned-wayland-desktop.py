@@ -169,7 +169,11 @@ def main():
             pipewire = launch('pipewire', ['pipewire'])
             wait_for(lambda: (root/'runtime/pipewire-0').is_socket())
             wireplumber = launch('wireplumber', ['wireplumber']); pulse = launch('pulse', ['pipewire-pulse'])
-            if args.pulse_fault or args.pipewire_fault: audio_ready()
+            # Keep a stable system output even when the workflow creates a
+            # virtual microphone sink without requesting service faults.
+            audio_ready()
+            result['defaultAudioSink'] = pactl('get-default-sink')
+            assert result['defaultAudioSink'] == 'gc_audio_default'
             shell = launch('shell', ['gnome-shell', '--headless', '--wayland', '--no-x11', '--sm-disable',
                                      '--virtual-monitor=1440x1000', '--wayland-display=gc-qa'])
             wait_for(lambda: (root/'runtime/gc-qa').is_socket())

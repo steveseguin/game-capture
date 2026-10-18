@@ -17,6 +17,8 @@ const communicationsMix = opts['communications-mix'] === 'true';
 const audioWarnings = opts['audio-warnings'] === 'true';
 const previewBeforeLive = opts['preview-before-live'] === 'true';
 const previewServiceLoss = opts['preview-service-loss'] === 'true';
+const previewHelperUnavailable = opts['preview-helper-unavailable'] === 'true';
+assert(!previewHelperUnavailable || (previewBeforeLive && !previewServiceLoss), 'Unavailable preview helper requires local preview without service faults');
 const previewCoreStartupDown = opts['preview-core-startup-down'] === 'true';
 const unavailableCoreAction = opts['unavailable-core-action'] || 'preview';
 assert(['preview','go-live'].includes(unavailableCoreAction) && (previewCoreStartupDown || unavailableCoreAction === 'preview'), 'Unavailable-core action requires the core-startup fixture');
@@ -75,6 +77,7 @@ const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(rep
 for (const name of ['linux-audio-publish.js', 'macos-media-receiver.js', 'audio-settings-packaged-e2e.js', 'linux-ui-control.py', 'linux-app-audio-source.py', 'linux-portal-select.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
 if(audioServerLoss)fs.copyFileSync(path.join(__dirname,'linux-private-audio.py'),path.join(report,'linux-private-audio.py'));
 if(previewBeforeLive)fs.copyFileSync(path.join(__dirname,'linux-preview-observer.py'),path.join(report,'linux-preview-observer.py'));
+if(wayland)fs.copyFileSync(path.join(__dirname,'linux-pipewire-snapshot.py'),path.join(report,'linux-pipewire-snapshot.py'));
 if(continuousApps)for(const name of ['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 if(resumeReference)for(const name of ['linux-app-audio-reference.js','linux-audio-reference-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 if(resumeRecording)fs.copyFileSync(path.join(__dirname,'linux-received-audio-report.py'),path.join(report,'linux-received-audio-report.py'));
@@ -88,7 +91,8 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
 if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,phase:previewServiceLoss?'local-preview':'publishing',previewCoreStartupDown,unavailableCoreAction,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
-if(previewBeforeLive)result.previewBeforeLive={requested:true,observerSha256:sha(path.join(report,'linux-preview-observer.py'))};
+if(previewBeforeLive)result.previewBeforeLive={requested:true,helperUnavailable:previewHelperUnavailable,observerSha256:sha(path.join(report,'linux-preview-observer.py'))};
+if(wayland)result.pipewireSnapshotHelperSha256=sha(path.join(report,'linux-pipewire-snapshot.py'));
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
 if(resumeReference)result.sourceReferenceHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-audio-reference-report.py'].map(n=>[n,sha(path.join(report,n))]));
@@ -235,8 +239,9 @@ function barriers() {
     const source = await sourceBrowser.newPage(wayland ? {viewport:null} : {viewport:{width:800, height:450}}), title = 'Owned Linux Capture ' + suffix;
     await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
       const canvas=document.querySelector('canvas'),c=canvas.getContext('2d');let id=0;window.fixture={staticId:null};
-      function draw(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;id=fixture.staticId??((id+1)%65536);c.fillStyle='#183042';c.fillRect(0,0,w,h);c.fillStyle='cyan';c.fillRect(.1*w,.25*h,.05*w,.5*h);c.fillStyle='magenta';c.fillRect(.85*w,.25*h,.05*w,.5*h);
-      for(let i=0;i<16;i++){c.fillStyle=(id>>i)&1?'white':'black';c.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
+      function paint(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;id=fixture.staticId??((id+1)%65536);c.fillStyle='#183042';c.fillRect(0,0,w,h);c.fillStyle='cyan';c.fillRect(.1*w,.25*h,.05*w,.5*h);c.fillStyle='magenta';c.fillRect(.85*w,.25*h,.05*w,.5*h);
+      for(let i=0;i<16;i++){c.fillStyle=(id>>i)&1?'white':'black';c.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}}
+      function draw(){paint();requestAnimationFrame(draw);}draw();</script>`);
     await source.bringToFront();
     if (automaticApp) await source.evaluate(async () => {
       window.audioFixture = new AudioContext({sampleRate:48000});
@@ -256,7 +261,7 @@ function barriers() {
       modules.push(moduleId);receiverSink={name,moduleId};result.receiverSink={...receiverSink,headless:!playoutHeaded,muted:false};save();
     }
     viewerBrowser = await chromium.launch({executablePath:browser, headless:!playoutHeaded,
-      env:receiverSink?{...env,PULSE_SINK:receiverSink.name}:audioServerLoss?{...env,PULSE_SERVER:process.env.GC_QA_RECEIVER_PULSE_SERVER}:env,
+      env:receiverSink?{...env,PULSE_SINK:receiverSink.name}:process.env.GC_QA_RECEIVER_PULSE_SERVER?{...env,PULSE_SERVER:process.env.GC_QA_RECEIVER_PULSE_SERVER}:env,
       ...(playoutReference?{ignoreDefaultArgs:['--mute-audio']}:{}),
       args:['--autoplay-policy=no-user-gesture-required',...(playoutReference?[]:['--mute-audio']),
         ...(playoutHeaded?['--window-position=850,10','--window-size=550,700']:[])]});
@@ -316,7 +321,10 @@ function barriers() {
       const screenshot = name => wayland ? execFileSync('gnome-screenshot', ['-f', path.join(report,name)], {env,timeout:10000}) :
         execFileSync('python3',['-c','from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])',path.join(report,name)],{env,timeout:10000});
       const captureNodes = () => {
-        const objects = JSON.parse(execFileSync('pw-dump',{env,encoding:'utf8',timeout:5000}));
+        result.pipewireSnapshots ||= [];
+        const output=path.join(report,'pipewire-snapshot-'+result.pipewireSnapshots.length+'.json');
+        const {objects,batches}=JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-pipewire-snapshot.py'),'--output='+output],{env,encoding:'utf8',timeout:7000}));
+        result.pipewireSnapshots.push({file:path.basename(output),sha256:sha(output),batches});
         const clients = new Set(objects.filter(o => o.type === 'PipeWire:Interface:Client' && String(o.info?.props?.['application.process.id']) === String(publisher.pid)).map(o => o.id));
         return objects.filter(o => o.type === 'PipeWire:Interface:Node' && clients.has(o.info?.props?.['client.id']) && o.info?.props?.['media.type'] === 'Video').map(o => ({id:o.id,serial:o.info.props['object.serial']}));
       };
@@ -388,6 +396,7 @@ function barriers() {
         if(previewBeforeLive){
           entry.localPreview={};
           const localOnly=async(active,audioAvailable=true,videoAvailable=true)=>{
+            if(previewHelperUnavailable)assert.equal(pactl('get-default-sink'),defaultSink,'Owned default output changed while configuring local preview');
             const d=await api('/diagnostics');
             assert.equal(d.app.window_preview_active,active);
             assert(!d.app.live&&!d.app.capturing&&!d.app.primary_audio_capturing&&!d.app.microphone_capturing,'Preview started publishing or audio capture');
@@ -398,10 +407,22 @@ function barriers() {
             return {app:d.app,source:d.source,videoFramesSent:d.video.frames_sent,audioPacketsSent:d.metrics.audio_packets_sent,audioCaptureStreams:audio?.length??null,nodes};
           };
           const previewShot=async(label,identity)=>{
-            if(identity!=='none'){await source.evaluate(id=>{fixture.staticId=id;},identity);await sleep(800);}
+            let sourceIdentity=null;
+            if(identity!=='none'){
+              sourceIdentity=await source.evaluate(id=>{
+                fixture.staticId=id;paint();
+                let observed=0;
+                for(let bit=0;bit<16;bit++)if(c.getImageData(Math.floor((.2+(bit+.5)*.6/16)*canvas.width),Math.floor(.5*canvas.height),1,1).data[0]>127)observed|=1<<bit;
+                return observed;
+              },identity);
+              assert.equal(sourceIdentity,identity,'Fixture canvas did not render the requested preview identity');
+              // The idle/local-preview UI refreshes every 1500 ms. Match the
+              // window-preview workflow's 2200 ms observation window.
+              await sleep(2200);
+            }
             const output=path.join(report,'preview-'+label+'.png');
             const shot=JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-preview-observer.py'),'--pid='+publisher.pid,'--output='+output,'--expected='+identity],{env,encoding:'utf8',timeout:20000}));
-            return {...shot,screenshotSha256:sha(output)};
+            return {...shot,sourceIdentity,screenshotSha256:sha(output)};
           };
           const beginPreview=async()=>{
             selectPortal();ui('press','Preview window');await selectedPortal(30000);
@@ -420,6 +441,35 @@ function barriers() {
           entry.localPreview.beforePromotion=await beginPreview();
           entry.localPreview.restartedPixels=await previewShot('mixed-restarted',24681);
           entry.localPreview.beforePromotion=await localOnly(true);save();
+          if(previewHelperUnavailable){
+            const failure=entry.localPreview.unavailableHelper={path:path.join(report,'missing custom helper','ffmpeg')};
+            assert(!fs.existsSync(failure.path));
+            ui('choose-prefix','H.264 (Compatibility)','VP9 (');
+            ui('text','FFmpeg Path',failure.path);
+            ui('text','FFmpeg Options','-threads 2');
+            failure.before=await localOnly(true);
+            ui('press','Go live');
+            await waitFor(()=>{
+              const rows=JSON.parse(ui('dump'));
+              return rows.some(r=>r.role==='label'&&r.states.includes('visible')&&r.name.startsWith('FFmpeg unavailable:'))&&rows.some(r=>r.name==='Go live'&&r.states.includes('sensitive'));
+            },15000,'Missing helper did not reject promotion and allow retry');
+            failure.after=await localOnly(true);
+            assert.deepEqual(failure.after.nodes,failure.before.nodes,'Helper preflight failure replaced the granted preview');
+            failure.visibleStatus=JSON.parse(ui('dump')).filter(r=>r.role==='label'&&r.states.includes('visible')&&r.name.startsWith('FFmpeg unavailable:')).map(r=>r.name);
+            failure.pixels=await previewShot('helper-unavailable',49106);
+            await checkAudioWarning(null,'previewHelperFailureNoAudioWarning');
+            fs.writeFileSync(path.join(report,'preview-helper-unavailable-ui.json'),ui('dump'));save();
+            ui('text','FFmpeg Path','');
+            const selectedCodec=JSON.parse(ui('dump')).find(r=>r.role==='combo box'&&r.name.startsWith('VP9 ('));
+            assert(selectedCodec,'Selected VP9 codec control missing after helper failure');
+            ui('choose',selectedCodec.name,'H.264 (Compatibility)');
+            // Saved VP9 tuning must not leak into native H.264 encoding.
+            failure.corrected=await localOnly(true);
+            assert.deepEqual(failure.corrected.nodes,failure.before.nodes);
+            failure.correctedPixels=await previewShot('helper-corrected',34821);
+            failure.portalSelectionsBeforeRetry=selectionNumber;assert.equal(selectionNumber,2);
+            entry.localPreview.beforePromotion=failure.corrected;save();
+          }
           if(previewServiceLoss){
             const command=action=>JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-private-audio.py'),'--request='+action],{env,encoding:'utf8',timeout:25000}));
             const fault=entry.localPreview.serviceLoss={scope:captureServerLoss?'pipewire':'pulse-only',before:entry.localPreview.beforePromotion};
