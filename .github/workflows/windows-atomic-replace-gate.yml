@@ -1,0 +1,25 @@
+name: Windows Atomic Replacement Gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [macos-windows-snapshot-diagnostics]
+permissions:
+  contents: read
+jobs:
+  native-probe:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Probe native replacement with shared and locked readers
+        shell: pwsh
+        run: py -3.12 native-qt/qa/windows-atomic-replace-gate.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-atomic-replace-gate
+          path: native-qt/qa/reports/windows-atomic-replace-gate/results.json
+          if-no-files-found: error
+          retention-days: 7
