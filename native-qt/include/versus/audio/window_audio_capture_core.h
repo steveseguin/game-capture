@@ -19,6 +19,7 @@ struct AudioSessionInfo {
     std::string displayName;
     bool active = false;
     bool isSystemSounds = false;
+    uint64_t processStartTime = 0; // Linux /proc birth tick; zero on other platforms.
 };
 
 struct AudioDeviceInfo {
@@ -76,6 +77,9 @@ class WindowAudioCaptureCore {
 
     CaptureResult StartCapture(uint32_t processId);
     CaptureResult StartStreamCapture(uint32_t processId, StreamCallback callback);
+#ifdef __linux__
+    CaptureResult StartProcessStreamCapture(uint32_t processId, uint64_t processStartTime, StreamCallback callback);
+#endif
     CaptureResult StartDefaultEndpointCapture(DefaultAudioEndpoint endpoint);
     CaptureResult StartDefaultEndpointStreamCapture(DefaultAudioEndpoint endpoint, StreamCallback callback);
     CaptureResult StartInputDeviceStreamCapture(const std::string &deviceId, StreamCallback callback);

@@ -240,6 +240,9 @@ int main(int argc, char *argv[]) {
     std::array<uint8_t, 3> alphaBackgroundColor = {0, 255, 0};
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
+#ifdef __linux__
+    uint32_t audioProcessId = 0;
+#endif
     std::string diagnosticsOutArg;
     bool localControlEnabled = false;
     int localControlPort = 0;
@@ -464,6 +467,17 @@ int main(int argc, char *argv[]) {
             remoteControlToken = arg.substr(15);
         } else if (arg == "--include-microphone" || arg == "--include-mic") {
             includeMicrophone = true;
+#ifdef __linux__
+        } else if (arg.find("--audio-process=") == 0) {
+            const std::string value = arg.substr(16);
+            try {
+                size_t consumed = 0; const auto parsed = std::stoull(value, &consumed);
+                if (consumed != value.size() || !parsed || parsed > UINT32_MAX || value.front() == '-') throw std::invalid_argument("pid");
+                audioProcessId = uint32_t(parsed);
+            } catch (...) {
+                spdlog::error("--audio-process requires a positive local process ID"); return 2;
+            }
+#endif
         } else if (arg.find("--microphone-device=") == 0) {
             microphoneDeviceId = arg.substr(20);
             includeMicrophone = true;
@@ -614,6 +628,9 @@ int main(int argc, char *argv[]) {
         audioSourceMode = versus::app::AudioSourceMode::None;
         spdlog::info("[Main] Defaulting audio source to none for Spout video source");
     } else if (videoSourceMode == versus::app::VideoSourceMode::Camera &&
+#ifdef __linux__
+               audioProcessId == 0 &&
+#endif
                audioSourceArg == "selected-window") {
         audioSourceArg = "none";
         audioSourceMode = versus::app::AudioSourceMode::None;
@@ -898,6 +915,9 @@ int main(int argc, char *argv[]) {
         core.setVideoConfig(encoderOverride);
     }
     core.setAudioSourceMode(audioSourceMode);
+#ifdef __linux__
+    core.setAudioProcess(audioProcessId);
+#endif
     // Protect ordinary Opus publishing against isolated loss. External
     // protocols and PCM retain their own transport/negotiation contracts.
     if (!audioRedSpecified && !pcmAudio &&

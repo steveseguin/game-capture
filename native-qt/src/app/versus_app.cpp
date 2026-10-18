@@ -1322,6 +1322,14 @@ void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
     audioSourceMode_ = mode;
 }
 
+#ifdef __linux__
+void VersusApp::setAudioProcess(uint32_t pid, uint64_t birth) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+    audioProcessId_ = pid;
+    audioProcessStartTime_ = birth;
+}
+#endif
+
 void VersusApp::setIncludeMicrophone(bool enabled) {
     std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     includeMicrophone_ = enabled;
@@ -2749,6 +2757,9 @@ int VersusApp::refreshPeerTransportsForLocalControl() {
 void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
     const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
     const AudioSourceMode audioSourceMode = lifecycleState.audioSourceMode;
+#ifdef __linux__
+    if (lifecycleState.audioProcessId) selectedWindowProcessId = lifecycleState.audioProcessId;
+#endif
     const bool includeMicrophone = lifecycleState.includeMicrophone;
     const std::string microphoneDeviceId = lifecycleState.microphoneDeviceId;
     {
@@ -2883,7 +2894,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
             if (selectedWindowProcessId == 0) {
                 spdlog::warn("[Audio] Selected-window audio requested but no process id was available");
 #ifdef __linux__
-                emitRuntimeEvent("Selected-app audio is not available in this Linux build. Select system audio, a microphone/input, or no audio.", false);
+                emitRuntimeEvent("Choose an Audio app for selected-app audio. Wayland window selection does not identify the audio process.", false);
 #endif
                 if (includeMicrophone) {
                     spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
@@ -2891,7 +2902,12 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                 }
                 return;
             }
+#ifdef __linux__
+            result = audioCapture_.StartProcessStreamCapture(selectedWindowProcessId,
+                lifecycleState.audioProcessId ? lifecycleState.audioProcessStartTime : 0, primaryCallback);
+#else
             result = audioCapture_.StartStreamCapture(selectedWindowProcessId, primaryCallback);
+#endif
             break;
     }
 
@@ -7681,7 +7697,7 @@ void VersusApp::startVideoMaintenanceThread() {
                     audioLevelRms_.store(0.0f, std::memory_order_relaxed);
                     audioPeak_.store(0.0f, std::memory_order_relaxed);
                 }
-                emitRuntimeEvent("System audio stopped. Video continues. Check the selected output and audio service, then stop and start streaming again.", false);
+                emitRuntimeEvent("Primary audio stopped. Video continues. Check the selected audio app/output and audio service, then stop and start streaming again.", false);
             }
 #endif
 #if defined(__APPLE__) || defined(__linux__)
@@ -8435,6 +8451,10 @@ VersusApp::LifecycleStateSnapshot VersusApp::lifecycleStateSnapshot() const {
     snapshot.audioSourceMode = audioSourceMode_;
     snapshot.includeMicrophone = includeMicrophone_;
     snapshot.microphoneDeviceId = microphoneDeviceId_;
+#ifdef __linux__
+    snapshot.audioProcessId = audioProcessId_;
+    snapshot.audioProcessStartTime = audioProcessStartTime_;
+#endif
     snapshot.activeMicrophoneSourceName = activeMicrophoneSourceName_;
     return snapshot;
 }

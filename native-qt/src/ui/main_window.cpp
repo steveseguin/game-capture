@@ -2027,9 +2027,7 @@ void MainWindow::setupUI() {
     audioSourceSelect_ = new QComboBox(this);
     audioSourceSelect_->setObjectName("audioSourceSelect");
     if (platform::capabilities().audioCapture) {
-#ifndef __linux__
         audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
-#endif
         audioSourceSelect_->addItem(platform::capabilities().communicationsAudioCapture ? "Default output mix" : "System audio (all apps)", QVariant("default-output"));
         if (platform::capabilities().communicationsAudioCapture)
             audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
@@ -2037,16 +2035,31 @@ void MainWindow::setupUI() {
             audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
     }
     audioSourceSelect_->addItem("No audio", QVariant("none"));
-#ifdef __linux__
-    // Application-only routing is still a parity gap. Never substitute the
-    // whole system mix for the Windows default of selected-app audio.
-    audioSourceSelect_->setCurrentIndex(audioSourceSelect_->findData("none"));
-#endif
     audioSourceSelect_->setToolTip(platform::capabilities().communicationsAudioCapture
         ? "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above."
         : "Selected app audio includes its child processes and other windows. Default output mix shares audio from all apps.");
     installComboWheelGuard(audioSourceSelect_);
     advancedForm->addRow("Audio Source", audioSourceSelect_);
+#ifdef __linux__
+    audioSourceSelect_->setToolTip("Selected app audio includes its playback streams and child processes. On Wayland, choose the Audio app explicitly. System audio shares all apps on the selected output.");
+    auto *audioApplicationPanel = new QWidget(this);
+    auto *audioApplicationLayout = new QHBoxLayout(audioApplicationPanel);
+    audioApplicationLayout->setContentsMargins(0, 0, 0, 0);
+    audioApplicationSelect_ = new QComboBox(audioApplicationPanel);
+    audioApplicationSelect_->setAccessibleName("Audio app");
+    audioApplicationSelect_->setToolTip("Choose a running audio app for this session. App choices are not restored after relaunch. Refresh after opening an app or starting its sound.");
+    installComboWheelGuard(audioApplicationSelect_);
+    audioApplicationRefresh_ = new QPushButton("Refresh audio apps", audioApplicationPanel);
+    audioApplicationLayout->addWidget(audioApplicationSelect_, 1);
+    audioApplicationLayout->addWidget(audioApplicationRefresh_);
+    advancedForm->addRow("Audio app", audioApplicationPanel);
+    connect(audioApplicationRefresh_, &QPushButton::clicked, this, &MainWindow::refreshAudioApplications);
+    connect(audioSourceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, audioApplicationPanel]() {
+        audioApplicationPanel->setVisible(audioSourceSelect_->currentData().toString() == "selected-window");
+    });
+    refreshAudioApplications();
+#endif
+
 
     audioEncodingToggle_ = new QCheckBox("Audio encoding", this);
     audioEncodingToggle_->setObjectName("audioEncodingToggle");
@@ -2896,6 +2909,9 @@ void MainWindow::onRefreshWindows() {
     }
     refreshWindowList();
     refreshMicrophoneDevices();
+#ifdef __linux__
+    refreshAudioApplications();
+#endif
     refreshSelectedWindowPreview();
 }
 
@@ -2969,6 +2985,33 @@ void MainWindow::refreshWindowList() {
         }
     }
 }
+
+#ifdef __linux__
+void MainWindow::refreshAudioApplications() {
+    if (!audioApplicationSelect_) return;
+    const auto selected = audioApplicationSelect_->currentData().toUInt();
+    const auto birth = audioApplicationSelect_->currentData(Qt::UserRole + 1).toULongLong();
+    const auto label = audioApplicationSelect_->currentText();
+    QSignalBlocker blocker(audioApplicationSelect_);
+    audioApplicationSelect_->clear();
+    audioApplicationSelect_->addItem("Selected X11 window (automatic)", 0u);
+    audio::WindowAudioCaptureCore capture;
+    for (const auto &session : capture.GetAudioSessions()) {
+        const auto name = session.displayName.empty() ? session.executableName : session.displayName;
+        audioApplicationSelect_->addItem(QString::fromStdString(name) + " (PID " + QString::number(session.processId) + ")", session.processId);
+        audioApplicationSelect_->setItemData(audioApplicationSelect_->count() - 1, QVariant::fromValue<qulonglong>(session.processStartTime), Qt::UserRole + 1);
+    }
+    int index = audioApplicationSelect_->findData(selected);
+    if (selected && (index < 0 || audioApplicationSelect_->itemData(index, Qt::UserRole + 1).toULongLong() != birth)) {
+        // Keep the obsolete identity explicit. Never replace a chosen app with
+        // another process, even if its name or PID happens to match.
+        audioApplicationSelect_->addItem(label + " [unavailable; select again]", selected);
+        index = audioApplicationSelect_->count() - 1;
+        audioApplicationSelect_->setItemData(index, QVariant::fromValue<qulonglong>(birth), Qt::UserRole + 1);
+    }
+    audioApplicationSelect_->setCurrentIndex(index >= 0 ? index : 0);
+}
+#endif
 
 void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
     if (!microphoneDeviceSelect_) {
@@ -3319,6 +3362,10 @@ void MainWindow::onGoLiveClicked() {
             ? audioSourceSelect_->currentData().toString()
             : QString("selected-window");
         const bool includeMicrophone = includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false;
+#ifdef __linux__
+        const uint32_t audioProcessId = audioApplicationSelect_ ? audioApplicationSelect_->currentData().toUInt() : 0;
+        const uint64_t audioProcessStartTime = audioApplicationSelect_ ? audioApplicationSelect_->currentData(Qt::UserRole + 1).toULongLong() : 0;
+#endif
         const QString microphoneDeviceId = microphoneDeviceSelect_
             ? microphoneDeviceSelect_->currentData().toString()
             : QString();
@@ -3415,6 +3462,10 @@ void MainWindow::onGoLiveClicked() {
                                            audioSourceValue,
                                            includeMicrophone,
                                            microphoneDeviceId,
+#ifdef __linux__
+                                           audioProcessId,
+                                           audioProcessStartTime,
+#endif
                                            primaryAudioGain,
                                            microphoneAudioGain,
                                            audioLimiterEnabled,
@@ -3463,6 +3514,9 @@ void MainWindow::onGoLiveClicked() {
                     core->setVideoSourceMode(sourceMode);
                     core->setVideoConfig(config);
                     core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
+#ifdef __linux__
+                    core->setAudioProcess(audioProcessId, audioProcessStartTime);
+#endif
                     core->setIncludeMicrophone(includeMicrophone);
                     core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
                     core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
@@ -4510,6 +4564,10 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     }
     if (audioSourceSelect_) {
         audioSourceSelect_->setEnabled(enabled && platform::capabilities().audioCapture);
+#ifdef __linux__
+        if (audioApplicationSelect_) audioApplicationSelect_->setEnabled(enabled);
+        if (audioApplicationRefresh_) audioApplicationRefresh_->setEnabled(enabled);
+#endif
     }
     if (audioBitrateSpin_) {
         audioBitrateSpin_->setEnabled(enabled);

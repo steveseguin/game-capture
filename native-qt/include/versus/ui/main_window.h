@@ -81,6 +81,11 @@ class MainWindow : public QMainWindow {
     void updateGoLiveButton();
     void refreshWindowList();
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
+#ifdef __linux__
+    void refreshAudioApplications();
+    QComboBox *audioApplicationSelect_ = nullptr;
+    QPushButton *audioApplicationRefresh_ = nullptr;
+#endif
     void refreshSelectedWindowPreview();
     void refreshPublisherCameraPreview();
     bool alphaWorkflowEffectiveForSelectedCodec() const;

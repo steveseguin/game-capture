@@ -200,6 +200,9 @@ class VersusApp {
 
     void setVideoConfig(const versus::video::EncoderConfig &config);
     void setAudioSourceMode(AudioSourceMode mode);
+#ifdef __linux__
+    void setAudioProcess(uint32_t processId, uint64_t processStartTime = 0);
+#endif
     void setIncludeMicrophone(bool enabled);
     void setMicrophoneMuted(bool muted);
     void setMicrophoneDeviceId(const std::string &deviceId);
@@ -300,6 +303,10 @@ class VersusApp {
         AudioSourceMode audioSourceMode = AudioSourceMode::SelectedWindow;
         bool includeMicrophone = false;
         std::string microphoneDeviceId;
+#ifdef __linux__
+        uint32_t audioProcessId = 0;
+        uint64_t audioProcessStartTime = 0;
+#endif
         std::string activeMicrophoneSourceName;
     };
     struct PendingRemoteCandidate {
@@ -896,6 +903,10 @@ class VersusApp {
     AudioSourceMode audioSourceMode_ = AudioSourceMode::SelectedWindow;
     bool includeMicrophone_ = false;
     std::string microphoneDeviceId_;
+#ifdef __linux__
+    uint32_t audioProcessId_ = 0;
+    uint64_t audioProcessStartTime_ = 0;
+#endif
     std::string activeMicrophoneSourceName_ = "none";
     std::deque<float> additionalAudioBuffer_;
     uint32_t additionalAudioSampleRate_ = 0;
