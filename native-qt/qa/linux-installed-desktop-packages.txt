@@ -1,0 +1,18 @@
+# QA-only desktop/observer packages for the disposable Ubuntu 24.04 container.
+# Install the Game Capture DEB first to record its actual dependency resolution.
+xvfb
+xauth
+xfwm4
+xdotool
+x11-utils
+python3
+python3-gi
+python3-dbus
+python3-pil
+python3-tk
+gir1.2-atspi-2.0
+gir1.2-secret-1
+gnome-keyring
+dbus-x11
+libgtk-3-bin
+at-spi2-core

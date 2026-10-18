@@ -35,7 +35,8 @@ def main():
     if architecture != "amd64":
         raise SystemExit("Only the amd64 package is currently qualified for development")
     version = re.search(r"project\(game-capture-native-qt VERSION ([0-9.]+)", (native / "CMakeLists.txt").read_text())[1]
-    version += "~linux.1"
+    # Increment the Linux package revision for installation-layout changes.
+    version += "~linux.2"
     output = (args.output or native / "dist").resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Refuse to overwrite an evidence-bearing payload; each package is immutable.
@@ -102,11 +103,21 @@ def main():
                     "artifact": {"path": "usr/bin/game-capture", "sha256": sha(binary)},
                     "dependencies": dependencies, "materials": materials,
                     "qualification": "development; see linux-parity.json", "payload": {"files": payload, "fileCount": len(payload)}}
-        (stage / "release-artifact-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+        installed_manifest = notices / "release-artifact-manifest.json"
+        installed_manifest.write_text(json.dumps(manifest, indent=2) + "\n")
+        # Never inherit the builder's umask or group-write bits into system
+        # directories and data files installed by dpkg.
+        stage.chmod(0o755)
+        for item in stage.rglob("*"):
+            item.chmod(0o755 if item.is_dir() or item == stage / "usr/bin/game-capture" else 0o644)
         archive = output / (destination.name + ".deb")
         subprocess.run(["dpkg-deb", "--root-owner-group", "--build", str(stage), str(archive)], check=True, stdout=sys.stderr)
         destination.mkdir()
         subprocess.run(["dpkg-deb", "--extract", str(archive), str(destination)], check=True)
+        # Preserve the existing extracted-artifact QA interface without
+        # installing a generic metadata file into the filesystem root.
+        shutil.copy2(destination / "usr/share/doc/game-capture/release-artifact-manifest.json",
+                     destination / "release-artifact-manifest.json")
         # DEBIAN metadata is not in an extracted runtime payload.
         for item in payload:
             if item["relativePath"].startswith("DEBIAN/"):

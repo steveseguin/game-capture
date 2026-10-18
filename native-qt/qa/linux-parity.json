@@ -131,8 +131,8 @@
     {
       "id": "packaging",
       "required": true,
-      "status": "in-progress",
-      "remaining": "Ubuntu amd64 DEB, dependency/source/license manifests, clean installation/uninstall/upgrade and launched exact-package evidence"
+      "status": "bounded-e2e-passed",
+      "remaining": "See linux_clean_install_checkpoint: Ubuntu24.04 amd64 DEB clean install, ordinary-user desktop-entry launch and decoded X11 H264/UDP capture, saved-settings relaunch, actual .1-to-.2 APT upgrade, removal/launcher absence and reinstall passed in owned containers. Runtime/source/dependency identity and shipped manifests/licenses/permissions verified. Native GNOME/Wayland installation and desktop integration, reboot/login keyring behavior, updater asset/delivery workflow and failed-upgrade/rollback remain unqualified. Container image strips optional documentation; no claim that its excluded docs were installed."
     },
     {
       "id": "endurance",
@@ -32122,5 +32122,93 @@
     "ownedProcessesRemaining": [],
     "remaining": "Owned software-GNOME and virtual audio only. Preview service/source faults before promotion, failed-promotion recovery, selected-app/communications/external-output audio combinations, physical microphones/desktop and broader device/performance qualification remain open. Native Mutter active-preview Quit/relaunch and installed portal pending Request.Close failures remain unresolved; maintained fixes/native reruns required. Independent A/V timing,current-package endurance,hardware/install/MCP and Windows/macOS runtime gaps remain. Full23-row parity goal unchanged.",
     "packageSha256": "d0c43d51399048ba6d4a331230106604d185351a2e97c7953aa850643b219df2"
+  },
+  "linux_clean_install_checkpoint": {
+    "report": "native-qt/qa/reports/linux-clean-install/dd429bd4-d567-4c01-ad65-6fb18755ea34/results.json",
+    "reportSha256": "b52b92a96a314868574c121f81eaf0821ea76f30f39702396e1f8aee3eb61c5e",
+    "case": "linux-clean-install-upgrade",
+    "classification": "Packaged installed-application E2E in two pinned Ubuntu24.04 Docker filesystems: ordinary-user desktop-entry launch, real X11 window capture and decoded local UDP output, saved settings, upgrade, removal and reinstall.",
+    "boundedWorkflowPassed": true,
+    "fullParityQualified": false,
+    "packagingChange": "Move release-artifact-manifest.json from filesystem root into /usr/share/doc/game-capture. Keep an external sidecar only in extracted QA payloads for existing harness compatibility. Normalize directory/executable modes0755 and data0644; bump package revision from0.2.65~linux.1 to~linux.2 for real APT upgrade. Application executable,146 production inputs, runtime dependencies and fetched dependency revisions are unchanged.",
+    "qualification": "Install DEB with APT before QA desktop dependencies in clean pinned Ubuntu24.04 images. Ordinary UID1000 uses gtk-launch desktop entry, selects owned Tk window and software H264960x540/30 with no audio, sends UDP/MPEG-TS to real FFmpeg decoder, verifies60 frames and changing encoded source identities, Stop and actual File-menu Quit. Existing settings/output profile survive package upgrade and removal/reinstall while private keyring/session remains available. Separate pristine candidate installation and process relaunch also pass. Removed desktop entry cannot be launched. All300 decoded frames were checked; each phase had59-60 unique source identities.",
+    "runs": [
+      {
+        "case": "upgrade-runtime",
+        "report": "native-qt/qa/reports/linux-clean-install/dd429bd4-d567-4c01-ad65-6fb18755ea34/upgrade-runtime/workflow/results.json",
+        "sha256": "3b665cb13bcdc79edc76226a68cf89a7f6d2fc2852f6ebfe66da54e00473f7e6",
+        "uid": 1000,
+        "passed": true,
+        "phases": [
+          {
+            "label": "initial",
+            "packageVersion": "0.2.65~linux.1",
+            "executableSha256": "68ad3d0e0ee89064a68220086fe599c1ba22231a35ba204a32810b66044d1fee",
+            "pid": 7978,
+            "passed": true,
+            "decodedFrames": 60,
+            "uniqueIdentities": 60,
+            "receivedSha256": "a0f43f7444a3430e3fd1e86fd4fad47c692612c165c7cef60331afa579ba25d6"
+          },
+          {
+            "label": "upgraded",
+            "packageVersion": "0.2.65~linux.2",
+            "executableSha256": "68ad3d0e0ee89064a68220086fe599c1ba22231a35ba204a32810b66044d1fee",
+            "pid": 8162,
+            "passed": true,
+            "settingsRestored": true,
+            "decodedFrames": 60,
+            "uniqueIdentities": 60,
+            "receivedSha256": "2db8c334656f09c3ec478b846b4ee0a5571d6aecb75903bd1aa6f63c6dbdd060"
+          },
+          {
+            "label": "reinstalled",
+            "packageVersion": "0.2.65~linux.2",
+            "executableSha256": "68ad3d0e0ee89064a68220086fe599c1ba22231a35ba204a32810b66044d1fee",
+            "pid": 8342,
+            "passed": true,
+            "settingsRestored": true,
+            "decodedFrames": 60,
+            "uniqueIdentities": 60,
+            "receivedSha256": "34656a94ebf16191fcc7782b1d1488a93a2d09be61c671e938e3ee52cb929f74"
+          }
+        ],
+        "removedLauncherUnavailable": true
+      },
+      {
+        "case": "clean-runtime",
+        "report": "native-qt/qa/reports/linux-clean-install/dd429bd4-d567-4c01-ad65-6fb18755ea34/clean-runtime/workflow/results.json",
+        "sha256": "76895da27ba648f7d96e689a210a7515b92b01530d0502b2b09504e285cc9247",
+        "uid": 1000,
+        "passed": true,
+        "phases": [
+          {
+            "label": "initial",
+            "packageVersion": "0.2.65~linux.2",
+            "executableSha256": "68ad3d0e0ee89064a68220086fe599c1ba22231a35ba204a32810b66044d1fee",
+            "pid": 7758,
+            "passed": true,
+            "decodedFrames": 60,
+            "uniqueIdentities": 60,
+            "receivedSha256": "2d284296e2c46c508a5c8ef7e7941dc2c3b570076dd2a5e5bc0137819405ffde"
+          },
+          {
+            "label": "relaunched",
+            "packageVersion": "0.2.65~linux.2",
+            "executableSha256": "68ad3d0e0ee89064a68220086fe599c1ba22231a35ba204a32810b66044d1fee",
+            "pid": 7863,
+            "passed": true,
+            "settingsRestored": true,
+            "decodedFrames": 60,
+            "uniqueIdentities": 59,
+            "receivedSha256": "27ad2199d59c1ea6ff88b1e118b8ffc7055545560031d0a199464e8b338d9d55"
+          }
+        ]
+      }
+    ],
+    "imageDocumentationPolicy": "Pinned Ubuntu Docker image has path-exclude=/usr/share/doc/* with copyright/changelog exceptions. APT correctly removed old root manifest; image policy excluded new doc manifest. DEB archive gate verifies shipped doc manifest,licenses and exact permissions. This does not claim the stripped image installed optional documentation.",
+    "allOwnedContainersRetired": true,
+    "remaining": "Bounded Xvfb desktop and local video-only UDP on isolated Ubuntu24.04 containers. Native GNOME/Wayland installation/desktop integration, physical devices, reboot/login keyring behavior, updater UI/asset delivery, upgrade-failure/rollback and other installed publishing/audio workflows remain unqualified. Original physical Mutter and stock portal failures, independent A/V/60fps/endurance, hardware and Windows/macOS runtime gaps remain. Full23-row goal unchanged.",
+    "packageSha256": "a3cd1e6ebffb06b272315d9b4cb697d61aad4bf085c12c75a3dab8637a886c4d"
   }
 }
