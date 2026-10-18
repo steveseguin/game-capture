@@ -25,7 +25,7 @@ function parseArgs(argv) {
     bitrateKbps: 4500,
     publisherDefaultBitrateKbps: 4000,
     targetAudioBitrateKbps: 48,
-    publisherDefaultAudioBitrateKbps: 192,
+    publisherDefaultAudioBitrateKbps: 128,
     requestResolution: '',
     remoteToken: 'control-token',
     viewerBaseUrl: 'https://vdo.ninja/',
