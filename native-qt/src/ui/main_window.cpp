@@ -3204,7 +3204,19 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
         }
     }
 
-    const int preferredIndex = microphoneDeviceSelect_->findData(preferred);
+    int preferredIndex = microphoneDeviceSelect_->findData(preferred);
+#ifdef __linux__
+    // An unavailable audio service cannot enumerate even a still-connected
+    // input. Retain the explicit ID so refresh/relaunch does not erase the
+    // user's choice or route a later start to a different microphone.
+    if (preferredIndex < 0 && !preferred.isEmpty() && preferred != "none") {
+        preferredIndex = microphoneDeviceSelect_->count();
+        microphoneDeviceSelect_->addItem("Selected input unavailable; choose again", preferred);
+        microphoneDeviceSelect_->setItemData(preferredIndex,
+            "The selected input is unavailable. Reconnect it or choose another input. "
+            "No replacement microphone will be opened.", Qt::ToolTipRole);
+    }
+#endif
     microphoneDeviceSelect_->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
     // Refresh blocks combo signals. A disconnected selected device can now
     // resolve to None, so also clear the routing state instead of accidentally

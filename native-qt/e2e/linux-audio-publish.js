@@ -19,7 +19,11 @@ assert(opts['combined-audio-loss'] !== 'true' || (communications && communicatio
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
 const audioServerLoss = opts['audio-server-loss'] === 'true';
 const audioServerStopDown = opts['audio-server-stop-down'] === 'true';
+const audioServerQuitDown = opts['audio-server-quit-down'] === 'true';
+const audioServerStartupDown = opts['audio-server-startup-down'] === 'true';
 assert(!audioServerStopDown || audioServerLoss,'Stop during an audio outage requires the server-loss workflow');
+assert(!audioServerQuitDown || (audioServerLoss && !audioServerStopDown),'Quit during an audio outage requires server loss and excludes the separate Stop workflow');
+assert(!audioServerStartupDown || audioServerQuitDown,'Unavailable-server startup requires the Quit-during-outage workflow');
 assert(!audioServerLoss || (matrix === 'gui' && opts.case === 'mix' && !wayland && audioWarnings && process.env.GC_QA_AUDIO_SOCKET), 'Audio server loss requires the owned private-audio fixture and X11 GUI mix with audio warnings');
 assert(!audioServerLoss || (process.env.GC_QA_RECEIVER_PULSE_SERVER && process.env.GC_QA_RECEIVER_PULSE_SERVER !== process.env.PULSE_SERVER), 'Audio server loss requires an independent receiver audio clock/server');
 const continuousApps=opts['continuous-app-audio']==='true';
@@ -71,7 +75,7 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
-if(audioServerLoss)result.audioServerFault={requested:true,stopWhileDown:audioServerStopDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
+if(audioServerLoss)result.audioServerFault={requested:true,stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
 if(resumeReference)result.sourceReferenceHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-audio-reference-report.py'].map(n=>[n,sha(path.join(report,n))]));
@@ -517,6 +521,25 @@ function barriers() {
       }
       if (audioServerLoss) {
         const command = action => JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-private-audio.py'),'--request='+action],{env,encoding:'utf8',timeout:25000}));
+        const launchSaved = async (label, unavailableInput=false) => {
+          log=fs.createWriteStream(path.join(report,label+'-private-publisher.log'));
+          publisher=spawn(exe,args,{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
+          publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
+          publisher.closed=new Promise(resolve=>publisher.once('close',resolve));
+          publisher.on('error',error=>{entry.recoveryLaunchError=String(error);});
+          await waitFor(()=>{assert.equal(publisher.exitCode,null);assert(!entry.recoveryLaunchError);return fs.existsSync(discovery);},15000,'Audio outage relaunch did not publish discovery');
+          control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
+          const rows=JSON.parse(ui('dump'));
+          fs.writeFileSync(path.join(report,label+'-idle-ui.json'),JSON.stringify(rows,null,2));
+          execFileSync('python3',['-c','from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])',path.join(report,label+'-idle.png')],{env,timeout:10000});
+          assert(rows.some(row=>row.role==='combo box'&&row.name==='System audio (all apps)'));
+          assert(rows.some(row=>row.role==='combo box'&&(unavailableInput?row.name==='Selected input unavailable; choose again':row.name.startsWith('GameCaptureOwnedQAInput'))),'Saved microphone selection was lost on relaunch');
+          for(const name of ['Game Audio Gain','Mic Gain'])assert.equal(rows.find(row=>row.role==='spin button'&&row.name===name).value,50);
+          const idle=await api('/diagnostics');assert(!idle.app.live&&!idle.app.capturing);
+          assert.equal(idle.metrics.audio_packets_sent,0);assert.equal(idle.video.frames_captured,0);
+          assert(!idle.app.primary_audio_capturing&&!idle.app.microphone_capturing);
+          return idle;
+        };
         entry.serverLoss = {stop:command('stop')}; modules.length=0; save();
         for(const source of [systemTone,inputTone]){
           clearInterval(source.timer); source.retired=true;
@@ -536,19 +559,45 @@ function barriers() {
           entry.serverLoss.stopWhileDownMs=Date.now()-started;
           await checkAudioWarning(null,'serverDownStopClearedWarnings');
         }
+        if(audioServerQuitDown){
+          const started=Date.now();
+          entry.serverLoss.quitAction=JSON.parse(ui('quit-menu'));
+          await waitFor(()=>publisher.exitCode!==null,8000,'File-menu Quit did not finish while the audio server was down');
+          entry.serverLoss.quitWhileDownMs=Date.now()-started;
+          entry.serverLoss.quitExitCode=publisher.exitCode;
+          await quit(); // Verify exit, discovery retirement and close the log.
+          entry.serverLoss.discoveryRetired=true;save();
+        }
+        if(audioServerStartupDown){
+          entry.serverLoss.unavailableStartupIdle=await launchSaved('server-unavailable',true);
+          ui('source',title);await goLive();
+          await checkAudioWarning(/(?:Could not connect to the desktop audio service|Desktop audio service is unavailable)/,'startupServerWarningVisible');
+          const unavailable=await receiver(viewerBrowser,stream,publisher);
+          entry.serverLoss.unavailableStartupVideo=await observe(unavailable,3000);requireMoving(entry.serverLoss.unavailableStartupVideo,'Video with audio server unavailable at launch');
+          const state=await api('/diagnostics');assert(!state.app.primary_audio_capturing&&!state.app.microphone_capturing);assert.equal(state.metrics.audio_packets_sent,0);
+          fs.writeFileSync(path.join(report,'server-unavailable-live-ui.json'),ui('dump'));
+          execFileSync('python3',['-c','from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])',path.join(report,'server-unavailable-live.png')],{env,timeout:10000});
+          const started=Date.now();ui('quit-menu');await waitFor(()=>publisher.exitCode!==null,8000,'Quit after unavailable-server startup did not finish');
+          entry.serverLoss.unavailableStartupQuitMs=Date.now()-started;await quit();await unavailable.close();save();
+        }
         entry.serverLoss.start=command('start');
         modules.push(pactl('load-module','module-null-sink','sink_name='+sinkName,'rate=48000','channels=2'));inputModule=createInput();
         systemTone=tone(defaultSink,'owned system after server restart');inputTone=tone(sinkName,'owned microphone after server restart');inputTone.frequencies=[1200,1200];
         await sleep(1500);
+        if(audioServerQuitDown){
+          await launchSaved('server-recovery');
+          entry.serverLoss.settingsRestoredIdle=true;
+          ui('source',title);
+        }
         const restored=await api('/diagnostics');assert(!restored.app.primary_audio_capturing&&!restored.app.microphone_capturing);
         assert.equal(JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid)).length,0,'Audio silently reopened after server restart');
-        await checkAudioWarning(audioServerStopDown?null:/Primary audio stopped[\s\S]*Microphone\/input stopped/,'serverReturnWarnings');
+        await checkAudioWarning(audioServerStopDown||audioServerQuitDown?null:/Primary audio stopped[\s\S]*Microphone\/input stopped/,'serverReturnWarnings');
         entry.serverLoss.noAutomaticReopen=true;save();
       }
       await late.close(); await viewer.close();
       }
       if (gui) {
-        if(!audioServerStopDown)ui('press', 'Stop streaming');
+        if(!audioServerStopDown&&!audioServerQuitDown)ui('press', 'Stop streaming');
         await waitFor(async () => { const state = (await api('/diagnostics')).app; return !state.live && !state.capturing; }, 10000, 'GUI stop did not finish');
         const before = await api('/diagnostics'); await sleep(500); const after = await api('/diagnostics');
         assert.equal(before.metrics.audio_packets_sent, after.metrics.audio_packets_sent); assert.equal(before.video.frames_captured, after.video.frames_captured);
