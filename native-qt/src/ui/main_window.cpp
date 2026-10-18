@@ -2246,6 +2246,7 @@ void MainWindow::setupUI() {
 
     remoteControlTokenInput_ = new QLineEdit(this);
     remoteControlTokenInput_->setObjectName("remoteControlTokenInput");
+    remoteControlTokenInput_->setAccessibleName("Control token");
     remoteControlTokenInput_->setPlaceholderText("Optional token (defaults to password or stream ID)");
     remoteControlTokenInput_->setEnabled(false);
     if (auto *remoteTokenRow = wrapSensitiveLineEdit(remoteControlTokenInput_, &remoteControlTokenRevealButton_, "control token", this)) {
