@@ -81,6 +81,32 @@ thermal/gameplay behavior, physical-device coverage or matched OBS/FFmpeg/WHIP
 picture quality. Independently re-encoded audio recordings remain in retained
 local evidence. **Mac remains experimental.**
 
+## WHIP recovery and saved profiles
+
+The same public-downloaded Beta 2 executable passes camera/stereo WHIP workflows
+with both encoders through an owned loopback MediaMTX server and installed
+Chrome 155. Each encoder passes three CLI server interruption/recovery cycles
+and one additional GUI recovery: **eight successful recoveries**. Moving frame
+identities, stereo Opus, silence/resume, held pictures and late viewers are
+verified from actual received output.
+
+Both GUI workflows save the destination/token, quit, relaunch without credential
+re-entry and publish using the same Keychain reference. Final session deletion
+returns HTTP 200; GUI runs additionally confirm the receiver has no live
+publisher after Quit. Both synthetic Keychain items and owned processes are
+cleaned up. No application runtime or VDO.Ninja API changed.
+
+CLI receives 640×360 at a 2 Mbps target; GUI receives 1920×1080 at 4 Mbps, both
+requested at 30 fps. Initial browser presentation observations contain
+**26.16–29.48 distinct images/s**, so this is functional coverage, **not sustained
+30 fps camera qualification**. Decoded-track throughput needs a separate
+observation to distinguish delivery from browser presentation. The installed
+OBS virtual camera and BlackHole stereo fixtures do not qualify physical devices,
+WAN/TURN interruption, calibrated A/V timing or matched picture quality.
+
+[Raw observations, screenshots, independent audits and retained instrumentation controls](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip)
+are published in the private benchmark repository.
+
 ## Remaining qualification
 
 Keep Mac experimental. Physical minimum-OS/privacy/device/VoiceOver, sleep/wake, display/audio-route changes, broader Windows hardware/audio/installer coverage and matched OBS/FFmpeg/WHIP/gameplay quality remain open. Earlier unexplained VFR alpha pixels, hosted-motion, recorder-clock and abrupt-viewer-close findings remain recorded. The [released Beta 1 thirty-minute endurance](https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md) belongs to its earlier executable; the new results above separately qualify this Beta 2 workflow.
