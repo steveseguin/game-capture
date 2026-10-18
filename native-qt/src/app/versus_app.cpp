@@ -1008,10 +1008,13 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         config = videoConfig_;
     }
     if (config.width == 0 || config.height == 0) {
-        config.width = 1280;
-        config.height = 720;
-        config.frameRate = 60;
-        config.bitrate = 4000;
+        config.width = defaults::VideoWidth;
+        config.height = defaults::VideoHeight;
+        config.frameRate = defaults::VideoFps;
+        config.bitrate = defaults::VideoBitrateKbps;
+        config.minBitrate = config.bitrate / 2;
+        config.maxBitrate = config.bitrate;
+        config.gopSize = config.frameRate;
     }
     const video::EncoderConfig requestedConfig = config;
     const bool alphaRequested = usesVp9AlphaTrack(requestedConfig);

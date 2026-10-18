@@ -545,8 +545,8 @@ class VersusApp {
     std::atomic<uint64_t> alphaFramesDropped_{0};
     std::atomic<uint64_t> alphaSendFailures_{0};
     std::atomic<uint64_t> audioSendFailures_{0};
-    std::atomic<int> audioEncoderBitrateKbps_{192};
-    std::atomic<int> configuredAudioBitrateKbps_{192};
+    std::atomic<int> audioEncoderBitrateKbps_{defaults::AudioBitrateKbps};
+    std::atomic<int> configuredAudioBitrateKbps_{defaults::AudioBitrateKbps};
     std::atomic<int> audioOutputChannels_{2};
     std::atomic<bool> pcmAudio_{false};
     std::atomic<bool> audioRed_{false};
@@ -831,7 +831,7 @@ class VersusApp {
     versus::video::EncoderConfig videoConfig_{};
     mutable std::mutex captureErrorMutex_;
     std::string lastCaptureError_;
-    std::atomic<int> configuredVideoBitrateKbps_{4000};
+    std::atomic<int> configuredVideoBitrateKbps_{defaults::VideoBitrateKbps};
     mutable std::mutex videoSendMutex_;
     // Serialize remote preparations without blocking the output worker.
     std::mutex runtimeVideoControlMutex_;

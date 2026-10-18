@@ -1,4 +1,5 @@
 #include "versus/webrtc/webrtc_client.h"
+#include "versus/media_defaults.h"
 #include "versus/audio/red_packet.h"
 #include "capture_sr_reporter.h"
 #include "video_recovery.h"
@@ -735,18 +736,18 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         switch (codec) {
             case PeerConfig::VideoCodec::H265:
                 packetizer = std::make_shared<rtc::H265RtpPacketizer>(
-                    rtc::NalUnit::Separator::StartSequence, rtpConfig);
+                    rtc::NalUnit::Separator::StartSequence, rtpConfig, defaults::RtpVideoFragmentBytes);
                 break;
             case PeerConfig::VideoCodec::AV1:
                 packetizer = std::make_shared<rtc::AV1RtpPacketizer>(
-                    rtc::AV1RtpPacketizer::Packetization::TemporalUnit, rtpConfig);
+                    rtc::AV1RtpPacketizer::Packetization::TemporalUnit, rtpConfig, defaults::RtpVideoFragmentBytes);
                 break;
             case PeerConfig::VideoCodec::VP9:
                 break;
             case PeerConfig::VideoCodec::H264:
             default:
                 packetizer = std::make_shared<rtc::H264RtpPacketizer>(
-                    rtc::NalUnit::Separator::StartSequence, rtpConfig);
+                    rtc::NalUnit::Separator::StartSequence, rtpConfig, defaults::RtpVideoFragmentBytes);
                 break;
         }
         if (packetizer) {

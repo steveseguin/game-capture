@@ -43,3 +43,5 @@ This is an early port with incomplete feature parity. Minimum-OS and clean-machi
 - [Contributing](CONTRIBUTING.md) — includes contributor license terms.
 
 Free and open source under [AGPL-3.0](LICENSE).
+
+Encoding: [streaming defaults and advanced policy](docs/streaming-defaults.md).

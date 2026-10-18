@@ -268,6 +268,7 @@ private slots:
     void testRoomQualityH265LatentAlphaEffectiveUi_data();
     void testRoomQualityH265LatentAlphaEffectiveUi();
     void testBitrateOptions();
+    void testStreamingDefaultsAndSavedChoices();
     void testCustomBitrateControl();
     void testAudioMeterExists();
     void testAudioSourceMetersExist();
@@ -562,6 +563,45 @@ void TestMainWindow::testResolutionOptions() {
         }
         QVERIFY2(found, qPrintable(QString("Resolution %1 not found").arg(res)));
     }
+}
+
+void TestMainWindow::testStreamingDefaultsAndSavedChoices() {
+    auto *fps = window_->findChild<QComboBox *>("fpsSelect");
+    auto *bitrate = window_->findChild<QComboBox *>("bitrateSelect");
+    auto *encoder = window_->findChild<QComboBox *>("encoderSelect");
+    auto *audio = window_->findChild<QSpinBox *>("audioBitrateSpin");
+    auto *aac = window_->findChild<QSpinBox *>("aacBitrateSpin");
+    QVERIFY(fps && bitrate && encoder && audio && aac);
+    QCOMPARE(fps->currentData().toInt(), 60);
+    QCOMPARE(bitrate->currentData().toInt(), 4000);
+    QCOMPARE(encoder->currentData().toString(), QString("auto"));
+    QCOMPARE(audio->value(), 128);
+    QCOMPARE(aac->value(), 128);
+    // GUI construction and CLI/core construction share the same policy.
+    const auto ui = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(
+        *window_, 1280, 720, 0, 0);
+    const versus::video::EncoderConfig core;
+    QCOMPARE(ui.frameRate, core.frameRate);
+    QCOMPARE(ui.bitrate, core.bitrate);
+    QCOMPARE(ui.maxBitrate, core.maxBitrate);
+    QCOMPARE(ui.gopSize, core.gopSize);
+    QCOMPARE(ui.bFrames, 0);
+    QVERIFY(!ui.explicitEncoderSelection);
+    const auto portrait = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(
+        *window_, 720, 1280, 30, 2500);
+    QCOMPARE(portrait.gopSize, 30);
+    QCOMPARE(portrait.bitrate, 2500);
+    // Upgrading must preserve explicit choices, including the old audio default.
+    fps->setCurrentIndex(fps->findData(60));
+    bitrate->setCurrentIndex(bitrate->findData(6000));
+    encoder->setCurrentIndex(encoder->findData("software"));
+    audio->setValue(192);
+    delete window_;
+    window_ = new versus::ui::MainWindow(nullptr);
+    QCOMPARE(window_->findChild<QComboBox *>("fpsSelect")->currentData().toInt(), 60);
+    QCOMPARE(window_->findChild<QComboBox *>("bitrateSelect")->currentData().toInt(), 6000);
+    QCOMPARE(window_->findChild<QComboBox *>("encoderSelect")->currentData().toString(), QString("software"));
+    QCOMPARE(window_->findChild<QSpinBox *>("audioBitrateSpin")->value(), 192);
 }
 
 void TestMainWindow::testBitrateOptions() {
@@ -921,7 +961,7 @@ void TestMainWindow::testAudioEncodingPersistenceAndReset() {
     QVERIFY(codec && red && toggle);
     QVERIFY(!toggle->isChecked());
     QVERIFY(bitrate && channels);
-    QCOMPARE(bitrate->value(), 192);
+    QCOMPARE(bitrate->value(), 128);
     QCOMPARE(channels->currentData().toInt(), 2);
     QVERIFY(red->isChecked());
     bitrate->setValue(320);
@@ -946,7 +986,7 @@ void TestMainWindow::testAudioEncodingPersistenceAndReset() {
     versus::ui::MainWindowTestAccess::setConfigControlsEnabled(*window_, true);
     QVERIFY(bitrate->isEnabled() && channels->isEnabled());
     QVERIFY(versus::ui::MainWindowTestAccess::resetPersistedSettingsToDefaults(*window_));
-    QCOMPARE(bitrate->value(), 192);
+    QCOMPARE(bitrate->value(), 128);
     QCOMPARE(channels->currentData().toInt(), 2);
     QCOMPARE(codec->currentData().toString(), QString("opus"));
     QVERIFY(red->isChecked());

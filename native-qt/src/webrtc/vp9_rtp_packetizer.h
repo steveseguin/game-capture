@@ -1,5 +1,7 @@
 #pragma once
 
+#include "versus/media_defaults.h"
+
 #include <rtc/rtppacketizer.hpp>
 
 #include <algorithm>
@@ -21,7 +23,7 @@ public:
 
     explicit Vp9RtpPacketizer(
         std::shared_ptr<rtc::RtpPacketizationConfig> rtpConfig,
-        size_t maxFragmentSize = DefaultMaxFragmentSize)
+        size_t maxFragmentSize = defaults::RtpVideoFragmentBytes)
         : rtc::RtpPacketizer(std::move(rtpConfig))
         , mMaxFragmentSize(maxFragmentSize) {}
 
