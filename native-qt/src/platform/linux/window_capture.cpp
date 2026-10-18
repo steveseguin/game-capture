@@ -16,6 +16,7 @@
 #include <QUuid>
 #include <algorithm>
 #include <charconv>
+#include <cerrno>
 #include <condition_variable>
 #include <chrono>
 #include <map>
@@ -24,12 +25,14 @@
 #include <thread>
 #include <fcntl.h>
 #include <unistd.h>
+#include <poll.h>
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
 #include <spa/param/buffers.h>
 #include <spa/buffer/meta.h>
 #include <xcb/xcb.h>
 #include <xcb/composite.h>
+#include <xcb/damage.h>
 #include <spdlog/spdlog.h>
 
 namespace {
@@ -422,10 +425,53 @@ struct WindowCapture::Impl {
                 auto *error = xcb_request_check(x.connection, xcb_composite_redirect_window_checked(x.connection, window, XCB_COMPOSITE_REDIRECT_AUTOMATIC));
                 redirected = !error; std::free(error);
             }
+            xcb_damage_damage_t damage = XCB_NONE;
+            const auto *damageExtension = xcb_get_extension_data(x.connection, &xcb_damage_id);
+            if (damageExtension && damageExtension->present) {
+                auto *version = xcb_damage_query_version_reply(x.connection,
+                    xcb_damage_query_version(x.connection, 1, 1), nullptr);
+                if (version && version->major_version == 1) {
+                    const auto candidate = xcb_generate_id(x.connection);
+                    auto *error = xcb_request_check(x.connection, xcb_damage_create_checked(
+                        x.connection, candidate, window, XCB_DAMAGE_REPORT_LEVEL_NON_EMPTY));
+                    if (!error) damage = candidate;
+                    std::free(error);
+                }
+                std::free(version);
+            }
+            // A static source still needs prompt destruction/resize detection.
+            // This connection's event mask does not replace another client's.
+            const uint32_t eventMask = XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+            auto *eventError = xcb_request_check(x.connection, xcb_change_window_attributes_checked(
+                x.connection, window, XCB_CW_EVENT_MASK, &eventMask));
+            if (eventError) { running = false; std::free(eventError); }
+            spdlog::info("[X11] Window capture uses {}", damage ? "damage notifications" : "timed fallback (DAMAGE unavailable)");
             auto next = std::chrono::steady_clock::now();
+            bool changed = true;
             while (running.load()) {
+                while (auto *event = xcb_poll_for_event(x.connection)) {
+                    const auto type = event->response_type & 0x7f;
+                    if (damage && type == damageExtension->first_event + XCB_DAMAGE_NOTIFY) {
+                        const auto *notification = reinterpret_cast<xcb_damage_notify_event_t *>(event);
+                        if (notification->damage == damage) changed = true;
+                    } else if (type == XCB_DESTROY_NOTIFY) {
+                        if (reinterpret_cast<xcb_destroy_notify_event_t *>(event)->window == window) running = false;
+                    } else if (type == XCB_CONFIGURE_NOTIFY) {
+                        if (reinterpret_cast<xcb_configure_notify_event_t *>(event)->window == window) changed = true;
+                    } else if (type == XCB_MAP_NOTIFY) {
+                        if (reinterpret_cast<xcb_map_notify_event_t *>(event)->window == window) changed = true;
+                    }
+                    std::free(event);
+                }
+                if (!running || xcb_connection_has_error(x.connection)) { running = false; break; }
+                const auto interval = std::chrono::nanoseconds(1000000000 / std::max(1, fps.load()));
                 QImage image;
-                if (admit()) {
+                if ((!damage || changed) && admit()) {
+                    // Rearm before reading so a later drawing operation remains
+                    // pending. Coalesce damage until admission allows readback;
+                    // never lose a source's final update when it becomes idle.
+                    if (damage) xcb_damage_subtract(x.connection, damage, XCB_NONE, XCB_NONE);
+                    changed = false;
                     if (redirected) {
                         const auto pixmap = xcb_generate_id(x.connection);
                         auto *error = xcb_request_check(x.connection, xcb_composite_name_window_pixmap_checked(x.connection, window, pixmap));
@@ -438,12 +484,32 @@ struct WindowCapture::Impl {
                     frame.timestamp = webrtc::mediaTime100ns();
                     frame.data.assign(image.constBits(), image.constBits() + image.sizeInBytes());
                     deliver(std::move(frame));
+                    // Synchronous X replies can queue a damage event inside
+                    // XCB while draining the socket. Inspect that queue before
+                    // polling the descriptor again.
+                    if (damage) continue;
+                } else if (damage && changed) {
+                    // Keep the pending image, but allow a newer drawing event
+                    // to wake admission earlier than the idle retry timeout.
+                    xcb_damage_subtract(x.connection, damage, XCB_NONE, XCB_NONE);
+                    xcb_flush(x.connection);
                 }
-                next += std::chrono::nanoseconds(1000000000 / std::max(1, fps.load()));
                 const auto now = std::chrono::steady_clock::now();
-                if (next < now) next = now;
-                std::this_thread::sleep_until(next);
+                if (damage) {
+                    // No independent sampling clock: wake for the next changed
+                    // image, an admission retry, or bounded stop polling.
+                    const auto wait = changed ? interval : std::chrono::steady_clock::duration(std::chrono::milliseconds(100));
+                    const int timeout = std::clamp<int>(std::chrono::duration_cast<std::chrono::milliseconds>(wait).count() + 1, 1, 100);
+                    pollfd descriptor{xcb_get_file_descriptor(x.connection), POLLIN, 0};
+                    const int status = poll(&descriptor, 1, timeout);
+                    if ((status < 0 && errno != EINTR) || (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) running = false;
+                } else {
+                    next += interval;
+                    if (next < now) next = now;
+                    std::this_thread::sleep_until(next);
+                }
             }
+            if (damage) xcb_damage_destroy(x.connection, damage);
             if (redirected) xcb_composite_unredirect_window(x.connection, window, XCB_COMPOSITE_REDIRECT_AUTOMATIC);
             ready.notify_all();
         });

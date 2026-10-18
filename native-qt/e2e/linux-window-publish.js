@@ -6,6 +6,7 @@ const assert=require('assert/strict'),{spawn,execFileSync}=require('child_proces
 const {chromium}=require('playwright');
 const {receiver,observe,requireMoving,waitFor,sleep}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
+const idleSource=opts['idle-source']==='true';assert(!idleSource||opts.backend==='x11','Idle readback qualification requires X11');
 const noTray=opts['no-tray']==='true';assert(!noTray||(opts.gui==='true'&&opts.backend==='x11'),'No-tray fixture requires private X11 GUI');
 const tray=opts.tray==='true';assert(!tray||(opts.gui==='true'&&opts.backend==='wayland'),'Tray fixture requires native GNOME Wayland GUI');
 const preview=opts.preview==='true';assert(!preview||opts.gui==='true','Preview requires GUI');
@@ -57,6 +58,7 @@ const result={scope:`Extracted Ubuntu DEB, ${gui?'actual Qt GUI':'CLI'} ${extern
   trayHelperSha256:tray?sha(path.join(__dirname,'linux-tray-control.py')):null,
   requested:{noTray,tray,trayCopyFocus:opts['tray-copy-focus']==='true',trayCopy:opts['tray-copy']||'tray',preview,backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,portalCancel,pendingQuit,pendingStop,sourceLoss,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
 let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector,keyboardServer,keyboardDirectory,portalOwner;
+result.requested.idleSource=idleSource;
 const startedAtSeconds=Math.floor(Date.now()/1000);
 const portalBackend='org.freedesktop.impl.portal.desktop.gnome';
 const checkPortalOwner=()=>{
@@ -93,15 +95,15 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   let source=await sourceBrowser.newPage(opts.backend==='wayland'?{viewport:null}:{viewport:{width:800,height:450},deviceScaleFactor:1});
   const title='Owned Linux Capture '+crypto.randomBytes(8).toString('hex');
   await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
-    const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,paused:false};
+    const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,draws:0,paused:false};
     const noise=document.createElement('canvas');noise.width=${noiseWidth};noise.height=${noiseHeight};const nctx=noise.getContext('2d'),pixels=nctx.createImageData(${noiseWidth},${noiseHeight});
-    function draw(){canvas.width=innerWidth;canvas.height=innerHeight;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
+    function draw(){fixture.draws++;canvas.width=innerWidth;canvas.height=innerHeight;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
       const w=canvas.width,h=canvas.height;ctx.fillStyle='#183042';ctx.fillRect(0,0,w,h);
       if(${rateControl}){let seed=fixture.id+1;for(let i=0;i<pixels.data.length;i+=4){seed=(Math.imul(seed,1664525)+1013904223)>>>0;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=seed>>>24;pixels.data[i+3]=255;}nctx.putImageData(pixels,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(noise,0,0,w,h);}
       ctx.fillStyle='#00ffff';ctx.fillRect(.1*w,.25*h,.05*w,.5*h);ctx.fillStyle='#ff00ff';ctx.fillRect(.85*w,.25*h,.05*w,.5*h);
       for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}
-      ctx.fillStyle='white';ctx.font='22px sans-serif';ctx.fillText('Owned source '+fixture.id,20,.9*h);requestAnimationFrame(draw);
-    }draw();</script>`);
+      ctx.fillStyle='white';ctx.font='22px sans-serif';ctx.fillText('Owned source '+fixture.id,20,.9*h);fixture.raf=requestAnimationFrame(draw);
+    }fixture.draw=draw;draw();</script>`);
   await source.bringToFront();await sleep(1000);await source.screenshot({path:path.join(report,'source.png')});
   result.browserVersion=sourceBrowser.version();result.sourceTitle=title;result.initialSourceMetrics=await source.evaluate(()=>({innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio}));save();
   const stream='gclinux'+crypto.randomBytes(14).toString('hex');discovery=path.join(report,'private-control.json');
@@ -279,12 +281,16 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     assert(restored.kbps>reduced.kbps*1.5,'Received video bitrate did not recover');
     assert(restored.kbps>baseline.kbps*.65,'Restored video bitrate remains below baseline');save();
   }
-  await source.evaluate(()=>{fixture.paused=true;});await sleep(1000);
+  if(idleSource)await source.click('canvas',{position:{x:10,y:10}});
+  const staticId=await source.evaluate(idle=>{fixture.paused=true;if(idle){cancelAnimationFrame(fixture.raf);fixture.id=(fixture.id+1)%65536;fixture.draw();cancelAnimationFrame(fixture.raf);}return fixture.id;},idleSource);await sleep(1000);
+  const idleBefore=idleSource?await api('/diagnostics'):null;
+  const idleDraws=idleSource?await source.evaluate(()=>fixture.draws):null;
   result.phases.static=await observe(viewer,2500);
   assert(!result.phases.static.observerError);assert.equal(result.phases.static.identityReadFailures,0);
   assert.equal(new Set(result.phases.static.observations.map(x=>x.id)).size,1,'Static picture changed');
-  assert(result.phases.static.observations.length>=10,'Static picture was not paced');save();
-  await source.evaluate(()=>{fixture.paused=false;});if(opts.backend==='wayland'){const session=await source.context().newCDPSession(source);const {windowId}=await session.send('Browser.getWindowForTarget');await session.send('Browser.setWindowBounds',{windowId,bounds:{width:600,height:460}});}else await source.setViewportSize({width:680,height:420});await sleep(800);await source.screenshot({path:path.join(report,'source-resized.png')});result.resizedSourceMetrics=await source.evaluate(()=>({innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio}));const sourceSession=await source.context().newCDPSession(source);result.resizedWindowBounds=await sourceSession.send('Browser.getWindowForTarget');if(opts.backend==='wayland'){assert(result.resizedSourceMetrics.innerWidth<=result.resizedSourceMetrics.outerWidth,'Fixture viewport exceeds its real window');assert(result.initialSourceMetrics.outerWidth!==result.resizedSourceMetrics.outerWidth||result.initialSourceMetrics.outerHeight!==result.resizedSourceMetrics.outerHeight,'Native source window did not resize');}if(opts['desktop-evidence']==='true')await new Promise((resolve,reject)=>{const shot=spawn('gnome-screenshot',['-f',path.join(report,'desktop-resized.png')],{env});shot.once('error',reject);shot.once('close',code=>code===0?resolve():reject(Error('Desktop screenshot failed')));});await viewer.screenshot({path:path.join(report,'receiver-resized.png')});
+  assert(result.phases.static.observations.length>=10,'Static picture was not paced');
+  if(idleSource){const after=await api('/diagnostics');result.idleSource={id:staticId,readbacks:after.video.frames_captured-idleBefore.video.frames_captured,drawsStopped:(await source.evaluate(()=>fixture.draws))===idleDraws};assert(result.idleSource.drawsStopped);assert(result.phases.static.observations.every(f=>f.id===staticId),'Final drawing update was lost');assert.equal(result.idleSource.readbacks,0,'Idle source still performs capture readbacks');}save();
+  await source.evaluate(idle=>{fixture.paused=false;if(idle)fixture.draw();},idleSource);if(opts.backend==='wayland'){const session=await source.context().newCDPSession(source);const {windowId}=await session.send('Browser.getWindowForTarget');await session.send('Browser.setWindowBounds',{windowId,bounds:{width:600,height:460}});}else await source.setViewportSize({width:680,height:420});await sleep(800);await source.screenshot({path:path.join(report,'source-resized.png')});result.resizedSourceMetrics=await source.evaluate(()=>({innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio}));const sourceSession=await source.context().newCDPSession(source);result.resizedWindowBounds=await sourceSession.send('Browser.getWindowForTarget');if(opts.backend==='wayland'){assert(result.resizedSourceMetrics.innerWidth<=result.resizedSourceMetrics.outerWidth,'Fixture viewport exceeds its real window');assert(result.initialSourceMetrics.outerWidth!==result.resizedSourceMetrics.outerWidth||result.initialSourceMetrics.outerHeight!==result.resizedSourceMetrics.outerHeight,'Native source window did not resize');}if(opts['desktop-evidence']==='true')await new Promise((resolve,reject)=>{const shot=spawn('gnome-screenshot',['-f',path.join(report,'desktop-resized.png')],{env});shot.once('error',reject);shot.once('close',code=>code===0?resolve():reject(Error('Desktop screenshot failed')));});await viewer.screenshot({path:path.join(report,'receiver-resized.png')});
   result.phases.resized=await observe(viewer,4000);requireMoving(result.phases.resized,'Resized Linux stream',expectedCodec);save();
   const late=await receiver(viewerBrowser,stream,publisher);result.phases.late=await observe(late,3000);requireMoving(result.phases.late,'Late Linux receiver',expectedCodec);save();
   if(external){result.helpersBeforeStop=helperProcesses();assert.equal(result.helpersBeforeStop.length,1);}

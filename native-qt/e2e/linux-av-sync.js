@@ -10,7 +10,10 @@ assert.equal(process.platform,'linux');const backend=opts.backend||'x11';assert(
 assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'Use the matching owned desktop wrapper');
 for(const k of ['publisher','manifest-sha256','reports'])assert(opts[k],k);
 const seconds=Number(opts.seconds||60),hold=Number(opts['hold-seconds']||0),analysisPython=opts['analysis-python']||'python3';
-const traceCapture=opts['trace-capture']==='true';if(traceCapture)assert(seconds*(hold?2:1)+hold<=240,'Keep the opt-in native trace below its 100,000-row bound');
+// One receiver produces about 240 native trace rows/second at this fixed
+// 60fps profile. Six minutes leaves room for startup below the 100,000-row
+// limit; the offline analyzer also rejects an actually truncated trace.
+const traceCapture=opts['trace-capture']==='true';if(traceCapture)assert(seconds*(hold?2:1)+hold<=360,'Keep the opt-in native trace below its 100,000-row bound');
 assert(Number.isInteger(seconds)&&seconds>=30&&seconds<=120&&Number.isInteger(hold)&&hold>=0&&hold<=7200);
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..'),manifestFile=path.join(bundle,'release-artifact-manifest.json');
