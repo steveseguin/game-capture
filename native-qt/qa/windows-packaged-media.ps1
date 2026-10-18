@@ -6,6 +6,14 @@ $report = Join-Path $PSScriptRoot 'reports/windows-packaged-media'
 New-Item -ItemType Directory -Path $report -Force | Out-Null
 $result = [ordered]@{ scope = 'Fresh hosted Windows package and software-media workflows; no physical hardware or production qualification'; sourceRevision = (& git -C $repo rev-parse HEAD); steps = @(); passed = $false }
 try {
+    # Follow the source revision under review instead of pinning this workflow
+    # to an older release. The normal packager also checks the executable version.
+    $projectFile = Join-Path $repo 'native-qt/CMakeLists.txt'
+    $projectVersions = [regex]::Matches((Get-Content -LiteralPath $projectFile -Raw),
+        '(?m)^\s*project\s*\(\s*game-capture-native-qt\s+VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)(?=\s|\))')
+    if ($projectVersions.Count -ne 1) { throw 'Expected one native application project version' }
+    $packageVersion = $projectVersions[0].Groups[1].Value
+    $result.requestedVersion = $packageVersion
     # Known Windows source/backend gates are retained separately from workflows.
     & (Join-Path $PSScriptRoot 'windows-build-gate.ps1')
     $result.steps += @{ name = 'build-and-backend-gates'; kind = 'gate'; passed = $true }
@@ -16,12 +24,12 @@ try {
     . (Join-Path $PSScriptRoot 'release-source-snapshot.ps1')
     $snapshot = Get-ReleaseSourceSnapshot -SourceRoot (Join-Path $repo 'native-qt')
     if (-not $snapshot) { throw 'No source snapshot' }
-    & (Join-Path $PSScriptRoot 'build-release.ps1') -BuildDir build-windows-hosted -Version 0.2.64 `
+    & (Join-Path $PSScriptRoot 'build-release.ps1') -BuildDir build-windows-hosted -Version $packageVersion `
         -ExpectedSourceSnapshotSha256 $snapshot.sha256 -ExpectedSourceSnapshotFileCount $snapshot.fileCount `
         -ExpectedSourceSnapshotAlgorithm $snapshot.algorithm -SkipVirusTotal -RequireReleaseArtifacts -RuntimeDependencyMode Imported
     if (-not $?) { throw 'Windows packaging failed' }
     Set-Location $repo
-    $archive = Join-Path $repo 'native-qt/dist/game-capture-0.2.64-win64.zip'
+    $archive = Join-Path $repo "native-qt/dist/game-capture-$packageVersion-win64.zip"
     $extracted = Join-Path $env:RUNNER_TEMP ('game-capture-packaged-' + [guid]::NewGuid().ToString())
     Expand-Archive -LiteralPath $archive -DestinationPath $extracted
     $exe = Join-Path $extracted 'game-capture.exe'
