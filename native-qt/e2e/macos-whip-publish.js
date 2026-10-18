@@ -123,9 +123,19 @@ function audioCheck(value,silent=false){
       '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000',`--duration-ms=${180000+(restartCycles||0)*60000+cadenceSeconds*1000}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
     async function ready(){await waitFor(()=>{if(publisher.exitCode!==null)throw Error('Publisher exited before ready');return fs.existsSync(discovery);},10000,'No control discovery');return JSON.parse(fs.readFileSync(discovery));}
     let control=await ready();
-    const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000});
+    const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']});
+    const waitUiRead=async(action,name,phase)=>{
+      const began=Date.now();let attempts=0;
+      await waitFor(()=>{
+        if(publisher.exitCode!==null||publisher.signalCode)throw Error('Publisher exited before GUI readiness');
+        attempts++;
+        try {const value=ui(action,name);return action==='actions'?JSON.parse(value).includes('AXPress'):true;}
+        catch(error){if((action==='actions'&&error.status===3)||(action==='source-ready'&&error.status===4))return false;throw error;}
+      },10000,`GUI readiness timed out: ${phase}`);
+      (entry.guiReadiness??=[]).push({phase,action,name,attempts,elapsedMs:Date.now()-began});
+    };
     if(opts.gui){
-      await sleep(700);ui('press','sourceModeSelect');await sleep(250);ui('press','Camera / Webcam');await sleep(700);ui('select-source','OBS Virtual Camera');
+      await waitUiRead('actions','sourceModeSelect','initial window');ui('press','sourceModeSelect');await sleep(250);ui('press','Camera / Webcam');await waitUiRead('source-ready','OBS Virtual Camera','initial camera discovery');ui('select-source','OBS Virtual Camera');
       ui('press','microphoneDeviceSelect');await sleep(250);ui('press','BlackHole 2ch');await sleep(300);
       ui('press','advancedToggle');await sleep(250);
       ui('press','encoderSelect');await sleep(250);ui('press',encoder==='videotoolbox'?'Apple VideoToolbox':'Software (x264 / VP9 / AV1)');await sleep(250);
@@ -135,14 +145,14 @@ function audioCheck(value,silent=false){
       if(ini.includes(token)||ini.includes(stream)||!ini.includes('profilesEncrypted='))throw Error('Output profile was not stored as an opaque Keychain reference');
       await api(control,'/commands',{command:'quit'});await publisher.closed;if(publisher.exitCode!==0)throw Error('Profile-save shutdown failed');
       await waitFor(()=>!fs.existsSync(discovery),5000,'Old discovery survived profile-save shutdown');
-      publisher=launch(relaunchExe,guiArgs,encoder+'-relaunch');control=await ready();await sleep(700);
+      publisher=launch(relaunchExe,guiArgs,encoder+'-relaunch');control=await ready();await waitUiRead('actions','sourceModeSelect','relaunched window');
       const restoredIni=fs.readFileSync(path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini'),'utf8');
       const profileReference=text=>text.match(/^profilesEncrypted=.*$/m)?.[0];
       if(!profileReference(ini)||profileReference(ini)!==profileReference(restoredIni)||restoredIni.includes(token)||restoredIni.includes(stream))throw Error('Saved Keychain profile reference changed or leaked on relaunch');
       entry.sameKeychainReference=true;
       // No endpoint/token command-line arguments and no credential re-entry:
       // successful authenticated publishing proves the persisted profile loaded.
-      ui('select-source','OBS Virtual Camera');ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');entry.profileRelaunched=true;entry.publishingExecutableSha256=hash(relaunchExe);
+      await waitUiRead('source-ready','OBS Virtual Camera','relaunched camera discovery');ui('select-source','OBS Virtual Camera');ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');entry.profileRelaunched=true;entry.publishingExecutableSha256=hash(relaunchExe);
     }
     const url=`http://127.0.0.1:${webPort}/${stream}/?muted=true`;
     let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);entry.audio=await observeAudio(page);audioCheck(entry.audio);
@@ -233,7 +243,7 @@ function audioCheck(value,silent=false){
   }
   if(unresponsiveStun&&result.unresponsiveStun.requests<2)throw Error('Unresponsive STUN fixture did not receive retries');
   result.passed=true;
-}catch(e){result.error=String(e.stack||e);console.error(result.error);process.exitCode=1;}
+}catch(e){result.error=String(e.stack||e).split(token).join('<redacted>');console.error(result.error);process.exitCode=1;}
 finally{for(const p of children)p.kill('SIGTERM');if(browser)await browser.close().catch(()=>{});if(proxy){proxy.closeAllConnections();proxy.close();}if(stalledStun)stalledStun.close();await Promise.all([...children].map(p=>p.closed));
   if(opts.gui){const ini=path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini');if(fs.existsSync(ini)){
     const encoded=fs.readFileSync(ini,'utf8').match(/^profilesEncrypted="?@ByteArray\(([A-Za-z0-9+/=]+)\)"?$/m)?.[1];const reference=encoded?Buffer.from(encoded,'base64').toString():'';
