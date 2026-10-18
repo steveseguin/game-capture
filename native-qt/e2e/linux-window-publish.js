@@ -7,18 +7,18 @@ const {chromium}=require('playwright');
 const {receiver,observe,requireMoving,waitFor,sleep}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 const gui=opts.gui==='true',external=opts.external==='true',width=gui?960:640,height=gui?540:360;
-const rateControl=opts['rate-control']==='true';
+const rateControl=opts['rate-control']==='true',portalCancel=opts['portal-cancel']==='true';
+assert(!portalCancel||(gui&&opts.backend==='wayland'),'Portal cancellation fixture requires Wayland GUI');
 assert(!rateControl||!gui,'Rate control currently qualifies CLI only');
 const targetBitrate=Number(opts['target-bitrate']||1000);
 assert([500,1000].includes(targetBitrate),'Unknown rate-control fixture target');
 const noiseGrid=opts['noise-grid']||'160x90';
 assert(['160x90','80x45','40x23'].includes(noiseGrid),'Unknown noise fixture grid');
 const [noiseWidth,noiseHeight]=noiseGrid.split('x').map(Number);
-assert(!gui||opts.backend!=='wayland','GUI helper currently qualifies X11 only');
 assert(!external||['vp9','av1'].includes(opts.codec),'External helper matrix supports VP9/AV1');
 const codec=opts.codec||'h264', expectedCodec='video/'+codec;
 assert(['h264','vp8','vp9','av1','h265'].includes(codec),'Unknown codec');
-assert(!gui||['vp9','av1'].includes(codec),'GUI codec matrix supports VP9/AV1');
+assert(!gui||['h264','vp9','av1'].includes(codec),'GUI codec matrix supports H264/VP9/AV1');
 const codecName={h264:'H.264',h265:'H.265',vp8:'VP8',vp9:'VP9',av1:'AV1'}[codec];
 assert.equal(process.platform,'linux');for(const key of ['publisher','reports','manifest-sha256'])assert(opts[key]);
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..'),manifestFile=path.join(bundle,'release-artifact-manifest.json');
@@ -33,7 +33,7 @@ for(const item of manifest.payload.files){
   assert.equal(fs.statSync(file).size,item.size);assert.equal(sha(file),item.sha256);
 }
 assert(fs.existsSync(path.join(bundle,'usr/share/applications/game-capture.desktop')));
-const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
+const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 fs.copyFileSync(path.join(__dirname,'linux-portal-select.py'),path.join(report,'portal-selector.py'));
 fs.copyFileSync(path.join(__dirname,'macos-media-receiver.js'),path.join(report,'receiver.js'));
@@ -46,7 +46,7 @@ const result={scope:`Extracted Ubuntu DEB, ${gui?'actual Qt GUI':'CLI'} ${extern
   guiHelperSha256:sha(path.join(__dirname,'linux-ui-control.py')),
   host:{platform:os.platform(),release:os.release(),arch:os.arch(),logicalCpus:os.cpus().length},
   requested:{backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
-let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector;
+let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector,keyboardServer,keyboardDirectory;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');
 const processStart=pid=>{try{return fs.readFileSync('/proc/'+pid+'/stat','utf8').split(') ').pop().split(' ')[19];}catch{return null;}};
 const helperProcesses=()=>{
@@ -64,6 +64,13 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   const env={...process.env};for(const k of Object.keys(env))if(/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(k))delete env[k];
   for(const k of ['GH_TOKEN','GITHUB_TOKEN','ACTIONS_RUNTIME_TOKEN','ACTIONS_ID_TOKEN_REQUEST_TOKEN'])delete env[k];
   env.XDG_STATE_HOME=path.join(report,'private-state');env.XDG_DATA_HOME=path.join(report,'private-data');env.XDG_CONFIG_HOME=path.join(report,'private-config');if(opts.backend==='wayland'){env.XDG_SESSION_TYPE='wayland';env.WAYLAND_DISPLAY=process.env.WAYLAND_DISPLAY||'wayland-0';env.QT_QPA_PLATFORM='wayland';}else{env.XDG_SESSION_TYPE='x11';delete env.WAYLAND_DISPLAY;env.QT_QPA_PLATFORM='xcb';}
+  if(gui&&opts.backend==='wayland'){
+    keyboardDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gc-wayland-keys-'));fs.chmodSync(keyboardDirectory,0o700);
+    env.GC_QA_KEYBOARD_SOCKET=path.join(keyboardDirectory,'input.sock');
+    keyboardServer=spawn('sudo',['-n','python3',path.join(__dirname,'linux-portal-select.py'),'--keyboard-server='+env.GC_QA_KEYBOARD_SOCKET],{env,stdio:['pipe','pipe','pipe']});
+    keyboardServer.closed=new Promise(resolve=>keyboardServer.once('close',resolve));let ready='';keyboardServer.stdout.on('data',d=>ready+=d);keyboardServer.stderr.on('data',d=>process.stderr.write(d));
+    await waitFor(()=>{assert.equal(keyboardServer.exitCode,null,'Owned keyboard exited');return ready.includes('ready');},10000,'Owned keyboard not ready');
+  }
   sourceBrowser=await chromium.launch({executablePath:opts.browser||'/usr/bin/google-chrome',headless:false,env,args:[...(opts.backend==='wayland'?['--ozone-platform=wayland']:[]),'--window-position=10,10',opts.backend==='wayland'?'--window-size=720,560':'--window-size=900,650','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
   const source=await sourceBrowser.newPage(opts.backend==='wayland'?{viewport:null}:{viewport:{width:800,height:450},deviceScaleFactor:1});
   const title='Owned Linux Capture '+crypto.randomBytes(8).toString('hex');
@@ -90,25 +97,38 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   log=fs.createWriteStream(path.join(report,'private-publisher.log'));
   publisher=spawn(exe,args,{cwd:bundle,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
   publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
-  if(opts.backend==='wayland'){portalSelector=spawn('python3',[path.join(__dirname,'linux-portal-select.py'),'--title='+title,'--output='+path.join(report,'portal-selection.json')],{env,stdio:['ignore','pipe','pipe']});portalSelector.stdout.pipe(log,{end:false});portalSelector.stderr.pipe(log,{end:false});}
+  const selectPortal=(name='portal-selection',cancel=false)=>{portalSelector=spawn('python3',[path.join(__dirname,'linux-portal-select.py'),'--title='+title,'--output='+path.join(report,name+'.json'),...(cancel?['--cancel']:[])],{env,stdio:['ignore','pipe','pipe']});portalSelector.stdout.pipe(log,{end:false});portalSelector.stderr.pipe(log,{end:false});};
+  if(opts.backend==='wayland'&&!gui)selectPortal();
   publisher.closed=new Promise(resolve=>publisher.once('close',resolve));
   publisher.on('error',error=>{result.launchError=String(error);});
   await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during startup');assert(!result.launchError,result.launchError);return fs.existsSync(discovery);},15000,'No control discovery');
   control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
-  const ui=(...arguments_)=>execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),...arguments_],{env,encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
+  const ui=(...arguments_)=>execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),...arguments_],{env,encoding:'utf8',timeout:opts.backend==='wayland'?60000:10000,stdio:['ignore','pipe','pipe']});
   if(gui){
+    await waitFor(()=>{try{return JSON.parse(ui('dump')).some(r=>['Go live','Go live unavailable'].includes(r.name));}catch{return false;}},20000,'GUI not accessible');
     ui('press','Show advanced settings');
     ui('choose','Auto (Hardware, then Software)','Software (x264 / VP9 / AV1 / HEVC)');
     ui('choose','1280x720','960x540');ui('choose','60','30');
-    ui('choose-prefix','H.264 (Compatibility)',codec==='vp9'?'VP9 (':'AV1 (');
+    if(codec!=='h264')ui('choose-prefix','H.264 (Compatibility)',codec==='vp9'?'VP9 (':'AV1 (');
     ui('choose','Selected window/app audio','No audio');
-    ui('source',title);ui('text','Stream ID or VDO.Ninja URL',stream);ui('text','Stream password','false');
+    ui('source',opts.backend==='wayland'?'Choose a window':title);ui('text','Stream ID or VDO.Ninja URL',stream);ui('text','Stream password','false');
     if(external){ui('text','FFmpeg Path',helperPath);ui('text','FFmpeg Options','-threads 2');}
     fs.writeFileSync(path.join(report,'ui-before-live.json'),ui('dump'));
-    ui('press','Go live');await waitFor(async()=> (await api('/diagnostics')).app.live,15000,'GUI did not go live');
+    if(portalCancel){
+      selectPortal('portal-cancel',true);ui('press','Go live');
+      await waitFor(()=>portalSelector.exitCode!==null,30000,'Portal cancellation did not finish');assert.equal(portalSelector.exitCode,0);
+      assert(JSON.parse(fs.readFileSync(path.join(report,'portal-cancel.json'))).passed);
+      await waitFor(()=>JSON.parse(ui('dump')).some(r=>r.name==='Go live'&&r.states.includes('sensitive')),15000,'GUI did not recover from portal cancellation');
+      const cancelled=await api('/diagnostics');assert(!cancelled.app.live&&!cancelled.app.capturing);assert.equal(cancelled.video.frames_captured,0);
+      const rows=JSON.parse(ui('dump'));assert(rows.some(r=>r.role==='label'&&/failed.*capture/i.test(r.name)),'No visible capture failure status');
+      result.portalCancellation={passed:true,noFramesCaptured:true,retryEnabled:true};save();
+    }
+    if(opts.backend==='wayland')selectPortal();
+    ui('press','Go live');await waitFor(async()=> (await api('/diagnostics')).app.live,30000,'GUI did not go live');
   }
 
-  if(opts.backend==='wayland')await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during portal selection');return fs.readFileSync(path.join(report,'private-publisher.log'),'utf8').includes('[Headless] Going live');},75000,'Portal selection/startup did not finish');
+  if(opts.backend==='wayland'&&!gui)await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during portal selection');return fs.readFileSync(path.join(report,'private-publisher.log'),'utf8').includes('[Headless] Going live');},75000,'Portal selection/startup did not finish');
+  if(opts.backend==='wayland'){await waitFor(()=>portalSelector.exitCode!==null,10000,'Portal selector did not finish');assert.equal(portalSelector.exitCode,0);assert(JSON.parse(fs.readFileSync(path.join(report,'portal-selection.json'))).passed);}
   viewerBrowser=await chromium.launch({executablePath:opts.browser||'/usr/bin/google-chrome',headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
   const capabilities=await viewerBrowser.newPage();result.receiverCapabilities=await capabilities.evaluate(()=>RTCRtpReceiver.getCapabilities('video'));await capabilities.close();save();
   const viewer=await receiver(viewerBrowser,stream,publisher);
@@ -184,6 +204,14 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     ui('press','Stop streaming');await waitFor(async()=>!(await api('/diagnostics')).app.capturing,10000,'GUI stop did not finish');
     const before=await api('/diagnostics');await sleep(500);const after=await api('/diagnostics');
     assert.equal(before.video.frames_captured,after.video.frames_captured);result.guiStopSettled=true;
+    if(opts.backend==='wayland'){
+      selectPortal('portal-restarted');ui('press','Go live');
+      await waitFor(async()=> (await api('/diagnostics')).app.live,30000,'Wayland GUI restart did not go live');
+      await waitFor(()=>portalSelector.exitCode!==null,10000,'Restarted portal selection did not finish');assert.equal(portalSelector.exitCode,0);
+      assert(JSON.parse(fs.readFileSync(path.join(report,'portal-restarted.json'))).passed);
+      const restarted=await receiver(viewerBrowser,stream,publisher);result.phases.restarted=await observe(restarted,4000);requireMoving(result.phases.restarted,'Restarted Wayland GUI',expectedCodec);await restarted.close();
+      ui('press','Stop streaming');await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.capturing&&!d.app.live;},10000,'Restarted GUI did not stop');result.guiRestartPassed=true;
+    }
     await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,8000,'GUI quit did not finish');await publisher.closed;
     assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));result.passed=true;
   }else{
@@ -197,12 +225,13 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     await waitFor(()=>[...result.helperProcesses,...result.helpersBeforeStop].every(p=>processStart(p.pid)!==p.startTimeTicks),5000,'Owned FFmpeg helper survived shutdown');
     result.helpersRetired=true;
   }
-}catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;}finally{
+}catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;if(gui&&opts.backend==='wayland'){try{fs.writeFileSync(path.join(report,'ui-failure.json'),execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),'dump'],{env:{...process.env,QT_QPA_PLATFORM:'wayland'},timeout:10000}));execFileSync('gnome-screenshot',['-f',path.join(report,'desktop-failure.png')],{env:{...process.env,WAYLAND_DISPLAY:process.env.WAYLAND_DISPLAY||'wayland-0'},timeout:10000});}catch{}}}finally{
   if(publisher&&publisher.exitCode===null){
     try{if(control)await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,6000,'Cleanup quit timed out');}
     catch{publisher.kill();await publisher.closed;}
   }
   if(portalSelector&&portalSelector.exitCode===null)portalSelector.kill();
+  if(keyboardServer){keyboardServer.stdin.end();await waitFor(()=>keyboardServer.exitCode!==null,8000,'Owned keyboard did not stop');await keyboardServer.closed;}if(keyboardDirectory)fs.rmdirSync(keyboardDirectory);
   if(sourceBrowser)await sourceBrowser.close();if(viewerBrowser)await viewerBrowser.close();
   if(log)await new Promise(resolve=>log.end(resolve));
   if(publisher){result.exitCode=publisher.exitCode;result.exitSignal=publisher.signalCode;}

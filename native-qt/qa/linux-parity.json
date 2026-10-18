@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged GNOME portal selection, moving/static H264 reception, native resize, late viewer and source-loss cleanup passed. Denial/cancellation/revocation, suspend/restore, cursor and GUI preview remain."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor, GUI source loss and preview remain."
     },
     {
       "id": "x11-window",
@@ -70,8 +70,8 @@
     {
       "id": "vdo-direct",
       "required": true,
-      "status": "shared-unqualified",
-      "remaining": "GUI/CLI publishing, generated links, password, late viewers, reconnect, TURN and browser/OBS delivery"
+      "status": "partial-e2e-passed",
+      "remaining": "Packaged X11 and native Wayland GUI H264/no-audio publication using an entered stream ID and password=false, decoded moving/static/resize, late viewer and fresh-portal restart passed. Broader GUI/CLI settings, generated links, real passwords, TURN, browser/OBS delivery combinations and reconnect/recovery remain."
     },
     {
       "id": "vdo-rooms",
@@ -101,7 +101,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Wayland GUI, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation."
     },
     {
       "id": "profiles",
@@ -119,7 +119,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified."
     },
     {
       "id": "packaging",
@@ -6285,6 +6285,419 @@
       "desktopReportSha256": "7dfe2190678294c5b2a822c7e7bed5e4b9e12ae0e27472e40b33dbcdfef92fb9",
       "finding": "Actual Qt GUI restored WHIP URL and bearer token after process relaunch, then published 960x540/30 software H264 and stereo Opus. Browser-decoded moving/static content, silence, late viewer, server restart, GUI Stop/Go live and second Stop passed. Both GUI Stops received a successful server DELETE response. Settings/log privacy and process/discovery cleanup passed.",
       "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/38eb1bf8-e40e-4f98-8dba-4821c3eb1870/results.json",
+      "reportSha256": "619e26c7d5248acf1ca1e1131ac0d60fdeeb14b6f4c9e47dbebed2adfd0aca62",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "c528dbd38117daa6f33a83e014a66aae9d6142e31518bc639f58b96c7635dfd6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "guiHelperSha256": "f1348a13691f938d6e550320d13aa814925c12be5bd45fcf8a8ba2ac4c77e607"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/75bd2698-7bfe-4a6b-a044-14c937e91624/results.json",
+      "reportSha256": "437c008670f5f7ee02a2ab31f0de0778333f5ddd955871c7cb8ca1dc17261851",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "c528dbd38117daa6f33a83e014a66aae9d6142e31518bc639f58b96c7635dfd6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "guiHelperSha256": "ae57e9685829141418b5a07e6585f44873911445463bf46f5402b2063f879043"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/387bebb3-ed56-4d02-a88a-930c7b36539d/results.json",
+      "reportSha256": "71aa987d4988e57f28bdaf9eb6470f873fd89a4aab341ad87d9e41d72fb717b1",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "c528dbd38117daa6f33a83e014a66aae9d6142e31518bc639f58b96c7635dfd6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "c1e151b4f99d770850e10e09c2bf7acd88c5412bb4ddc7b813cd9e5255b5b989"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/b4c94cea-0b52-45e1-a603-0b24f9576075/results.json",
+      "reportSha256": "41e0d254e3bbc68a932add32ebc1081eb11493f5a21d58caae0fb372918a56c1",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "1f5352f7352b508c5198c9a4122378ff8f0cd5228dda7b487f37a13506c80efe",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "ae57e9685829141418b5a07e6585f44873911445463bf46f5402b2063f879043"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/f720027d-6a85-4554-910d-854edaafb754/results.json",
+      "reportSha256": "8f96f0ddf29ddfb53243171f75d0677aae8e0d8b8cb452926d5d218f1661062f",
+      "passed": false,
+      "finding": "Qt 6.4 AT-SPI component scroll_to was unsupported. Fixture failure before capture; later normal Tab navigation scrolls the real widget into view.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "1f5352f7352b508c5198c9a4122378ff8f0cd5228dda7b487f37a13506c80efe",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "504e8c22dcafabcb8015723ee1fa0a3712005df1c8965e71b1a08d71af9ee2b3"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/ecc27a4d-5cf1-482a-9abc-f0221b48d278/results.json",
+      "reportSha256": "5e0273e9b9957dc07cb927b53da38f42fcda7e4cb276044a61d0b03ed444a3f1",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "1f5352f7352b508c5198c9a4122378ff8f0cd5228dda7b487f37a13506c80efe",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "b48c2ea9a3bcf64ddde2f7821ec8db937463452490ca6470c9dd2a2205089fac"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/7d7556aa-5293-48ae-a501-76c631f9eb30/results.json",
+      "reportSha256": "1cd4502a397f94c6667caa07582f3aa0a8df3887d6f909399430ffd5cda8009a",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "1f5352f7352b508c5198c9a4122378ff8f0cd5228dda7b487f37a13506c80efe",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "8fd4d2daa198005ce4187deead9bf2c17895229d2b38ec6a68ac4da3b4eba004"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/4d4957e0-7439-4a7b-881a-b10f1356f78f/results.json",
+      "reportSha256": "651a6f45aded2bbbc7ec9d19f68d9c8dde8838373ade28de3a6f38a2b041e90a",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "1f5352f7352b508c5198c9a4122378ff8f0cd5228dda7b487f37a13506c80efe",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "3b60441b03b8feaa99a58f7adab94e7c3bbfa97249f409ad0de0bc2ef6e33329"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/e4c38702-fd8d-4889-b0cd-daeae6766831/results.json",
+      "reportSha256": "d3e390ef834453a04f0c50651fe7ba02b468447ce5f7a473b0d7f75bf8c25a0c",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "5a6350bdb81efa0f22bd036802247a313b184b54203175f13aac80b74324a4d4",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "b3d61293a80e72a4399e18065f1bc3c789ffbc1e7eca43c371f1a454e3c374af",
+      "guiHelperSha256": "6ce31cf42ecd29b4bfa91303d49b8622df418539125472bf47fb8fe055c6a0c5"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/74c462b8-8541-4bfb-b623-8c3b2111879e/results.json",
+      "reportSha256": "26c4f2ce379239cd10b2045fc7e46f09303692989020429fc3106d710ce868a5",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "5a6350bdb81efa0f22bd036802247a313b184b54203175f13aac80b74324a4d4",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "c4e1e6480e3edaec678c534e287f7330a398ddc58edeb150858b68a61a6f8f65",
+      "guiHelperSha256": "8f24fadcec7a2f18113958d5f8ca4817d5343270bf097168a5edfc7e7e10c4f2"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/fbb37cd7-21b1-428f-8fe4-f2a8e0d6e0ca/results.json",
+      "reportSha256": "4860325c0193ac303922e5c696c7e3664ea2d9088797615dd0ef21bdb83717b1",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "5a6350bdb81efa0f22bd036802247a313b184b54203175f13aac80b74324a4d4",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "c4e1e6480e3edaec678c534e287f7330a398ddc58edeb150858b68a61a6f8f65",
+      "guiHelperSha256": "d22c2702629c360b509205432c76b708f188f85e78d4465578ff909dfbbe4d39"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/d09eb2e1-0ffb-4d20-a483-41277fc00619/results.json",
+      "reportSha256": "5c4cb6484e2790b0b020589e3a2ea8f98aa3d9c7082df7add3f0d9e7126cf038",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "5a6350bdb81efa0f22bd036802247a313b184b54203175f13aac80b74324a4d4",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "guiHelperSha256": "b3293e7e6c21e5685eed876cd0384c6ae9682ecb4e04b7b77ae9aa32f0b982dd"
+    },
+    {
+      "backend": "linux-wayland-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-wayland-gui/de6bea6d-7e9c-49d0-a208-8a45abf7ea16/results.json",
+      "reportSha256": "77a6db7b12c444d232ee25254531acc83b65f555fc1f2ae7cb5663911c7cdb65",
+      "passed": false,
+      "finding": "Wayland GUI driver failed during control setup before capture. Direct diagnostic evidence later established that Qt 6.4 AT-SPI grab_focus returns false and hidden list items retain FOCUSED. Normal Tab navigation to the actual combo corrects the fixture; no application publishing failure is established by this run.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "e86c630a85165807b9f121a67f42a025decd48955738b3fa00daa0de007cae3c",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "126f261c5718b11577debb97c5c6e0765d6d602b3816833cb63041c68bc868de",
+      "guiHelperSha256": "b6d903c6c6f2c0d5139310e515d5a49ee2c27bad8c42706811084926191f5e6b"
+    },
+    {
+      "backend": "linux-wayland-gui-publish",
+      "report": "native-qt/qa/reports/linux-wayland-gui/cc5d165b-434a-4db7-ac37-f3dff0274e8e/results.json",
+      "reportSha256": "5d9aa548e58ea599b371f0d2abc30b745f666bb2059ddd962ec9cb9058cf24fc",
+      "passed": true,
+      "requested": {
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "guiStopSettled": true,
+      "guiRestartPassed": false,
+      "portalCancellation": null,
+      "phases": {
+        "moving": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 179,
+          "distinctIdentities": 179
+        },
+        "static": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 75,
+          "distinctIdentities": 1
+        },
+        "resized": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 120,
+          "distinctIdentities": 120
+        },
+        "late": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 88,
+          "distinctIdentities": 88
+        }
+      },
+      "portalReports": [
+        {
+          "report": "native-qt/qa/reports/linux-wayland-gui/cc5d165b-434a-4db7-ac37-f3dff0274e8e/portal-selection.json",
+          "reportSha256": "0f422f511fd0de35b162cff422ba49ec1745ea0ca2b7a6ca646107586830899e",
+          "mode": "share",
+          "passed": true
+        }
+      ],
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "8d4d15a004e4da67787e7597e3024af359d4c81cadcd7d1b98ee566f48458650",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "126f261c5718b11577debb97c5c6e0765d6d602b3816833cb63041c68bc868de",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "finding": "Native Qt Wayland GUI at 960x540/30 software H264: actual source/settings controls, real GNOME portal selection, VDO.Ninja browser-decoded moving/static content, native source resize, late viewer, Stop and discovery cleanup passed.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification GNOME 46 desktop at 800x600; no preview, audio, tray, permission-policy denial, revocation, suspend or alternate compositor qualification."
+    },
+    {
+      "backend": "linux-wayland-gui-cancel-restart",
+      "report": "native-qt/qa/reports/linux-wayland-gui/e45567a8-6def-48e7-bb49-d826bb73bbf8/results.json",
+      "reportSha256": "7a77ebaa26f687fb7d6d725e73264c1d6622d8b0d011c5189d6e97a435d2653f",
+      "passed": true,
+      "requested": {
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "guiStopSettled": true,
+      "guiRestartPassed": true,
+      "portalCancellation": {
+        "passed": true,
+        "noFramesCaptured": true,
+        "retryEnabled": true
+      },
+      "phases": {
+        "moving": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 176,
+          "distinctIdentities": 176
+        },
+        "static": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 75,
+          "distinctIdentities": 1
+        },
+        "resized": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 114,
+          "distinctIdentities": 113
+        },
+        "late": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 86,
+          "distinctIdentities": 86
+        },
+        "restarted": {
+          "width": 960,
+          "height": 540,
+          "identityReadFailures": 0,
+          "rowDisagreements": 0,
+          "observations": 118,
+          "distinctIdentities": 117
+        }
+      },
+      "portalReports": [
+        {
+          "report": "native-qt/qa/reports/linux-wayland-gui/e45567a8-6def-48e7-bb49-d826bb73bbf8/portal-cancel.json",
+          "reportSha256": "a83f40270aec591abdbdf380b513e0a35e3a368e6f63e1a145e3c3ebf86bca93",
+          "mode": "cancel",
+          "passed": true
+        },
+        {
+          "report": "native-qt/qa/reports/linux-wayland-gui/e45567a8-6def-48e7-bb49-d826bb73bbf8/portal-restarted.json",
+          "reportSha256": "b104c9973bfe3e27125abcf3279c730499d77d4c501557626ceded5171c78c53",
+          "mode": "share",
+          "passed": true
+        },
+        {
+          "report": "native-qt/qa/reports/linux-wayland-gui/e45567a8-6def-48e7-bb49-d826bb73bbf8/portal-selection.json",
+          "reportSha256": "b104c9973bfe3e27125abcf3279c730499d77d4c501557626ceded5171c78c53",
+          "mode": "share",
+          "passed": true
+        }
+      ],
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "edfc06423e3bf064f12a9194058ca985fbd16796cd933090e0ba0bd02bfcdfe6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "20ac1f6cf880d68b71e5e6f5006a42179d75d133cea3d50ab2a5ac0d1d47fddc",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "finding": "Native Qt Wayland GUI at 960x540/30 software H264: actual source/settings controls, real GNOME portal selection, VDO.Ninja browser-decoded moving/static content, native source resize, late viewer, Stop and discovery cleanup passed. Cancelled permission request captured no frames, showed failure status, restored retry controls, and succeeded on retry. A second Go live after Stop opened a fresh portal session and delivered decoded media before final Stop/quit.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification GNOME 46 desktop at 800x600; no preview, audio, tray, permission-policy denial, revocation, suspend or alternate compositor qualification."
+    },
+    {
+      "backend": "linux-wayland-gui-x11-regression",
+      "report": "native-qt/qa/reports/linux-wayland-gui-x11-regression/7ba3c3a5-7dc6-47d6-a2c5-a62c4cde670f/results.json",
+      "reportSha256": "fd228065f9b71dd9bbebc7425ab2f77b406e5f3bb5ae6f2212e22a08d61867b4",
+      "passed": true,
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "After extending the Linux GUI driver for Wayland, packaged X11 GUI H264/no-audio publishing still passed settings/source entry, decoded moving/static content, resize, late viewer, Stop and clean exit.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "phases": {
+        "moving": {
+          "width": 960,
+          "height": 540,
+          "observations": 180,
+          "distinctIdentities": 180,
+          "identityReadFailures": 0
+        },
+        "static": {
+          "width": 960,
+          "height": 540,
+          "observations": 75,
+          "distinctIdentities": 1,
+          "identityReadFailures": 0
+        },
+        "resized": {
+          "width": 960,
+          "height": 540,
+          "observations": 120,
+          "distinctIdentities": 120,
+          "identityReadFailures": 0
+        },
+        "late": {
+          "width": 960,
+          "height": 540,
+          "observations": 88,
+          "distinctIdentities": 88,
+          "identityReadFailures": 0
+        }
+      },
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "6e51dfeb55285b4eac15a698792bc25f7ff35661a9a600ea43d24156db54e444",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "2321fe9fc365261c7310ea3365fc7d1c90f28678b85262395ca59d5451849d5c",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631"
     }
   ],
   "host_environment": {
@@ -6320,7 +6733,8 @@
     "xvfb-run -a python3 native-qt/e2e/linux-output-profiles.py --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports>",
     "xvfb-run -a node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<reports> --helper-stall=true",
     "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true --helper-stall=true",
-    "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-whip-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true"
+    "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-whip-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true",
+    "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --portal-cancel=true (active GNOME Wayland session; owned uinput helper requires sudo)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -6487,5 +6901,30 @@
     "log": "native-qt/build-linux-output-gui-gates.log",
     "logSha256": "6d97adf8d6a8ec92ca9c991be68b95c51909b2606181a7e7f9b6eca99259df93",
     "cross_platform": "No production code changed. Existing Windows/macOS runtime regression gaps remain."
+  },
+  "wayland_gui_fixture_diagnostic": {
+    "report": "native-qt/qa/reports/linux-wayland-gui/diagnostic-b23f50cc-5cfa-4594-8c83-4de20339fc1a/finding.json",
+    "reportSha256": "e4135fc67126fc5a01c0f0267078795d395edf2b94110617da3bd1b416de9aad",
+    "classification": "Fixture diagnosis, not application publishing qualification."
+  },
+  "wayland_gui_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-373b48d50364-0865b0d04db6.deb",
+    "sha256": "f6e9760311b2f7974d86b6ee0baca78c44139793e2aec68c6784cd320e9b2826",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-373b48d50364-0865b0d04db6",
+    "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+    "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+    "qualification": "Development checkpoint, extracted Ubuntu DEB; native Qt and source Chrome on GNOME Wayland, 800x600 desktop, software H264 960x540/30, no audio. Real portal cancellation/retry, moving/static video, native source resize, late viewer, Stop/fresh portal/restart/Stop and clean app exit passed. Full Wayland GUI, preview, audio, external output combinations, revocation, suspend and other compositors remain open.",
+    "cleanupReport": "native-qt/qa/reports/linux-wayland-gui/cleanup.json",
+    "cleanupReportSha256": "ec95977514334cbd4d52225d1e548a4488ea0aa35675aa59c0e7775d94dffb0d"
+  },
+  "wayland_gui_gates": {
+    "classification": "Gates only; not application testing.",
+    "passed": [
+      "Python AST parse",
+      "Node syntax"
+    ],
+    "log": "native-qt/build-linux-wayland-gui-gates.log",
+    "logSha256": "e76c2bfe656bfb57eaf90087bde674a33259aa8ed173245d3e8dace3b89937b2",
+    "cross_platform": "No production code changed; Windows/macOS runtime regression gaps remain."
   }
 }

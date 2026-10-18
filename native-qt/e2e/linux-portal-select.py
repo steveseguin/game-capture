@@ -7,35 +7,96 @@ requires access to /dev/uinput (sudo is scoped to this helper, not the app).
 """
 import argparse
 import json
+import os
+import select
+import socket
+import struct
 from pathlib import Path
 import subprocess
 import sys
 import time
 
 
+ALLOWED_KEYS = {"HOME", "DOWN", "SPACE", "TAB", "ENTER"}
+
+
+def emit_keys(device, keys):
+    from evdev import ecodes as ec
+    if not isinstance(keys, list) or len(keys) > 64 or any(key not in ALLOWED_KEYS for key in keys):
+        raise RuntimeError("Unexpected QA keys")
+    for key in keys:
+        code = getattr(ec, "KEY_" + key)
+        device.write(ec.EV_KEY, code, 1); device.syn()
+        time.sleep(.08)
+        device.write(ec.EV_KEY, code, 0); device.syn()
+        time.sleep(.15)
+    time.sleep(.3)
+
+
 def keyboard(keys):
+    if os.environ.get('GC_QA_KEYBOARD_SOCKET'):
+        with socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(8)
+            client.connect(os.environ['GC_QA_KEYBOARD_SOCKET'])
+            client.sendall(json.dumps(keys).encode() + b'\n')
+            if client.recv(32) != b'ok':
+                raise RuntimeError('Owned keyboard rejected input')
+        return
     import evdev
     from evdev import ecodes as ec
     with evdev.UInput({ec.EV_KEY: list(range(1, 248))}, name="Game Capture owned QA keyboard") as device:
         time.sleep(1.5)
-        for key in keys:
-            code = getattr(ec, "KEY_" + key)
-            device.write(ec.EV_KEY, code, 1); device.syn()
-            time.sleep(0.08)
-            device.write(ec.EV_KEY, code, 0); device.syn()
-            time.sleep(0.15)
-        time.sleep(0.3)
+        emit_keys(device, keys)
+
+
+def keyboard_server(path):
+    import evdev
+    from evdev import ecodes as ec
+    owner = int(os.environ['SUDO_UID'])
+    assert os.getuid() == 0 and owner > 0
+    assert path.parent.name.startswith('gc-wayland-keys-') and not path.exists()
+    with socket.socket(socket.AF_UNIX) as server, evdev.UInput({ec.EV_KEY: list(range(1, 248))}, name='Game Capture owned QA keyboard') as device:
+        server.bind(str(path)); os.chmod(path, 0o600); os.chown(path, owner, -1)
+        server.listen(1)
+        time.sleep(1.5)
+        print('ready', flush=True)
+        try:
+            while True:
+                ready, _, _ = select.select([server, sys.stdin], [], [], 2)
+                if sys.stdin in ready and not sys.stdin.readline():
+                    break
+                if server not in ready:
+                    continue
+                with server.accept()[0] as client:
+                    client.settimeout(5)
+                    _, uid, _ = struct.unpack('3i', client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                    if uid != owner:
+                        continue
+                    data = b''
+                    while not data.endswith(b'\n') and len(data) < 4096:
+                        chunk = client.recv(4096 - len(data))
+                        if not chunk:
+                            break
+                        data += chunk
+                    emit_keys(device, json.loads(data))
+                    client.sendall(b'ok')
+        finally:
+            path.unlink(missing_ok=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--title")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--cancel", action="store_true")
     parser.add_argument("--keys", nargs="+")
+    parser.add_argument("--keyboard-server", type=Path)
     args = parser.parse_args()
+    if args.keyboard_server:
+        keyboard_server(args.keyboard_server)
+        return
     if args.keys:
-        allowed = {"HOME", "DOWN", "SPACE", "TAB", "ENTER"}
-        if any(key not in allowed for key in args.keys):
+        if any(key not in ALLOWED_KEYS for key in args.keys):
             raise SystemExit("Unexpected QA key")
         keyboard(args.keys)
         return
@@ -64,14 +125,14 @@ def main():
                         return list(nodes(dialog))
         return []
 
-    result = {"title": args.title, "actions": [], "passed": False}
+    result = {"title": args.title, "mode": "cancel" if args.cancel else "share", "actions": [], "passed": False}
     def save():
         if args.output:
             args.output.write_text(json.dumps(result, indent=2) + "\n")
 
     def send(keys):
         result["actions"].append(keys); save()
-        subprocess.run(["sudo", "-n", sys.executable, str(Path(__file__).resolve()), "--keys", *keys], check=True, timeout=10)
+        subprocess.run([*(["sudo", "-n"] if not os.environ.get("GC_QA_KEYBOARD_SOCKET") else []), sys.executable, str(Path(__file__).resolve()), "--keys", *keys], check=True, timeout=10)
 
     try:
         deadline = time.monotonic() + 20
@@ -98,13 +159,17 @@ def main():
             raise RuntimeError("Keyboard did not select the owned fixture")
         if not share or not share.get_state_set().contains(Atspi.StateType.SENSITIVE):
             raise RuntimeError("Share button remains disabled")
-        for _ in range(5):
+        if args.cancel:
+            share = next((node for node in current if node.get_role_name() == "push button" and node.get_name() == "Cancel"), None)
+            if not share:
+                raise RuntimeError("Portal Cancel button is absent")
+        for _ in range(8):
             if share.get_state_set().contains(Atspi.StateType.FOCUSED):
                 send(["ENTER"])
                 result["passed"] = True
                 return
             send(["TAB"])
-        raise RuntimeError("Could not focus the portal Share button")
+        raise RuntimeError("Could not focus the requested portal button")
     except Exception as error:
         result["error"] = str(error)
         raise

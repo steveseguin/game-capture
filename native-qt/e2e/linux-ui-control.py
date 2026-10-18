@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 import gi
 
@@ -85,32 +86,65 @@ def main():
             raise RuntimeError(f"Expected one {role} named {name!r}; found {len(matches)}")
         return matches[0]
 
+    def geometry(node):
+        if node.get_role_name() not in ["filler", "frame", "combo box", "scroll bar"]:
+            return None
+        rect = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+        return [rect.x, rect.y, rect.width, rect.height]
+
     if args.command == "dump":
         print(json.dumps([{"role": node.get_role_name(), "name": node.get_name(),
                            "actions": action_names(node),
-                           "value": node.get_value_iface().get_current_value() if node.get_role_name() == "spin button" else None,
+                           "value": node.get_value_iface().get_current_value() if node.get_role_name() in ["spin button", "scroll bar"] else None,
+                           "bounds": geometry(node),
                            "states": [str(state.value_nick) for state in node.get_state_set().get_states()]}
                           for node in nodes(app)], indent=2))
     elif args.command in ["choose", "choose-prefix"]:
         combo = find("combo box", args.name)
-        press(combo)
+        if os.environ.get("QT_QPA_PLATFORM") != "wayland":
+            press(combo)
         rows = [node for node in nodes(combo) if node.get_role_name() == "list item"]
         choices = [node for node in rows if (node.get_name().startswith(args.value) if args.command == "choose-prefix" else node.get_name() == args.value)]
         if len(choices) != 1:
             raise RuntimeError("Requested combo choice is absent or ambiguous")
-        # Qt's generic accessible list-item action selects a popup row without
-        # activating the QComboBox. In the X11 GUI fixture use normal keyboard
-        # selection, after confirming the focused window belongs to this app.
-        if os.environ.get("QT_QPA_PLATFORM") != "xcb":
-            raise RuntimeError("Keyboard combo fixture requires the X11 Qt backend")
-        owner = subprocess.check_output(["xdotool", "getwindowfocus", "getwindowpid"], text=True, timeout=3).strip()
-        if owner != str(args.pid):
-            raise RuntimeError("Owned application does not hold keyboard focus")
+        # Qt's generic list-item action selects without activating QComboBox.
+        # Use normal keys only after verifying focus in this owned application.
         selected = choices[0].get_name()
-        subprocess.run(["xdotool", "key", "--clearmodifiers", "Home", *(["Down"] * rows.index(choices[0])), "Return"], check=True, timeout=3)
+        if os.environ.get("QT_QPA_PLATFORM") == "xcb":
+            owner = subprocess.check_output(["xdotool", "getwindowfocus", "getwindowpid"], text=True, timeout=3).strip()
+            if owner != str(args.pid):
+                raise RuntimeError("Owned application does not hold keyboard focus")
+            subprocess.run(["xdotool", "key", "--clearmodifiers", "Home", *(["Down"] * rows.index(choices[0])), "Return"], check=True, timeout=3)
+        elif os.environ.get("QT_QPA_PLATFORM") == "wayland":
+            if not os.environ.get('GC_QA_KEYBOARD_SOCKET'):
+                raise RuntimeError('Wayland GUI requires the owned persistent keyboard fixture')
+            keyboard = Path(__file__).with_name('linux-portal-select.py')
+            def send(keys):
+                if not any(n.get_role_name() == 'frame' and n.get_state_set().contains(Atspi.StateType.ACTIVE) for n in nodes(app)):
+                    raise RuntimeError('Owned application is not active')
+                subprocess.run([sys.executable, str(keyboard), '--keys', *keys], check=True, timeout=8)
+                pump()
+            # Qt 6.4's AT-SPI component grab_focus returns false. Hidden list
+            # rows also retain FOCUSED, so only the combo itself proves focus.
+            # Normal Tab navigation focuses and scrolls the actual widget.
+            for _ in range(80):
+                if combo.get_state_set().contains(Atspi.StateType.FOCUSED):
+                    break
+                send(['TAB'])
+            else:
+                raise RuntimeError('Could not focus the owned combo with Tab')
+            fields = [n for n in nodes(combo) if n.get_role_name() == 'text' and n.get_editable_text_iface()]
+            if len(fields) == 1:
+                assert fields[0].get_editable_text_iface().set_text_contents(selected)
+                send(['TAB'])
+            else:
+                send(['HOME'] + ['DOWN'] * rows.index(choices[0]))
+
+        else:
+            raise RuntimeError("Unsupported desktop for keyboard combo fixture")
         time.sleep(.25); pump()
         if not any(node.get_role_name() == "combo box" and node.get_name() == selected for node in nodes(app)):
-            raise RuntimeError("Combo did not select the requested value")
+            raise RuntimeError("Combo did not select the requested value; combo names=" + repr([node.get_name() for node in nodes(app) if node.get_role_name() == "combo box"]) + "; rows=" + repr([node.get_name() for node in rows]))
     elif args.command in ["text", "read-text", "reveal"]:
         matches = [node for node in nodes(app) if node.get_role_name() in ["text", "password text"] and node.get_name() == args.name]
         if len(matches) != 1:
