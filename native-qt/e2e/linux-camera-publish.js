@@ -9,9 +9,9 @@ const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
   const at = arg.indexOf('='); return [arg.slice(2, at), arg.slice(at + 1)];
 }));
 assert.equal(process.platform, 'linux');
-const gui = opts.gui === 'true';
+const gui = opts.gui === 'true', wayland = gui && opts.backend === 'wayland';
 if (gui) {
-  assert(process.env.GC_QA_PRIVATE_DESKTOP, 'Camera GUI fixture requires a private X11 desktop');
+  assert(wayland ? process.env.GC_QA_WAYLAND_DESKTOP : process.env.GC_QA_PRIVATE_DESKTOP, 'Use the matching owned desktop wrapper');
   assert(opts['source-wayland-socket'] && path.isAbsolute(opts['source-wayland-socket']), 'Explicit host Wayland socket required for the physical HDMI source');
   assert(opts['camera-label'], 'Exact camera display label required');
 }
@@ -32,8 +32,9 @@ for (const item of manifest.payload.files) {
 const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(report, {recursive:true, mode:0o700});
 for (const name of ['linux-camera-publish.js', 'macos-media-receiver.js']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
 if (gui) for (const name of ['linux-ui-control.py', 'linux-preview-observer.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
+if (wayland) for (const name of ['linux-portal-select.py','linux-virtual-monitor.py']) fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const result = {
-  gui,
+  gui, backend:gui?(wayland?'wayland':'x11'):null,
   scope:'Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification',
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
@@ -41,12 +42,13 @@ const result = {
   cycles:[], passed:false
 };
 if (gui) {
-  result.scope += '; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.';
+  result.scope += '; actual '+(wayland?'native GNOME Wayland':'X11')+' Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source stays on the original Wayland HDMI display; app uses '+(wayland?'an owned GNOME virtual monitor':'a separate private Xvfb display')+' to avoid visual feedback.';
   result.guiHelperSha256=sha(path.join(report,'linux-ui-control.py'));
   result.previewObserverSha256=sha(path.join(report,'linux-preview-observer.py'));
 }
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
-const children = []; let sourceBrowser, viewerBrowser;
+result.harnesses=Object.fromEntries(fs.readdirSync(report).filter(n=>/\.(js|py)$/.test(n)).map(n=>[n,sha(path.join(report,n))]));
+const children = []; let sourceBrowser, viewerBrowser, monitor, keyboard, keyboardDirectory;
 async function api(control, route, body) {
   const response = await fetch(control.base_url + route, {
     method:body ? 'POST' : 'GET', headers:{Authorization:'Bearer ' + control.token, 'Content-Type':'application/json'},
@@ -86,9 +88,15 @@ async function shutdown(entry) {
     const env = {...process.env};
     for (const key of Object.keys(env)) if (/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(key) || /^(GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN)$/.test(key)) delete env[key];
     env.XDG_STATE_HOME = path.join(report, 'private-state'); env.XDG_CONFIG_HOME = path.join(report, 'private-config'); env.XDG_DATA_HOME = path.join(report, 'private-data');
-    env.QT_QPA_PLATFORM = gui ? 'xcb' : 'wayland';
+    env.QT_QPA_PLATFORM = gui && !wayland ? 'xcb' : 'wayland';
     env.QT_LINUX_ACCESSIBILITY_ALWAYS_ON='1';
-    if (gui) delete env.WAYLAND_DISPLAY; else env.WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || 'wayland-0';
+    if (gui && !wayland) delete env.WAYLAND_DISPLAY; else env.WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || 'wayland-0';
+    if(wayland){
+      keyboardDirectory=fs.mkdtempSync(path.join(require('os').tmpdir(),'gc-wayland-keys-'));fs.chmodSync(keyboardDirectory,0o700);env.GC_QA_KEYBOARD_SOCKET=path.join(keyboardDirectory,'input.sock');
+      keyboard=spawn('sudo',['-n','python3',path.join(report,'linux-portal-select.py'),'--keyboard-server='+env.GC_QA_KEYBOARD_SOCKET],{env,stdio:['pipe','pipe','pipe']});keyboard.closed=new Promise(resolve=>keyboard.once('close',resolve));let ready='';keyboard.stdout.on('data',d=>ready+=d);keyboard.stderr.on('data',d=>process.stderr.write(d));
+      await waitFor(()=>{assert.equal(keyboard.exitCode,null);return ready.includes('ready');},10000,'Owned keyboard not ready');
+      result.portalOwner=execFileSync('gdbus',['call','--session','--dest','org.freedesktop.DBus','--object-path','/org/freedesktop/DBus','--method','org.freedesktop.DBus.GetNameOwner','org.freedesktop.impl.portal.desktop.gnome'],{env,encoding:'utf8'}).trim();
+    }
     const sourceEnv = {...env, WAYLAND_DISPLAY: gui ? opts['source-wayland-socket'] : env.WAYLAND_DISPLAY};
     const browser = opts.browser || '/usr/bin/google-chrome';
     sourceBrowser = await chromium.launch({executablePath:browser, headless:false, env:sourceEnv,
@@ -114,6 +122,11 @@ async function shutdown(entry) {
     result.sourceMetrics = await source.evaluate(() => ({innerWidth, innerHeight, outerWidth, outerHeight}));
     await source.screenshot({path:path.join(report, 'source.png')});
     result.browserVersion = sourceBrowser.version();
+    if(wayland){
+      assert.equal(result.sourceMetrics.innerWidth,800);assert.equal(result.sourceMetrics.innerHeight,600);
+      const log=fs.createWriteStream(path.join(report,'virtual-monitor.log'));monitor=spawn('python3',[path.join(report,'linux-virtual-monitor.py'),'--report='+report],{env,stdio:['pipe','pipe','pipe']});monitor.closed=new Promise(resolve=>monitor.once('close',code=>log.end(()=>resolve(code))));let ready='';monitor.stdout.on('data',d=>ready+=d);monitor.stdout.pipe(log,{end:false});monitor.stderr.pipe(log,{end:false});
+      await waitFor(()=>{assert.equal(monitor.exitCode,null,'Virtual monitor exited');return ready.includes('"ready": true');},15000,'Virtual monitor not ready');
+    }
     viewerBrowser = await chromium.launch({executablePath:browser, headless:true, env, args:['--autoplay-policy=no-user-gesture-required', '--mute-audio']});
     for (let cycle = 0; cycle < 2; ++cycle) {
       const entry = publish('cycle-' + cycle, env), outcome = {cycle, passed:false}; result.cycles.push(outcome); save();
@@ -122,13 +135,14 @@ async function shutdown(entry) {
         return fs.existsSync(entry.discovery);
       }, 15000, 'No control discovery');
       entry.control = JSON.parse(fs.readFileSync(entry.discovery)); assert.equal(entry.control.pid, entry.child.pid);
-      const ui=(...args)=>execFileSync('python3',[path.join(report,'linux-ui-control.py'),String(entry.child.pid),...args],{env,encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']});
+      const ui=(...args)=>execFileSync('python3',[path.join(report,'linux-ui-control.py'),String(entry.child.pid),...args],{env,encoding:'utf8',timeout:wayland?60000:15000,stdio:['ignore','pipe','pipe']});
       const preview=(label,expected)=>{
         ui('activate');const output=path.join(report,`cycle-${cycle}-preview-${label}.png`);
         return JSON.parse(execFileSync('python3',[path.join(report,'linux-preview-observer.py'),'--pid='+entry.child.pid,'--output='+output,'--expected='+expected],{env,encoding:'utf8',timeout:20000,stdio:['ignore','pipe','pipe']}));
       };
       if(gui){
         await waitFor(()=>{try{return JSON.parse(ui('dump')).some(r=>['Go live','Go live unavailable'].includes(r.name));}catch{return false;}},15000,'GUI not accessible');
+        if(wayland){ui('activate');outcome.monitorPlacement=JSON.parse(ui('move-monitor-right'));}
         assert(!(await api(entry.control,'/diagnostics')).app.capturing,'Opening GUI started camera capture');
         let rows=JSON.parse(ui('dump'));
         if(cycle===0){
@@ -198,7 +212,15 @@ async function shutdown(entry) {
     for (const entry of children) if (entry.child.exitCode === null) {
       try { await shutdown(entry); } catch { entry.child.kill(); await entry.closed; }
     }
-    if (sourceBrowser) await sourceBrowser.close(); if (viewerBrowser) await viewerBrowser.close();
+    const cleanupErrors=[];
+    for(const cleanup of [
+      async()=>{if(sourceBrowser)await sourceBrowser.close();},
+      async()=>{if(viewerBrowser)await viewerBrowser.close();},
+      async()=>{if(keyboard){keyboard.stdin.end();await waitFor(()=>keyboard.exitCode!==null,10000,'Owned keyboard did not retire');await keyboard.closed;assert.equal(keyboard.exitCode,0);}if(keyboardDirectory)fs.rmdirSync(keyboardDirectory);},
+      async()=>{if(monitor){monitor.stdin.end();await waitFor(()=>monitor.exitCode!==null,12000,'Virtual monitor did not retire');assert.equal(await monitor.closed,0);result.virtualMonitor=JSON.parse(fs.readFileSync(path.join(report,'virtual-monitor.json')));assert(result.virtualMonitor.passed);}},
+      async()=>{if(wayland){const owner=execFileSync('gdbus',['call','--session','--dest','org.freedesktop.DBus','--object-path','/org/freedesktop/DBus','--method','org.freedesktop.DBus.GetNameOwner','org.freedesktop.impl.portal.desktop.gnome'],{encoding:'utf8'}).trim();assert.equal(owner,result.portalOwner);result.portalSurvived=true;}}
+    ])try{await cleanup();}catch(error){cleanupErrors.push(String(error.stack||error));}
+    if(cleanupErrors.length){result.cleanupErrors=cleanupErrors;result.passed=false;process.exitCode=1;}
     save(); console.log(JSON.stringify({report, passed:result.passed, error:result.error}));
   }
 })();

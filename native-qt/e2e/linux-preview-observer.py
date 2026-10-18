@@ -20,15 +20,25 @@ else:
     x, y, width, height = metadata['frame']
     ImageGrab.grab().crop((x, y, x+width, y+height)).save(args.output)
 image = Image.open(args.output).convert('RGB')
-# The preview occupies the right side of the active app. Scan repeated barcode
-# rows; cyan/magenta anchors establish scale independently of borders/letterbox.
+# Restrict anchors to the accessible preview rectangle. The selected-source
+# outline can also be cyan and must never be interpreted as image content.
+# GNOME's window screenshot includes decorations outside Qt's client frame;
+# conservatively allow that size difference at the right and bottom edges.
+px, py, pw, ph = metadata['preview']
+fx, fy, fw, fh = metadata['frame']
+assert pw > 0 and ph > 0
+region_left, region_top = max(0, px-fx), max(0, py-fy)
+region_right = min(image.width, region_left+pw+max(0,image.width-fw))
+region_bottom = min(image.height, region_top+ph+max(0,image.height-fh))
+assert region_left < region_right and region_top < region_bottom
+# Cyan/magenta anchors establish scale independently of borders/letterbox.
 identities = []
-for y in range(image.height):
+for y in range(region_top, region_bottom):
     row = [image.getpixel((x, y)) for x in range(image.width)]
-    cyan = next((x for x in range(image.width//2, image.width) if row[x][0] < 70 and row[x][1] > 170 and row[x][2] > 170), None)
+    cyan = next((x for x in range(region_left, region_right) if row[x][0] < 70 and row[x][1] > 170 and row[x][2] > 170), None)
     if cyan is None:
         continue
-    magenta = next((x for x in range(cyan+1, image.width) if row[x][0] > 170 and row[x][1] < 70 and row[x][2] > 170), None)
+    magenta = next((x for x in range(cyan+1, region_right) if row[x][0] > 170 and row[x][1] < 70 and row[x][2] > 170), None)
     if magenta is None or magenta-cyan < 80:
         continue
     width = (magenta-cyan)/.75
@@ -46,7 +56,7 @@ for y in range(image.height):
             value |= 1 << bit
     if valid:
         identities.append(value)
-result = {**metadata, 'imageSize': list(image.size), 'decodedRows': len(identities), 'identities': sorted(set(identities)), 'expected': args.expected}
+result = {**metadata, 'imageSize': list(image.size), 'previewRegion': [region_left,region_top,region_right,region_bottom], 'decodedRows': len(identities), 'identities': sorted(set(identities)), 'expected': args.expected}
 args.output.with_suffix(".json").write_text(json.dumps(result, indent=2)+"\n")
 print(json.dumps(result))
 if args.expected == 'none':

@@ -50,7 +50,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "close-window", "paste", "copy"])
+    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -122,6 +122,15 @@ def main():
         started = int(time.time()*1000)
         send_menu_keys(['Return'] if os.environ.get("QT_QPA_PLATFORM") == "xcb" else ['ENTER'])
         print(json.dumps({'action':'File menu Quit', 'actionStartedAtMs':started}))
+    elif args.command == "move-monitor-right":
+        assert os.environ.get('QT_QPA_PLATFORM') == 'wayland' and os.environ.get('GC_QA_KEYBOARD_SOCKET')
+        frame = find('frame', 'Game Capture - Powered by VDO.Ninja')
+        assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), 'Owned application is not active'
+        before = geometry(frame)
+        subprocess.run([sys.executable, str(Path(__file__).with_name('linux-portal-select.py')), '--keys', 'SUPER_SHIFT_RIGHT'], check=True, timeout=8)
+        time.sleep(.3);pump()
+        assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), 'Owned application lost focus'
+        print(json.dumps({'before':before,'after':geometry(frame)}))
     elif args.command == "close-window":
         frame = find("frame", "Game Capture - Powered by VDO.Ninja")
         assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), "Owned application is not active"
@@ -159,8 +168,9 @@ def main():
         if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
             raise RuntimeError("Owned application is not active")
         interface = preview.get_text_iface()
+        rect = preview.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
         print(json.dumps({"role": preview.get_role_name(), "description": preview.get_description(), "text": Atspi.Text.get_text(interface, 0, -1) if interface else "",
-                          "frame": geometry(frame)}))
+                          "frame": geometry(frame), "preview": [rect.x,rect.y,rect.width,rect.height]}))
     elif args.command in ["choose", "choose-prefix"]:
         combo = find("combo box", args.name)
         if os.environ.get("QT_QPA_PLATFORM") != "wayland":

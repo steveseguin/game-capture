@@ -17,7 +17,7 @@ import sys
 import time
 
 
-ALLOWED_KEYS = {"ALT_F", "UP", "HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
+ALLOWED_KEYS = {"SUPER_SHIFT_RIGHT", "ALT_F", "UP", "HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
 
 
 def emit_keys(device, keys):
@@ -25,6 +25,13 @@ def emit_keys(device, keys):
     if not isinstance(keys, list) or len(keys) > 64 or any(key not in ALLOWED_KEYS for key in keys):
         raise RuntimeError("Unexpected QA keys")
     for key in keys:
+        if key == 'SUPER_SHIFT_RIGHT':
+            chord = [ec.KEY_LEFTMETA, ec.KEY_LEFTSHIFT, ec.KEY_RIGHT]
+            for code in chord: device.write(ec.EV_KEY, code, 1)
+            device.syn();time.sleep(.05)
+            for code in reversed(chord): device.write(ec.EV_KEY, code, 0)
+            device.syn();time.sleep(.25)
+            continue
         chords = {"ALT_F": (ec.KEY_LEFTALT, ec.KEY_F), "ALT_TAB": (ec.KEY_LEFTALT, ec.KEY_TAB), "ALT_F4": (ec.KEY_LEFTALT, ec.KEY_F4),
                   "CTRL_A": (ec.KEY_LEFTCTRL, ec.KEY_A), "CTRL_V": (ec.KEY_LEFTCTRL, ec.KEY_V), "CTRL_C": (ec.KEY_LEFTCTRL, ec.KEY_C)}
         if key in chords:
