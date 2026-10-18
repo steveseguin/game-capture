@@ -9,6 +9,8 @@ if(process.platform!=='darwin'||!opts.app||!opts.reports||!opts.server||!opts['c
   throw Error('Required: --app, --reports, --server, --camera-device, --camera-helper, --microphone-device and --tone-helper');
 const turnDiscovery=opts['turn-discovery']||'none';
 const unresponsiveStun=opts['unresponsive-stun']==='true';
+const restartCycles=opts['restart-cycles']===undefined?null:Number(opts['restart-cycles']);
+if(restartCycles!==null&&(!Number.isInteger(restartCycles)||restartCycles<1||restartCycles>5))throw Error('--restart-cycles must be an integer from 1 to 5');
 if(unresponsiveStun&&(turnDiscovery!=='none'||opts.gui))throw Error('Unresponsive STUN workflow requires headless publishing without TURN discovery');
 if(!['none','options','post'].includes(turnDiscovery)||
    (turnDiscovery!=='none'&&(!opts['turn-server']||opts.gui)))
@@ -27,6 +29,10 @@ if(opts['relaunch-app']&&(!fs.existsSync(path.join(path.resolve(opts['relaunch-a
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
   helperSha256:opts.gui?hash(path.resolve(opts['ui-helper'])):null,serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Packaged WHIP with controlled virtual camera/input and local MediaMTX; release/remote TURN qualification excluded',cases:[],trace:[],passed:false};
 result.turnDiscovery=turnDiscovery;
+result.restartCycles=restartCycles;
+result.cameraFixtureSha256=hash(path.resolve(opts['camera-helper']));
+result.toneFixtureSha256=hash(path.resolve(opts['tone-helper']));
+if(opts['browser-executable'])result.browserExecutableSha256=hash(path.resolve(opts['browser-executable']));
 if(opts['relaunch-app'])result.profileMigration={initialExecutableSha256:hash(exe),relaunchExecutableSha256:hash(relaunchExe),scope:'Same private preferences and Keychain profile across two retained packaged binaries; no credentials re-entered. Not an installation replacement or fresh-machine workflow.'};
 if(turnDiscovery!=='none')result.turnServerSha256=hash(path.resolve(opts['turn-server']));
 for(const name of ['macos-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
@@ -103,14 +109,15 @@ function audioCheck(value,silent=false){
   const fixture=launch(opts['camera-helper'],[opts['camera-device']],'camera');
   const tone=launch(opts['tone-helper'],[opts['microphone-device'],'440','880'],'tone');
   for(const p of [fixture,tone])await waitFor(()=>{if(p.exitCode!==null)throw Error('Fixture exited');return p.output().includes('READY');},5000,'Fixture did not start');
-  browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+  browser=await chromium.launch({headless:true,...(opts['browser-executable']?{executablePath:path.resolve(opts['browser-executable'])}:{}),args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+  result.browserVersion=browser.version();
   for(const encoder of (opts.gui?[guiEncoder]:['videotoolbox','x264'])){
     currentCase=encoder;const entry={encoder,passed:false};result.cases.push(entry);const stream='whip'+crypto.randomBytes(12).toString('hex');
     const discovery=path.join(report,encoder+'-control.json');
     const guiArgs=[`--settings-dir=${settingsDirectory}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
     let publisher=launch(exe,opts.gui?guiArgs:['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,'--output=whip',`--output-url=http://127.0.0.1:${proxy.address().port}/${stream}/whip`,`--output-token=${token}`,
       ...(turnDiscovery!=='none'?['--ice-mode=relay']:[]),
-      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000','--duration-ms=180000','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
+      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000',`--duration-ms=${180000+(restartCycles||0)*60000}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
     async function ready(){await waitFor(()=>{if(publisher.exitCode!==null)throw Error('Publisher exited before ready');return fs.existsSync(discovery);},10000,'No control discovery');return JSON.parse(fs.readFileSync(discovery));}
     let control=await ready();
     const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000});
@@ -144,13 +151,18 @@ function audioCheck(value,silent=false){
     if(diag.source.source_id!==opts['camera-device']||!diag.audio.active_microphone_source.includes('BlackHole'))throw Error('Source identity differs');
     if(JSON.stringify(diag).includes(token)||JSON.stringify(diag).includes(stream))throw Error('Token or private endpoint path leaked into diagnostics');fs.writeFileSync(path.join(report,encoder+'-diagnostics.json'),JSON.stringify(diag,null,2));
     await page.screenshot({path:path.join(report,encoder+'-receiver.png')});
-    if(encoder==='videotoolbox'||turnDiscovery!=='none'||opts['relaunch-app']){
-      entry.reconnectsBeforeServerRestart=diag.output.reconnects;
+    const recoveryCount=restartCycles??((encoder==='videotoolbox'||turnDiscovery!=='none'||opts['relaunch-app'])?1:0);
+    entry.serverRestarts=[];
+    for(let cycle=0;cycle<recoveryCount;cycle++){
+      const beforeRestart=await api(control,'/diagnostics');
+      entry.reconnectsBeforeServerRestart=beforeRestart.output.reconnects;
+      const recovery={cycle:cycle+1,reconnectsBefore:entry.reconnectsBeforeServerRestart,started:Date.now(),passed:false};entry.serverRestarts.push(recovery);
       await page.close();server.kill('SIGTERM');await server.closed;await sleep(1500);await startServer();
       await waitFor(async()=>{if(publisher.exitCode!==null)throw Error('Publisher exited during recovery');const d=await api(control,'/diagnostics');return d.output.reconnects>entry.reconnectsBeforeServerRestart&&d.output.state===2;},40000,'WHIP did not reconnect after the server restart');
       page=await receiverAt(browser,url,publisher);entry.reconnected=await observe(page,5000);requireMoving(entry.reconnected,'Recovered WHIP');entry.reconnectedAudio=await observeAudio(page);audioCheck(entry.reconnectedAudio);
       entry.recoveryOutput=(await api(control,'/diagnostics')).output;
       if(turnDiscovery!=='none'&&entry.recoveryOutput.ice_path!=='TURN/RELAY')throw Error('Recovered WHIP bypassed TURN');
+      Object.assign(recovery,{reconnected:entry.reconnected,audio:entry.reconnectedAudio,output:entry.recoveryOutput,completed:Date.now(),passed:true});
     }
     const appLog=await api(control,'/logs/recent?lines=1');if(fs.readFileSync(appLog.path,'utf8').includes(token))throw Error('Token leaked into application log');
     await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher did not quit');if(publisher.exitCode!==0||fs.existsSync(discovery))throw Error('Publisher shutdown failed');await publisher.closed;
