@@ -7,11 +7,12 @@ const {receiverAt,observe,requireMoving,observeAudio,sleep,waitFor}=require('./m
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 for(const key of ['app','reports','encoder','source-ui-helper','expected-executable-sha256'])assert(opts[key],key);
 const leaveMode=opts['leave-mode']||'page-close';assert(['page-close','hangup'].includes(leaveMode));
+const closeObservationMs=Number(opts['close-observation-ms']||15000);assert(Number.isInteger(closeObservationMs)&&closeObservationMs>=15000&&closeObservationMs<=120000);
 const cycles=Number(opts.cycles||3);assert(Number.isInteger(cycles)&&cycles>=1&&cycles<=10);
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const result={scope:'Packaged Mac viewer close/rejoin with surviving-viewer video and stereo audio; same-host browser, no performance qualification',
-  encoder:opts.encoder,leaveMode,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],harnesses:{},passed:false};
+  encoder:opts.encoder,leaveMode,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],trackCloseObservations:[],harnesses:{},passed:false};
 for(const name of ['macos-viewer-disconnect.js','macos-independent-sender.js','macos-media-receiver.js']){
   const file=path.join(__dirname,name);result.harnesses[name]=sha(fs.readFileSync(file));fs.copyFileSync(file,path.join(report,name));
 }
@@ -24,7 +25,19 @@ async function diagnostics(){
 }
 const snapshot=d=>({time:Date.now(),peers:d.metrics.peer_count,activeVideoPeers:d.metrics.active_video_peers,
   framesSent:d.video.frames_sent,encodeFailures:d.video.encode_failures,encodeTimeouts:d.video.encode_timeouts,
-  sendFailures:d.video.send_failures,reasons:d.video.peer_send_failure_reasons,audioSendFailures:d.audio.send_failures});
+  sendFailures:d.video.send_failures,reasons:d.video.peer_send_failure_reasons,audioSendFailures:d.audio.send_failures,
+  peerStates:d.peers.map(p=>({state:p.last_connection_state,videoActive:p.media.last_observed_video_track_active,
+    audioActive:p.media.last_observed_audio_track_active,dataOpen:p.transport.data_channel_open,
+    retired:p.transport.transport_retired,disconnected:p.transport.disconnected_since_steady_ms>0}))});
+async function awaitClosedTracks(label){
+  const started=Date.now(),entry={label,boundMs:15000,observationLimitMs:closeObservationMs,samples:[]};result.trackCloseObservations.push(entry);
+  while(true){
+    const d=snapshot(await diagnostics()),elapsed=Date.now()-started;entry.samples.push({elapsed,...d});save();
+    if(d.activeVideoPeers===0){entry.elapsedMs=elapsed;entry.within15Seconds=elapsed<=15000;save();return;}
+    if(elapsed>=closeObservationMs)throw Error(label+': video track remained active at observation limit');
+    await sleep(1000);
+  }
+}
 async function openViewer(){
   return receiverAt(browser,`https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput&stereo=1&ab=510&audiocodec=red&hangupbutton`,null);
 }
@@ -76,7 +89,7 @@ async function picture(page,label){
     await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===1;},15000,'Closed viewer track remained active');
     entry.withSurvivor=snapshot(await diagnostics());save();
     await leave(survivor);
-    await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===0;},15000,'Last closed viewer track remained active');
+    await awaitClosedTracks('Last viewer in cycle '+index);
     await sleep(500);entry.afterTracksClosed=snapshot(await diagnostics());
     assert.equal(entry.afterTracksClosed.encodeFailures,0);assert.equal(entry.afterTracksClosed.encodeTimeouts,0);
     const reasons=entry.afterTracksClosed.reasons;
@@ -87,7 +100,7 @@ async function picture(page,label){
   // The final fresh viewer proves reception still starts after the last close.
   const fresh=await openViewer();result.finalRejoinPicture=await picture(fresh,'Final fresh viewer');await leave(fresh);
   const lastClose=Date.now();
-  await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===0;},15000,'Final viewer track remained active');
+  await awaitClosedTracks('Final fresh viewer');
   result.afterFinalTrackClosed=snapshot(await diagnostics());save();
   // Direct sessions have an existing 90-second ICE recovery retention period.
   // Require actual removal after that period, without changing app policy.
@@ -102,7 +115,9 @@ async function picture(page,label){
   assert.equal(local.executableSha256,result.expectedExecutableSha256);assert.equal(local.sessionBindingSha256,result.sessionBindingSha256);
   result.publisherExitCode=local.exitCode;result.publisherDiscoveryRemoved=!fs.existsSync(path.join(senderReport,'private-control.json'));
   assert(result.publisherDiscoveryRemoved);result.observedUnavailableSends=result.final.reasons.track_unavailable+result.final.reasons.transport_unavailable;
-  result.passed=true;
+  result.completed=true;
+  result.passed=result.trackCloseObservations.every(o=>o.within15Seconds);
+  if(!result.passed){result.error='Track closure exceeded the unchanged 15-second bound; extended observations retained';process.exitCode=1;}
 }catch(error){result.error=clean(error.stack||error);process.exitCode=1;}
 finally{
   if(browser)await browser.close();
