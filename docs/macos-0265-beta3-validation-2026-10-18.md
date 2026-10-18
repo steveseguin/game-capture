@@ -1,6 +1,6 @@
 # macOS 0.2.65 Beta 3: bounded VT bitrate
 
-**Experimental Apple Silicon Beta 3 candidate; local package qualification passed.**
+**Experimental Apple Silicon Beta 3 prerelease; public download qualification passed.**
 Windows remains the production release. This report does not establish full
 Mac production readiness.
 
@@ -63,8 +63,15 @@ held image, audio silence/resume, resize, a late viewer and shutdown.
 
 Independent audits reproduce the frame, cadence and continuous PCM results from
 retained observations and validate the sanitized export. These audits are gates;
-the app workflows above constitute testing. Public GitHub download verification
-will follow publication.
+the app workflows above constitute testing.
+
+The public [Beta 3 ZIP](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3)
+then passed a real GitHub browser download with its expected hash and quarantine
+preserved, GUI settings/relaunch, and separate one-minute VT/x264 720p60 video
+and stereo workflows including final controls and shutdown. Windows v0.2.65
+remains the latest stable release; its payload and the previous Mac release were
+verified unchanged. [Delivered-package evidence](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-0265-beta3)
+requires benchmark-repository access.
 Fresh macOS 14.8.9 ARM64 VM startup/diagnostics workflows pass on the exact ZIP:
 authentication, diagnostics export without credentials, native resource reporting,
 graceful Quit and explicit invalid-source/camera/settings refusal, across two

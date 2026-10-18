@@ -32,7 +32,7 @@ Worker caps limit parallelism, not total CPU use. Software AV1/HEVC and dual-tra
 
 ## macOS experimental defaults
 
-The Apple Silicon **0.2.65 Beta 2** uses the same window defaults: **1280 x 720,
+The Apple Silicon **0.2.65 Beta 3** uses the same window defaults: **1280 x 720,
 60 fps, 4,000 kbps**, H.264 and 128 kbps Opus. Camera capture retains its separate
 **1920 x 1080 / 30 fps** preference and the selected video bitrate. Saved choices
 are preserved; switching resolution does not change the bitrate automatically.
@@ -45,24 +45,31 @@ are preserved; switching resolution does not change the bitrate automatically.
 
 Explicit VideoToolbox and software selections remain strict. H.264 stays the
 default; HEVC is an explicit hardware/destination-dependent choice. The native
-VT path uses [**AverageBitRate**](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_averagebitrate), including live bitrate updates. Its 4,000 kbps
-setting is a target, **not a hard bandwidth ceiling**. Native x264 uses ABR with
+VT path uses [**AverageBitRate**](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_averagebitrate), including live bitrate updates. Beta 3 also sets H.264
+[**DataRateLimits**](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_dataratelimits)
+to half a second at 1.5 times the requested bitrate. This limits short encoder
+bursts while allowing simple scenes to use less bandwidth. The 4,000 kbps
+setting remains an average target, **not a hard total-network bandwidth ceiling**. Native x264 uses ABR with
 VBV maxrate and a half-second buffer. Neither is the identical rate-control setup
 used by the standalone OBS/FFmpeg quality measurements.
 
-The October 18 review against upstream `6b71d48` found no pending default change:
-shared policy `e4b2006` and Mac keyframe/worker alignment `c459d7a` are already in
-the released Mac source. Keep VT first and retain these defaults. The published
-[OBS quality comparison](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-obs-h264)
-uses High profile, CBR and a different source/color pipeline. Copying those
-settings into native Game Capture needs a matched app/receiver comparison,
-including H.264 profile negotiation and live bitrate changes; those scores do
-not establish an improvement for this app. Do not change the current native
-color metadata independently of its pixel conversion.
+The October 18 upstream review found the shared resolution/bitrate policy and
+Mac keyframe/worker alignment already present. A subsequent native-app comparison
+reproduced a Beta 2 WHIP reconnect when a still image changed to complex motion.
+The Beta 3 bounded-average candidate completed all six full 60-second reference
+runs and live bitrate-control/GUI receiver workflows without that failure. A
+constant-bitrate alternative also passed, with slightly higher synthetic quality
+scores but larger short bursts and more bandwidth on simple scenes. A tighter
+average limit underused the requested bitrate. These observations support the
+bounded-average change while retaining VT first and the existing defaults.
 
-[Released Mac validation and remaining limits](macos-0265-beta2-validation-2026-10-18.md)
-cover the experimental package. Mac production qualification remains separate
-from the Windows release.
+The [native comparison and limits](macos-0265-beta3-validation-2026-10-18.md)
+cover this change. The earlier
+[OBS quality comparison](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-obs-h264)
+uses High profile, CBR and a different source/color pipeline; its scores are not
+a direct ranking against native Game Capture. Native pixel conversion and color
+metadata remain paired and unchanged. Mac remains experimental, with qualification
+separate from the Windows release.
 
 Six actual released-app GUI launches also verified fresh defaults, persistence of
 explicit software/VideoToolbox/Auto choices, and Beta 1-to-Beta 2 preferences
