@@ -11,6 +11,8 @@ const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
 assert.equal(process.platform, 'linux');
 const gui = opts.gui === 'true', wayland = gui && opts.backend === 'wayland';
 const guiBusyRetry = opts['gui-busy-retry'] === 'true';if(guiBusyRetry)assert(gui);
+const guiPermissionRetry = opts['gui-permission-retry'] === 'true';
+if(guiPermissionRetry){assert(gui);assert(!guiBusyRetry,'Run permission and busy cases separately');}
 if (gui) {
   assert(wayland ? process.env.GC_QA_WAYLAND_DESKTOP : process.env.GC_QA_PRIVATE_DESKTOP, 'Use the matching owned desktop wrapper');
   assert(opts['source-wayland-socket'] && path.isAbsolute(opts['source-wayland-socket']), 'Explicit host Wayland socket required for the physical HDMI source');
@@ -35,7 +37,7 @@ for (const name of ['linux-camera-publish.js', 'macos-media-receiver.js']) fs.co
 if (gui) for (const name of ['linux-ui-control.py', 'linux-preview-observer.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
 if (wayland) for (const name of ['linux-portal-select.py','linux-virtual-monitor.py']) fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const result = {
-  gui, guiBusyRetry, backend:gui?(wayland?'wayland':'x11'):null,
+  gui, guiBusyRetry, guiPermissionRetry, backend:gui?(wayland?'wayland':'x11'):null,
   scope:'Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification',
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
@@ -48,9 +50,22 @@ if (gui) {
   result.previewObserverSha256=sha(path.join(report,'linux-preview-observer.py'));
 }
 if(guiBusyRetry)result.scope+='; visible GUI busy-camera failure while an owned publisher streams, uninterrupted owner reception and successful explicit retry after releasing the owner.';
+if(guiPermissionRetry)result.scope+='; kernel permission denial on a private alias of the real camera after selection, visible GUI error and explicit retry after permission restoration. Host device permissions stay unchanged.';
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 result.harnesses=Object.fromEntries(fs.readdirSync(report).filter(n=>/\.(js|py)$/.test(n)).map(n=>[n,sha(path.join(report,n))]));
-const children = []; let sourceBrowser, viewerBrowser, monitor, keyboard, keyboardDirectory;
+const children = []; let sourceBrowser, viewerBrowser, monitor, keyboard, keyboardDirectory, permission;
+function deviceMetadata(device){
+  const s=fs.statSync(device);assert(s.isCharacterDevice());
+  return {mode:s.mode,uid:s.uid,gid:s.gid,rdev:s.rdev,ino:s.ino};
+}
+function hostCameraUnchanged(){
+  assert.deepEqual(deviceMetadata(permission.device),permission.host);
+  assert.equal(execFileSync('getfacl',['-p',permission.device],{encoding:'utf8'}),permission.hostAcl);
+}
+function cameraPermission(allowed){
+  fs.chmodSync(permission.alias,allowed?0o600:0);hostCameraUnchanged();
+  return deviceMetadata(permission.alias);
+}
 async function api(control, route, body) {
   const response = await fetch(control.base_url + route, {
     method:body ? 'POST' : 'GET', headers:{Authorization:'Bearer ' + control.token, 'Content-Type':'application/json'},
@@ -63,10 +78,12 @@ function publish(name, env, headless = !gui) {
   const discovery = path.join(report, name + '-private-control.json');
   const logFile = path.join(report, name + '-private-publisher.log');
   const log = fs.createWriteStream(logFile);
-  const child = spawn(exe, [...(headless ? ['--headless'] : ['--settings-dir='+path.join(report,'private-settings')]), '--source=camera', '--camera-id=' + opts['camera-id'],
+  const args = [...(headless ? ['--headless'] : ['--settings-dir='+path.join(report,'private-settings')]), '--source=camera', '--camera-id=' + opts['camera-id'],
     '--stream=' + stream, '--password=false', '--video-encoder=software', '--video-codec=h264',
     '--resolution=640x360', '--fps=30', '--bitrate-kbps=2000', '--audio-source=none',
-    '--duration-ms=120000', '--local-control', '--local-control-port=0', '--local-control-discovery=' + discovery],
+    '--duration-ms=120000', '--local-control', '--local-control-port=0', '--local-control-discovery=' + discovery];
+  const isolated=guiPermissionRetry&&!headless;
+  const child = spawn(isolated?'bwrap':exe,isolated?['--die-with-parent','--unshare-user','--bind','/','/','--dev-bind',permission.alias,permission.device,'--',exe,...args]:args,
     {cwd:bundle, env, stdio:['ignore', 'pipe', 'pipe']});
   child.stdout.pipe(log, {end:false}); child.stderr.pipe(log, {end:false});
   const entry = {child, stream, discovery, logFile};
@@ -130,17 +147,31 @@ async function shutdown(entry) {
       await waitFor(()=>{assert.equal(monitor.exitCode,null,'Virtual monitor exited');return ready.includes('"ready": true');},15000,'Virtual monitor not ready');
     }
     viewerBrowser = await chromium.launch({executablePath:browser, headless:true, env, args:['--autoplay-policy=no-user-gesture-required', '--mute-audio']});
+    if(guiPermissionRetry){
+      assert(opts['camera-id'].startsWith('v4l2:/dev/'));const device=fs.realpathSync(opts['camera-id'].slice(5));assert(/^\/dev\/video[0-9]+$/.test(device));
+      permission={device,alias:path.join(report,'private-camera-device'),host:deviceMetadata(device),hostAcl:execFileSync('getfacl',['-p',device],{encoding:'utf8'})};
+      const numbers=execFileSync('stat',['-c','%t %T',device],{encoding:'utf8'}).trim().split(' ').map(v=>String(parseInt(v,16)));
+      execFileSync('sudo',['-n','mknod',permission.alias,'c',...numbers]);
+      execFileSync('sudo',['-n','chown',`${process.getuid()}:${process.getgid()}`,permission.alias]);cameraPermission(true);
+      result.permissionFixture={device,host:permission.host,hostAcl:permission.hostAcl,alias:deviceMetadata(permission.alias)};
+    }
     for (let cycle = 0; cycle < 2; ++cycle) {
       const entry = publish('cycle-' + cycle, env), outcome = {cycle, passed:false}; result.cycles.push(outcome); save();
       await waitFor(() => {
         assert.equal(entry.child.exitCode, null, 'Camera publisher exited at startup'); assert(!entry.launchError, entry.launchError);
         return fs.existsSync(entry.discovery);
       }, 15000, 'No control discovery');
-      entry.control = JSON.parse(fs.readFileSync(entry.discovery)); assert.equal(entry.control.pid, entry.child.pid);
-      const ui=(...args)=>execFileSync('python3',[path.join(report,'linux-ui-control.py'),String(entry.child.pid),...args],{env,encoding:'utf8',timeout:wayland?60000:15000,stdio:['ignore','pipe','pipe']});
+      entry.control = JSON.parse(fs.readFileSync(entry.discovery));
+      if(guiPermissionRetry){
+        assert.equal(fs.realpathSync(`/proc/${entry.control.pid}/exe`),exe);
+        const status=fs.readFileSync(`/proc/${entry.control.pid}/status`,'utf8');assert.equal(Number(status.match(/^PPid:\s+(\d+)/m)[1]),entry.child.pid);
+        assert.notEqual(fs.readlinkSync(`/proc/${entry.control.pid}/ns/mnt`),fs.readlinkSync('/proc/self/ns/mnt'));
+        const mapped=deviceMetadata(`/proc/${entry.control.pid}/root${permission.device}`);assert.deepEqual(mapped,deviceMetadata(permission.alias));outcome.permissionMapping=mapped;
+      }else assert.equal(entry.control.pid, entry.child.pid);
+      const ui=(...args)=>execFileSync('python3',[path.join(report,'linux-ui-control.py'),String(entry.control.pid),...args],{env,encoding:'utf8',timeout:wayland?60000:15000,stdio:['ignore','pipe','pipe']});
       const preview=(label,expected)=>{
         ui('activate');const output=path.join(report,`cycle-${cycle}-preview-${label}.png`);
-        return JSON.parse(execFileSync('python3',[path.join(report,'linux-preview-observer.py'),'--pid='+entry.child.pid,'--output='+output,'--expected='+expected],{env,encoding:'utf8',timeout:20000,stdio:['ignore','pipe','pipe']}));
+        return JSON.parse(execFileSync('python3',[path.join(report,'linux-preview-observer.py'),'--pid='+entry.control.pid,'--output='+output,'--expected='+expected],{env,encoding:'utf8',timeout:20000,stdio:['ignore','pipe','pipe']}));
       };
       if(gui){
         await waitFor(()=>{try{return JSON.parse(ui('dump')).some(r=>['Go live','Go live unavailable'].includes(r.name));}catch{return false;}},15000,'GUI not accessible');
@@ -184,6 +215,33 @@ async function shutdown(entry) {
           check.ownerAfter=await api(owner.control,'/diagnostics');assert(check.ownerAfter.app.live&&check.ownerAfter.app.capturing);assert(check.ownerAfter.video.frames_sent>check.ownerBefore.video.frames_sent);
           await ownerPage.close();await shutdown(owner);check.ownerExitCode=owner.child.exitCode;check.released=true;save();
           ui('activate');assert(JSON.parse(ui('footer')).goLiveEnabled);
+        }
+        if(guiPermissionRetry){
+          const check={};outcome.permissionStartup=check;
+          ui('activate');check.startControls=JSON.parse(ui('footer'));assert(check.startControls.goLiveEnabled);
+          ui('deny-camera-start',permission.alias,permission.device);check.denied=deviceMetadata(permission.alias);assert.equal(check.denied.mode&0o777,0);hostCameraUnchanged();
+          let message;
+          await waitFor(()=>{
+            const rows=JSON.parse(ui('dump')),label=rows.find(r=>r.role==='label'&&r.name.includes('Permission denied')&&r.name.includes('camera permissions'));
+            if(label){message=label.name;return true;}return false;
+          },15000,'No actionable camera permission error');
+          check.failed=await api(entry.control,'/diagnostics');assert(!check.failed.app.live&&!check.failed.app.capturing);assert.equal(check.failed.peer_counts.total,0);assert.equal(check.failed.video.frames_captured,0);
+          check.visibleError=JSON.parse(ui('footer',message));
+          const screenshot=path.join(report,`cycle-${cycle}-permission-error.png`);
+          if(wayland)execFileSync('gnome-screenshot',['-w','-f',screenshot],{env,timeout:10000});
+          else execFileSync('python3',['-c','from PIL import ImageGrab;import sys;x,y,w,h=map(int,sys.argv[1:5]);ImageGrab.grab().crop((x,y,x+w,y+h)).save(sys.argv[5])',...check.visibleError.frame.map(String),screenshot],{env,timeout:10000});
+          check.screenshot={file:path.basename(screenshot),sha256:sha(screenshot)};
+          // Keep access denied across two automatic source refreshes. The
+          // actionable failure must remain readable while the source is absent.
+          await sleep(6500);check.denialHeldMs=6500;
+          check.afterRefreshRows=JSON.parse(ui('dump'));save();
+          assert(check.afterRefreshRows.some(r=>r.role==='label'&&r.name===message),'Automatic refresh erased the camera permission error');
+          check.afterRefresh=JSON.parse(ui('footer',message));assert(!check.afterRefresh.goLiveEnabled);
+          assert(check.afterRefreshRows.some(r=>r.name==='No cameras found. Check connection and permissions, then Refresh.'));
+          check.restored=cameraPermission(true);check.failedPreview=preview('permission-failed','none');
+          ui('press','Refresh available sources');ui('source',opts['camera-label']);
+          assert(!(await api(entry.control,'/diagnostics')).app.capturing,'Restoring permission started capture');
+          check.reselected=true;save();ui('activate');assert(JSON.parse(ui('footer')).goLiveEnabled);
         }
         ui('press','Go live');await waitFor(async()=>(await api(entry.control,'/diagnostics')).app.live,15000,'Camera GUI did not publish');
       }
@@ -239,6 +297,7 @@ async function shutdown(entry) {
       try { await shutdown(entry); } catch { entry.child.kill(); await entry.closed; }
     }
     const cleanupErrors=[];
+    if(permission)try{hostCameraUnchanged();if(fs.existsSync(permission.alias))fs.unlinkSync(permission.alias);result.permissionFixtureCleaned=true;}catch(error){cleanupErrors.push(String(error.stack||error));}
     for(const cleanup of [
       async()=>{if(sourceBrowser)await sourceBrowser.close();},
       async()=>{if(viewerBrowser)await viewerBrowser.close();},

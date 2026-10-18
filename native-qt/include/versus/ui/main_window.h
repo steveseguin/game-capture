@@ -214,6 +214,9 @@ class MainWindow : public QMainWindow {
     QLineEdit *ffmpegOptionsInput_ = nullptr;
     QLabel *statusLabel_ = nullptr;
 #ifdef __linux__
+    bool statusIsError_ = false;
+#endif
+#ifdef __linux__
     QLabel *audioCaptureWarningLabel_ = nullptr;
     void refreshAudioCaptureWarning();
 #endif

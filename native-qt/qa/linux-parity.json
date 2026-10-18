@@ -29,7 +29,7 @@
       "id": "camera",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, permission errors remain; multi-plane devices unsupported. Packaged X11 GUI now passed physical camera publication at 1280x720/30, exact live/restarted preview pixels, idle/Stop clearing, busy-camera isolation, camera release/reopen, and saved settings across two app launches without automatic capture. HDMI identities held at 10 Hz; high-motion input tearing remains a separate unqualified gap. Native GNOME Wayland camera GUI now also passed exact packaged two-launch preview, publication, Stop/restart, saved settings and competing headless-open isolation on an owned 1280x900 virtual monitor, with the physical HDMI source on the unchanged original monitor. X11 regression passed the revised preview observer on the same package. High-motion, other formats/devices, GUI permission/hotplug errors and multi-plane support remain open. Packaged X11 and native Wayland GUI busy-device failure and explicit retry now pass twice each: full actionable error and enabled Go Live visible, no failed-GUI capture/peers, first publisher keeps delivering decoded video, clean owner release and successful GUI publication/preview. Permission denial and disconnect/hotplug remain open."
+      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, other permission mechanisms and initial-launch permission errors remain; multi-plane devices unsupported. Packaged X11 GUI now passed physical camera publication at 1280x720/30, exact live/restarted preview pixels, idle/Stop clearing, busy-camera isolation, camera release/reopen, and saved settings across two app launches without automatic capture. HDMI identities held at 10 Hz; high-motion input tearing remains a separate unqualified gap. Native GNOME Wayland camera GUI now also passed exact packaged two-launch preview, publication, Stop/restart, saved settings and competing headless-open isolation on an owned 1280x900 virtual monitor, with the physical HDMI source on the unchanged original monitor. X11 regression passed the revised preview observer on the same package. High-motion, other formats/devices, GUI initial-permission/hotplug errors and multi-plane support remain open. Packaged X11 and native Wayland GUI busy-device failure and explicit retry now pass twice each: full actionable error and enabled Go Live visible, no failed-GUI capture/peers, first publisher keeps delivering decoded video, clean owner release and successful GUI publication/preview. Other permission mechanisms, initial-launch denial and disconnect/hotplug remain open. Camera permission revocation after selection now passes packaged X11 and native Wayland: sustained kernel EACCES through automatic refresh retains actionable error, clears inaccessible selection, disables Go Live, and permits explicit Refresh/reselection/retry with decoded media after access restoration. Uses a private alias of the real Cam Link; host permissions and ACL remain unchanged. Other permission mechanisms/initial-launch denial and physical disconnect/hotplug remain open."
     },
     {
       "id": "application-audio",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Camera disconnect/permission-denied UX remains open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial connection rejection/TLS timeout now return to visible failure with Go live available and capture stopped on both desktops; explicit retry produces decoded HQ/LQ video and stereo audio. Local-control Stop through GUI startup and actual File-menu Quit now cancel a pending initial TLS handshake promptly on both desktops. Cancellation status and fresh decoded retry pass; the shared Starting button remains disabled. Post-TLS startup cancellation races and other fault modes remain open. Native GNOME Wayland physical camera selection, live/restarted preview identities, idle/Stop clearing, publication and persisted settings without capture now pass on an owned virtual monitor; matching X11 camera regression passed. Camera permission GUI errors and hotplug remain open. Camera busy-device error visibility, enabled retry, isolation of an existing publisher and explicit successful retry after release now pass on both desktops, including a second application launch with saved settings."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Camera disconnect and initial permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial connection rejection/TLS timeout now return to visible failure with Go live available and capture stopped on both desktops; explicit retry produces decoded HQ/LQ video and stereo audio. Local-control Stop through GUI startup and actual File-menu Quit now cancel a pending initial TLS handshake promptly on both desktops. Cancellation status and fresh decoded retry pass; the shared Starting button remains disabled. Post-TLS startup cancellation races and other fault modes remain open. Native GNOME Wayland physical camera selection, live/restarted preview identities, idle/Stop clearing, publication and persisted settings without capture now pass on an owned virtual monitor; matching X11 camera regression passed. Camera initial permission errors and hotplug remain open. Camera busy-device error visibility, enabled retry, isolation of an existing publisher and explicit successful retry after release now pass on both desktops, including a second application launch with saved settings. Camera permission failure no longer disappears during automatic source refresh on Linux. Packaged X11 and native Wayland verify retained visible error through 6.5 seconds of denial, disabled startup after source removal, explicit reselection/retry and full preview/Stop/restart/relaunch. Other permission mechanisms/initial denial and hotplug remain open."
     },
     {
       "id": "profiles",
@@ -20527,6 +20527,440 @@
         "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78"
       },
       "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0"
+    },
+    {
+      "backend": "x11",
+      "report": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/results.json",
+      "reportSha256": "a12bca59ba1df19623aabd1ba8fa6688857fa184c1e5c89667329ee898058eaa",
+      "wrapperReport": "native-qt/qa/reports/linux-camera-permission-x11-desktop/c3bf4a7b-462a-4326-80a2-e7c1636bfb53/results.json",
+      "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source stays on the original Wayland HDMI display; app uses a separate private Xvfb display to avoid visual feedback.; kernel permission denial on a private alias of the real camera after selection, visible GUI error and explicit retry after permission restoration. Host device permissions stay unchanged.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": true,
+          "permissionMessage": "Could not open the selected camera: Permission denied. Check camera permissions, connection, and whether another app is using it.",
+          "errorAndStartupControlVisible": true,
+          "errorScreenshot": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-0-permission-error.png",
+          "errorScreenshotSha256": "a2661b35446891d24164c457f136c66ff055fded289d4150fedaa278a39ee7b8",
+          "denialHeldMs": 6500,
+          "errorPreservedAfterAutomaticRefresh": true,
+          "unavailableCameraRemovedAndStartupDisabled": true,
+          "failedGui": {
+            "live": false,
+            "capturing": false,
+            "peers": 0,
+            "framesCaptured": 0
+          },
+          "permissionRestoredAndCameraExplicitlyReselected": true,
+          "retry": {
+            "distinctIdentities": 57,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "late": {
+            "distinctIdentities": 28,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "restarted": {
+            "distinctIdentities": 40,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "counters": {
+            "captured": 243,
+            "sent": 208,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "settingsRestoredWithoutCapture": false,
+          "previews": [
+            {
+              "phase": "idle",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-0-preview-idle.png",
+              "sha256": "0f9a4353d611f6f80ee91b5f1618369ebc1df3026d73ffed42be6ebd65b02700",
+              "metadataSha256": "dd5a4c757e54c62fdbbb0a9ca03f775ab8f3e33184a2d92cc9ce8f1c90ef4c17",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "permission-failed",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-0-preview-permission-failed.png",
+              "sha256": "e05f326f9133026becd307e9edc948b09d8449baa90941ceaf20bc156c349987",
+              "metadataSha256": "9184e82e0318ff3e9735202f53946d19fd7d633bf842591e4b89bb213ad6e2f6",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "live",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-0-preview-live.png",
+              "sha256": "5ed1aa4132f2defeca496c0d31fd104391dba5fd6a3dd793fc4eeb166ac49379",
+              "metadataSha256": "f2baf8b56caa0f6334a5a7f6ec890dbd587ccdb6a49d9a4c958d92464f3e859e",
+              "identities": [
+                265
+              ],
+              "decodedRows": 74
+            },
+            {
+              "phase": "stopped",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-0-preview-stopped.png",
+              "sha256": "79b548f480fa340646f4f84e5cba50c6727bc3db4a7671166bd724999003a658",
+              "metadataSha256": "4062f3130b6693f45c5537dc357725d47cb10e907f6b3366dec23d2b02d2cae1",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "restarted",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-0-preview-restarted.png",
+              "sha256": "d71b65a7b0a806dd7e6afba3b0f5ccd0bca5af32e6e4d4f2ab5b26658d14acec",
+              "metadataSha256": "87105012570058235e3106bfe66d95c0400ff4566d4c08678aa8dce0ee8c8f6d",
+              "identities": [
+                429
+              ],
+              "decodedRows": 74
+            }
+          ]
+        },
+        {
+          "cycle": 1,
+          "passed": true,
+          "permissionMessage": "Could not open the selected camera: Permission denied. Check camera permissions, connection, and whether another app is using it.",
+          "errorAndStartupControlVisible": true,
+          "errorScreenshot": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-1-permission-error.png",
+          "errorScreenshotSha256": "a2661b35446891d24164c457f136c66ff055fded289d4150fedaa278a39ee7b8",
+          "denialHeldMs": 6500,
+          "errorPreservedAfterAutomaticRefresh": true,
+          "unavailableCameraRemovedAndStartupDisabled": true,
+          "failedGui": {
+            "live": false,
+            "capturing": false,
+            "peers": 0,
+            "framesCaptured": 0
+          },
+          "permissionRestoredAndCameraExplicitlyReselected": true,
+          "retry": {
+            "distinctIdentities": 56,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "late": {
+            "distinctIdentities": 29,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "restarted": {
+            "distinctIdentities": 38,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "counters": {
+            "captured": 248,
+            "sent": 205,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "settingsRestoredWithoutCapture": true,
+          "previews": [
+            {
+              "phase": "idle",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-1-preview-idle.png",
+              "sha256": "5aff4d6a1094cb95a226e39b575f05e350a3c11b5c10269a132fd20fa35d4180",
+              "metadataSha256": "dd5a4c757e54c62fdbbb0a9ca03f775ab8f3e33184a2d92cc9ce8f1c90ef4c17",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "permission-failed",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-1-preview-permission-failed.png",
+              "sha256": "8c03ab5018b1143715dd6f9d645a0c7728bdb5f42cf258c9d33e78b6699f3b88",
+              "metadataSha256": "9184e82e0318ff3e9735202f53946d19fd7d633bf842591e4b89bb213ad6e2f6",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "live",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-1-preview-live.png",
+              "sha256": "1e76ece7f8345723320aa9974f5e7e8c9be71a030fd13ebf550eda8e4cf151e9",
+              "metadataSha256": "117dd93c329e569707d9b75ae9a95dfb247cefcb66d04eedc951039b6d1645d3",
+              "identities": [
+                651
+              ],
+              "decodedRows": 74
+            },
+            {
+              "phase": "stopped",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-1-preview-stopped.png",
+              "sha256": "ff12eb07b64df595efa0df8bd658addcc87bdbea83cdb81675200e6ae9828416",
+              "metadataSha256": "4062f3130b6693f45c5537dc357725d47cb10e907f6b3366dec23d2b02d2cae1",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "restarted",
+              "image": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/cycle-1-preview-restarted.png",
+              "sha256": "9ea47e51122a55c87253ac9c439d6de94500baf1582c7c7ebfa2342c59788805",
+              "metadataSha256": "7c56191f9fd15b2a7229605012d87f3f1ea2db608e69b461ae1b421a5f318f31",
+              "identities": [
+                772
+              ],
+              "decodedRows": 74
+            }
+          ]
+        }
+      ],
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0",
+      "executableSha256": "36d1122a5d171a6f0770e54d8faf6794eeb29bb7cd37fee4314c6fa7c35be558",
+      "harnesses": {
+        "linux-camera-publish.js": "6501136869a97955301e1daa5b5b0627a23d5f43497259830cb59ee5d02f9568",
+        "linux-preview-observer.py": "6d4036c4dd913a268c8bb49fff5a9aaab1ad300004ebd0c131254e23f9fc5694",
+        "linux-ui-control.py": "e8c1c505854e81ce5f477323e0ed07d26b4cdda52c9a21669cb9568ab3faa15f",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78"
+      },
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "permissionFixture": {
+        "device": "/dev/video0",
+        "host": {
+          "mode": 8624,
+          "uid": 0,
+          "gid": 44,
+          "rdev": 20736,
+          "ino": 956
+        },
+        "hostAcl": "# file: /dev/video0\n# owner: root\n# group: video\nuser::rw-\nuser:ubuntu:rw-\ngroup::rw-\nmask::rw-\nother::---\n\n",
+        "alias": {
+          "mode": 8576,
+          "uid": 1000,
+          "gid": 1000,
+          "rdev": 20736,
+          "ino": 92415340
+        }
+      }
+    },
+    {
+      "backend": "wayland",
+      "report": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/results.json",
+      "reportSha256": "1dc2b5ffcdc4c4c67c991d2be056633c61348f2e8d158bd84445342c4134b452",
+      "wrapperReport": "native-qt/qa/reports/linux-camera-permission-wayland-desktop/03a26c80-ae61-469e-9ecf-04d7aaa610df/results.json",
+      "wrapperSha256": "00b4020ac21e1a8cd4fa2b6521ee5705fadb659269a7149f88e78fd490e4bc50",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual native GNOME Wayland Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source stays on the original Wayland HDMI display; app uses an owned GNOME virtual monitor to avoid visual feedback.; kernel permission denial on a private alias of the real camera after selection, visible GUI error and explicit retry after permission restoration. Host device permissions stay unchanged.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": true,
+          "permissionMessage": "Could not open the selected camera: Permission denied. Check camera permissions, connection, and whether another app is using it.",
+          "errorAndStartupControlVisible": true,
+          "errorScreenshot": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-0-permission-error.png",
+          "errorScreenshotSha256": "72c47b34661a256e039e17865820354973bf2af9af73ec919d5cca2865f7dea5",
+          "denialHeldMs": 6500,
+          "errorPreservedAfterAutomaticRefresh": true,
+          "unavailableCameraRemovedAndStartupDisabled": true,
+          "failedGui": {
+            "live": false,
+            "capturing": false,
+            "peers": 0,
+            "framesCaptured": 0
+          },
+          "permissionRestoredAndCameraExplicitlyReselected": true,
+          "retry": {
+            "distinctIdentities": 56,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "late": {
+            "distinctIdentities": 28,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "restarted": {
+            "distinctIdentities": 39,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "counters": {
+            "captured": 251,
+            "sent": 203,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "settingsRestoredWithoutCapture": false,
+          "previews": [
+            {
+              "phase": "idle",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-0-preview-idle.png",
+              "sha256": "f0ed90b3cb12d1659a8eb702a8a5c23695268e3a721c7eb68b1c0967423f232b",
+              "metadataSha256": "a0e52fb132a54158727e75241741c3d3f9be974a7873d14586004432faf57014",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "permission-failed",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-0-preview-permission-failed.png",
+              "sha256": "193b89b736b55b0c7db765b40eeb4ebff195eac41104fecbc5cf3957725e89bd",
+              "metadataSha256": "a17d97d837ff0e413ce0332b38dc2ce2ec10a2d20375db43a73d32792ad218ee",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "live",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-0-preview-live.png",
+              "sha256": "d6ec20e896641e7f137fbfa8731f00dd1fdc49c71a1afe42209f944deec48203",
+              "metadataSha256": "93763decf570e2b1ca91c165eba378737f226c04caa4d111c965792302dd377e",
+              "identities": [
+                814
+              ],
+              "decodedRows": 74
+            },
+            {
+              "phase": "stopped",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-0-preview-stopped.png",
+              "sha256": "763a1551dadea8eb2504537cc07c8619c8660848e82393b30d1411b33ef293a0",
+              "metadataSha256": "7e9342452645220134e39cc695fc802a74922c118a960671241013653dd280e4",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "restarted",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-0-preview-restarted.png",
+              "sha256": "f7e77c0b07738128fd5634df5aff67a64dabbc5ff909e9cba3b911e8e108e23d",
+              "metadataSha256": "a3ceb69de313dac7fc1a2b0a3dfef102e1094143ab956cc3e7ecf821178ad9d9",
+              "identities": [
+                979
+              ],
+              "decodedRows": 74
+            }
+          ]
+        },
+        {
+          "cycle": 1,
+          "passed": true,
+          "permissionMessage": "Could not open the selected camera: Permission denied. Check camera permissions, connection, and whether another app is using it.",
+          "errorAndStartupControlVisible": true,
+          "errorScreenshot": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-1-permission-error.png",
+          "errorScreenshotSha256": "72c47b34661a256e039e17865820354973bf2af9af73ec919d5cca2865f7dea5",
+          "denialHeldMs": 6500,
+          "errorPreservedAfterAutomaticRefresh": true,
+          "unavailableCameraRemovedAndStartupDisabled": true,
+          "failedGui": {
+            "live": false,
+            "capturing": false,
+            "peers": 0,
+            "framesCaptured": 0
+          },
+          "permissionRestoredAndCameraExplicitlyReselected": true,
+          "retry": {
+            "distinctIdentities": 56,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "late": {
+            "distinctIdentities": 28,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "restarted": {
+            "distinctIdentities": 38,
+            "width": 1280,
+            "height": 720,
+            "identityReadFailures": 0
+          },
+          "counters": {
+            "captured": 243,
+            "sent": 205,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "settingsRestoredWithoutCapture": true,
+          "previews": [
+            {
+              "phase": "idle",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-1-preview-idle.png",
+              "sha256": "076dc7cfc076f6a4db120f11eb76811c62f4f43378595c927e6c90d0fb7f79cd",
+              "metadataSha256": "a0e52fb132a54158727e75241741c3d3f9be974a7873d14586004432faf57014",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "permission-failed",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-1-preview-permission-failed.png",
+              "sha256": "95652b00289b911473ceb400829d8488b7a3c3f32c44e9a368536996eb1a8399",
+              "metadataSha256": "a17d97d837ff0e413ce0332b38dc2ce2ec10a2d20375db43a73d32792ad218ee",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "live",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-1-preview-live.png",
+              "sha256": "16d3a4c41b4c0213dbada8bfc144e849c29247f9ffbf9f47a68748b1a97d6379",
+              "metadataSha256": "6000fb0337346708dd7b449600b87c640bd4b030e6e12df8be4509a1d334e070",
+              "identities": [
+                1229
+              ],
+              "decodedRows": 74
+            },
+            {
+              "phase": "stopped",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-1-preview-stopped.png",
+              "sha256": "e98e6090332d185f8b391fdb510057e0e69d53cab61a1be311c5ae7d72cf750d",
+              "metadataSha256": "7e9342452645220134e39cc695fc802a74922c118a960671241013653dd280e4",
+              "identities": [],
+              "decodedRows": 0
+            },
+            {
+              "phase": "restarted",
+              "image": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/cycle-1-preview-restarted.png",
+              "sha256": "e6858af660bc2ac65029328d7ab167bd0b1b0d9dcec853e99c3e2c8f1971114e",
+              "metadataSha256": "357908bc5eda4b6172b2092b3fc99bf069240b3e035c273bbb3c405172ea1fd8",
+              "identities": [
+                1351
+              ],
+              "decodedRows": 74
+            }
+          ]
+        }
+      ],
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0",
+      "executableSha256": "36d1122a5d171a6f0770e54d8faf6794eeb29bb7cd37fee4314c6fa7c35be558",
+      "harnesses": {
+        "linux-camera-publish.js": "6501136869a97955301e1daa5b5b0627a23d5f43497259830cb59ee5d02f9568",
+        "linux-portal-select.py": "375062eda62592e2ac3ced1a72bbe9cefbdeb4e91f73f201b874bd9c50ccba03",
+        "linux-preview-observer.py": "6d4036c4dd913a268c8bb49fff5a9aaab1ad300004ebd0c131254e23f9fc5694",
+        "linux-ui-control.py": "e8c1c505854e81ce5f477323e0ed07d26b4cdda52c9a21669cb9568ab3faa15f",
+        "linux-virtual-monitor.py": "4d82306acecaf783a99580b9caa35828c2a6d9df7b50a92a8cb39c332f220fe5",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78"
+      },
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "permissionFixture": {
+        "device": "/dev/video0",
+        "host": {
+          "mode": 8624,
+          "uid": 0,
+          "gid": 44,
+          "rdev": 20736,
+          "ino": 956
+        },
+        "hostAcl": "# file: /dev/video0\n# owner: root\n# group: video\nuser::rw-\nuser:ubuntu:rw-\ngroup::rw-\nmask::rw-\nother::---\n\n",
+        "alias": {
+          "mode": 8576,
+          "uid": 1000,
+          "gid": 1000,
+          "rdev": 20736,
+          "ino": 92415417
+        }
+      }
     }
   ],
   "host_environment": {
@@ -20585,7 +21019,8 @@
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-start-fault.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (owned Xvfb for X11; sudo/cgroup-v2/iptables and IPv4 signaling DNS required; rejects or stalls initial TLS, verifies failure and explicit decoded retry)",
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-start-cancel.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (owned Xvfb for X11; publisher-only TLS gate requires sudo/cgroup-v2/iptables/IPv4; authenticated local-control Stop and actual File-menu Quit)",
     "python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-camera-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<v4l2:stable-by-id-path> --camera-label=<exact-label> --hdmi-loopback=true --source-wayland-socket=/run/user/1000/wayland-0 (GNOME 46, one original 800x600 HDMI source display, PipeWire/GStreamer and owned uinput keyboard required; temporary 1280x900 virtual monitor is removed on EOF)",
-    "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-busy-retry=true --backend=x11|wayland and the existing exact-package/physical-HDMI options. Runs both busy-owner rejection/release/retry and full preview/publication/Stop/restart/relaunch workflows; X11 and Wayland must run sequentially on the physical camera."
+    "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-busy-retry=true --backend=x11|wayland and the existing exact-package/physical-HDMI options. Runs both busy-owner rejection/release/retry and full preview/publication/Stop/restart/relaunch workflows; X11 and Wayland must run sequentially on the physical camera.",
+    "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-permission-retry=true --backend=x11|wayland and existing exact-package/physical-HDMI options. Requires bubblewrap and sudo mknod for an owned private device alias. Restricts only the publisher namespace, restores permissions and removes the alias on cleanup; host device mode/identity/ACL must remain unchanged. Run sequentially on the physical camera."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -23220,5 +23655,50 @@
       "passed": true
     },
     "remaining": "Camera permission-denied and disconnect/hotplug UX, other devices/formats/MJPEG and multi-plane support, physical microphone/audio, high-motion fidelity and calibrated A/V/endurance, other display scales/compositors and Windows/macOS runtime regression. The stock GNOME pending screen-permission cancellation and maintained fix delivery remain separate and open."
+  },
+  "camera_permission_gui_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc.deb",
+      "sha256": "89a0e8a4c3d3ea40f40949a002fab71472e54c166b10fe9c23e2c65b2cf4dea1",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0"
+    },
+    "qualification": "Exact packaged X11 and native GNOME Wayland GUI, two launches each. Select real Cam Link, revoke access only to an owned device alias mounted over the selected node inside the publisher namespace, then press actual Go Live. Kernel permission denial produces visible actionable guidance, no capture/peers and no preview. Hold denial 6.5 seconds across automatic source refreshes: absent camera is removed, Go Live disabled, and the actionable error remains visible. Restore alias permissions, explicitly Refresh and reselect the camera without automatic capture, then Go Live delivers independently decoded 1280x720 H264 and exact preview identities. Late join, Stop/preview clear, restart/preview, Quit/device release and restored settings without capture also pass. HDMI identities held at 10 Hz, 30 fps encoder, no audio/high-motion qualification.",
+    "productionChange": "Linux camera source removal and enumeration preserve an existing error status while still clearing selection, preview and startup availability. Explicit source selection or another status operation replaces the error normally. New status bookkeeping and both guards are Linux-only; Windows/macOS non-Linux source token streams remain unchanged.",
+    "baseline": {
+      "report": "native-qt/qa/reports/linux-camera-permission-x11/133f83b7-a056-48a1-a55d-62fb65f02cab/results.json",
+      "sha256": "2ed5a48735d1c8b5a1195a72e3724ea377d14cf2148133363c35041026485191",
+      "manifestSha256": "def2bd222924f0970204321b290ec9f4557f7e2690d313668dea47ff5a0fb312",
+      "observed": "Actionable Permission denied error was replaced by Waiting for camera after 6.5 seconds of denied access and automatic source refresh. The owned device alias was removed and host permissions unchanged after failure."
+    },
+    "reports": [
+      {
+        "backend": "x11",
+        "report": "native-qt/qa/reports/linux-camera-permission-x11/fdbc234e-dc25-4596-9e63-e026cff5edfd/results.json",
+        "reportSha256": "a12bca59ba1df19623aabd1ba8fa6688857fa184c1e5c89667329ee898058eaa",
+        "wrapperReport": "native-qt/qa/reports/linux-camera-permission-x11-desktop/c3bf4a7b-462a-4326-80a2-e7c1636bfb53/results.json",
+        "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true
+      },
+      {
+        "backend": "wayland",
+        "report": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/results.json",
+        "reportSha256": "1dc2b5ffcdc4c4c67c991d2be056633c61348f2e8d158bd84445342c4134b452",
+        "wrapperReport": "native-qt/qa/reports/linux-camera-permission-wayland-desktop/03a26c80-ae61-469e-9ecf-04d7aaa610df/results.json",
+        "wrapperSha256": "00b4020ac21e1a8cd4fa2b6521ee5705fadb659269a7149f88e78fd490e4bc50",
+        "passed": true
+      }
+    ],
+    "gates": {
+      "report": "native-qt/build-linux/camera-permission-gates.json",
+      "sha256": "9b965c4241696047e886d19ab8ec6b8a350a3f286c4d9744394052950c0a45af",
+      "classification": "Build, syntax, package/source integrity and non-Linux source-scope gates only; not application testing."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-camera-permission-wayland/a59ef1e3-66ae-4be8-8893-9c8b851086ae/host-cleanup.json",
+      "sha256": "2978e57b7ca540a6e367405c8e607b4c9092145e1e784b4a7b6cfc69a5326942",
+      "passed": true
+    },
+    "remaining": "Other camera permission mechanisms and permission denial at initial launch, disconnect/hotplug UX, other devices/formats/MJPEG and multi-plane support, physical microphone/audio, high-motion fidelity and calibrated A/V/endurance, other display scales/compositors and Windows/macOS runtime regression. Stock GNOME pending screen-permission cancellation/fix delivery remains separate and open."
   }
 }

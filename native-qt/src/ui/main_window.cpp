@@ -2965,6 +2965,15 @@ void MainWindow::onWindowSelected(const QString &windowId) {
     const bool hasSelection = !windowId.isEmpty();
     refreshSelectedWindowPreview();
     updateGoLiveButton();
+#ifdef __linux__
+    // A camera that becomes inaccessible disappears on automatic refresh.
+    // Clear its selection and disable startup, but keep the actionable error
+    // until the user selects a source or starts another explicit operation.
+    if (!hasSelection && statusIsError_ && sourceModeSelect_ &&
+        sourceModeSelect_->currentData().toString() == "camera") {
+        return;
+    }
+#endif
     if (hasSelection) {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
         updateStatus(
@@ -3056,7 +3065,11 @@ void MainWindow::refreshWindowList() {
 #endif
             auto cameras = core_->listCameras();
             windowListWidget_->setWindowList(cameras);
-            if (selectedWindowId_.isEmpty()) {
+            if (selectedWindowId_.isEmpty()
+#ifdef __linux__
+                && !statusIsError_
+#endif
+            ) {
                 updateStatus(cameras.empty() ? "Waiting for camera" : "Select a camera", "idle");
             }
         } else {
@@ -3960,6 +3973,9 @@ void MainWindow::updateStatus(const QString &text, const QString &statusClass) {
     }
     const bool changed = statusLabel_->text() != text;
     statusLabel_->setText(text);
+#ifdef __linux__
+    statusIsError_ = statusClass == "error";
+#endif
 
     QString color;
     if (statusClass == "live") {

@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import stat
 from pathlib import Path
 import subprocess
 import sys
@@ -50,7 +51,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "footer", "close-window", "paste", "copy"])
+    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "footer", "deny-camera-start", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -151,6 +152,23 @@ def main():
             time.sleep(.5); pump()
             if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
                 raise RuntimeError("Desktop switcher did not activate the owned application")
+    elif args.command == "deny-camera-start":
+        # Revoke only the owned QA alias immediately before the real UI action;
+        # avoid spawning another observer while the source-refresh timer runs.
+        alias = Path(args.name)
+        assert alias.name == 'private-camera-device' and not alias.is_symlink()
+        info = alias.stat()
+        assert stat.S_ISCHR(info.st_mode) and info.st_uid == os.getuid()
+        assert stat.S_IMODE(info.st_mode) == 0o600
+        assert stat.S_IMODE(alias.parent.stat().st_mode) == 0o700
+        assert args.value.startswith('/dev/video')
+        mapped = Path(f'/proc/{args.pid}/root{args.value}').stat()
+        assert (mapped.st_dev,mapped.st_ino,mapped.st_rdev) == (info.st_dev,info.st_ino,info.st_rdev)
+        assert os.readlink(f'/proc/{args.pid}/ns/mnt') != os.readlink('/proc/self/ns/mnt')
+        button = find('push button', 'Go live')
+        assert button.get_state_set().contains(Atspi.StateType.SENSITIVE)
+        alias.chmod(0)
+        press(button)
     elif args.command == "footer":
         for node in nodes(app):
             if node.get_role_name() == 'scroll bar':
@@ -169,8 +187,10 @@ def main():
             assert bounds[0] <= rect.x and bounds[1] <= rect.y
             assert rect.x+rect.width <= bounds[0]+bounds[2] and rect.y+rect.height <= bounds[1]+bounds[3], 'Footer control is clipped'
             return [rect.x,rect.y,rect.width,rect.height]
-        button = find('push button', 'Go live')
-        result = {'frame':bounds,'goLiveBounds':visible(button),'goLiveEnabled':button.get_state_set().contains(Atspi.StateType.SENSITIVE)}
+        buttons = [n for n in nodes(app) if n.get_role_name() == 'push button' and n.get_name() in ['Go live', 'Go live unavailable']]
+        assert len(buttons) == 1, 'Expected one startup control'
+        button = buttons[0]
+        result = {'frame':bounds,'goLiveBounds':visible(button),'goLiveEnabled':button.get_state_set().contains(Atspi.StateType.SENSITIVE),'goLiveName':button.get_name()}
         if args.name:
             label = find('label', args.name)
             result.update(message=label.get_name(),messageBounds=visible(label))
