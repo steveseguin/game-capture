@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified."
     },
     {
       "id": "x11-window",
@@ -25271,6 +25271,35 @@
       "fixtureSha256": "c9b691b597dee0de434e945f3c6b9cabeba814aa702a36175a709802118caead",
       "wrapperReport": "native-qt/qa/reports/linux-av-wayland-paused-desktop/7e78612e-7d3e-4739-9636-2d05425746e4/results.json",
       "wrapperSha256": "c0afd34525697a7c2509d1ec52babb560c579e02a8104b6605cc7476d7b8e2a4"
+    },
+    {
+      "case": "linux-pipewire-format-negotiation",
+      "report": "native-qt/qa/reports/linux-av-wayland-format/b3925629-ebf5-4e1f-9abb-2467ffe9fa15/results.json",
+      "reportSha256": "9abc7a5ede85c4d65b8e8567128427c1998d044fa836aa91514176c7c2967cb7",
+      "passed": false,
+      "packageSha256": "ca4a36a8747b62293aca936b188afe2648068e6ced5c349720aed3ffae099dd5",
+      "manifestSha256": "885b0ea551c4e11357278eda35f48cc93d95c04098e9cc71014a69ed393d8f84",
+      "executableSha256": "5e5b887c91cfd6393d755196ce636b3c8a478d3a24d7813fac160ed0836dbe3f",
+      "cadenceIntervalsPassed": 0,
+      "continuousAudioIntervalsPassed": 6,
+      "receiverFpsRange": [
+        46.396289203041285,
+        48.79804855460126
+      ],
+      "additionalRecordedAvOffsetMs": [
+        -63.00000000000239,
+        0
+      ],
+      "negotiatedFormat": "BGRA",
+      "advertisedFormats": [
+        "BGRx",
+        "BGRA",
+        "RGBx",
+        "RGBA"
+      ],
+      "pipewireGraphSha256": "8b5d730dd22b8f3ac8375e72a5091795349100e42d5bf701eb9e13836cca6c77",
+      "traceAnalysisSha256": "15f236cb74bab7886088cef0e94bb209e688e5792af3546d80311d3557e9bf75",
+      "cleanupSha256": "5294702c5cdeb913a1939e1e76a47ccb6802434cdc0c939aa4ecf7954d922982"
     }
   ],
   "host_environment": {
@@ -30252,5 +30281,65 @@
     ],
     "cleanup": "All owned publisher/source/receiver/monitor/keyboard/keyring processes retired; sinks removed, discovery files gone, original single-monitor layout/default sink/portal and secret-store owners preserved.",
     "next": "Keep the 60 fps gap open. Isolate compositor readback/scheduling on this software-rendered host and compare a suitable physical/native Wayland source or maintained compositor fix before changing application pacing. Do not weaken 57 fps source, 0.95 delivery, 35.33 ms gap, 50 ms A/V or 30 ms drift thresholds. Final-package X11/Wayland endurance, independent A/V calibration and all prior parity gaps remain required."
+  },
+  "linux_pipewire_format_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-5e5b887c91cf-a5d3bb755480.deb",
+      "sha256": "ca4a36a8747b62293aca936b188afe2648068e6ced5c349720aed3ffae099dd5",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-5e5b887c91cf-a5d3bb755480",
+      "manifestSha256": "885b0ea551c4e11357278eda35f48cc93d95c04098e9cc71014a69ed393d8f84"
+    },
+    "productionChange": "Correct the Linux PipeWire EnumFormat choice: repeat the default BGRx value in the alternatives list, with count 5. SPA choice filtering skips the default when matching alternatives. The prior count-4 list unintentionally rejected a BGRx-only source with EINVAL. No changes to capture pacing, timestamps, audio or encoders.",
+    "protocolGate": {
+      "report": "native-qt/qa/reports/linux-pipewire-format-gates/2fdaba10-23b5-4354-bc74-756c9a0fd1b4/results.json",
+      "sha256": "ab2a0f814ca69e1f47f49702a54a709cbc6bcfd75097b6cff3abc8156d32bf07",
+      "classification": "SPA protocol compatibility gate only; not packaged application testing. The exact advertisement expression is extracted from each production revision and filtered against single-format offers in both argument orders.",
+      "beforeBgrxFilterCode": -22,
+      "afterBgrxFilterCode": 0,
+      "allFourSupportedFormatsAccepted": true,
+      "unsupportedNv12Rejected": true,
+      "scope": "Exact before/after production advertisement expressions, installed SPA 1.0.5 headers, single-format offers in both filter argument orders. This is a protocol gate, not BGRx-only compositor application testing."
+    },
+    "packagedEvidence": {
+      "case": "linux-pipewire-format-negotiation",
+      "report": "native-qt/qa/reports/linux-av-wayland-format/b3925629-ebf5-4e1f-9abb-2467ffe9fa15/results.json",
+      "reportSha256": "9abc7a5ede85c4d65b8e8567128427c1998d044fa836aa91514176c7c2967cb7",
+      "passed": false,
+      "packageSha256": "ca4a36a8747b62293aca936b188afe2648068e6ced5c349720aed3ffae099dd5",
+      "manifestSha256": "885b0ea551c4e11357278eda35f48cc93d95c04098e9cc71014a69ed393d8f84",
+      "executableSha256": "5e5b887c91cfd6393d755196ce636b3c8a478d3a24d7813fac160ed0836dbe3f",
+      "cadenceIntervalsPassed": 0,
+      "continuousAudioIntervalsPassed": 6,
+      "receiverFpsRange": [
+        46.396289203041285,
+        48.79804855460126
+      ],
+      "additionalRecordedAvOffsetMs": [
+        -63.00000000000239,
+        0
+      ],
+      "negotiatedFormat": "BGRA",
+      "advertisedFormats": [
+        "BGRx",
+        "BGRA",
+        "RGBx",
+        "RGBA"
+      ],
+      "pipewireGraphSha256": "8b5d730dd22b8f3ac8375e72a5091795349100e42d5bf701eb9e13836cca6c77",
+      "traceAnalysisSha256": "15f236cb74bab7886088cef0e94bb209e688e5792af3546d80311d3557e9bf75",
+      "cleanupSha256": "5294702c5cdeb913a1939e1e76a47ccb6802434cdc0c939aa4ecf7954d922982"
+    },
+    "findings": "A 30-second packaged native Wayland workflow completed real portal consent, selected-process audio, publishing to the hosted receiver, decoded marker observation, recording and orderly shutdown. Live PipeWire graph confirms all four intended formats are advertised. GNOME selects BGRA on this host. All 6 continuous-PCM intervals pass; all 6 cadence intervals fail at 46.4-48.8 fps. Original A/V result fails at -63..0 ms additional recorded offset. Zero native admission rejections. The compatibility fix does not resolve the existing upstream throughput or calibration gaps.",
+    "gates": {
+      "report": "native-qt/build-linux/linux-pipewire-format-gates.json",
+      "sha256": "bbbe347aaffa80e535661ae975877169ebab90b353d645c4c7e061d1e624faec",
+      "scope": "Release build and integrity gates only. 146 production inputs including CMake files match the package; only Linux window_capture.cpp differs from baseline. Shared Windows/macOS inputs and dependency materials are byte-identical, but runtime remains unqualified."
+    },
+    "limits": "BGRx-only compositor and RGBx/RGBA native delivery are not E2E-qualified by the parser gate. The real workflow negotiated BGRA. The unchanged 60 fps, 0.95 delivery, 35.33 ms p95 gap, 50 ms A/V and 30 ms drift limits remain required. No host drivers, compositor services or display settings were changed persistently.",
+    "references": [
+      "https://docs.pipewire.org/page_tutorial5.html",
+      "https://docs.pipewire.org/filter_8h_source.html"
+    ],
+    "next": "Keep native Wayland throughput and independent A/V calibration/endurance open. Other functional gaps remain actionable, especially explicit-permission preview before publishing on Wayland and maintained portal-fix delivery; neither is replaced by this compatibility correction."
   }
 }
