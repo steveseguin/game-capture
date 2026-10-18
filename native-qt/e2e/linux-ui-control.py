@@ -117,7 +117,7 @@ def main():
             raise RuntimeError("Text control is absent or ambiguous")
         field = matches[0]
         if args.command == "reveal":
-            buttons = [node for node in nodes(field.get_parent()) if node.get_role_name() in ["push button", "toggle button", "check box"] and node.get_name() == "Show"]
+            buttons = [node for node in nodes(field.get_parent()) if node.get_role_name() in ["push button", "toggle button", "check box"] and node.get_name() in ["Show", "Hide"]]
             if len(buttons) != 1:
                 raise RuntimeError("Expected one credential reveal button in " + field.get_parent().get_role_name() + "; found " + str(len(buttons)))
             press(buttons[0])

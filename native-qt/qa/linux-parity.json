@@ -83,13 +83,13 @@
       "id": "whip",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged 640x360/30 software H264/stereo Opus passed authenticated HTTP/HTTPS, moving/static content, silence, late viewer, server restart and session deletion. Local UDP TURN advertised through OPTIONS and POST passed with relay-only offers and relayed recovery. Silent advertised STUN now succeeds with 30-second Linux gathering allowance; pending ICE cancellation took 410 ms. Unauthorized endpoints, untrusted TLS, malformed/oversized answers and pending POST cancellation passed. HTTPS trust root was isolated in a publisher mount namespace; host trust unchanged. GUI, Wayland, redirects and origin credential rules, public CA/WAN/TURN TCP/TLS, no-audio/mono, packet loss, default 720p60 and endurance remain."
+      "remaining": "Packaged 640x360/30 software H264/stereo Opus passed authenticated HTTP/HTTPS, moving/static content, silence, late viewer, server restart and session deletion. Local UDP TURN advertised through OPTIONS and POST passed with relay-only offers and relayed recovery. Silent advertised STUN now succeeds with 30-second Linux gathering allowance; pending ICE cancellation took 410 ms. Unauthorized endpoints, untrusted TLS, malformed/oversized answers and pending POST cancellation passed. HTTPS trust root was isolated in a publisher mount namespace; host trust unchanged. Wayland GUI, redirects and origin credential rules, public CA/WAN/TURN TCP/TLS, no-audio/mono, packet loss, default 720p60 and endurance remain. Packaged X11 GUI at 960x540/30 passed authenticated HTTP WHIP with saved profile/relaunch, media phases, server recovery, Stop/Go live and successful session DELETE; GUI TLS/TURN combinations remain unqualified."
     },
     {
       "id": "mux-outputs",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI 640x360/30 software H264 + 192 kbps configured AAC stereo passed RTMP, encrypted SRT, RTSP TCP/UDP, UDP MPEG-TS and RIST. Moving/static/silence, decoded identities and timestamps, server restart (RTMP/SRT/RTSP), late direct receivers and owned helper retirement passed. RTMP SIGSTOP helper watchdog recovery passed. GUI, Wayland, RTMPS/TLS/authentication, WAN/loss, no-audio/mono/default AAC variants, A/V calibration, default 720p60 and endurance remain. Custom PATH FFmpeg N-122322 AAC/FLV EINVAL reproduces independently with max_interleave_delta=100000; custom helper compatibility remains open. Linux defaults to the declared distribution helper, with explicit overrides retained."
+      "remaining": "Packaged CLI 640x360/30 software H264 + 192 kbps configured AAC stereo passed RTMP, encrypted SRT, RTSP TCP/UDP, UDP MPEG-TS and RIST. Moving/static/silence, decoded identities and timestamps, server restart (RTMP/SRT/RTSP), late direct receivers and owned helper retirement passed. RTMP SIGSTOP helper watchdog recovery passed. Wayland GUI, RTMPS/TLS/authentication, WAN/loss, no-audio/mono/default AAC variants, A/V calibration, default 720p60 and endurance remain. Custom PATH FFmpeg N-122322 AAC/FLV EINVAL reproduces independently with max_interleave_delta=100000; custom helper compatibility remains open. Linux defaults to the declared distribution helper, with explicit overrides retained. Packaged X11 GUI at 960x540/30 now passed for all six protocols: saved profile/relaunch, moving/static/silence, restart or late receiver, RTMP helper stall, Stop/Go live and helper cleanup."
     },
     {
       "id": "alpha",
@@ -101,13 +101,13 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Wayland GUI, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Wayland GUI, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup."
     },
     {
       "id": "profiles",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged X11 GUI persistence, relaunch, update, locked-store protection, damaged/missing/ambiguous references, bounded unavailable/stalled service, store restart recovery and reset passed with real private GNOME Keyring. Wayland GUI, other providers, in-place unlocking, interruption during a committed remote mutation, fresh desktop password-store provisioning, clean installation and Windows/macOS regression remain. Actual destination publishing is qualified separately."
+      "remaining": "Packaged X11 GUI persistence, relaunch, update, locked-store protection, damaged/missing/ambiguous references, bounded unavailable/stalled service, store restart recovery and reset passed with real private GNOME Keyring. Wayland GUI, other providers, in-place unlocking, interruption during a committed remote mutation, fresh desktop password-store provisioning, clean installation and Windows/macOS regression remain. Actual destination publishing is qualified separately. Actual publication from restored profiles now passed in X11 GUI for all seven external output types."
     },
     {
       "id": "automation",
@@ -119,7 +119,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; GUI and wider networking failures remain."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery."
     },
     {
       "id": "packaging",
@@ -4224,6 +4224,2067 @@
       ],
       "finding": "Packaged H264/stereo Opus, silence, static pacing, late viewer and server restart recovery passed with OPTIONS-advertised TURN. All successful publishing offers had relay-only candidates and connected path diagnostics confirmed TURN/RELAY. Trace permits only the fixture 502 during its deliberate outage; no arbitrary negotiation failures are waived. Session deletion and process cleanup passed.",
       "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-mux-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-mux-gui/9b7a3c24-0798-49a7-90ca-612ba71afafe/results.json",
+      "reportSha256": "74a4d672b328fab02af9adc8bb15935bdddf7f7fc529d90286e58dba25b38014",
+      "gui": true,
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "936a3a9dab2e5c6f94fa3608ba812eb9a52d3971e7dc5f76f6ff9ce3e3db4273",
+      "requestedHelperSha256": null,
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "receiverSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "probeSha256": "272f6ebc634a63d9c8b4ca68e964119d980f25154e5aa2c35e5487da48e9a58f",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "cases": [
+        {
+          "protocol": "rtmp",
+          "encoder": "software",
+          "phases": [],
+          "passed": false,
+          "receiverProtocol": "rtmp"
+        }
+      ],
+      "passed": false,
+      "linux-output-gui.jsSha256": "7b70f134053c1660b967747214e78e15979020edf084b70a630e11a9e9ce84a1",
+      "linux-ui-control.pySha256": "31632d0144ed88a2583ea262e12affc92a1248be359c670a8e2386a1473ffc63",
+      "linux-private-desktop.pySha256": "6b4a48390a84d92bb7b1ebd861777d009114f96acdae6412254e12318a68a7a1",
+      "receiverVersion": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+      "browserVersion": "143.0.7499.169",
+      "desktopReport": "native-qt/qa/reports/linux-output-desktop/022af570-2df2-46fd-9065-4b1273625b4b/results.json",
+      "desktopReportSha256": "cfec9fd35688f79f1a180fe498e9652a366bf3739ad139a7e1d2cecab0504560",
+      "finding": "Fixture readiness expected Go live even before selecting a source; actual accessible name is Go live unavailable. No application failure established.",
+      "limits": "Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization."
+    },
+    {
+      "backend": "linux-mux-gui-fixture-iteration",
+      "report": "native-qt/qa/reports/linux-mux-gui/1ee4bbd1-06a7-4a40-9e9e-8c6f4c036268/results.json",
+      "reportSha256": "647d496e37b5b75bc6b1b38f920fddadf1eb085a5b70ef27cfb59a295d1e05f6",
+      "gui": true,
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "936a3a9dab2e5c6f94fa3608ba812eb9a52d3971e7dc5f76f6ff9ce3e3db4273",
+      "requestedHelperSha256": null,
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "receiverSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "probeSha256": "272f6ebc634a63d9c8b4ca68e964119d980f25154e5aa2c35e5487da48e9a58f",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "cases": [
+        {
+          "protocol": "rtmp",
+          "encoder": "software",
+          "phases": [],
+          "passed": false,
+          "receiverProtocol": "rtmp"
+        }
+      ],
+      "passed": false,
+      "linux-output-gui.jsSha256": "92ca5b755f5805e2ff70805979414d6ce2828d48cb99b85aee96b761de227758",
+      "linux-ui-control.pySha256": "31632d0144ed88a2583ea262e12affc92a1248be359c670a8e2386a1473ffc63",
+      "linux-private-desktop.pySha256": "6b4a48390a84d92bb7b1ebd861777d009114f96acdae6412254e12318a68a7a1",
+      "receiverVersion": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+      "browserVersion": "143.0.7499.169",
+      "desktopReport": "native-qt/qa/reports/linux-output-desktop/b01bf182-6c9e-45f9-88f2-d40b735cacc4/results.json",
+      "desktopReportSha256": "cfec9fd35688f79f1a180fe498e9652a366bf3739ad139a7e1d2cecab0504560",
+      "finding": "Saved RTMP profile restored, but the helper could only reveal credentials, not toggle Hide back to masked input. Fixture corrected to accept Show/Hide within the identified field.",
+      "limits": "Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization."
+    },
+    {
+      "backend": "linux-mux-gui-rtmp",
+      "report": "native-qt/qa/reports/linux-mux-gui/8ab1d066-da1b-4131-9cc2-fb68b443001d/results.json",
+      "reportSha256": "927ad654ead9cdafbf2682de472ec3d411ed01018e4901c2d1796f1509c63e7f",
+      "gui": true,
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "936a3a9dab2e5c6f94fa3608ba812eb9a52d3971e7dc5f76f6ff9ce3e3db4273",
+      "requestedHelperSha256": null,
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "receiverSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "probeSha256": "272f6ebc634a63d9c8b4ca68e964119d980f25154e5aa2c35e5487da48e9a58f",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "cases": [
+        {
+          "protocol": "rtmp",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "rtmp-software-moving.mkv",
+              "sha256": "db34399d5cfd58308ea25fc6d02ce9911218fa9e232853fd45bc030a753b3964",
+              "frames": 180,
+              "distinctFrames": 180,
+              "firstIdentity": 891,
+              "lastIdentity": 1249,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 244,
+                  "joinTimestamp": 0.882,
+                  "first": 3.015,
+                  "last": 8.982,
+                  "duration": 5.966999999999999
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.1057995044830437,
+                  "tones": [
+                    -17.74753457111743,
+                    -76.95390664034781
+                  ]
+                },
+                {
+                  "rms": 0.10578459620948553,
+                  "tones": [
+                    -78.22853060209034,
+                    -22.06525536692078
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "rtmp-software-static-silence.mkv",
+              "sha256": "bce9a396db38d11f4881d37b65c844da6fe13dfa973084374dc76ccbd5e557f3",
+              "frames": 89,
+              "distinctFrames": 1,
+              "firstIdentity": 1294,
+              "lastIdentity": 1294,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 179,
+                  "joinTimestamp": 0.064,
+                  "first": 3.03,
+                  "last": 5.997,
+                  "duration": 2.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "reconnected",
+              "file": "rtmp-software-reconnected.mkv",
+              "sha256": "3bf9453b7913a045b46968552168ae7e1131898abb559a4bdcfcf3586ad58082",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 1860,
+              "lastIdentity": 2098,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 188,
+                  "joinTimestamp": 0.74,
+                  "first": 3.007,
+                  "last": 6.974,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10573317883244074,
+                  "tones": [
+                    -16.880739434273192,
+                    -76.92958925364559
+                  ]
+                },
+                {
+                  "rms": 0.10575115247452488,
+                  "tones": [
+                    -83.3875803456574,
+                    -17.611883098966874
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "rtmp-software-gui-restarted.mkv",
+              "sha256": "1f164fa69aa5da8d3b0aaec945b3210c623dad18e96c425134eacacf51a5f130",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 2507,
+              "lastIdentity": 2745,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 190,
+                  "joinTimestamp": 0.689,
+                  "first": 3.022,
+                  "last": 6.989,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10573002547050095,
+                  "tones": [
+                    -18.606997458652565,
+                    -81.36737464087167
+                  ]
+                },
+                {
+                  "rms": 0.10576671076663158,
+                  "tones": [
+                    -86.10266546174175,
+                    -25.00586359920634
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "rtmp",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 12176640,
+            "audio_packets": 3171,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "RTMP \u00b7 127.0.0.1:42473",
+            "ice_path": "",
+            "message": "Publishing to RTMP \u00b7 127.0.0.1:42473",
+            "muxer_pid": 2629497,
+            "protocol": "RTMP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 647449,
+            "video_nack": false,
+            "video_packets": 951,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        }
+      ],
+      "passed": true,
+      "linux-output-gui.jsSha256": "92ca5b755f5805e2ff70805979414d6ce2828d48cb99b85aee96b761de227758",
+      "linux-ui-control.pySha256": "183a1f4e267bc7d695cc5ab13153cc72af1734a6cee1a73a7b1f18534b154973",
+      "linux-private-desktop.pySha256": "6b4a48390a84d92bb7b1ebd861777d009114f96acdae6412254e12318a68a7a1",
+      "receiverVersion": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+      "browserVersion": "143.0.7499.169",
+      "desktopReport": "native-qt/qa/reports/linux-output-desktop/fe68c802-b5b8-463e-aadc-1a737ea121f6/results.json",
+      "desktopReportSha256": "7dfe2190678294c5b2a822c7e7bed5e4b9e12ae0e27472e40b33dbcdfef92fb9",
+      "finding": "Actual Qt RTMP profile saved and restored across process relaunch; decoded moving/static/silent stereo AAC, server restart, GUI Stop/Go live and mux helper retirement passed at 960x540/30.",
+      "limits": "Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization."
+    },
+    {
+      "backend": "linux-mux-gui-six-protocols",
+      "report": "native-qt/qa/reports/linux-mux-gui/6ae27d34-1219-4bbd-b749-310ea5708387/results.json",
+      "reportSha256": "f125e5502db9dfcc422018e1580520d07aa8fecd151d5138ca6678baf772ac5f",
+      "gui": true,
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "936a3a9dab2e5c6f94fa3608ba812eb9a52d3971e7dc5f76f6ff9ce3e3db4273",
+      "requestedHelperSha256": null,
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "receiverSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "probeSha256": "272f6ebc634a63d9c8b4ca68e964119d980f25154e5aa2c35e5487da48e9a58f",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "cases": [
+        {
+          "protocol": "rtmp",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "rtmp-software-moving.mkv",
+              "sha256": "29925e420ba32fafb9470929e5f58d397b7f4f70cb516712fc9655f206fc7b65",
+              "frames": 180,
+              "distinctFrames": 180,
+              "firstIdentity": 900,
+              "lastIdentity": 1258,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 250,
+                  "joinTimestamp": 0.689,
+                  "first": 3.022,
+                  "last": 8.989,
+                  "duration": 5.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10570965015340121,
+                  "tones": [
+                    -17.28464529050858,
+                    -70.93232346357618
+                  ]
+                },
+                {
+                  "rms": 0.10573151395057831,
+                  "tones": [
+                    -82.82185228974107,
+                    -18.960082485157624
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "rtmp-software-static-silence.mkv",
+              "sha256": "2f742002997b35fd1df5c59aee568b2b24d8acd3a99707042204d7622a8588f3",
+              "frames": 90,
+              "distinctFrames": 1,
+              "firstIdentity": 1303,
+              "lastIdentity": 1303,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 154,
+                  "joinTimestamp": 0.871,
+                  "first": 3.004,
+                  "last": 5.971,
+                  "duration": 2.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "reconnected",
+              "file": "rtmp-software-reconnected.mkv",
+              "sha256": "6a98b022f37a05a936aa0b2218a50f67d584b1bfffb7472020334a123ee38536",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 1871,
+              "lastIdentity": 2109,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 189,
+                  "joinTimestamp": 0.73,
+                  "first": 3.03,
+                  "last": 6.996,
+                  "duration": 3.9660000000000006
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10590815009594126,
+                  "tones": [
+                    -17.839144811120704,
+                    -79.15505540047111
+                  ]
+                },
+                {
+                  "rms": 0.1058818988789533,
+                  "tones": [
+                    -80.48312327857491,
+                    -22.98465633311691
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "helper-stall-recovered",
+              "file": "rtmp-software-helper-stall-recovered.mkv",
+              "sha256": "95f384f644569831341e0baba6ff453c4be2f5e3edc9a8767247d91217642a47",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 3389,
+              "lastIdentity": 3627,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 186,
+                  "joinTimestamp": 0.826,
+                  "first": 3.026,
+                  "last": 6.992,
+                  "duration": 3.966
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.998,
+                  "duration": 3.99
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10588088275852925,
+                  "tones": [
+                    -17.841736647024636,
+                    -80.54972426538416
+                  ]
+                },
+                {
+                  "rms": 0.10586126298037978,
+                  "tones": [
+                    -77.60803526148818,
+                    -22.99993268605148
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "rtmp-software-gui-restarted.mkv",
+              "sha256": "ebbe94b6ca5ffdebbb0108afd9a606e64a113278a5c5886e712dbcbfd56e927b",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 4036,
+              "lastIdentity": 4274,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 190,
+                  "joinTimestamp": 0.69,
+                  "first": 3.024,
+                  "last": 6.99,
+                  "duration": 3.966
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10592181187493328,
+                  "tones": [
+                    -17.436666770826328,
+                    -75.47178027540285
+                  ]
+                },
+                {
+                  "rms": 0.10589146189949786,
+                  "tones": [
+                    -82.52583480203782,
+                    -20.135686396100816
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "rtmp",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 19864320,
+            "audio_packets": 5173,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "RTMP \u00b7 127.0.0.1:45103",
+            "ice_path": "",
+            "message": "Publishing to RTMP \u00b7 127.0.0.1:45103",
+            "muxer_pid": 2630821,
+            "protocol": "RTMP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 3,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 1072067,
+            "video_nack": false,
+            "video_packets": 1551,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        },
+        {
+          "protocol": "srt",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "srt-software-moving.mkv",
+              "sha256": "05333203eaa7757681662231fb11ff3d4f70cf78d436dd647d19df44bfd1fbd0",
+              "frames": 180,
+              "distinctFrames": 180,
+              "firstIdentity": 4883,
+              "lastIdentity": 5241,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 251,
+                  "joinTimestamp": 0.667,
+                  "first": 3,
+                  "last": 8.967,
+                  "duration": 5.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.1057601657579181,
+                  "tones": [
+                    -20.20431261113139,
+                    -78.31492942635876
+                  ]
+                },
+                {
+                  "rms": 0.10574683497507005,
+                  "tones": [
+                    -81.75795730310082,
+                    -32.545280166415274
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "srt-software-static-silence.mkv",
+              "sha256": "2988bfed87374dcca027ca2babb47279937cb43af3c3d2b42d173c20fda90c39",
+              "frames": 89,
+              "distinctFrames": 1,
+              "firstIdentity": 5310,
+              "lastIdentity": 5310,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 179,
+                  "joinTimestamp": 0.062,
+                  "first": 3.029,
+                  "last": 5.995,
+                  "duration": 2.966
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "reconnected",
+              "file": "srt-software-reconnected.mkv",
+              "sha256": "51721f25c562f6311da07042b51853ff821cb728b97732a86fc8f5b85c6cd988",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 5653,
+              "lastIdentity": 5891,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 201,
+                  "joinTimestamp": 0.3,
+                  "first": 3.011,
+                  "last": 6.978,
+                  "duration": 3.9669999999999996
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10559467495556592,
+                  "tones": [
+                    -18.852773875334087,
+                    -82.63796858333812
+                  ]
+                },
+                {
+                  "rms": 0.10550160392586024,
+                  "tones": [
+                    -80.57648584410103,
+                    -26.898406331959535
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "srt-software-gui-restarted.mkv",
+              "sha256": "54fddbe379a0ff7930a9e6760944549f64a8014a3aac250d28c5ba3bbd74986f",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 6233,
+              "lastIdentity": 6471,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 190,
+                  "joinTimestamp": 0.666,
+                  "first": 3,
+                  "last": 6.966,
+                  "duration": 3.966
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10562216637010624,
+                  "tones": [
+                    -18.19681281694993,
+                    -74.55538117659206
+                  ]
+                },
+                {
+                  "rms": 0.10557260078075209,
+                  "tones": [
+                    -73.20409025155853,
+                    -23.653544835684286
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "rtsp",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 11255040,
+            "audio_packets": 2931,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "SRT \u00b7 127.0.0.1:35272",
+            "ice_path": "",
+            "message": "Publishing to SRT \u00b7 127.0.0.1:35272",
+            "muxer_pid": 2631535,
+            "protocol": "SRT",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 1,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 601172,
+            "video_nack": false,
+            "video_packets": 879,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        },
+        {
+          "protocol": "rtsp",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "rtsp-software-moving.mkv",
+              "sha256": "e1b60cac2202a00d7e55012cf3bab1015ac841aaff93c3507d00f84122accc4a",
+              "frames": 180,
+              "distinctFrames": 180,
+              "firstIdentity": 7040,
+              "lastIdentity": 7398,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 263,
+                  "joinTimestamp": 0.233,
+                  "first": 3.011,
+                  "last": 8.978,
+                  "duration": 5.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.1057403444865796,
+                  "tones": [
+                    -19.23397283827027,
+                    -74.35184911889469
+                  ]
+                },
+                {
+                  "rms": 0.10574163548381645,
+                  "tones": [
+                    -78.21460375877,
+                    -29.738031880104494
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "rtsp-software-static-silence.mkv",
+              "sha256": "fc4e450e742dfe3c186983817cbf87866824f433e3d4330ea5d409c52bbd0ab5",
+              "frames": 89,
+              "distinctFrames": 1,
+              "firstIdentity": 7440,
+              "lastIdentity": 7440,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 162,
+                  "joinTimestamp": 0.619,
+                  "first": 3.019,
+                  "last": 5.986,
+                  "duration": 2.9669999999999996
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "reconnected",
+              "file": "rtsp-software-reconnected.mkv",
+              "sha256": "fb0c62437bc6ca0309da2bad2613db92fb00fb6d74a47affd7741568577ad86a",
+              "frames": 119,
+              "distinctFrames": 119,
+              "firstIdentity": 7915,
+              "lastIdentity": 8151,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 202,
+                  "joinTimestamp": 0.3,
+                  "first": 3.024,
+                  "last": 6.991,
+                  "duration": 3.9669999999999996
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10577187487411259,
+                  "tones": [
+                    -17.37649924735104,
+                    -74.49278426589525
+                  ]
+                },
+                {
+                  "rms": 0.10566236202654183,
+                  "tones": [
+                    -73.54652934764442,
+                    -19.562520173081328
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "rtsp-software-gui-restarted.mkv",
+              "sha256": "c401a2ee1f9ffe340d7094d1cba63f328cfebda65647028c46385bd63e58b2cc",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 8451,
+              "lastIdentity": 8689,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 204,
+                  "joinTimestamp": 0.2,
+                  "first": 3.006,
+                  "last": 6.973,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.1056122138891078,
+                  "tones": [
+                    -19.92595305589916,
+                    -75.84937067190583
+                  ]
+                },
+                {
+                  "rms": 0.1054298244755059,
+                  "tones": [
+                    -80.14213587442329,
+                    -27.318133626864956
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "rtsp",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 10940160,
+            "audio_packets": 2849,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "RTSP \u00b7 127.0.0.1:35669",
+            "ice_path": "",
+            "message": "Publishing to RTSP \u00b7 127.0.0.1:35669",
+            "muxer_pid": 2632307,
+            "protocol": "RTSP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 614028,
+            "video_nack": false,
+            "video_packets": 854,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        },
+        {
+          "protocol": "rtsp-udp",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "rtsp-udp-software-moving.mkv",
+              "sha256": "b382fc052a9235225897722f41315eca2096a6a973270a8c5545468b5047fd07",
+              "frames": 179,
+              "distinctFrames": 179,
+              "firstIdentity": 9231,
+              "lastIdentity": 9587,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 264,
+                  "joinTimestamp": 0.2,
+                  "first": 3.017,
+                  "last": 8.984,
+                  "duration": 5.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10571556974337963,
+                  "tones": [
+                    -17.07995314803076,
+                    -75.89677065469135
+                  ]
+                },
+                {
+                  "rms": 0.10575956899316627,
+                  "tones": [
+                    -77.4135002221303,
+                    -18.259909610642147
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "rtsp-udp-software-static-silence.mkv",
+              "sha256": "4611992e80c7621f0df1d365dabee1b26a2d06d6ca4f0a23e28c77a1c4231572",
+              "frames": 89,
+              "distinctFrames": 1,
+              "firstIdentity": 9631,
+              "lastIdentity": 9631,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 162,
+                  "joinTimestamp": 0.618,
+                  "first": 3.018,
+                  "last": 5.985,
+                  "duration": 2.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "reconnected",
+              "file": "rtsp-udp-software-reconnected.mkv",
+              "sha256": "9471ad1de3034b95d7b0105b645019025cb3a5e9cc3b43700a723b3a3941a740",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 10104,
+              "lastIdentity": 10342,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 202,
+                  "joinTimestamp": 0.267,
+                  "first": 3.006,
+                  "last": 6.973,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10591633257808826,
+                  "tones": [
+                    -17.745508516755134,
+                    -76.89652914759472
+                  ]
+                },
+                {
+                  "rms": 0.10589469117841102,
+                  "tones": [
+                    -82.1438154162938,
+                    -22.15716605188573
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "rtsp-udp-software-gui-restarted.mkv",
+              "sha256": "9a38a5e6104f76861181ad446c272d1c83e1c93b9acd3ad1abb4c18b379b96a3",
+              "frames": 119,
+              "distinctFrames": 119,
+              "firstIdentity": 10656,
+              "lastIdentity": 10892,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 204,
+                  "joinTimestamp": 0.22,
+                  "first": 3.02,
+                  "last": 6.987,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10573830207020532,
+                  "tones": [
+                    -19.14848575593249,
+                    -71.85435014959586
+                  ]
+                },
+                {
+                  "rms": 0.10571373733389619,
+                  "tones": [
+                    -82.63203841554963,
+                    -28.50807847149764
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "rtsp",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 10951680,
+            "audio_packets": 2852,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "RTSP-UDP \u00b7 127.0.0.1:35669",
+            "ice_path": "",
+            "message": "Publishing to RTSP-UDP \u00b7 127.0.0.1:35669",
+            "muxer_pid": 2633017,
+            "protocol": "RTSP-UDP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 591775,
+            "video_nack": false,
+            "video_packets": 855,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        },
+        {
+          "protocol": "udp",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "udp-software-moving.mkv",
+              "sha256": "57a38d5d360c03d764c9d2d69c323be1fd8f2d5716211be082c98d861fa85f1f",
+              "frames": 179,
+              "distinctFrames": 179,
+              "firstIdentity": 11418,
+              "lastIdentity": 11774,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 269,
+                  "joinTimestamp": 0.057,
+                  "first": 3.023,
+                  "last": 8.99,
+                  "duration": 5.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10571897612521723,
+                  "tones": [
+                    -20.689307734428944,
+                    -81.43963833714871
+                  ]
+                },
+                {
+                  "rms": 0.10574831682054646,
+                  "tones": [
+                    -79.04344596035445,
+                    -33.041902081766345
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "udp-software-static-silence.mkv",
+              "sha256": "f9d987c29e92f7779f84cc775391c3357a5ef299d3e894b36ccf65ab2f7d15ea",
+              "frames": 89,
+              "distinctFrames": 1,
+              "firstIdentity": 11820,
+              "lastIdentity": 11820,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 169,
+                  "joinTimestamp": 0.388,
+                  "first": 3.021,
+                  "last": 5.988,
+                  "duration": 2.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "late-receiver",
+              "file": "udp-software-late-receiver.mkv",
+              "sha256": "e98e850a26805c242b6856d166423aa9bb06d8fd8206905f3b8fa71300d4bb8c",
+              "frames": 120,
+              "distinctFrames": 120,
+              "firstIdentity": 12057,
+              "lastIdentity": 12295,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 185,
+                  "joinTimestamp": 0.836,
+                  "first": 3.002,
+                  "last": 6.969,
+                  "duration": 3.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10572331392810394,
+                  "tones": [
+                    -18.81323368948611,
+                    -76.5446066447831
+                  ]
+                },
+                {
+                  "rms": 0.1057290651318833,
+                  "tones": [
+                    -85.04713683325244,
+                    -26.716021915705923
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "udp-software-gui-restarted.mkv",
+              "sha256": "b62b33c5384a43f28a278b6d2904925217edd6697444825f90317f3218ab419e",
+              "frames": 119,
+              "distinctFrames": 119,
+              "firstIdentity": 12559,
+              "lastIdentity": 12795,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 209,
+                  "joinTimestamp": 0.058,
+                  "first": 3.025,
+                  "last": 6.992,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10605096481217424,
+                  "tones": [
+                    -16.479412631286053,
+                    -142.0627239518596
+                  ]
+                },
+                {
+                  "rms": 0.10603141040705424,
+                  "tones": [
+                    -138.36078459542927,
+                    -16.481013972288217
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "udp",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 10287360,
+            "audio_packets": 2679,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "UDP \u00b7 127.0.0.1:55419",
+            "ice_path": "",
+            "message": "Publishing to UDP \u00b7 127.0.0.1:55419",
+            "muxer_pid": 2633460,
+            "protocol": "UDP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 0,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 528997,
+            "video_nack": false,
+            "video_packets": 803,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        },
+        {
+          "protocol": "rist",
+          "encoder": "software",
+          "phases": [
+            {
+              "phase": "moving",
+              "file": "rist-software-moving.mkv",
+              "sha256": "2326ae73eefce4bffd31dfd22749a2bad8458000124346b7bca56bb040325f91",
+              "frames": 179,
+              "distinctFrames": 179,
+              "firstIdentity": 13326,
+              "lastIdentity": 13682,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 269,
+                  "joinTimestamp": 0.058,
+                  "first": 3.025,
+                  "last": 8.991,
+                  "duration": 5.965999999999999
+                },
+                {
+                  "codec": "aac",
+                  "packets": 422,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 8.981,
+                  "duration": 5.973
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10572923038166317,
+                  "tones": [
+                    -20.151136196675594,
+                    -80.61626799659754
+                  ]
+                },
+                {
+                  "rms": 0.10577123819251938,
+                  "tones": [
+                    -74.02505384857693,
+                    -43.886071213639795
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 9,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "static-silence",
+              "file": "rist-software-static-silence.mkv",
+              "sha256": "c8d642df836b3aad6cf66bb8a0ecc2cd71eec5bfdecc43a8c2b24d2e39e3af02",
+              "frames": 90,
+              "distinctFrames": 1,
+              "firstIdentity": 13786,
+              "lastIdentity": 13786,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 170,
+                  "joinTimestamp": 0.344,
+                  "first": 3.011,
+                  "last": 5.977,
+                  "duration": 2.966
+                },
+                {
+                  "codec": "aac",
+                  "packets": 282,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 5.995,
+                  "duration": 2.987
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 6,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "late-receiver",
+              "file": "rist-software-late-receiver.mkv",
+              "sha256": "2cc839da4db953b6a27d40c1f1ede8b50b86c1e757c4cdcf730b315ea794ace7",
+              "frames": 119,
+              "distinctFrames": 119,
+              "firstIdentity": 14026,
+              "lastIdentity": 14262,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 192,
+                  "joinTimestamp": 0.618,
+                  "first": 3.018,
+                  "last": 6.985,
+                  "duration": 3.9670000000000005
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.1058262673882012,
+                  "tones": [
+                    -17.86308464687513,
+                    -75.95012209893285
+                  ]
+                },
+                {
+                  "rms": 0.1057955709289202,
+                  "tones": [
+                    -75.86672171417209,
+                    -23.1644309423379
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            },
+            {
+              "phase": "gui-restarted",
+              "file": "rist-software-gui-restarted.mkv",
+              "sha256": "d58c38e472ef2c70a9fab1b0eaad1ba7efbb87002b4436f49bbd10508bebdee4",
+              "frames": 119,
+              "distinctFrames": 119,
+              "firstIdentity": 14583,
+              "lastIdentity": 14819,
+              "timelines": [
+                {
+                  "codec": "h264",
+                  "packets": 209,
+                  "joinTimestamp": 0.055,
+                  "first": 3.022,
+                  "last": 6.989,
+                  "duration": 3.967
+                },
+                {
+                  "codec": "aac",
+                  "packets": 329,
+                  "joinTimestamp": 0,
+                  "first": 3.008,
+                  "last": 6.997,
+                  "duration": 3.989
+                }
+              ],
+              "audio": [
+                {
+                  "rms": 0.10559463149813797,
+                  "tones": [
+                    -24.926257491026355,
+                    -73.61696884442028
+                  ]
+                },
+                {
+                  "rms": 0.10560702015268923,
+                  "tones": [
+                    -75.58914291081557,
+                    -27.076252261086037
+                  ]
+                }
+              ],
+              "geometry": {
+                "left": 11.75,
+                "top": 15.5,
+                "width": 134,
+                "height": 74
+              },
+              "videoProfile": "Constrained Baseline",
+              "bFrames": 0,
+              "keyframes": 7,
+              "maxKeyframeGapFrames": 30
+            }
+          ],
+          "passed": true,
+          "receiverProtocol": "rist",
+          "profileRestored": true,
+          "output": {
+            "audio_codec": "AAC",
+            "audio_input_bytes": 11585280,
+            "audio_packets": 3017,
+            "configured_aac_bitrate_kbps": 192,
+            "destination": "RIST \u00b7 127.0.0.1:51308",
+            "ice_path": "",
+            "message": "Publishing to RIST \u00b7 127.0.0.1:51308",
+            "muxer_pid": 2634121,
+            "protocol": "RIST",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": -1,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 0,
+            "reconnects": 0,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 609192,
+            "video_nack": false,
+            "video_packets": 905,
+            "video_playout_ms": 0,
+            "video_pli": false,
+            "video_rtx": false
+          },
+          "guiStopRestartPassed": true
+        }
+      ],
+      "passed": true,
+      "linux-output-gui.jsSha256": "92ca5b755f5805e2ff70805979414d6ce2828d48cb99b85aee96b761de227758",
+      "linux-ui-control.pySha256": "183a1f4e267bc7d695cc5ab13153cc72af1734a6cee1a73a7b1f18534b154973",
+      "linux-private-desktop.pySha256": "6b4a48390a84d92bb7b1ebd861777d009114f96acdae6412254e12318a68a7a1",
+      "receiverVersion": "ffmpeg version 6.1.1-3ubuntu5 Copyright (c) 2000-2023 the FFmpeg developers",
+      "browserVersion": "143.0.7499.169",
+      "desktopReport": "native-qt/qa/reports/linux-output-desktop/5692124a-836f-42da-9066-28ee3b829f88/results.json",
+      "desktopReportSha256": "7dfe2190678294c5b2a822c7e7bed5e4b9e12ae0e27472e40b33dbcdfef92fb9",
+      "finding": "All six protocols passed through actual Qt GUI controls at 960x540/30. Each destination and applicable credential/AAC settings restored across process relaunch before publishing. All 25 independently decoded phases passed: moving/static/silent stereo AAC, server restart or late receiver, RTMP helper-stall recovery, GUI Stop/Go live, helper retirement and discovery cleanup.",
+      "limits": "Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization."
+    },
+    {
+      "backend": "linux-whip-gui",
+      "report": "native-qt/qa/reports/linux-whip-gui/34b2be62-c7b0-449c-98b1-d72c2c620303/results.json",
+      "reportSha256": "b9440d6edcea3a51925c3b808b99fe1cb52a4a985b64e0d2d2ad53de84591d7c",
+      "gui": true,
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "9dc9016f903db9856d0fe937d60b669488810155554e6b1fc7fd27d995e365fd",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "linux-output-gui.jsSha256": "92ca5b755f5805e2ff70805979414d6ce2828d48cb99b85aee96b761de227758",
+      "linux-ui-control.pySha256": "183a1f4e267bc7d695cc5ab13153cc72af1734a6cee1a73a7b1f18534b154973",
+      "linux-private-desktop.pySha256": "6b4a48390a84d92bb7b1ebd861777d009114f96acdae6412254e12318a68a7a1",
+      "sourceBrowserVersion": "143.0.7499.169",
+      "receiverBrowserVersion": "143.0.7499.169",
+      "hostTrustUnchanged": true,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "profileRestored": true,
+          "distinctFrames": 176,
+          "output": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 394720,
+            "audio_packets": 2467,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:34233",
+            "ice_path": "STUN",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:34233",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 210,
+            "receiver_report_timeout_ms": 15000,
+            "receiver_reports": 48,
+            "reconnects": 0,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 520147,
+            "video_nack": true,
+            "video_packets": 740,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "recoveryOutput": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 550240,
+            "audio_packets": 3439,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:34233",
+            "ice_path": "STUN",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:34233",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 565,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 18,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 741830,
+            "video_nack": true,
+            "video_packets": 1031,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "guiStopRestartPassed": true,
+          "moving": {
+            "width": 960,
+            "height": 540,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0,
+            "observations": 176,
+            "distinctIdentities": 176
+          },
+          "static": {
+            "width": 960,
+            "height": 540,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0,
+            "observations": 75,
+            "distinctIdentities": 1
+          },
+          "late": {
+            "width": 960,
+            "height": 540,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0,
+            "observations": 86,
+            "distinctIdentities": 86
+          },
+          "reconnected": {
+            "width": 960,
+            "height": 540,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0,
+            "observations": 146,
+            "distinctIdentities": 146
+          },
+          "guiRestarted": {
+            "width": 960,
+            "height": 540,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0,
+            "observations": 148,
+            "distinctIdentities": 148
+          },
+          "audio": {
+            "samples": 30,
+            "minRms": 0.04657313909545053,
+            "maxRms": 0.07508433400335264,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "silence": {
+            "samples": 30,
+            "minRms": 0,
+            "maxRms": 0,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "lateAudio": {
+            "samples": 30,
+            "minRms": 0.04676573555794036,
+            "maxRms": 0.07517591424829013,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "reconnectedAudio": {
+            "samples": 30,
+            "minRms": 0.04659620031269613,
+            "maxRms": 0.07521107497167084,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "guiRestartedAudio": {
+            "samples": 30,
+            "minRms": 0.04659685949217979,
+            "maxRms": 0.075166622263876,
+            "codecs": [
+              "audio/opus"
+            ]
+          }
+        }
+      ],
+      "desktopReport": "native-qt/qa/reports/linux-output-desktop/5a60315a-8837-4302-a30a-178c9b667220/results.json",
+      "desktopReportSha256": "7dfe2190678294c5b2a822c7e7bed5e4b9e12ae0e27472e40b33dbcdfef92fb9",
+      "finding": "Actual Qt GUI restored WHIP URL and bearer token after process relaunch, then published 960x540/30 software H264 and stereo Opus. Browser-decoded moving/static content, silence, late viewer, server restart, GUI Stop/Go live and second Stop passed. Both GUI Stops received a successful server DELETE response. Settings/log privacy and process/discovery cleanup passed.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
     }
   ],
   "host_environment": {
@@ -4257,7 +6318,9 @@
     "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --codec=h264|vp9|av1 --rate-control=true --noise-grid=40x23 --target-bitrate=1000",
     "python3 native-qt/e2e/linux-codec-rate-reference.py --workflow-report=<external-encoder-results.json> --output=<new-reference-directory> --noise-grid=160x90|80x45|40x23 (independent calibration, not application testing)",
     "xvfb-run -a python3 native-qt/e2e/linux-output-profiles.py --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports>",
-    "xvfb-run -a node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<reports> --helper-stall=true"
+    "xvfb-run -a node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<reports> --helper-stall=true",
+    "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true --helper-stall=true",
+    "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-whip-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -4402,5 +6465,27 @@
     "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
     "passingWorkflows": 10,
     "qualification": "Development checkpoint only: extracted Ubuntu DEB, X11/Xvfb, software H264 640x360/30 and virtual stereo microphone. Positive media modes: private-CA HTTPS, TURN OPTIONS, TURN POST and silent STUN. Error/cancellation modes: unauthorized, untrusted TLS, malformed/oversized answer, pending POST and pending ICE. No GUI/Wayland, public WAN, default 720p60, endurance, clean-install or Windows/macOS regression qualification."
+  },
+  "output_gui_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-373b48d50364-0865b0d04db6.deb",
+    "sha256": "f6e9760311b2f7974d86b6ee0baca78c44139793e2aec68c6784cd320e9b2826",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-373b48d50364-0865b0d04db6",
+    "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+    "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+    "passingOutputTypes": 7,
+    "muxDecodedPhases": 25,
+    "qualification": "Development checkpoint: extracted Ubuntu DEB on this host; X11/Xvfb, actual Qt GUI, isolated GNOME Keyring, software H264 960x540/30, virtual stereo microphone, configured 192 kbps AAC for mux outputs and Opus for WHIP. All seven saved destination profiles restored across app relaunch and published successfully. Stop/Go live, receiver/server recovery and cleanup passed. Excludes Wayland GUI, physical microphone, clean installation, WAN/TLS GUI combinations, default 720p60, endurance and Windows/macOS regression.",
+    "cleanupReport": "native-qt/qa/reports/linux-output-desktop/cleanup.json",
+    "cleanupReportSha256": "4e88d149a88c668b97fac757c8136a4b05f559222e1903fc6020e71e30a1f695"
+  },
+  "output_gui_gates": {
+    "classification": "Gates only; not application testing.",
+    "passed": [
+      "Python AST parse",
+      "Node syntax"
+    ],
+    "log": "native-qt/build-linux-output-gui-gates.log",
+    "logSha256": "6d97adf8d6a8ec92ca9c991be68b95c51909b2606181a7e7f9b6eca99259df93",
+    "cross_platform": "No production code changed. Existing Windows/macOS runtime regression gaps remain."
   }
 }

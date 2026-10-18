@@ -9,6 +9,7 @@ const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=
 assert.equal(process.platform,'linux');
 for(const key of ['publisher','reports','server','manifest-sha256'])assert(opts[key],'Required --'+key);
 const {chromium}=require('playwright');
+const gui=opts.gui==='true';if(gui)assert(process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires linux-private-desktop.py');
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const manifestFile=path.join(bundle,'release-artifact-manifest.json');
@@ -19,10 +20,11 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 fs.copyFileSync(path.join(__dirname,'macos-media-receiver.js'),path.join(report,'receiver-helper.js'));
 const ffmpeg='/usr/bin/ffmpeg',ffprobe='/usr/bin/ffprobe',helper=ffmpeg;
-const result={executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),
+const result={gui,executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),
  requestedHelper:opts.helper||'distribution-default',requestedHelperSha256:opts.helper?hash(path.resolve(opts.helper)):null,
  receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),receiverSha256:hash(ffmpeg),probeSha256:hash(ffprobe),serverSha256:hash(path.resolve(opts.server)),
  scope:'Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Excludes GUI, Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization.',cases:[],passed:false};
+if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py','linux-private-desktop.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
 result.receiverVersion=execFileSync(ffmpeg,['-version'],{encoding:'utf8'}).split('\n')[0];
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_|FFMPEG_|GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN)/.test(k)));
 Object.assign(env,{QT_QPA_PLATFORM:'xcb',XDG_SESSION_TYPE:'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});delete env.WAYLAND_DISPLAY;
@@ -47,7 +49,7 @@ function decode(file,seconds,staticAndSilent=false){
   const run=(program,args)=>execFileSync(program,args,{timeout:20000,maxBuffer:32*1024*1024,stdio:['ignore','pipe','pipe']});
   const metadata=JSON.parse(run(ffprobe,['-v','error','-show_streams','-show_packets','-of','json',file]));
   const video=metadata.streams.find(s=>s.codec_type==='video'),audio=metadata.streams.find(s=>s.codec_type==='audio');
-  assert.equal(video?.codec_name,'h264');assert.equal(video.width,640);assert.equal(video.height,360);
+  assert.equal(video?.codec_name,'h264');assert.equal(video.width,gui?960:640);assert.equal(video.height,gui?540:360);
   assert.equal(audio?.codec_name,'aac');assert.equal(audio.channels,2);assert.equal(Number(audio.sample_rate),48000);
   const decoded=JSON.parse(run(ffprobe,['-v','error','-select_streams','v:0','-show_frames',
     '-show_entries','frame=key_frame,pict_type','-of','json',file])).frames;
@@ -131,11 +133,12 @@ function decode(file,seconds,staticAndSilent=false){
   ctx.fillStyle='cyan';ctx.fillRect(.1*w,.25*h,.05*w,.5*h);ctx.fillStyle='magenta';ctx.fillRect(.85*w,.25*h,.05*w,.5*h);
   for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
   await source.bringToFront();await sleep(1000);result.browserVersion=browser.version();
+  const desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedMuxInput'}):null;
   for(const protocol of (opts.protocols||'rtmp,srt,rtsp,rtsp-udp,udp,rist').split(',')){
     assert(['rtmp','srt','rtsp','rtsp-udp','udp','rist'].includes(protocol));const encoder='software';
     const id=protocol+'-'+encoder,entry={protocol,encoder,phases:[],passed:false};result.cases.push(entry);currentEntry=entry;save();
     const stream=(protocol==='srt'?'encrypted':'stream')+crypto.randomBytes(8).toString('hex'),direct=['udp','rist'].includes(protocol),directPort=await port(true);
-    const url=protocol==='rtmp'?`rtmp://127.0.0.1:${ports.rtmp}/live`:protocol==='srt'?`srt://127.0.0.1:${ports.srt}?passphrase=${encodeURIComponent(passphrase)}`:protocol.startsWith('rtsp')?`rtsp://127.0.0.1:${ports.rtsp}/${stream}`:`${protocol}://127.0.0.1:${directPort}`;
+    const url=protocol==='rtmp'?`rtmp://127.0.0.1:${ports.rtmp}/live`:protocol==='srt'?`srt://127.0.0.1:${ports.srt}${gui?'':'?passphrase='+encodeURIComponent(passphrase)}`:protocol.startsWith('rtsp')?`rtsp://127.0.0.1:${ports.rtsp}/${stream}`:`${protocol}://127.0.0.1:${directPort}`;
     const rtmpReceiver=protocol==='rtmp';
     entry.receiverProtocol=direct?protocol:rtmpReceiver?'rtmp':'rtsp';
     const receiverInput=direct?['-i',protocol==='udp'?`udp://127.0.0.1:${directPort}?fifo_size=8192&overrun_nonfatal=1`:`rist://@127.0.0.1:${directPort}`]:rtmpReceiver?['-i',`rtmp://127.0.0.1:${ports.rtmp}/live/${stream}`]:['-rtsp_transport','tcp','-i',`rtsp://127.0.0.1:${ports.rtsp}/${protocol==='rtmp'?'live/':''}${stream}`];
@@ -148,13 +151,15 @@ function decode(file,seconds,staticAndSilent=false){
     // Keep packet/timestamp/stereo/silence assertions in decode() unchanged.
     function record(seconds,phase){const file=path.join(report,id+'-'+phase+'.mkv');return {file,process:launch(ffmpeg,['-hide_banner','-y','-analyzeduration',direct||rtmpReceiver?'3000000':'1000000','-probesize','1000000',...receiverInput,'-map','0','-c','copy','-copyinkf:a','-t',String(seconds+3),file],id+'-receiver-'+sequence++)};}
     let recording=direct?record(6,'moving'):null;if(direct)await sleep(500);
-    const discovery=path.join(report,id+'-control.json');
-    const publisher=launch(exe,['--headless','--source=window','--window='+title,`--output=${protocol}`,`--output-url=${url}`,
+    let discovery=path.join(report,id+'-control.json'),publisher,control,session;
+    if(gui){session=await desktop.start(protocol,url,protocol==='srt'?passphrase:protocol==='rtmp'?stream:'',protocol==='srt'?'publish:'+stream:'');({publisher,control,discovery}=session);entry.profileRestored=session.profileRestored;}else{
+    publisher=launch(exe,['--headless','--source=window','--window='+title,`--output=${protocol}`,`--output-url=${url}`,
       ...(protocol==='rtmp'?[`--output-key=${stream}`]:protocol==='srt'?[`--srt-stream-id=publish:${stream}`]:[]),
       '--audio-source=none','--include-microphone','--microphone-device=pulse:'+input,'--audio-channels=2','--aac-bitrate-kbps=192',
       ...(opts.helper?['--ffmpeg-path='+path.resolve(opts.helper)]:[]),'--video-encoder=software','--video-codec=h264','--resolution=640x360','--fps=30','--bitrate-kbps=2000','--duration-ms=180000',
       '--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],id+'-publisher');
-    await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return fs.existsSync(discovery);},15000,'No control discovery');const control=JSON.parse(fs.readFileSync(discovery));currentControl=control;
+    await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return fs.existsSync(discovery);},15000,'No control discovery');control=JSON.parse(fs.readFileSync(discovery));}
+    currentControl=control;
     await waitFor(async()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return(await api(control,'/diagnostics')).output?.state===2;},30000,'Output did not publish');
     if(!direct)await waitFor(async()=>{const paths=await fetch(`http://127.0.0.1:${ports.api}/v3/paths/list`).then(r=>r.json());return paths.items.some(p=>p.name===(protocol==='rtmp'?'live/':'')+stream&&p.ready);},15000,'Server has no media');
     async function finishRecording(recording,seconds,phase,silent=false){
@@ -198,9 +203,18 @@ function decode(file,seconds,staticAndSilent=false){
     assert(!JSON.stringify(diag).includes(passphrase)&&!JSON.stringify(diag).includes(stream),'Private output data in diagnostics');
     fs.writeFileSync(path.join(report,id+'-diagnostics.json'),JSON.stringify(diag,null,2));
     const appLog=await api(control,'/logs/recent?lines=1');assert(!fs.readFileSync(appLog.path,'utf8').includes(passphrase),'Passphrase in application log');
-    await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'App did not quit');assert.equal(await publisher.closed,0);assert(!fs.existsSync(discovery),'Discovery not removed');
+if(gui){
+      await desktop.stop(session);assert(!fs.existsSync('/proc/'+diag.output.muxer_pid),'Mux helper survived GUI Stop');
+      const nextRecording=direct?record(4,'gui-restarted'):null;
+      await desktop.restart(session);
+      await waitFor(async()=>{const d=await api(control,'/diagnostics');return d.output?.state===2;},20000,'GUI output did not resume');
+      if(!direct)await waitFor(async()=>{const paths=await fetch(`http://127.0.0.1:${ports.api}/v3/paths/list`).then(r=>r.json());return paths.items.some(p=>p.name===(protocol==='rtmp'?'live/':'')+stream&&p.ready);},15000,'Server has no GUI restarted media');
+      await finishRecording(nextRecording||record(4,'gui-restarted'),4,'gui-restarted');
+      const last=(await api(control,'/diagnostics')).output;await desktop.stop(session);assert(!fs.existsSync('/proc/'+last.muxer_pid),'Restarted helper survived GUI Stop');
+      await desktop.quit(session);entry.guiStopRestartPassed=true;
+    }else{await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'App did not quit');assert.equal(await publisher.closed,0);assert(!fs.existsSync(discovery),'Discovery not removed');}
     let helperAlive=true;try{process.kill(diag.output.muxer_pid,0);}catch(e){if(e.code==='ESRCH')helperAlive=false;else throw e;}assert(!helperAlive,'Mux helper survived app shutdown');
-    assert(!fs.readFileSync(path.join(report,id+'-publisher.log'),'utf8').includes(passphrase),'Passphrase in publisher log');
+    assert(gui||!fs.readFileSync(path.join(report,id+'-publisher.log'),'utf8').includes(passphrase),'Passphrase in publisher log');
     entry.passed=true;console.log(id+': passed');fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));
   }
   result.passed=true;

@@ -11,6 +11,7 @@ const turnDiscovery=opts['turn-discovery']||'none',unresponsiveStun=opts['unresp
 assert(['none','options','post'].includes(turnDiscovery));assert(turnDiscovery==='none'||opts['turn-server']);
 const failure=opts.failure||'';assert(['','unauthorized','invalid-tls','cancel','cancel-gathering','malformed','oversized'].includes(failure));
 const tls=opts.tls==='true'||failure==='invalid-tls';assert(!(unresponsiveStun&&turnDiscovery!=='none'));
+const gui=opts.gui==='true';if(gui){assert(process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires linux-private-desktop.py');assert(!tls&&!failure&&!unresponsiveStun&&turnDiscovery==='none','GUI fixture currently covers authenticated HTTP publishing');}
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const manifestFile=path.join(bundle,'release-artifact-manifest.json');assert.equal(hash(manifestFile),opts['manifest-sha256']);
@@ -18,9 +19,10 @@ const manifest=JSON.parse(fs.readFileSync(manifestFile));assert.equal(hash(exe),
 for(const item of manifest.payload.files){const file=path.resolve(bundle,item.relativePath);assert(file.startsWith(bundle+path.sep));assert.equal(fs.statSync(file).size,item.size);assert.equal(hash(file),item.sha256);}
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 for(const name of ['linux-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
-const result={executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
+const result={gui,executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
  serverSha256:hash(path.resolve(opts.server)),turnDiscovery,tls,failure,unresponsiveStun:unresponsiveStun?{requests:0}:null,
  scope:'Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance.',cases:[],trace:[],passed:false};
+if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py','linux-private-desktop.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
 if(turnDiscovery!=='none')result.turnServerSha256=hash(path.resolve(opts['turn-server']));
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_|GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN|SSL_CERT_)/.test(k)));
 Object.assign(env,{QT_QPA_PLATFORM:'xcb',XDG_SESSION_TYPE:'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});delete env.WAYLAND_DISPLAY;
@@ -135,15 +137,17 @@ function audioCheck(value,silent=false){
   for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
   await source.bringToFront();await sleep(1000);result.sourceBrowserVersion=sourceBrowser.version();
 
+  const desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedWhipInput'}):null;
   browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});result.receiverBrowserVersion=browser.version();
   for(const encoder of ['software']){
     currentCase=encoder;const entry={encoder,passed:false};result.cases.push(entry);const stream='whip'+crypto.randomBytes(12).toString('hex');
-    const discovery=path.join(report,encoder+'-control.json');
-    const publisher=launch(exe,['--headless','--source=window','--window='+title,'--output=whip',`--output-url=${scheme}://127.0.0.1:${proxy.address().port}/${stream}/whip`,`--output-token=${token}`,
+    let discovery=path.join(report,encoder+'-control.json'),publisher,control,session;
+    if(gui){session=await desktop.start('whip',`${scheme}://127.0.0.1:${proxy.address().port}/${stream}/whip`,token);({publisher,control,discovery}=session);entry.profileRestored=session.profileRestored;}else{
+    publisher=launch(exe,['--headless','--source=window','--window='+title,'--output=whip',`--output-url=${scheme}://127.0.0.1:${proxy.address().port}/${stream}/whip`,`--output-token=${token}`,
       ...(turnDiscovery!=='none'?['--ice-mode=relay']:[]),'--audio-source=none','--include-microphone','--microphone-device=pulse:'+input,'--audio-channels=2',
       '--video-encoder=software','--video-codec=h264','--resolution=640x360','--fps=30','--bitrate-kbps=2000','--duration-ms=240000','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
     await waitFor(()=>{if(publisher.exitCode!==null)throw Error('Publisher exited before discovery');return fs.existsSync(discovery);},10000,'No control discovery');
-    const control=JSON.parse(fs.readFileSync(discovery));lastControl=control;
+    control=JSON.parse(fs.readFileSync(discovery));}lastControl=control;
     if(failure){
       if(['cancel','cancel-gathering'].includes(failure)){
         if(failure==='cancel-gathering'){assert(unresponsiveStun);await waitFor(()=>result.unresponsiveStun.requests>0,10000,'No pending ICE gathering');}
@@ -156,7 +160,7 @@ function audioCheck(value,silent=false){
       assert(!fs.readFileSync(path.join(report,encoder+'.log'),'utf8').includes(token),'Token leaked into log');entry.passed=true;continue;
     }
     const url=`http://127.0.0.1:${webPort}/${stream}/?muted=true`;
-    let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);entry.audio=await observeAudio(page);audioCheck(entry.audio);
+    let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);assert.equal(entry.moving.width,gui?960:640);assert.equal(entry.moving.height,gui?540:360);entry.audio=await observeAudio(page);audioCheck(entry.audio);
     toneSilent=true;await sleep(700);entry.silence=await observeAudio(page);audioCheck(entry.silence,true);toneSilent=false;
     await source.evaluate(()=>fixture.paused=true);await sleep(700);entry.static=await observe(page,2500);if(new Set(entry.static.observations.map(f=>f.id)).size!==1||entry.static.observations.length<10)throw Error('Static video did not stay paced');await source.evaluate(()=>fixture.paused=false);
     const late=await receiverAt(browser,url,publisher);entry.late=await observe(late,3000);requireMoving(entry.late,'Late WHIP viewer');entry.lateAudio=await observeAudio(late);audioCheck(entry.lateAudio);await late.close();
@@ -174,7 +178,18 @@ function audioCheck(value,silent=false){
       if(turnDiscovery!=='none'&&entry.recoveryOutput.ice_path!=='TURN/RELAY')throw Error('Recovered WHIP bypassed TURN');
     }
     const appLog=await api(control,'/logs/recent?lines=1');if(fs.readFileSync(appLog.path,'utf8').includes(token))throw Error('Token leaked into application log');
+    if(gui){
+      await page.close();
+      const deletions=()=>result.trace.filter(t=>t.case===encoder&&t.method==='DELETE'&&t.status>=200&&t.status<300).length;
+      let before=deletions();await desktop.stop(session);
+      await waitFor(()=>deletions()>before,5000,'GUI Stop did not delete WHIP session');
+      await desktop.restart(session);
+      page=await receiverAt(browser,url,publisher);entry.guiRestarted=await observe(page,5000);requireMoving(entry.guiRestarted,'GUI restarted WHIP');entry.guiRestartedAudio=await observeAudio(page);audioCheck(entry.guiRestartedAudio);
+      before=deletions();await desktop.stop(session);await waitFor(()=>deletions()>before,5000,'Second GUI Stop did not delete WHIP session');
+      await desktop.quit(session);entry.guiStopRestartPassed=true;
+    }else{
     await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher did not quit');if(publisher.exitCode!==0||fs.existsSync(discovery))throw Error('Publisher shutdown failed');await publisher.closed;
+    }
     if(!result.trace.some(t=>t.case===encoder&&t.method==='DELETE'))throw Error('WHIP session not deleted');
     if(turnDiscovery!=='none'){
       const trace=result.trace.filter(t=>t.case===encoder),attempts=trace.filter(t=>t.method==='POST'),posts=attempts.filter(t=>t.status===201),options=trace.filter(t=>t.method==='OPTIONS'&&t.status===204);
@@ -187,7 +202,7 @@ function audioCheck(value,silent=false){
       if(relayed.some(t=>!t.candidateTypes.length||t.candidateTypes.some(type=>type!=='relay')))throw Error('Publishing offer contains missing or non-relay candidates');
       entry.turn={discovery:turnDiscovery,relayedOffers:relayed.length,discoveryDeletedBeforeRetry:turnDiscovery==='post',allPublishingCandidatesRelay:true};
     }
-    for(const file of [encoder+'.log'])
+    for(const file of gui?[]:[encoder+'.log'])
       if(fs.readFileSync(path.join(report,file),'utf8').includes(token))throw Error('Token leaked into publisher log');
     await page.close();entry.passed=true;console.log(encoder+': passed, distinct frames='+entry.distinctFrames);
   }
