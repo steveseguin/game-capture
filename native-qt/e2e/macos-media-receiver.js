@@ -155,6 +155,10 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
       .flatMap(pc=>pc.getReceivers()).map(r=>r.track).find(t=>t?.kind==='video'&&t.readyState==='live');
     if (!received) throw Error('No received video track');
     const track=received.clone(),observations=[],identityFailures=[],identityRowDisagreements=[];
+    // Keep the browser clock origin and a wall-clock cross-check. Relative
+    // performance.now() values alone cannot be compared across source/viewer.
+    const clockSample=()=>({epochMs:performance.timeOrigin+performance.now(),wallMs:Date.now()});
+    const clock={timeOrigin:performance.timeOrigin,start:clockSample()};
     let reader,timer,width=0,height=0,started,ended,identityReadFailures=0,rowDisagreements=0;
     try {
       reader=new MediaStreamTrackProcessor({track,maxBufferSize:4}).readable.getReader();
@@ -163,6 +167,9 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
       timer=setTimeout(()=>reader.cancel().catch(()=>{}),milliseconds);
       while(true) {
         const {done,value:frame}=await reader.read();if(done) break;
+        // Timestamp delivery before canvas conversion and barcode processing.
+        // This is decoded-track observation, not physical display latency.
+        const receivedTime=performance.now();
         try {
           width=frame.displayWidth;height=frame.displayHeight;
           const fractions=fixtureLayout==='syphon'?[20/360]:[.4,.5,.6];
@@ -178,12 +185,12 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
           if(fixtureLayout==='syphon') {
             let id=0;
             for(let bit=0;bit<16;bit++)if(row[Math.floor(width*(bit+.5)/16)*4]>127)id|=1<<bit;
-            observations.push({id,time:performance.now(),mediaTime:frame.timestamp/1000000});
+            observations.push({id,time:performance.now(),receivedTime,mediaTime:frame.timestamp/1000000});
             continue;
           }
           const decoded=window.reviewDecodeIdentityRows(rows,width),id=decoded.id;
           identityReadFailures+=Number(decoded.unreadable);rowDisagreements+=Number(decoded.disagreement);
-          const observation={id,time:performance.now(),mediaTime:frame.timestamp/1000000,
+          const observation={id,time:performance.now(),receivedTime,mediaTime:frame.timestamp/1000000,
             ...(decoded.disagreement?{rowIds:decoded.rows.map(row=>row?.id??null)}: {})};
           const previous=observations.at(-1),step=previous&&id!==null?(id-previous.id+65536)%65536:0;
           const failure=decoded.unreadable||(previous&&step>90);
@@ -199,7 +206,7 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
           if(id!==null)observations.push(observation);
         } finally {frame.close();}
       }
-      ended=performance.timeOrigin+performance.now();
+      ended=performance.timeOrigin+performance.now();clock.end=clockSample();
     } finally {
       clearTimeout(timer);if(reader){await reader.cancel().catch(()=>{});reader.releaseLock();}track.stop();
     }
@@ -208,7 +215,7 @@ async function observeDecoded(page, milliseconds, peerUuid = null, fixtureLayout
       const stats=await pc.getStats();
       for(const item of stats.values())if(item.type==='inbound-rtp')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType});
     }
-    return {observations,tracks,width,height,started,ended,method:'MediaStreamTrackProcessor',
+    return {observations,tracks,width,height,started,ended,clock,method:'MediaStreamTrackProcessor',
       identityReadFailures,rowDisagreements,
       ...(captureIdentityFailures?{identityFailures,identityRowDisagreements}: {})};
   },{milliseconds, peerUuid, fixtureLayout, captureIdentityFailures});

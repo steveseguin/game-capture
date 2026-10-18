@@ -332,7 +332,10 @@ function saveReport() {
           if (disk.bavail * disk.bsize < 128 * 1024 * 1024)
             throw Error('Endurance stopped: less than 128 MiB available for evidence and browser state');
           const seconds=Math.min(10,performanceSeconds-elapsed);
-          await source.evaluate(()=>{fixture.trace=[];fixture.record=true;});
+          const sourceClockStart=await source.evaluate(()=>{
+            fixture.trace=[];fixture.record=true;
+            return {epochMs:performance.timeOrigin+performance.now(),wallMs:Date.now()};
+          });
           const before=await counters(), beforeDiag=await api(control,'/diagnostics');
           let observing=true,samplingError,finishSampling;
           const samplingDone=new Promise(resolve=>{finishSampling=resolve;});
@@ -368,14 +371,19 @@ function saveReport() {
           if (logError) throw logError;
           const after=await counters(),afterDiag=await api(control,'/diagnostics');
           const continuousAudioObservation=continuousAudioEnabled ? await continuousAudio.drain(page) : null;
-          const sourceTrace=await source.evaluate(()=>{fixture.record=false;return fixture.trace;});
+          const sourceEvidence=await source.evaluate(()=>{
+            fixture.record=false;
+            return {trace:fixture.trace,clock:{epochMs:performance.timeOrigin+performance.now(),wallMs:Date.now()}};
+          });
+          const sourceTrace=sourceEvidence.trace;
           const sourceFrames=sourceTrace.filter(f=>f.time>=observation.started&&f.time<=observation.ended);
           const sourceDistinct=new Set(sourceFrames.map(f=>f.id)).size;
           let receivedDistinct;
           try { receivedDistinct=requireMoving(observation,encoder+' sustained'); }
           catch(error) {
             const failed={elapsed,error:String(error),observation,presentation,audioObservation,continuousAudioObservation,
-              sourceFrames,beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
+              sourceFrames,sourceClock:{start:sourceClockStart,end:sourceEvidence.clock},
+              beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
             const raw=Buffer.from(JSON.stringify(failed)),compressed=gzipSync(raw);
             const name=`${encoder}-failed-performance-${String(elapsed).padStart(4,'0')}.json.gz`;
             fs.writeFileSync(path.join(report,name),compressed,{flag:'wx'});
@@ -394,7 +402,8 @@ function saveReport() {
             expectedDistinct,receivedFps:receivedDistinct/wallSeconds,deliveryRatio:receivedDistinct/expectedDistinct,
             p95MediaGapMs:gaps[Math.floor(gaps.length*.95)],maxMediaGapMs:Math.max(...gaps),before,after,
             observation,presentation,presentationCallbacks:presentation.observations.length,
-            sourceFrames,beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
+            sourceFrames,sourceClock:{start:sourceClockStart,end:sourceEvidence.clock},
+            beforeDiagnostics:beforeDiag,afterDiagnostics:afterDiag};
           let audioError;
           if (samplePerformanceAudio) {
             chunk.audioObservation = audioObservation;
