@@ -3,14 +3,15 @@
 // lifecycle; no synthetic signaling messages or private VDO.Ninja API calls.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),assert=require('assert/strict');
 const {spawn}=require('child_process'),{chromium}=require('playwright');
-const {receiver,observe,requireMoving,observeAudio,sleep,waitFor}=require('./macos-media-receiver');
+const {receiverAt,observe,requireMoving,observeAudio,sleep,waitFor}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 for(const key of ['app','reports','encoder','source-ui-helper','expected-executable-sha256'])assert(opts[key],key);
+const leaveMode=opts['leave-mode']||'page-close';assert(['page-close','hangup'].includes(leaveMode));
 const cycles=Number(opts.cycles||3);assert(Number.isInteger(cycles)&&cycles>=1&&cycles<=10);
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const result={scope:'Packaged Mac viewer close/rejoin with surviving-viewer video and stereo audio; same-host browser, no performance qualification',
-  encoder:opts.encoder,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],harnesses:{},passed:false};
+  encoder:opts.encoder,leaveMode,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],harnesses:{},passed:false};
 for(const name of ['macos-viewer-disconnect.js','macos-independent-sender.js','macos-media-receiver.js']){
   const file=path.join(__dirname,name);result.harnesses[name]=sha(fs.readFileSync(file));fs.copyFileSync(file,path.join(report,name));
 }
@@ -24,6 +25,18 @@ async function diagnostics(){
 const snapshot=d=>({time:Date.now(),peers:d.metrics.peer_count,activeVideoPeers:d.metrics.active_video_peers,
   framesSent:d.video.frames_sent,encodeFailures:d.video.encode_failures,encodeTimeouts:d.video.encode_timeouts,
   sendFailures:d.video.send_failures,reasons:d.video.peer_send_failure_reasons,audioSendFailures:d.audio.send_failures});
+async function openViewer(){
+  return receiverAt(browser,`https://vdo.ninja/?view=${stream}&password=false&autostart&cleanoutput&stereo=1&ab=510&audiocodec=red&hangupbutton`,null);
+}
+async function leave(page){
+  if(leaveMode==='hangup'){
+    await page.locator('#hangupbutton').click({timeout:10000});
+    // The existing UI schedules session.hangup asynchronously; let its BYE
+    // and normal teardown finish before destroying the tab.
+    await sleep(1800);
+  }
+  await page.close();
+}
 async function picture(page,label){
   const r=await observe(page,2500),distinct=requireMoving(r,label);
   assert.equal(r.width,1920);assert.equal(r.height,1080);
@@ -52,17 +65,17 @@ async function picture(page,label){
   result.browserVersion=browser.version();
   for(let index=0;index<cycles;index++){
     const entry={index,passed:false};result.cycles.push(entry);save();
-    const survivor=await receiver(browser,stream,null),leaver=await receiver(browser,stream,null);
+    const survivor=await openViewer(),leaver=await openViewer();
     await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===2;},15000,'Both viewer tracks did not open');
     entry.beforeClose=snapshot(await diagnostics());entry.leavingPicture=await picture(leaver,'Leaving viewer '+index);save();
-    await leaver.close();
+    await leave(leaver);
     entry.survivingPicture=await picture(survivor,'Surviving viewer '+index);
     const audio=await observeAudio(survivor);entry.survivingAudioSpectra=audio.spectra;
     entry.goodStereoWindows=audio.spectra.filter(s=>s.rms>.001&&s.channels[0].tone440>s.channels[0].tone880+20&&s.channels[1].tone880>s.channels[1].tone440+20).length;
     assert(entry.goodStereoWindows>=25,'Surviving viewer stereo audio failed');
     await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===1;},15000,'Closed viewer track remained active');
     entry.withSurvivor=snapshot(await diagnostics());save();
-    await survivor.close();
+    await leave(survivor);
     await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===0;},15000,'Last closed viewer track remained active');
     await sleep(500);entry.afterTracksClosed=snapshot(await diagnostics());
     assert.equal(entry.afterTracksClosed.encodeFailures,0);assert.equal(entry.afterTracksClosed.encodeTimeouts,0);
@@ -72,7 +85,7 @@ async function picture(page,label){
     entry.passed=true;save();
   }
   // The final fresh viewer proves reception still starts after the last close.
-  const fresh=await receiver(browser,stream,null);result.finalRejoinPicture=await picture(fresh,'Final fresh viewer');await fresh.close();
+  const fresh=await openViewer();result.finalRejoinPicture=await picture(fresh,'Final fresh viewer');await leave(fresh);
   const lastClose=Date.now();
   await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===0;},15000,'Final viewer track remained active');
   result.afterFinalTrackClosed=snapshot(await diagnostics());save();
