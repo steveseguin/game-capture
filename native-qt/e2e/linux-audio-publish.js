@@ -16,6 +16,7 @@ const communications = matrix === 'communications-gui' || matrix === 'communicat
 const communicationsMix = opts['communications-mix'] === 'true';
 const audioWarnings = opts['audio-warnings'] === 'true';
 const previewBeforeLive = opts['preview-before-live'] === 'true';
+const previewServiceLoss = opts['preview-service-loss'] === 'true';
 assert(!previewBeforeLive || (wayland && matrix === 'gui' && opts.case === 'mix'), 'Audio preview promotion requires Wayland GUI mixed audio');
 assert(opts['combined-audio-loss'] !== 'true' || (communications && communicationsMix), 'Combined loss requires communications mixing');
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
@@ -24,6 +25,7 @@ const audioServerStopDown = opts['audio-server-stop-down'] === 'true';
 const audioServerQuitDown = opts['audio-server-quit-down'] === 'true';
 const audioServerStartupDown = opts['audio-server-startup-down'] === 'true';
 const captureServerLoss = opts['capture-server-loss'] === 'true';
+assert(!previewServiceLoss || (previewBeforeLive && audioServerLoss && !audioServerStopDown && !audioServerQuitDown && !audioServerStartupDown), 'Preview fault requires preview/mixed-audio service-loss fixture and excludes post-live lifecycle variants');
 assert(!captureServerLoss || (audioServerLoss && wayland && !audioServerStopDown && !audioServerStartupDown), 'Capture-server loss requires Wayland server loss; capture should stop automatically, and unavailable video startup is a separate workflow');
 assert(!audioServerStopDown || audioServerLoss,'Stop during an audio outage requires the server-loss workflow');
 assert(!audioServerQuitDown || (audioServerLoss && !audioServerStopDown),'Quit during an audio outage requires server loss and excludes the separate Stop workflow');
@@ -81,7 +83,7 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
-if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
+if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,phase:previewServiceLoss?'local-preview':'publishing',scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
 if(previewBeforeLive)result.previewBeforeLive={requested:true,observerSha256:sha(path.join(report,'linux-preview-observer.py'))};
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
@@ -361,15 +363,15 @@ function barriers() {
         fs.writeFileSync(path.join(report, fixture.name + '-ui-before-live.json'), beforeLive);
         if(previewBeforeLive){
           entry.localPreview={};
-          const localOnly=async(active)=>{
+          const localOnly=async(active,audioAvailable=true,videoAvailable=true)=>{
             const d=await api('/diagnostics');
             assert.equal(d.app.window_preview_active,active);
             assert(!d.app.live&&!d.app.capturing&&!d.app.primary_audio_capturing&&!d.app.microphone_capturing,'Preview started publishing or audio capture');
             assert.equal(d.video.frames_sent,0);assert.equal(d.video.frames_captured,0);assert.equal(d.metrics.audio_packets_sent,0);
-            const audio=JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid));
-            assert.equal(audio.length,0,'Preview opened a recording stream with mixed audio configured');
-            const nodes=captureNodes();assert.equal(nodes.length,active?1:0);
-            return {app:d.app,source:d.source,videoFramesSent:d.video.frames_sent,audioPacketsSent:d.metrics.audio_packets_sent,audioCaptureStreams:audio.length,nodes};
+            const audio=audioAvailable?JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid)):null;
+            if(audio)assert.equal(audio.length,0,'Preview opened a recording stream with mixed audio configured');
+            const nodes=videoAvailable?captureNodes():null;if(nodes)assert.equal(nodes.length,active?1:0);
+            return {app:d.app,source:d.source,videoFramesSent:d.video.frames_sent,audioPacketsSent:d.metrics.audio_packets_sent,audioCaptureStreams:audio?.length??null,nodes};
           };
           const previewShot=async(label,identity)=>{
             if(identity!=='none'){await source.evaluate(id=>{fixture.staticId=id;},identity);await sleep(800);}
@@ -394,6 +396,70 @@ function barriers() {
           entry.localPreview.beforePromotion=await beginPreview();
           entry.localPreview.restartedPixels=await previewShot('mixed-restarted',24681);
           entry.localPreview.beforePromotion=await localOnly(true);save();
+          if(previewServiceLoss){
+            const command=action=>JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-private-audio.py'),'--request='+action],{env,encoding:'utf8',timeout:25000}));
+            const fault=entry.localPreview.serviceLoss={scope:captureServerLoss?'pipewire':'pulse-only',before:entry.localPreview.beforePromotion};
+            const started=Date.now();fault.stop=command('stop');modules.length=0;save();
+            for(const source of [systemTone,inputTone]){
+              clearInterval(source.timer);source.retired=true;
+              await waitFor(()=>source.child.exitCode!==null,6000,'Owned preview tone did not disconnect');
+            }
+            if(captureServerLoss){
+              await waitFor(async()=>!(await api('/diagnostics')).app.window_preview,15000,'Whole PipeWire outage did not retire local preview');
+              fault.automaticPreviewStopMs=Date.now()-started;
+              fault.during=await localOnly(false,false,false);
+              fault.clearedPixels=await previewShot('service-lost','none');
+              const rows=JSON.parse(ui('dump'));
+              assert(rows.some(r=>r.name==='Preview window'&&r.states.includes('sensitive')),'Preview retry unavailable after service failure');
+              assert(rows.some(r=>r.role==='label'&&/preview stopped|window capture stopped/i.test(r.name)),'Preview failure has no stopped status');
+              await checkAudioWarning(null,'previewCoreLossNoStaleAudioWarning');
+            }else{
+              fault.during=await localOnly(true,false);
+              assert.deepEqual(fault.during.nodes,fault.before.nodes,'Pulse loss replaced local preview grant');
+              fault.pixelsDuringOutage=await previewShot('pulse-down',49106);
+              await checkAudioWarning(null,'previewPulseLossNoUnusedInputWarning');
+              await source.evaluate(()=>{fixture.staticId=null;});
+              await goLive(true);
+              const down=await api('/diagnostics');
+              assert(!down.app.window_preview&&down.app.live&&down.app.capturing);
+              assert(!down.app.primary_audio_capturing&&!down.app.microphone_capturing);
+              assert.equal(down.metrics.audio_packets_sent,0);
+              fault.promotedWhileDownNodes=captureNodes();
+              assert.deepEqual(fault.promotedWhileDownNodes,fault.before.nodes,'Unavailable-audio promotion replaced grant');
+              await checkAudioWarning(/(?:Could not connect to the desktop audio service|Desktop audio service is unavailable)/,'previewPromotionAudioUnavailableWarning');
+              const silent=await receiver(viewerBrowser,stream,publisher);
+              fault.videoWhileAudioDown=await observe(silent,3000);requireMoving(fault.videoWhileAudioDown,'Preview promotion with audio service down');
+              assert.equal((await api('/diagnostics')).metrics.audio_packets_sent,0);
+              await silent.close();ui('press','Stop streaming');
+              await waitFor(async()=>!(await api('/diagnostics')).app.capturing,10000,'Unavailable-audio promotion did not Stop');
+              await checkAudioWarning(null,'previewDownStopClearsWarnings');
+              fault.stoppedWhileDown=true;
+            }
+            fs.writeFileSync(path.join(report,'preview-service-down-ui.json'),ui('dump'));screenshot('preview-service-down.png');save();
+            fault.start=command('start');
+            modules.push(pactl('load-module','module-null-sink','sink_name='+sinkName,'rate=48000','channels=2'));inputModule=createInput();
+            systemTone=tone(defaultSink,'owned system after preview fault');inputTone=tone(sinkName,'owned microphone after preview fault');inputTone.frequencies=[1200,1200];
+            await sleep(1500);
+            // Pulse-only promotion has already published video, so its lifetime
+            // video counters need not be zero. Audio must still never have started.
+            const restored=await api('/diagnostics');
+            assert(!restored.app.live&&!restored.app.capturing&&!restored.app.window_preview);
+            assert(!restored.app.primary_audio_capturing&&!restored.app.microphone_capturing);
+            assert.equal(restored.metrics.audio_packets_sent,0);assert.equal(captureNodes().length,0);
+            assert.equal(JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid)).length,0);
+            fault.noAutomaticReopen=true;await checkAudioWarning(null,'previewServiceReturnWarningsClear');
+            // Diagnostics reset publication counters on a new capture start;
+            // retain the original strict pre-publish checks for whole-core loss.
+            selectPortal();ui('press','Preview window');await selectedPortal(30000);
+            await waitFor(async()=>(await api('/diagnostics')).app.window_preview_active,10000,'Explicit preview retry failed');
+            const retry=await api('/diagnostics');assert(!retry.app.live&&!retry.app.capturing&&!retry.app.primary_audio_capturing&&!retry.app.microphone_capturing);
+            assert.equal(retry.metrics.audio_packets_sent,0);
+            assert.equal(JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid)).length,0);
+            entry.localPreview.beforePromotion={nodes:captureNodes()};assert.equal(entry.localPreview.beforePromotion.nodes.length,1);
+            fault.recoveryPortalSelection=selectionNumber;fault.recoveredPreviewNodes=entry.localPreview.beforePromotion.nodes;
+            if(!captureServerLoss)assert.notDeepEqual(fault.recoveredPreviewNodes,fault.before.nodes,'Explicit retry reused retired grant');
+            fault.recoveredPixels=await previewShot('service-recovered',34821);save();
+          }
           await source.evaluate(()=>{fixture.staticId=null;});
           await goLive(true);
           const promoted=await api('/diagnostics');
@@ -583,7 +649,7 @@ function barriers() {
         inputModule = createInput(); await sleep(1000);
         assert.equal((await api('/diagnostics')).audio.active_microphone_source, 'none', 'Input silently reopened after removal');
       }
-      if (audioServerLoss) {
+      if (audioServerLoss && !previewServiceLoss) {
         const command = action => JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-private-audio.py'),'--request='+action],{env,encoding:'utf8',timeout:25000}));
         const launchSaved = async (label, unavailableInput=false) => {
           log=fs.createWriteStream(path.join(report,label+'-private-publisher.log'));
@@ -689,7 +755,7 @@ function barriers() {
       await late.close(); await viewer.close();
       }
       if (gui) {
-        if(!audioServerStopDown&&!audioServerQuitDown&&!captureServerLoss)ui('press', 'Stop streaming');
+        if(previewServiceLoss||(!audioServerStopDown&&!audioServerQuitDown&&!captureServerLoss))ui('press', 'Stop streaming');
         await waitFor(async () => { const state = (await api('/diagnostics')).app; return !state.live && !state.capturing; }, 10000, 'GUI stop did not finish');
         const before = await api('/diagnostics'); await sleep(500); const after = await api('/diagnostics');
         assert.equal(before.metrics.audio_packets_sent, after.metrics.audio_packets_sent); assert.equal(before.video.frames_captured, after.video.frames_captured);
@@ -700,7 +766,7 @@ function barriers() {
         if (wayland) execFileSync('gnome-screenshot', ['-f', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
         else execFileSync('python3', ['-c', 'from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
       }
-      if (audioServerLoss) {
+      if (audioServerLoss && !previewServiceLoss) {
         await goLive();
         const restarted=await receiver(viewerBrowser,stream,publisher);
         entry.serverLoss.restartedVideo=await observe(restarted,3000);requireMoving(entry.serverLoss.restartedVideo,'Video after explicit audio server recovery');
