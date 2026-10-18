@@ -66,3 +66,20 @@ GUI previews, paired alpha masks, sustained performance, physical devices or
 general image quality. Run the relevant packaged workflows separately. The four
 earlier VFR alpha-pixel mismatches also remain unexplained: that source did not
 record cursor position. New controlled evidence cannot prove their cause.
+
+For live capture reconfiguration, add `--enlargement=true` to the corrected
+candidate runs. The receiver sends the existing authenticated VDO.Ninja
+`requestVideoHack` width/height messages, as used by `macos-load-recovery.js`.
+It verifies 640×360 → 960×540 → 640×360 configured and received dimensions,
+the native capture enlargement log, and all three pointer positions at each
+size. Probes use native received pixels (40×40 or 60×60), without downsampling.
+
+For GUI coverage, run `macos-cursor-preview.py --app ... --fixture ...
+--ui-helper ... --reports ...`, then `node macos-cursor-preview-review.js REPORT`.
+The GUI workflow selects the owned window, waits for the ordinary thumbnail
+retry without pressing Refresh, and captures only the application and source
+windows. Workflow completion and pixel qualification are separate results.
+The reviewer checks selected-preview cursor regions, preview color against the
+native source screenshot in sRGB, and a real thumbnail in the filtered source
+list. It does not qualify cursor positions in the cached thumbnail or arbitrary
+image quality. Use the helper built from the same recorded source.

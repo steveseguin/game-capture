@@ -37,6 +37,8 @@
 #include "versus/platform/capabilities.h"
 #ifdef __APPLE__
 #include "versus/platform/app_paths.h"
+#include <QColorSpace>
+#include <QSurfaceFormat>
 #endif
 
 namespace {
@@ -629,6 +631,13 @@ int main(int argc, char *argv[]) {
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDirectory);
         QSettings::setPath(QSettings::IniFormat, QSettings::SystemScope, settingsDirectory);
     }
+#ifdef __APPLE__
+    // ScreenCaptureKit previews and Qt widget colors are sRGB. Cocoa otherwise
+    // inherits the display profile, interpreting these pixels in its wider gamut.
+    auto surfaceFormat = QSurfaceFormat::defaultFormat();
+    surfaceFormat.setColorSpace(QColorSpace::SRgb);
+    QSurfaceFormat::setDefaultFormat(surfaceFormat);
+#endif
     QApplication app(argc, argv);
 #ifdef __APPLE__
     if (videoSourceMode == versus::app::VideoSourceMode::Syphon) {
