@@ -83,6 +83,11 @@ class MainWindow : public QMainWindow {
 #ifdef __linux__
     void finishPendingShareLinkCopy();
     QString pendingShareLinkCopy_;
+    void onWindowPreviewClicked();
+    void stopWindowPreview();
+    QPushButton *windowPreviewButton_ = nullptr;
+    bool previewStartInProgress_ = false;
+    bool previewStopInProgress_ = false;
 #endif
     void refreshWindowList();
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());

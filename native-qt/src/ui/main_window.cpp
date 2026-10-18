@@ -985,6 +985,12 @@ void MainWindow::requestStop() {
     }
 
     const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
+#ifdef __linux__
+    if (!stopPending && !stopInProgress_ && core_->hasWindowPreview()) {
+        stopWindowPreview();
+        return;
+    }
+#endif
     if (stopInProgress_ || stopPending || !isLive_) {
         return;
     }
@@ -1823,6 +1829,15 @@ void MainWindow::setupUI() {
     previewLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     previewLabel_->setStyleSheet("background-color: #0a141e; border: 1px solid #263443; border-radius: 6px;");
     previewLayout->addWidget(previewLabel_);
+#ifdef __linux__
+    windowPreviewButton_ = new QPushButton("Preview window", this);
+    windowPreviewButton_->setObjectName("windowPreviewButton");
+    windowPreviewButton_->setAccessibleName("Preview window");
+    windowPreviewButton_->setToolTip("Choose a window for a local preview. Audio and publishing start only when you go live.");
+    windowPreviewButton_->hide();
+    connect(windowPreviewButton_, &QPushButton::clicked, this, &MainWindow::onWindowPreviewClicked);
+    previewLayout->addWidget(windowPreviewButton_);
+#endif
     captureSplitter->addWidget(previewFrame);
 
     captureSplitter->setStretchFactor(0, 5);
@@ -3853,6 +3868,25 @@ void MainWindow::updateGoLiveButton() {
     if (!goLiveButton_) {
         return;
     }
+#ifdef __linux__
+    if (windowPreviewButton_) {
+        windowPreviewButton_->setVisible(!isLive_ && sourceModeSelect_ &&
+            sourceModeSelect_->currentData().toString() == "window" && selectedWindowId_ == "portal:window");
+        windowPreviewButton_->setEnabled(!startInProgress_ && !stopInProgress_);
+        const QString text = core_ && core_->hasWindowPreview() ? "Stop preview" : "Preview window";
+        windowPreviewButton_->setText(text);
+        windowPreviewButton_->setAccessibleName(text);
+    }
+    if (previewStartInProgress_ || previewStopInProgress_) {
+        goLiveButton_->setText("GO LIVE");
+        goLiveButton_->setAccessibleName("Go live");
+        goLiveButton_->setAccessibleDescription("Wait for the local preview operation to finish.");
+        goLiveButton_->setEnabled(false);
+        if (goLiveAction_) goLiveAction_->setEnabled(false);
+        if (goLiveMenuAction_) goLiveMenuAction_->setEnabled(false);
+        return;
+    }
+#endif
 
     if (startInProgress_) {
         goLiveButton_->setText("STARTING...");
@@ -4881,6 +4915,69 @@ void MainWindow::updateTrayLiveIndicator(bool live) {
     trayIcon_->setIcon(makeTrayLiveIcon(trayBaseIcon_, live));
 }
 
+#ifdef __linux__
+void MainWindow::onWindowPreviewClicked() {
+    if (!core_ || isLive_ || startInProgress_ || stopInProgress_ || hasPendingAsyncOperation()) return;
+    if (core_->hasWindowPreview()) { stopWindowPreview(); return; }
+    if (!sourceModeSelect_ || sourceModeSelect_->currentData().toString() != "window" ||
+        selectedWindowId_ != "portal:window") return;
+    previewStartInProgress_ = startInProgress_ = true;
+    stopAfterPendingStart_ = false;
+    core_->prepareCaptureStart();
+    setConfigControlsEnabled(false);
+    updateStatus("Choose a window for local preview. Audio and publishing are off.", "connecting");
+    refreshSelectedWindowPreview();
+    updateGoLiveButton();
+    struct Result { bool started = false; QString error; };
+    auto result = std::make_shared<Result>();
+    auto *watcher = new QFutureWatcher<void>(this);
+    connect(watcher, &QFutureWatcher<void>::finished, this, [this, watcher, result]() {
+        watcher->deleteLater();
+        previewStartInProgress_ = startInProgress_ = false;
+        const bool stopRequested = stopAfterPendingStart_;
+        stopAfterPendingStart_ = false;
+        setConfigControlsEnabled(true);
+        updateStatus(result->started ? "Local preview — audio and publishing are off."
+                                    : result->error.isEmpty() ? "Window preview cancelled or unavailable." : result->error,
+                     result->started || result->error.isEmpty() ? "idle" : "error");
+        refreshSelectedWindowPreview();
+        updateGoLiveButton();
+        if (stopRequested && core_->hasWindowPreview()) stopWindowPreview();
+        else maybeQuitAfterPendingOperations();
+    });
+    auto *core = core_;
+    startFuture_ = QtConcurrent::run([core, result]() {
+        try { result->started = core->startWindowPreview(); }
+        catch (const std::exception &error) { result->error = QString::fromUtf8(error.what()); }
+        catch (...) { result->error = "Window preview failed; see log."; }
+    });
+    watcher->setFuture(startFuture_);
+}
+
+void MainWindow::stopWindowPreview() {
+    if (!core_ || startInProgress_ || stopInProgress_ || hasPendingAsyncOperation()) return;
+    previewStopInProgress_ = stopInProgress_ = true;
+    setConfigControlsEnabled(false);
+    previewLabel_->setPixmap(QPixmap());
+    previewLabel_->setText("Stopping local preview...");
+    previewLabel_->setAccessibleDescription(previewLabel_->text());
+    updateGoLiveButton();
+    auto *watcher = new QFutureWatcher<void>(this);
+    connect(watcher, &QFutureWatcher<void>::finished, this, [this, watcher]() {
+        watcher->deleteLater();
+        previewStopInProgress_ = stopInProgress_ = false;
+        setConfigControlsEnabled(true);
+        updateStatus("Local preview stopped.", "idle");
+        refreshSelectedWindowPreview();
+        updateGoLiveButton();
+        maybeQuitAfterPendingOperations();
+    });
+    auto *core = core_;
+    stopFuture_ = QtConcurrent::run([core]() { core->stopCapture(); });
+    watcher->setFuture(stopFuture_);
+}
+#endif
+
 void MainWindow::refreshSelectedWindowPreview() {
     if (!previewLabel_) {
         return;
@@ -4893,6 +4990,10 @@ void MainWindow::refreshSelectedWindowPreview() {
 
     const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
 #ifdef __linux__
+    if (core_ && core_->hasWindowPreview() && !startInProgress_ && !stopInProgress_ &&
+        (sourceMode != "window" || selectedWindowId_ != "portal:window" || !core_->isWindowPreviewActive())) {
+        stopWindowPreview();
+    }
     if (sourceMode != "camera" &&
         (sourceMode != "window" || selectedWindowId_ != QStringLiteral("portal:window")))
         previewLabel_->setAccessibleDescription(QString());
@@ -4916,11 +5017,16 @@ void MainWindow::refreshSelectedWindowPreview() {
 
 #ifdef __linux__
     if (sourceMode == "window" && selectedWindowId_ == QStringLiteral("portal:window")) {
-        if (isLive_) {
+        if (previewStartInProgress_ || previewStopInProgress_) {
+            previewLabel_->setPixmap(QPixmap());
+            previewLabel_->setText(previewStartInProgress_ ? "Choose a window in the desktop permission dialog."
+                                                         : "Stopping local preview...");
+            previewLabel_->setAccessibleDescription(previewLabel_->text());
+        } else if (isLive_ || (core_ && core_->isWindowPreviewActive())) {
             refreshPublisherPreview();
         } else {
             previewLabel_->setPixmap(QPixmap());
-            previewLabel_->setText("Go live and choose a window to start its preview.\nYour desktop will ask for permission.");
+            previewLabel_->setText("Preview window to choose a source before going live.\nYour desktop will ask for permission.");
             previewLabel_->setWordWrap(true);
             previewLabel_->setAccessibleDescription(previewLabel_->text());
         }
@@ -5079,9 +5185,14 @@ void MainWindow::refreshSelectedWindowPreview() {
 }
 
 void MainWindow::refreshPublisherPreview() {
-    if (!previewLabel_ || !core_ || !isLive_ || !sourceModeSelect_) {
+    if (!previewLabel_ || !core_ || !sourceModeSelect_) {
         return;
     }
+#ifdef __linux__
+    if (!isLive_ && !core_->isWindowPreviewActive()) return;
+#else
+    if (!isLive_) return;
+#endif
     const auto sourceMode = sourceModeSelect_->currentData().toString();
     const bool camera = sourceMode == QStringLiteral("camera");
     if (!camera
@@ -5095,8 +5206,8 @@ void MainWindow::refreshPublisherPreview() {
     // Reuse the current capture generation; Wayland preview must not create a
     // second portal session or retain pixels after consent/capture has ended.
 #ifdef __linux__
-    previewLabel_->setAccessibleDescription(camera ? "Live preview of the selected camera"
-                                                   : "Live preview of the selected window");
+    previewLabel_->setAccessibleDescription(!isLive_ ? "Local window preview. Audio and publishing are off."
+        : camera ? "Live preview of the selected camera" : "Live preview of the selected window");
 #endif
     const auto frame = core_->getPublisherPreviewFrame();
     if (!frame || frame->data.empty() || frame->width <= 0 || frame->height <= 0) {

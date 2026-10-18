@@ -10,6 +10,8 @@ const idleSource=opts['idle-source']==='true';assert(!idleSource||opts.backend==
 const noTray=opts['no-tray']==='true';assert(!noTray||(opts.gui==='true'&&opts.backend==='x11'),'No-tray fixture requires private X11 GUI');
 const tray=opts.tray==='true';assert(!tray||(opts.gui==='true'&&opts.backend==='wayland'),'Tray fixture requires native GNOME Wayland GUI');
 const preview=opts.preview==='true';assert(!preview||opts.gui==='true','Preview requires GUI');
+const previewBeforeLive=opts['preview-before-live']==='true';assert(!previewBeforeLive||(preview&&opts.backend==='wayland'),'Local preview requires the Wayland GUI preview workflow');
+const previewQuit=opts['preview-quit']==='true';assert(!previewQuit||previewBeforeLive,'Preview quit requires local preview');
 const gui=opts.gui==='true',external=opts.external==='true',width=gui?960:640,height=gui?540:360;
 const rateControl=opts['rate-control']==='true',portalCancel=opts['portal-cancel']==='true',pendingQuit=opts['pending-quit']==='true',pendingStop=opts['pending-stop']==='true',sourceLoss=opts['source-loss']==='true';
 assert(!(pendingQuit&&pendingStop));
@@ -58,6 +60,10 @@ const result={scope:`Extracted Ubuntu DEB, ${gui?'actual Qt GUI':'CLI'} ${extern
   trayHelperSha256:tray?sha(path.join(__dirname,'linux-tray-control.py')):null,
   requested:{noTray,tray,trayCopyFocus:opts['tray-copy-focus']==='true',trayCopy:opts['tray-copy']||'tray',preview,backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,portalCancel,pendingQuit,pendingStop,sourceLoss,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
 let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector,keyboardServer,keyboardDirectory,portalOwner;
+let previewPortalPending=false;
+result.requested.previewBeforeLive=previewBeforeLive;
+result.requested.previewQuit=previewQuit;
+if(previewQuit)result.scope='Extracted Ubuntu DEB, native Wayland Qt GUI, real portal Cancel/retry, video-only local preview, File-menu Quit while its grant is active, and idle relaunch with saved settings. No publishing, audio, performance or full-platform qualification.';
 result.requested.idleSource=idleSource;
 const startedAtSeconds=Math.floor(Date.now()/1000);
 const portalBackend='org.freedesktop.impl.portal.desktop.gnome';
@@ -110,7 +116,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   const remoteToken=crypto.randomBytes(24).toString('hex');
   const args=[gui?'--settings-dir='+path.join(report,'private-settings'):'--headless','--source=window','--window='+(opts.backend==='wayland'?'Choose a window':title),'--stream='+stream,'--password=false',
     '--video-encoder=software','--video-codec='+codec,'--resolution='+width+'x'+height,'--fps=30','--bitrate-kbps=2000',
-    '--audio-source=none','--duration-ms=150000','--local-control','--local-control-port=0','--local-control-discovery='+discovery];
+    '--audio-source=none','--duration-ms='+(previewBeforeLive?350000:150000),'--local-control','--local-control-port=0','--local-control-discovery='+discovery];
   if(external)args.push('--ffmpeg-path='+helperPath,'--ffmpeg-options=-threads 2');
   if(rateControl)args.push('--remote-control','--remote-token='+remoteToken);
   if(gui)env.QT_LINUX_ACCESSIBILITY_ALWAYS_ON='1';
@@ -192,18 +198,77 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     }
     if(preview){
       if(opts.backend==='wayland'){
-        const shot=previewShot('idle','none');assert(/Go live.*choose a window/i.test(shot.description));
+        const shot=previewShot('idle','none');assert(/Preview window.*before going live/i.test(shot.description));
         assert.equal((await api('/diagnostics')).video.frames_captured,0);
         ui('choose','Window','Camera / Webcam');
         const cameraDescription=previewShot('camera-mode','none').description;assert(!/choose a window|selected window/i.test(cameraDescription),'Window guidance survived source-mode change');if(cameraDescription)assert(cameraDescription.includes('Camera opens when streaming starts'));
         ui('choose','Camera / Webcam','Window');ui('source','Choose a window');
-        assert(/Go live.*choose a window/i.test(previewShot('window-mode-restored','none').description));
+        assert(/Preview window.*before going live/i.test(previewShot('window-mode-restored','none').description));
         const idle=await api('/diagnostics');assert(!idle.app.capturing);assert.equal(idle.video.frames_captured,0);
         result.previewModeSwitchPassed=true;save();
       }else await checkPreview('idle');
     }
+    if(previewBeforeLive){
+      const captureNodes=()=>{
+        const objects=JSON.parse(execFileSync('pw-dump',{encoding:'utf8',timeout:5000}));
+        const clients=new Set(objects.filter(o=>o.type==='PipeWire:Interface:Client'&&String(o.info?.props?.['application.process.id'])===String(publisher.pid)).map(o=>o.id));
+        return objects.filter(o=>o.type==='PipeWire:Interface:Node'&&clients.has(o.info?.props?.['client.id'])&&o.info?.props?.['media.type']==='Video').map(o=>({id:o.id,serial:o.info.props['object.serial']}));
+      };
+      const localOnly=async()=>{
+        const d=await api('/diagnostics');assert(d.app.window_preview_active&&d.source.has_frame&&!d.app.live&&!d.app.capturing&&!d.app.primary_audio_capturing&&!d.app.microphone_capturing);
+        assert.equal(d.video.frames_sent,0);assert.equal(d.video.frames_captured,0);
+        const audio=JSON.parse(execFileSync('pactl',['--format=json','list','source-outputs'],{encoding:'utf8',timeout:5000})).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid));assert.equal(audio.length,0,'Local preview opened an audio recording stream');
+        const nodes=captureNodes();assert.equal(nodes.length,1);return {app:d.app,source:d.source,framesSent:d.video.frames_sent,audioCaptureStreams:audio.length,nodes};
+      };
+      const beginPreview=async name=>{
+        previewPortalPending=true;selectPortal(name);ui('press','Preview window');
+        await waitFor(()=>portalSelector.exitCode!==null,30000,'Preview portal selection did not finish');assert.equal(portalSelector.exitCode,0);assert(JSON.parse(fs.readFileSync(path.join(report,name+'.json'))).passed);previewPortalPending=false;
+        await waitFor(async()=>(await api('/diagnostics')).app.window_preview_active,10000,'Local preview did not start');
+        checkPortalOwner();return localOnly();
+      };
+      result.localPreview={};
+      previewPortalPending=true;selectPortal('portal-preview-pending',false,'open');ui('press','Preview window');
+      await waitFor(()=>portalSelector.exitCode!==null,30000,'Preview permission dialog did not open');assert.equal(portalSelector.exitCode,0);
+      const pending=await api('/diagnostics');assert(pending.app.window_preview&&!pending.app.window_preview_active&&!pending.app.live&&!pending.app.capturing&&!pending.app.primary_audio_capturing&&!pending.app.microphone_capturing&&!pending.source.has_frame);result.localPreview.pendingPermission=pending.app;
+      selectPortal('portal-preview-cancel',true);
+      await waitFor(()=>portalSelector.exitCode!==null,30000,'Preview cancellation did not finish');assert.equal(portalSelector.exitCode,0);previewPortalPending=false;
+      await waitFor(()=>JSON.parse(ui('dump')).some(r=>r.name==='Preview window'&&r.states.includes('sensitive')),12000,'Preview cancellation did not enable retry');
+      const cancelled=await api('/diagnostics');assert(!cancelled.app.window_preview&&!cancelled.app.live&&!cancelled.app.capturing);assert.equal(captureNodes().length,0);previewShot('local-cancelled','none');result.localPreview.cancelled=true;
+      result.localPreview.initial=await beginPreview('portal-preview-initial');await checkPreview('local');
+      if(previewQuit){
+        ui('quit-menu');await waitFor(()=>publisher.exitCode!==null,10000,'File-menu Quit did not retire the local preview');await publisher.closed;
+        assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));await waitFor(()=>captureNodes().length===0,5000,'Preview PipeWire stream survived Quit');
+        result.localPreview.quitFromPreview=true;
+        const native=path.join(report,'private-state/GameCapture/logs/game-capture-debug.log');
+        if(fs.existsSync(native)){const copy=path.join(report,'preview-first-native.log');fs.copyFileSync(native,copy);result.localPreview.firstLogSha256=sha(copy);}
+        publisher=spawn(exe,args,{cwd:bundle,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
+        publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});publisher.closed=new Promise(resolve=>publisher.once('close',resolve));
+        publisher.on('error',error=>{result.launchError=String(error);});
+        await waitFor(()=>{assert.equal(publisher.exitCode,null);assert(!result.launchError,result.launchError);return fs.existsSync(discovery);},15000,'Relaunched GUI discovery missing');
+        control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
+        await waitFor(()=>{try{return JSON.parse(ui('dump')).some(r=>r.name==='Preview window'&&r.states.includes('sensitive'));}catch{return false;}},20000,'Saved Wayland selection was not restored');
+        await sleep(2000);const idle=await api('/diagnostics');assert(!idle.app.window_preview&&!idle.app.capturing&&!idle.app.live&&!idle.app.primary_audio_capturing&&!idle.app.microphone_capturing);assert.equal(idle.video.frames_captured,0);assert.equal(captureNodes().length,0);
+        previewShot('local-relaunched-idle','none');result.localPreview.relaunchIdle={app:idle.app,framesCaptured:idle.video.frames_captured};
+        ui('quit-menu');await waitFor(()=>publisher.exitCode!==null,10000,'Relaunched GUI did not quit');await publisher.closed;assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));
+        result.passed=true;save();return;
+      }
+      ui('press','Stop preview');await waitFor(async()=>!(await api('/diagnostics')).app.window_preview,10000,'Local preview did not stop');
+      await waitFor(()=>captureNodes().length===0,5000,'Stopped preview retained its PipeWire stream');previewShot('local-stopped','none');result.localPreview.stopped=true;
+      await beginPreview('portal-preview-mode');ui('choose','Window','Camera / Webcam');
+      await waitFor(async()=>!(await api('/diagnostics')).app.window_preview,10000,'Source-mode change retained local preview');assert.equal(captureNodes().length,0);previewShot('local-camera-mode','none');result.localPreview.sourceModeStopped=true;
+      ui('choose','Camera / Webcam','Window');ui('source','Choose a window');
+      await beginPreview('portal-preview-source-loss');const markup=await source.content();await sourceBrowser.close();sourceBrowser=null;
+      await waitFor(async()=>!(await api('/diagnostics')).app.window_preview,12000,'Destroyed preview source was not retired');previewShot('local-source-lost','none');assert.equal(captureNodes().length,0);result.localPreview.sourceLossStopped=true;
+      sourceBrowser=await chromium.launch(sourceBrowserOptions);source=await sourceBrowser.newPage({viewport:null});await source.setContent(markup);await source.bringToFront();await sleep(1000);ui('source','Choose a window');
+      result.localPreview.beforePromotion=await beginPreview('portal-selection');await checkPreview('local-replacement');
+      result.localPreview.beforePromotion=await localOnly();save();
+      ui('press','Go live');await waitFor(async()=>(await api('/diagnostics')).app.live,30000,'Preview promotion did not go live');
+      assert.deepEqual(captureNodes(),result.localPreview.beforePromotion.nodes,'Publishing replaced the granted preview stream');
+      const promoted=await api('/diagnostics');assert(!promoted.app.window_preview&&promoted.app.capturing);result.localPreview.promotedSameSession=true;save();
+    }else{
     if(opts.backend==='wayland')selectPortal();
     ui('press','Go live');await waitFor(async()=> (await api('/diagnostics')).app.live,30000,'GUI did not go live');
+    }
   }
 
   if(opts.backend==='wayland'&&!gui)await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during portal selection');return fs.readFileSync(path.join(report,'private-publisher.log'),'utf8').includes('[Headless] Going live');},75000,'Portal selection/startup did not finish');
@@ -350,7 +415,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     const before=await api('/diagnostics');await sleep(500);const after=await api('/diagnostics');
     assert.equal(before.video.frames_captured,after.video.frames_captured);result[sourceLoss?'guiSourceLossSettled':'guiStopSettled']=true;
     if(opts.backend==='wayland'){
-      if(preview){const shot=previewShot('stopped','none');assert(/Go live.*choose a window/i.test(shot.description),'Missing Wayland preview permission guidance');}
+      if(preview){const shot=previewShot('stopped','none');assert(/Preview window.*before going live/i.test(shot.description),'Missing Wayland preview permission guidance');}
       if(sourceLoss){sourceBrowser=await chromium.launch(sourceBrowserOptions);source=await sourceBrowser.newPage({viewport:null});await source.setContent(replacementMarkup);await source.bringToFront();await sleep(1000);ui('source','Choose a window');}
       selectPortal('portal-restarted');ui('press','Go live');
       await waitFor(async()=> (await api('/diagnostics')).app.live,30000,'Wayland GUI restart did not go live');
@@ -373,6 +438,10 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     result.helpersRetired=true;
   }
 }catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;if(gui&&opts.backend==='wayland'&&publisher?.exitCode===null){try{fs.writeFileSync(path.join(report,'ui-failure.json'),execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),'dump'],{env:{...process.env,QT_QPA_PLATFORM:'wayland'},timeout:10000}));execFileSync('gnome-screenshot',['-f',path.join(report,'desktop-failure.png')],{env:{...process.env,WAYLAND_DISPLAY:process.env.WAYLAND_DISPLAY||'wayland-0'},timeout:10000});}catch{}}}finally{
+  if(previewPortalPending&&publisher?.exitCode===null){
+    if(portalSelector&&portalSelector.exitCode===null){portalSelector.kill();await new Promise(resolve=>portalSelector.once('close',resolve));}
+    try{execFileSync('python3',[path.join(__dirname,'linux-portal-select.py'),'--title='+result.sourceTitle,'--cancel','--output='+path.join(report,'portal-preview-cleanup-cancel.json')],{env:{...process.env,GC_QA_KEYBOARD_SOCKET:path.join(keyboardDirectory,'input.sock')},timeout:30000,stdio:['ignore','pipe','pipe']});}catch(error){result.cleanupError=String(error);}
+  }
   if(publisher&&publisher.exitCode===null){
     try{if(control)await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,6000,'Cleanup quit timed out');}
     catch{publisher.kill();await publisher.closed;}

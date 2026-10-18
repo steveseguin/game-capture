@@ -193,6 +193,9 @@ class VersusApp {
     bool startCapture(VideoSourceMode mode, const std::string &sourceId);
     void stopCapture();
 #ifdef __linux__
+    bool startWindowPreview();
+    bool hasWindowPreview() const { return windowPreview_.load(); }
+    bool isWindowPreviewActive() const;
     void prepareCaptureStart();
     void cancelCaptureStart();
     bool captureStartCancelled() const;
@@ -524,6 +527,9 @@ class VersusApp {
     std::atomic<bool> live_{false};
     platform::AtomicSharedPtr<output::Session> externalOutput_;
     std::atomic<bool> capturing_{false};
+#ifdef __linux__
+    std::atomic<bool> windowPreview_{false};
+#endif
     std::atomic<bool> stopRequested_{false};
     std::atomic<bool> reconnecting_{false};
     std::atomic<bool> videoTrackActive_{false};

@@ -867,6 +867,38 @@ std::string VersusApp::lastCaptureError() const {
 }
 
 #ifdef __linux__
+bool VersusApp::isWindowPreviewActive() const {
+    return windowPreview_.load() && windowCapture_.isCapturing() && getSourceHealth().hasFrame;
+}
+
+bool VersusApp::startWindowPreview() {
+    if (live_.load() || capturing_.load() || !platform::capabilities().canCapture()) return false;
+    stopCapture();
+    const auto windows = windowCapture_.getWindows();
+    if (windows.empty() || windows.front().id != "portal:window") return false;
+    resetSourceHealth(VideoSourceMode::Window, "portal:window");
+    windowPreview_.store(true);
+    windowCapture_.setFrameCallback([this](video::CapturedFrame frame) {
+        handleVideoFrame(std::move(frame));
+    });
+    windowCapture_.setFrameAdmissionCallback([this]() {
+        return !live_.load(std::memory_order_acquire) ||
+            encodeThreadRunning_.load(std::memory_order_acquire);
+    });
+    try {
+        if (windowCapture_.startCapture("portal:window", 1280, 720, 30) &&
+            !captureStartCancelled()) {
+            spdlog::info("[App] Local window preview started (video only)");
+            return true;
+        }
+    } catch (...) {
+        stopCapture();
+        throw;
+    }
+    stopCapture();
+    return false;
+}
+
 void VersusApp::prepareCaptureStart() { windowCapture_.prepareCaptureStart(); }
 void VersusApp::cancelCaptureStart() { windowCapture_.cancelCaptureStart(); }
 bool VersusApp::captureStartCancelled() const { return windowCapture_.captureStartCancelled(); }
@@ -879,8 +911,13 @@ bool VersusApp::startCapture(const std::string &windowId) {
 bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) {
     // A previous startup can fail after one of the capture backends has
     // already opened but before capturing_ becomes true. Always begin from a
-    // fully stopped state, then arm a rollback for every early return below.
-    stopCapture();
+    // fully stopped state (or a video-only granted preview), then arm rollback.
+#ifdef __linux__
+    const bool reuseWindowPreview = mode == VideoSourceMode::Window &&
+        sourceId == "portal:window" && isWindowPreviewActive();
+    if (!reuseWindowPreview)
+#endif
+        stopCapture();
     {
         std::lock_guard<std::mutex> lock(captureErrorMutex_);
         lastCaptureError_.clear();
@@ -965,14 +1002,20 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     const auto frameCallback = [this](video::CapturedFrame frame) {
         handleVideoFrame(std::move(frame));
     };
-    windowCapture_.setFrameCallback(frameCallback);
-    windowCapture_.setFrameAdmissionCallback([this]() {
+#ifdef __linux__
+    // Do not replace callbacks while a granted preview is delivering frames.
+    if (!reuseWindowPreview)
+#endif
+    {
+        windowCapture_.setFrameCallback(frameCallback);
+        windowCapture_.setFrameAdmissionCallback([this]() {
         // Capture is rate-limited before readback and handleVideoFrame retains
         // at most two pending images. Keep fresh images even while encoding;
         // rejecting it based on output-thread phase lowers motion cadence.
         return !live_.load(std::memory_order_acquire) ||
             encodeThreadRunning_.load(std::memory_order_acquire);
-    });
+        });
+    }
     spoutCapture_.setFrameCallback(frameCallback);
 #ifdef __APPLE__
     syphonCapture_.setFrameCallback(frameCallback);
@@ -991,6 +1034,12 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
             std::lock_guard<std::mutex> lock(videoSendMutex_);
             captureConfig = videoConfig_;
         }
+#ifdef __linux__
+        if (reuseWindowPreview) {
+            windowCapture_.setFrameRate(captureConfig.frameRate > 0 ? captureConfig.frameRate : 60);
+            spdlog::info("[App] Reusing granted window preview for publishing");
+        } else
+#endif
         if (!windowCapture_.startCapture(
                 sourceId,
                 captureConfig.width > 0 ? captureConfig.width : 1920,
@@ -1204,6 +1253,9 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
             return false;
         }
         audioEncoderBitrateKbps_.store(audioConfig.bitrate, std::memory_order_relaxed);
+#ifdef __linux__
+        windowPreview_.store(false);
+#endif
         capturing_ = true;
     }
     startEncodeThread();
@@ -1219,6 +1271,9 @@ void VersusApp::stopCapture() {
     syphonCapture_.stopCapture();
 #endif
     windowCapture_.stopCapture();
+#ifdef __linux__
+    windowPreview_.store(false);
+#endif
     spoutCapture_.stopCapture();
     cameraCapture_.stopCapture();
     {
@@ -2281,6 +2336,12 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"reconnecting", reconnecting_.load(std::memory_order_relaxed)},
         {"stop_requested", stopRequested_.load(std::memory_order_relaxed)}
     };
+#ifdef __linux__
+    root["app"]["window_preview"] = hasWindowPreview();
+    root["app"]["window_preview_active"] = isWindowPreviewActive();
+    root["app"]["primary_audio_capturing"] = audioCapture_.IsCapturing();
+    root["app"]["microphone_capturing"] = microphoneAudioCapture_.IsCapturing();
+#endif
     root["room_quality"] = {
         {"generation", roomQualitySnapshot.generation},
         {"active_room", roomQualitySnapshot.activeRoom},
@@ -7562,6 +7623,17 @@ std::shared_ptr<const video::CapturedFrame> VersusApp::getCachedVideoFrame() {
 }
 
 void VersusApp::handleVideoFrame(video::CapturedFrame frame) {
+#ifdef __linux__
+    if (windowPreview_.load()) {
+        // Preview owns only a native video grant and one cached image. It must
+        // not queue encoder work, open audio devices, or publish anything.
+        updateSourceHealthFromFrame(frame);
+        auto image = std::make_shared<const video::CapturedFrame>(std::move(frame));
+        std::lock_guard<std::mutex> lock(latestVideoFrameMutex_);
+        cachedVideoFrame_ = std::move(image);
+        return;
+    }
+#endif
     static int frameCount = 0;
     static auto lastLog = std::chrono::steady_clock::now();
     frameCount++;
