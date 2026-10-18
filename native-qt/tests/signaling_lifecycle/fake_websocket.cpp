@@ -119,6 +119,8 @@ void launchCallback(Callback &&callback) {
 
 }  // namespace signaling_lifecycle_detail
 
+WebSocket::WebSocket() : WebSocket(Configuration{}) {}
+
 WebSocket::WebSocket(const Configuration & /*configuration*/)
     : state_(std::make_shared<signaling_lifecycle_detail::WebSocketState>()) {
     auto &instance = signaling_lifecycle_detail::harness();

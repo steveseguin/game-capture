@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -15,6 +16,7 @@
 #include <QSslConfiguration>
 #include <QSslSocket>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <array>
 #include <optional>
 
@@ -143,6 +145,33 @@ int compareCore(const Version &a, const Version &b) {
     return 0;
 }
 
+// Mac release naming is an explicit distribution contract. A source archive,
+// Intel build or Windows installer must not advertise an Apple Silicon update.
+QJsonObject macArm64Asset(const QJsonObject &release) {
+    const auto tag = release["tag_name"].toString();
+    const auto version = tag.startsWith('v') ? tag.mid(1) : tag;
+    const auto stem = QStringLiteral("game-capture-macos-arm64-") + version;
+    const QString prefix = QStringLiteral("/steveseguin/game-capture/releases/download/");
+    for (const auto &value : release["assets"].toArray()) {
+        const auto asset = value.toObject();
+        const auto name = asset["name"].toString();
+        if ((name != stem + ".dmg" && name != stem + ".zip") ||
+            asset["state"].toString() != "uploaded" || asset["size"].toDouble() <= 0) continue;
+        const QUrl url(asset["browser_download_url"].toString(), QUrl::StrictMode);
+        if (!url.isValid() || url.scheme() != "https" ||
+            url.host().compare("github.com", Qt::CaseInsensitive) != 0 ||
+            (url.port() != -1 && url.port() != 443) || !url.userInfo().isEmpty() ||
+            url.hasQuery() || url.hasFragment() ||
+            !url.path().startsWith(prefix, Qt::CaseInsensitive) ||
+            url.path().mid(prefix.size()) != tag + '/' + name) continue;
+        // Keep only the matched asset's evidence in the bounded cache. The UI
+        // still opens the fixed Releases page, never an API-supplied URL.
+        return {{"name", name}, {"state", "uploaded"}, {"size", asset["size"]},
+                {"browser_download_url", url.toString()}};
+    }
+    return {};
+}
+
 qint64 secondsUntilCheck(qint64 lastAttempt) {
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     if (lastAttempt <= 0 || lastAttempt > now || now - lastAttempt >= CheckInterval) return 0;
@@ -150,7 +179,7 @@ qint64 secondsUntilCheck(qint64 lastAttempt) {
 }
 } // namespace
 
-UpdateResult evaluateRelease(const QByteArray &json, const QString &installedVersion) {
+UpdateResult evaluateRelease(const QByteArray &json, const QString &installedVersion, UpdatePlatform platform) {
     if (json.size() > MaxResponseBytes) return {};
     const auto document = QJsonDocument::fromJson(json);
     if (!document.isObject()) return {};
@@ -164,15 +193,17 @@ UpdateResult evaluateRelease(const QByteArray &json, const QString &installedVer
     const auto installed = parseVersion(installedVersion);
     // Flags alone are insufficient: a prerelease tag must never be recommended.
     if (!latest || latest->prerelease || !installed) return {};
+    if (platform == UpdatePlatform::MacArm64 && macArm64Asset(release).isEmpty())
+        return {UpdateStatus::NoCompatibleDownload, tag.startsWith('v') ? tag.mid(1) : tag};
     const int order = compareCore(*latest, *installed);
     const bool newer = order > 0 || (order == 0 && installed->prerelease);
     return {newer ? UpdateStatus::Available : UpdateStatus::UpToDate, tag.startsWith('v') ? tag.mid(1) : tag};
 }
 
 UpdateChecker::UpdateChecker(const QString &installedVersion, const QString &cachePath,
-                             QObject *parent, ReleaseRequest *request)
+                             QObject *parent, ReleaseRequest *request, UpdatePlatform platform)
     : QObject(parent), installedVersion_(installedVersion), cachePath_(cachePath),
-      request_(request ? request : new QtReleaseRequest(this)) {
+      request_(request ? request : new QtReleaseRequest(this)), platform_(platform) {
     // Bound local cache reads as well as network responses.
     if (!cachePath_.isEmpty() && QFileInfo(cachePath_).size() <= MaxCacheBytes) {
         QSettings cache(cachePath_, QSettings::IniFormat);
@@ -182,7 +213,7 @@ UpdateChecker::UpdateChecker(const QString &installedVersion, const QString &cac
         release_ = cache.value("Release").toByteArray();
         if (lastAttemptSucceeded_ && lastSuccess_ >= lastAttempt_ &&
             secondsUntilCheck(lastAttempt_) > 0 && secondsUntilCheck(lastSuccess_) > 0) {
-            result_ = evaluateRelease(release_, installedVersion_);
+            result_ = evaluateRelease(release_, installedVersion_, platform_);
         }
     }
     timer_.setSingleShot(true);
@@ -222,12 +253,20 @@ void UpdateChecker::finishCheck(int httpStatus, const QByteArray &body) {
     if (stopped_ || !pending_) return;
     pending_ = false;
     deadline_.stop();
-    result_ = httpStatus == 200 ? evaluateRelease(body, installedVersion_) : UpdateResult{};
+    result_ = httpStatus == 200 ? evaluateRelease(body, installedVersion_, platform_) : UpdateResult{};
     lastAttemptSucceeded_ = result_.status != UpdateStatus::Unavailable;
     if (lastAttemptSucceeded_) {
         lastSuccess_ = QDateTime::currentSecsSinceEpoch();
-        release_ = QJsonDocument(QJsonObject{{"tag_name", result_.version}, {"draft", false}, {"prerelease", false}})
-                       .toJson(QJsonDocument::Compact);
+        QJsonObject metadata{{"tag_name", result_.version}, {"draft", false}, {"prerelease", false}};
+        if (platform_ == UpdatePlatform::MacArm64) {
+            const auto original = QJsonDocument::fromJson(body).object();
+            // Preserve the original tag spelling because it is part of the
+            // asset URL; stripping its leading v would invalidate a warm cache.
+            metadata["tag_name"] = original["tag_name"];
+            const auto asset = macArm64Asset(original);
+            metadata["assets"] = asset.isEmpty() ? QJsonArray{} : QJsonArray{asset};
+        }
+        release_ = QJsonDocument(metadata).toJson(QJsonDocument::Compact);
     }
     // Keep the last valid metadata, but never present a failed refresh as proof of being current.
     saveCache();

@@ -1,0 +1,14 @@
+--- a/src/widgets/accessible/rangecontrols.cpp
++++ b/src/widgets/accessible/rangecontrols.cpp
+@@ -105,7 +105,11 @@
+ 
+ QVariant QAccessibleAbstractSpinBox::minimumStepSize() const
+ {
++#if defined(Q_OS_MACOS)
++    return abstractSpinBox()->property("singleStep");
++#else
+     return abstractSpinBox()->property("stepSize");
++#endif
+ }
+ 
+ void QAccessibleAbstractSpinBox::addSelection(int startOffset, int endOffset)

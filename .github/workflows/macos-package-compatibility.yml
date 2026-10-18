@@ -1,0 +1,83 @@
+name: Mac Packaged Startup Compatibility
+
+on:
+  push:
+    branches: [macos-hosted-compatibility]
+    paths:
+      - .github/workflows/macos-package-compatibility.yml
+      - native-qt/qa/macos-hosted-package.py
+      - native-qt/e2e/macos-foundation-packaged.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CANDIDATE_ASSET_ID: 652152361
+  CANDIDATE_ARCHIVE_SHA256: ebcad72fa5869250ea8216581f951b15650eabd1384c2eb036ed3ea5ecbe8237
+  CANDIDATE_EXECUTABLE_SHA256: ca2ecda2b36551dcb0eee8bd86c5dc8860782b9c6c04d6813438a18885ee68de
+  CANDIDATE_REVISION: c459d7ada325c02945e460378d4f4acab8f1b755
+
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Draft releases require push access. This job only downloads pinned assets;
+    # it never checks out or executes application code and never edits a release.
+    permissions:
+      contents: write
+    steps:
+      - name: Download and verify draft app and corresponding source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_ASSET_ID: 652152358
+          SOURCE_SHA256: 879d7e3c964b07db2b21276367b2b7dc1daf4f16420142a04c76a799d7602844
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/candidate"
+          gh api "repos/steveseguin/game-capture/releases/assets/$CANDIDATE_ASSET_ID" \
+            -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/candidate/game-capture-candidate.zip"
+          gh api "repos/steveseguin/game-capture/releases/assets/$SOURCE_ASSET_ID" \
+            -H 'Accept: application/octet-stream' > "$RUNNER_TEMP/candidate/game-capture-source.tar.gz"
+          cd "$RUNNER_TEMP/candidate"
+          printf '%s  %s\n' "$CANDIDATE_ARCHIVE_SHA256" game-capture-candidate.zip \
+            "$SOURCE_SHA256" game-capture-source.tar.gz > SHA256SUMS
+          sha256sum --check SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: candidate-with-corresponding-source
+          path: ${{ runner.temp }}/candidate/
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  macos14:
+    needs: acquire
+    runs-on: macos-14
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: candidate-with-corresponding-source
+          path: ${{ runner.temp }}/candidate
+      - name: Run signature gates and packaged startup workflows
+        run: |
+          python3 native-qt/qa/macos-hosted-package.py \
+            --archive "$RUNNER_TEMP/candidate/game-capture-candidate.zip" \
+            --archive-sha256 "$CANDIDATE_ARCHIVE_SHA256" \
+            --executable-sha256 "$CANDIDATE_EXECUTABLE_SHA256" \
+            --revision "$CANDIDATE_REVISION" \
+            --report native-qt/qa/reports/hosted-macos14
+      - name: Retain scrubbed evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: macos14-packaged-startup-${{ github.sha }}
+          path: native-qt/qa/reports/hosted-macos14/export/
+          retention-days: 7
+          if-no-files-found: warn

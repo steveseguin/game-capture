@@ -6,11 +6,11 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawn, spawnSync } = require('node:child_process');
 const { chromium } = require('playwright');
-const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
+const opts = require.main === module ? Object.fromEntries(process.argv.slice(2).map(arg => {
   const i = arg.indexOf('=');
   assert(i > 2, 'Use --name=value arguments');
   return [arg.slice(2, i), arg.slice(i + 1)];
-}));
+})) : {};
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function until(fn, label, timeout = 30000) {
   const deadline = Date.now() + timeout;
@@ -27,10 +27,10 @@ async function api(discovery, route, body) {
   assert(response.ok, `Local control ${route}: ${response.status}`);
   return response.json();
 }
-async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
+async function receive(browser, c, dir, discovery, remoteToken, synchronize, options = opts) {
   const page = await browser.newPage();
   const result = { requested: c, browserVersion: browser.version() };
-  let lossCdp;
+  let lossCdp, cleanupPage;
   try {
     await page.addInitScript(({ rejectRed }) => {
       window.audioReviewPeers = [];
@@ -58,7 +58,7 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
     viewerUrl.searchParams.set('autostart', '');
     viewerUrl.searchParams.set('muted', '');
     if (c.fallback) viewerUrl.searchParams.delete('audiocodec');
-    if (opts.loss && c.bitrate === 192 && c.channels === 2 && !c.codec && !c.fallback) {
+    if (options.loss && c.bitrate === 192 && c.channels === 2 && !c.codec && !c.fallback) {
       lossCdp = await page.context().newCDPSession(page);
       await lossCdp.send('Network.enable');
       // Chrome attaches its P2P interceptor when the socket is created.
@@ -66,6 +66,7 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
         urlPattern: '', latency: 1, downloadThroughput: -1, uploadThroughput: -1, packetLoss: 0
       }] });
     }
+    if (options.preparePage) cleanupPage = await options.preparePage(page);
     await page.goto(viewerUrl.href, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForFunction(() => window.audioReviewPeers.some(pc =>
       pc.connectionState === 'connected' && pc.getReceivers().some(r => r.track?.kind === 'audio')),
@@ -77,14 +78,14 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
     await sleep(2000);
     result.sdp = await page.evaluate(() => ({ offer: window.audioReviewPc.remoteDescription.sdp,
       answer: window.audioReviewPc.localDescription.sdp }));
-    if (opts.baseline !== 'true') {
+    if (options.baseline !== 'true') {
       const cnames = [...new Set([...result.sdp.offer.matchAll(/^a=ssrc:\d+ cname:(.+)$/gm)].map(m => m[1].trim()))];
       assert.equal(cnames.length, 1, 'Audio and video must share one synchronization CNAME');
       const streams = [...new Set([...result.sdp.offer.matchAll(/(?:^a=msid:|^a=ssrc:\d+ msid:)(\S+)/gm)].map(m => m[1]))];
       assert.equal(streams.length, 1, 'Audio and video must belong to one MediaStream');
     }
     assert(result.sdp.offer.includes('opus/48000/2'), 'Opus RTP mapping must remain 48000/2, including mono');
-    if (opts.baseline !== 'true') assert(result.sdp.offer.includes('sprop-stereo=' + (c.channels === 1 ? '0' : '1')));
+    if (options.baseline !== 'true') assert(result.sdp.offer.includes('sprop-stereo=' + (c.channels === 1 ? '0' : '1')));
     const pcm = c.codec === 'pcm' && !c.fallback;
     const red = !!c.red && !c.fallback;
     const audioLine = result.sdp.answer.split('\r\n').find(l => l.startsWith('m=audio'));
@@ -143,7 +144,7 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
       });
       result[label] = sample;
       assert(sample.framesDecoded > 10, 'Video playback did not advance');
-      assert(Math.abs(sample.receivedKbps - expectedBitrate) < expectedBitrate * .12 + 1,
+      if (expectedBitrate !== undefined) assert(Math.abs(sample.receivedKbps - expectedBitrate) < expectedBitrate * .12 + 1,
         `Received ${sample.receivedKbps} kbps; expected ${expectedBitrate}`);
       assert(sample.left[0] > .0001 && sample.right[1] > .0001, 'Missing fixture tones');
       if (c.channels === 1) {
@@ -159,12 +160,12 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
     await measure('initial', wireBitrate(c.bitrate));
     result.senderReports = await page.evaluate(async () => [...(await window.audioReviewPc.getStats()).values()]
       .filter(s => s.type === 'remote-outbound-rtp'));
-    if (opts.baseline !== 'true') {
+    if (options.baseline !== 'true') {
       for (const kind of ['audio', 'video']) assert(result.senderReports.some(s =>
         (s.kind || s.mediaType) === kind && s.reportsSent > 0), 'Missing actual RTCP sender reports for ' + kind);
     }
     result.diagnostics = await api(discovery, '/diagnostics');
-    if (opts.baseline !== 'true') {
+    if (options.baseline !== 'true') {
       assert.equal(result.diagnostics.audio.preferred_opus_bitrate_kbps, c.bitrate);
       assert.equal(result.diagnostics.audio.output_channels, c.channels);
     }
@@ -215,6 +216,7 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
         await cdp.detach();
       }
     }
+    if (options.observePlayback) await options.observePlayback({ page, measure, result, expectedBitrate: wireBitrate(c.bitrate) });
     await page.screenshot({ path: path.join(dir, 'receiver.png') });
     result.ok = true;
     return result;
@@ -224,6 +226,9 @@ async function receive(browser, c, dir, discovery, remoteToken, synchronize) {
     await page.screenshot({ path: path.join(dir, 'failure.png') }).catch(() => {});
     throw error;
   } finally {
+    if (cleanupPage) {
+      try { await cleanupPage(); } catch (error) { result.ok = false; result.cleanupError = String(error); }
+    }
     fs.writeFileSync(path.join(dir, 'receiver.json'), JSON.stringify(result, null, 2));
     await page.close();
   }
@@ -291,7 +296,7 @@ async function main() {
       const app = launch(publisher, ['--headless', `--stream=${c.stream}`, '--password=false', '--source=spout',
         `--spout-sender=${c.stream}`, '--resolution=640x360', '--fps=30', '--audio-source=default-output',
         `--audio-bitrate-kbps=${c.bitrate}`, `--audio-channels=${c.channels}`, '--remote-control',
-        `--audio-codec=${c.codec || 'opus'}`, ...(c.red ? ['--audio-red'] : []),
+        `--audio-codec=${c.codec || 'opus'}`, ...(c.red ? ['--audio-red'] : ['--no-audio-red']),
         `--remote-token=${token}`, '--duration-ms=110000', '--local-control',
         `--local-control-discovery=${discovery}`], 'publisher-' + id, { LOCALAPPDATA: dir });
       try {
@@ -370,4 +375,5 @@ async function main() {
     for (const log of logStreams) log.end();
   }
 }
-main().catch(error => { console.error(error); process.exitCode = 1; });
+module.exports = { receive };
+if (require.main === module) main().catch(error => { console.error(error); process.exitCode = 1; });

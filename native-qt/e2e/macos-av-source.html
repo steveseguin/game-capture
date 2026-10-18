@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8"><title>Owned Mac A/V Fixture</title>
+<style>html,body{margin:0;overflow:hidden;background:#182030}canvas{width:100vw;height:100vh;object-fit:contain;cursor:none}</style>
+<canvas width="960" height="540"></canvas>
+<script>
+(async()=>{
+  const canvas=document.querySelector('canvas'),g=canvas.getContext('2d');
+  const audio=new AudioContext({sampleRate:48000});await audio.resume();
+  const output=audio.createMediaStreamDestination(),buffer=audio.createBuffer(2,96000,48000);
+  for(let ch=0;ch<2;ch++)for(let i=0;i<96000;i++) {
+    const t=i/48000,envelope=t<.16?Math.min(1,t/.005,(.16-t)/.005):0;
+    buffer.getChannelData(ch)[i]=.04*Math.sin(2*Math.PI*(ch?880:440)*t)+.12*envelope*Math.sin(2*Math.PI*1000*t);
+  }
+  const tone=audio.createBufferSource();tone.buffer=buffer;tone.loop=true;
+  tone.connect(output);tone.connect(audio.destination);
+  const epoch=audio.currentTime+.5;tone.start(epoch);
+  window.fixtureReference=new MediaStream([...canvas.captureStream(60).getVideoTracks(),...output.stream.getAudioTracks()]);
+  window.fixture={frames:0,events:[],epoch,scope:'Software source canvas/audio reference before screen/process capture; fixture hides its cursor to protect timing markers; excludes physical display/speaker timing'};
+  let lastPulse=-1;
+  function draw() {
+    const w=canvas.width,h=canvas.height,t=Math.max(0,audio.currentTime-epoch);
+    const pulse=Math.floor(t/2),phase=Math.floor((t%2)*100),stamp=(pulse<<8)|phase;
+    g.fillStyle='#182030';g.fillRect(0,0,w,h);
+    g.fillStyle='#406080';g.fillRect((fixture.frames*3)%(w-40),h*.84,40,h*.06);
+    g.fillStyle='#00ffff';g.fillRect(.05*w,.2*h,.04*w,.6*h);
+    g.fillStyle='#ff00ff';g.fillRect(.91*w,.2*h,.04*w,.6*h);
+    g.fillStyle=audio.currentTime>=epoch&&phase<16?'white':'black';g.fillRect(.3*w,.25*h,.4*w,.1*h);
+    for(let bit=0;bit<24;bit++)for(let inverse=0;inverse<2;inverse++) {
+      g.fillStyle=((stamp>>bit)&1)^inverse?'white':'black';
+      g.fillRect((.15+bit*.7/24)*w,(.45+inverse*.2)*h,.7*w/24,.1*h);
+    }
+    g.fillStyle='white';g.font='20px sans-serif';g.fillText('A/V pulse '+pulse+'; phase '+phase*10+' ms',w*.15,h*.95);
+    if(pulse!==lastPulse) {fixture.events.push({pulse,phaseMs:phase*10,wall:performance.timeOrigin+performance.now()});lastPulse=pulse;}
+    fixture.frames++;requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>

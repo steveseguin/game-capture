@@ -4,6 +4,7 @@
 #include "capture_sr_reporter.h"
 #include "video_recovery.h"
 #include "video_pacer.h"
+#include "video_send_failure.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -66,7 +67,9 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
                      uint32_t timestamp,
                      uint32_t ssrc,
                      uint8_t payloadType,
-                     const std::vector<uint8_t> &vp9Frame) {
+                     const std::vector<uint8_t> &vp9Frame,
+                     VideoSendFailure *failure = nullptr) {
+    if (failure) *failure = VideoSendFailure::SendFailed;
     if (!track || vp9Frame.empty()) {
         return false;
     }
@@ -107,6 +110,7 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
         }
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to send VP9 RTP packet: {}", e.what());
+        if (failure) *failure = classifyVideoSendException(e.what(), track->isOpen());
         return false;
     } catch (...) {
         spdlog::warn("[WebRTC] Failed to send VP9 RTP packet");
@@ -1606,14 +1610,36 @@ MediaPlanChange WebRtcClient::ensureMediaTracks(bool enableVideo,
     return change;
 }
 
-bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
-    auto target = impl_->transportSnapshot();
-    if (!target || packet.data.empty() || !impl_->isCurrentTransport(target)) return false;
-    std::lock_guard<std::mutex> sendLock(target->videoSendMutex);
-    if (!target->videoTrack || !target->videoTrack->isOpen() ||
-        !impl_->isCurrentTransport(target)) {
-        return false;
+const char *videoSendFailureName(VideoSendFailure reason) {
+    switch (reason) {
+        case VideoSendFailure::None: return "none";
+        case VideoSendFailure::TransportUnavailable: return "transport_unavailable";
+        case VideoSendFailure::EmptyPacket: return "empty_packet";
+        case VideoSendFailure::TrackUnavailable: return "track_unavailable";
+        case VideoSendFailure::PacketizerUnavailable: return "packetizer_unavailable";
+        case VideoSendFailure::PacerFailed: return "pacer_failed";
+        case VideoSendFailure::SendFailed: return "send_failed";
+        case VideoSendFailure::TrackClosedDuringSend: return "track_closed_during_send";
+        case VideoSendFailure::Count: break;
     }
+    return "unknown";
+}
+
+bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet, VideoSendFailure *failure) {
+    if (failure) *failure = VideoSendFailure::None;
+    const auto fail = [failure](VideoSendFailure reason) {
+        if (failure) *failure = reason;
+        return false;
+    };
+    auto target = impl_->transportSnapshot();
+    if (!target) return fail(VideoSendFailure::TransportUnavailable);
+    if (packet.data.empty()) return fail(VideoSendFailure::EmptyPacket);
+    if (!impl_->isCurrentTransport(target)) return fail(VideoSendFailure::TransportUnavailable);
+    std::lock_guard<std::mutex> sendLock(target->videoSendMutex);
+    if (!target->videoTrack || !target->videoTrack->isOpen()) {
+        return fail(VideoSendFailure::TrackUnavailable);
+    }
+    if (!impl_->isCurrentTransport(target)) return fail(VideoSendFailure::TransportUnavailable);
     if (target->testHooksEnabled.load(std::memory_order_acquire)) {
         const auto hooks =
             std::atomic_load_explicit(&target->testHooks, std::memory_order_acquire);
@@ -1631,24 +1657,28 @@ bool WebRtcClient::sendVideo(const EncodedVideoPacket &packet) {
     const uint32_t timestamp = mediaRtpTimestamp(packet.pts, kVideoClockRate);
     if (target->videoCodec == PeerConfig::VideoCodec::VP9) {
         std::lock_guard<std::mutex> sequenceLock(impl_->vp9VideoSequenceMutex);
-        return sendVp9FrameRtp(target->videoTrack,
+        auto reason = VideoSendFailure::SendFailed;
+        const bool sent = sendVp9FrameRtp(target->videoTrack,
                                impl_->vp9VideoSequenceNumber,
                                timestamp,
                                target->videoSsrc,
                                kVideoPayloadType,
-                               packet.data);
+                               packet.data, &reason);
+        return sent ? true : fail(reason);
     }
-    if (!target->videoRtpConfig || (target->videoPacer && target->videoPacer->failed())) return false;
+    if (!target->videoRtpConfig) return fail(VideoSendFailure::PacketizerUnavailable);
+    if (target->videoPacer && target->videoPacer->failed()) return fail(VideoSendFailure::PacerFailed);
     target->videoRtpConfig->timestamp = timestamp;
     try {
         target->videoTrack->send(toBinary(packet.data));
         return true;
     } catch (const std::exception &e) {
         spdlog::warn("[WebRTC] Failed to send video packet: {}", e.what());
+        return fail(classifyVideoSendException(e.what(), target->videoTrack->isOpen()));
     } catch (...) {
         spdlog::warn("[WebRTC] Failed to send video packet");
     }
-    return false;
+    return fail(VideoSendFailure::SendFailed);
 }
 
 bool WebRtcClient::sendAlphaVideo(const EncodedVideoPacket &packet) {

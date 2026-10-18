@@ -71,6 +71,15 @@ class WindowCapture {
     void stopCapture();
     bool isCapturing() const;
     void setFrameRate(int fps);
+#ifdef __APPLE__
+    // Temporary ScreenCaptureKit suspension retains the native session and
+    // resumes only after a fresh complete frame, unlike a stopped source.
+    bool isSuspended() const;
+    // Grow the native capture canvas for higher-resolution output. A smaller
+    // request keeps existing detail (including a room's independent LQ tier).
+    // Updates are bounded; a failed/indeterminate update stops this generation.
+    bool ensureFrameSize(int width, int height);
+#endif
 
     void setFrameCallback(FrameCallback cb);
     void setFrameAdmissionCallback(FrameAdmissionCallback cb);

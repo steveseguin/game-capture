@@ -1,6 +1,14 @@
 ﻿#include "versus/ui/main_window.h"
 
 #include "versus/ui/update_checker.h"
+#include "versus/platform/capabilities.h"
+#ifdef __APPLE__
+#include "versus/platform/app_paths.h"
+#include "versus/platform/macos_capture.h"
+#include "versus/platform/macos_output_profiles.h"
+#include "versus/platform/macos_audio_choices.h"
+#include <QStandardItemModel>
+#endif
 
 #include <QAbstractItemView>
 #include <QAccessible>
@@ -86,6 +94,11 @@ static const QString APP_TRAY_LIVE = "Game Capture - LIVE";
 static const QString APP_VERSION_TEXT = QStringLiteral(APP_VERSION);
 static const QString APP_SETTINGS_ORG = "VDO.Ninja";
 static const QString APP_SETTINGS_NAME = "Game Capture";
+#ifdef __APPLE__
+static const QString DEFAULT_MICROPHONE_LABEL = QStringLiteral("System default");
+#else
+static const QString DEFAULT_MICROPHONE_LABEL = QStringLiteral("Windows default");
+#endif
 
 static QString canonicalResolution(const QString &text) {
     static const QRegularExpression pattern(QStringLiteral("^\\s*([0-9]{1,4})\\s*[xX\\x{00d7}]\\s*([0-9]{1,4})\\s*$"));
@@ -98,6 +111,7 @@ static QString canonicalResolution(const QString &text) {
 
 // Output URLs can contain credentials too. Protect the whole profile with the
 // current Windows user's key, rather than persisting just the token securely.
+#ifndef __APPLE__
 static QByteArray protectOutputProfiles(const QByteArray &input, bool decrypt) {
 #ifdef _WIN32
     if (input.isEmpty()) return {};
@@ -114,6 +128,7 @@ static QByteArray protectOutputProfiles(const QByteArray &input, bool decrypt) {
     return {};
 #endif
 }
+#endif
 
 static void setFormRowVisible(QFormLayout *form, QWidget *field, bool visible) {
     if (!form || !field) return;
@@ -163,24 +178,43 @@ versus::video::VideoCodec codecFromUiValue(const QString &value) {
 }
 
 bool codecUsesExternalFfmpeg(versus::video::VideoCodec codec) {
+#ifdef __APPLE__
+    if (codec == versus::video::VideoCodec::H265) return false;
+#endif
     return codec != versus::video::VideoCodec::H264;
 }
 
 bool codecSupportsAlphaWorkflow(versus::video::VideoCodec codec) {
+#ifdef __APPLE__
+    return codec == versus::video::VideoCodec::H264 || codec == versus::video::VideoCodec::VP9;
+#else
     return codec == versus::video::VideoCodec::H264 ||
            codec == versus::video::VideoCodec::AV1 ||
            codec == versus::video::VideoCodec::VP9;
+#endif
 }
 
 QString codecTooltipFor(versus::video::VideoCodec codec) {
     if (codec == versus::video::VideoCodec::H265) {
+#ifdef __APPLE__
+        return "H.265 uses Apple VideoToolbox hardware and requires a viewer with HEVC support. "
+               "x264 supports H.264 only. Auto mode may fall back to H.264 if the encoder cannot start; "
+               "an explicit VideoToolbox selection does not change encoder category.";
+#else
         return "H.265 is experimental and may not decode in Chromium-based viewers. Game Capture will fall back to "
                "H.264 if startup or encode stability fails.";
+#endif
     }
     if (codec == versus::video::VideoCodec::AV1) {
+#ifdef __APPLE__
+        return "AV1 uses the bundled libaom software encoder and requires an AV1-capable viewer. "
+               "It is experimental and CPU intensive; lower resolution or FPS if playback cannot keep up. "
+               "Select Software or Auto. Paired alpha uses H.264 or VP9 instead.";
+#else
         return "AV1 publish is experimental. Game Capture will try the selected encoder preference and fall back to "
                "H.264 if startup or encode stability fails. Alpha-preserving AV1 paths vary by viewer; the current "
                "OBS VDO.Ninja transparency workflow uses VP9 instead.";
+#endif
     }
     if (codec == versus::video::VideoCodec::VP9) {
         return "VP9 publish is experimental and software-heavy. Game Capture will fall back to H.264 if startup or "
@@ -303,6 +337,9 @@ versus::app::VideoSourceMode videoSourceModeFromUiValue(const QString &value) {
     if (value == "camera") {
         return versus::app::VideoSourceMode::Camera;
     }
+#ifdef __APPLE__
+    if (value == "syphon") return versus::app::VideoSourceMode::Syphon;
+#endif
     if (value == "spout") {
         return versus::app::VideoSourceMode::Spout;
     }
@@ -376,6 +413,11 @@ void installComboWheelGuard(QComboBox *combo) {
     }
     combo->setFocusPolicy(Qt::StrongFocus);
     combo->installEventFilter(new ComboWheelGuard(combo));
+#ifdef __APPLE__
+    // Every app dropdown needs stable accessible rows: Qt's generic cell
+    // selection action can crash during repeated selection after relaunch.
+    platform::configureMacComboChoices(combo);
+#endif
 }
 
 void installSpinWheelGuard(QSpinBox *spin) {
@@ -510,6 +552,9 @@ QIcon makeBrandTrayFallbackIcon() {
 }
 
 QString defaultLogFolderPath() {
+#ifdef __APPLE__
+    return platform::logDirectory();
+#else
     QString localAppData = qEnvironmentVariable("LOCALAPPDATA");
     if (localAppData.isEmpty()) {
         localAppData = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
@@ -521,6 +566,7 @@ QString defaultLogFolderPath() {
     }
     QDir().mkpath(localAppData);
     return QDir(localAppData).absolutePath();
+#endif
 }
 
 #ifdef _WIN32
@@ -673,9 +719,28 @@ MainWindow::MainWindow(
         loadPersistedSettings();
         connectPersistedSettingSignals();
     }
+    if (!platform::capabilities().canPublish() || !platform::capabilities().microphoneCapture) {
+        setConfigControlsEnabled(true);
+    }
     if (runtimeOptions_.systemIntegrationsEnabled) {
         setupTrayIcon();
         QTimer::singleShot(0, this, &MainWindow::showFirewallWarningIfNeeded);
+#ifdef __APPLE__
+        // Cocoa delivers activation again for a Dock/Finder reopen, even if
+        // the process is already active. Closing to the menu bar hides the
+        // QWidget, so native application activation alone cannot restore it.
+        connect(qApp, &QGuiApplication::applicationStateChanged, this,
+            [this](Qt::ApplicationState state) {
+                if (state != Qt::ApplicationActive || isVisible() || quitRequested_) {
+                    return;
+                }
+                showNormal();
+                raise();
+                activateWindow();
+                if (showHideAction_) showHideAction_->setText("Hide");
+                spdlog::info("[UI] Restored hidden window after macOS activation");
+            });
+#endif
     }
 
     // Stats timer (update every second when live)
@@ -905,6 +970,23 @@ void MainWindow::requestStop() {
     onGoLiveClicked();
 }
 
+#ifdef __APPLE__
+void MainWindow::syncAudioSourceChoices() {
+    if (!audioSourceSelect_ || !sourceModeSelect_) return;
+    const bool windowSource = sourceModeSelect_->currentData().toString() == "window";
+    // Keep stable rows so source changes preserve keyboard/accessibility focus.
+    // Non-window sources have no selected application identity for process audio.
+    auto *model = qobject_cast<QStandardItemModel *>(audioSourceSelect_->model());
+    const int appAudioIndex = audioSourceSelect_->findData("selected-window");
+    if (model && appAudioIndex >= 0) {
+        if (auto *item = model->item(appAudioIndex)) item->setEnabled(windowSource);
+    }
+    audioSourceSelect_->setToolTip(windowSource
+        ? "Selected app audio includes its child processes and other windows. System audio shares audio from all apps."
+        : "Choose system audio, a microphone/input, or no audio. Selected app audio requires Window capture.");
+}
+#endif
+
 void MainWindow::loadPersistedSettings() {
     if (!runtimeOptions_.persistedSettingsEnabled) {
         return;
@@ -1000,6 +1082,9 @@ void MainWindow::loadPersistedSettings() {
     restoreComboByData(encoderSelect_, settings.value("video/encoderMode", "auto"));
     restoreComboByData(codecSelect_, settings.value("video/codec", "h264"));
     restoreComboByData(sourceModeSelect_, settings.value("video/sourceMode", "window"));
+#ifdef __APPLE__
+    restoreComboByData(syphonAlphaSelect_, settings.value("syphon/alpha", "straight"));
+#endif
     if (cameraOptionsPanel_ && sourceModeSelect_) {
         cameraOptionsPanel_->setVisible(
             sourceModeSelect_->currentData().toString() == "camera");
@@ -1008,7 +1093,11 @@ void MainWindow::loadPersistedSettings() {
     if (sourceModeSelect_ && audioSourceSelect_) {
         const QString sourceMode = sourceModeSelect_->currentData().toString();
         const QString audioMode = audioSourceSelect_->currentData().toString();
-        if (sourceMode == "spout" && audioMode == "selected-window") {
+        if ((sourceMode == "spout"
+#ifdef __APPLE__
+             || sourceMode == "syphon"
+#endif
+            ) && audioMode == "selected-window") {
             restoreComboByData(audioSourceSelect_, QString("none"));
         } else if (sourceMode == "camera" && audioMode == "selected-window") {
             restoreComboByData(audioSourceSelect_, QString("none"));
@@ -1046,8 +1135,20 @@ void MainWindow::loadPersistedSettings() {
 
     onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
     outputProfiles_.clear();
+#ifdef __APPLE__
+    const auto storedProfiles = platform::loadOutputProfiles(
+        QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()));
+    outputProfilesReadable_ = storedProfiles.ok();
+    lastSavedOutputProfiles_ = storedProfiles.value;
+    if (!storedProfiles.ok()) {
+        spdlog::warn("[UI] {}", storedProfiles.error.toStdString());
+        QTimer::singleShot(0, this, [this, message = storedProfiles.error] { updateStatus(message, "error"); });
+    }
+    const auto profiles = QJsonDocument::fromJson(storedProfiles.value).object();
+#else
     const auto profiles = QJsonDocument::fromJson(protectOutputProfiles(
         QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()), true)).object();
+#endif
     for (const auto &name : {QString("whip"), QString("srt"), QString("rtmp"), QString("rtsp"), QString("rtsp-udp"), QString("udp"), QString("rist")}) {
         const auto stored = profiles.value(name).toObject();
         output::Config config; config.protocol = output::parseProtocol(name.toStdString());
@@ -1092,6 +1193,9 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : versus::defaults::VideoBitrateKbps);
     settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : versus::defaults::VideoBitrateKbps);
     settings.setValue("video/sourceMode", sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window"));
+#ifdef __APPLE__
+    settings.setValue("syphon/alpha", syphonAlphaSelect_->currentData().toString());
+#endif
     settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
     settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     settings.setValue("video/alphaWorkflow", alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false);
@@ -1126,11 +1230,37 @@ void MainWindow::savePersistedSettings() {
                 {"passphrase", QString::fromStdString(config.passphrase)}, {"latencyMs", config.latencyMs},
                 {"aacBitrateKbps", config.aacBitrateKbps}});
         }
+#ifdef __APPLE__
+        if (outputProfilesReadable_) {
+            const auto reference = QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray());
+            const auto data = QJsonDocument(profiles).toJson(QJsonDocument::Compact);
+            const bool hasDestination = std::any_of(outputProfiles_.cbegin(), outputProfiles_.cend(), [](const auto &profile) {
+                return !profile.url.empty() || !profile.bearerToken.empty() || !profile.streamKey.empty() ||
+                    !profile.passphrase.empty() || !profile.streamId.empty();
+            });
+            // Normal window/VDO use needs no Keychain item. Avoid repeated
+            // Keychain writes when unrelated UI settings are saved.
+            if ((hasDestination || !reference.isEmpty()) && data != lastSavedOutputProfiles_) {
+                const auto saved = platform::saveOutputProfiles(data, reference);
+                if (saved.ok()) {
+                    settings.setValue("output/profilesEncrypted", saved.value.toBase64());
+                    lastSavedOutputProfiles_ = data;
+                    settings.setValue("output/protocol", name);
+                } else {
+                    spdlog::warn("[UI] {}", saved.error.toStdString());
+                    updateStatus(saved.error, "error");
+                }
+            } else {
+                settings.setValue("output/protocol", name);
+            }
+        }
+#else
         const auto encrypted = protectOutputProfiles(QJsonDocument(profiles).toJson(QJsonDocument::Compact), false);
         if (!encrypted.isEmpty()) {
             settings.setValue("output/profilesEncrypted", encrypted.toBase64());
             settings.setValue("output/protocol", name);
         }
+#endif
     }
     settings.sync();
 }
@@ -1145,6 +1275,14 @@ bool MainWindow::resetPersistedSettingsToDefaults() {
     }
 
     QSettings settings = makeUiSettings();
+#ifdef __APPLE__
+    const auto deleted = platform::deleteOutputProfiles(
+        QByteArray::fromBase64(settings.value("output/profilesEncrypted").toByteArray()));
+    if (!deleted.ok()) {
+        spdlog::warn("[UI] {}", deleted.error.toStdString());
+        return false;
+    }
+#endif
     settings.clear();
     settings.sync();
     if (settings.status() != QSettings::NoError) {
@@ -1180,7 +1318,11 @@ void MainWindow::onResetToDefaults() {
         "Reset Game Capture to Defaults?",
         "This clears saved stream details, room and password values, video, audio, remote-control settings, "
         "and the saved window layout.\n\n"
+#ifdef __APPLE__
+        "It does not uninstall Game Capture, change macOS privacy permissions, or delete logs.",
+#else
         "It does not uninstall Game Capture, change Windows Firewall rules, or delete logs.",
+#endif
         QMessageBox::Reset | QMessageBox::Cancel,
         QMessageBox::Cancel);
     if (answer != QMessageBox::Reset) {
@@ -1415,14 +1557,26 @@ void MainWindow::setupUI() {
     sourceModeSelect_ = new QComboBox(this);
     sourceModeSelect_->setObjectName("sourceModeSelect");
     sourceModeSelect_->setAccessibleName("Video source type");
-    sourceModeSelect_->addItem("Window", QVariant("window"));
-    sourceModeSelect_->addItem("Camera / Webcam", QVariant("camera"));
-    sourceModeSelect_->addItem("Spout2 (avatar apps)", QVariant("spout"));
-    sourceModeSelect_->setToolTip(
-        "Window captures visible app/game windows. Camera / Webcam captures a Windows video input device. "
-        "Spout2 is for local avatar/alpha senders such as VTube Studio, Warudo, VSeeFace, and VNyan. "
-        "Start or enable Spout output in that app first. For transparency, use VP9 with OBS alpha workflow. "
-        "If Spout frames are black, run both apps on the same GPU.");
+    if (platform::capabilities().canCapture()) {
+        sourceModeSelect_->addItem("Window", QVariant("window"));
+        if (platform::capabilities().cameraCapture) sourceModeSelect_->addItem("Camera / Webcam", QVariant("camera"));
+        if (platform::capabilities().spoutCapture) sourceModeSelect_->addItem("Spout2 (avatar apps)", QVariant("spout"));
+#ifdef __APPLE__
+        sourceModeSelect_->addItem("Syphon (texture sharing)", QVariant("syphon"));
+        sourceModeSelect_->setToolTip(
+            "Share an app/game window, a selected camera, or a Syphon sender. Enable Syphon output in the sending app first. Camera and microphone access starts only when you go live.");
+#else
+        sourceModeSelect_->setToolTip(
+            "Window captures visible app/game windows. Camera / Webcam captures a Windows video input device. "
+            "Spout2 is for local avatar/alpha senders such as VTube Studio, Warudo, VSeeFace, and VNyan. "
+            "Start or enable Spout output in that app first. For transparency, use VP9 with OBS alpha workflow. "
+            "If Spout frames are black, run both apps on the same GPU.");
+#endif
+    } else {
+        sourceModeSelect_->addItem("Capture unavailable", QVariant("window"));
+        sourceModeSelect_->setEnabled(false);
+        sourceModeSelect_->setToolTip(platform::capabilities().unavailableReason);
+    }
     installComboWheelGuard(sourceModeSelect_);
     sourceLabel->setBuddy(sourceModeSelect_);
     connect(sourceModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -1432,6 +1586,11 @@ void MainWindow::setupUI() {
         if (cameraOptionsPanel_) {
             cameraOptionsPanel_->setVisible(sourceMode == "camera");
         }
+#ifdef __APPLE__
+        if (syphonAlphaSelect_) syphonAlphaSelect_->setVisible(sourceMode == "syphon");
+        // Restore this choice before the existing window-preference lookup.
+        if (sourceMode == "window") syncAudioSourceChoices();
+#endif
         if (audioSourceSelect_) {
             QString audioMode = audioSourceSelect_->currentData().toString();
             if (!loadingPersistedSettings_) {
@@ -1446,7 +1605,11 @@ void MainWindow::setupUI() {
                     }
                 }
             }
-            if (sourceMode == "spout" && audioMode == "selected-window") {
+            if ((sourceMode == "spout"
+#ifdef __APPLE__
+             || sourceMode == "syphon"
+#endif
+            ) && audioMode == "selected-window") {
                 const int noAudioIndex = audioSourceSelect_->findData("none");
                 if (noAudioIndex >= 0) {
                     audioSourceSelect_->setCurrentIndex(noAudioIndex);
@@ -1459,6 +1622,10 @@ void MainWindow::setupUI() {
                 }
             }
         }
+#ifdef __APPLE__
+        // Keep the previous window choice until the code above has saved it.
+        syncAudioSourceChoices();
+#endif
         previousSourceMode_ = sourceMode;
         selectedWindowId_.clear();
         if (windowListWidget_) {
@@ -1466,6 +1633,9 @@ void MainWindow::setupUI() {
             windowListWidget_->requestThumbnailRefresh();
         }
         updateStatus(
+#ifdef __APPLE__
+            sourceMode == "syphon" ? "Select a Syphon sender" :
+#endif
             sourceMode == "spout"
                 ? "Select a Spout2 sender"
                 : (sourceMode == "camera"
@@ -1475,10 +1645,40 @@ void MainWindow::setupUI() {
         refreshWindowList();
         refreshSelectedWindowPreview();
         updateGoLiveButton();
+#ifdef __APPLE__
+        syncCodecUiState();
+#endif
         savePersistedSettings();
     });
     sourceLayout->addWidget(sourceLabel);
     sourceLayout->addWidget(sourceModeSelect_, 1);
+#ifdef __APPLE__
+    syphonAlphaSelect_ = new QComboBox(this);
+    syphonAlphaSelect_->setObjectName("syphonAlphaSelect");
+    syphonAlphaSelect_->setAccessibleName("Syphon input alpha");
+    syphonAlphaSelect_->addItem("Straight alpha", "straight");
+    syphonAlphaSelect_->addItem("Premultiplied alpha", "premultiplied");
+    syphonAlphaSelect_->setToolTip("Match the sending app's alpha format. Use premultiplied if translucent edges look dark with straight alpha. This describes the input; choose the OBS alpha workflow or a background separately.");
+    installComboWheelGuard(syphonAlphaSelect_);
+    syphonAlphaSelect_->setVisible(false);
+    connect(syphonAlphaSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (core_) core_->setSyphonPremultiplied(syphonAlphaSelect_->currentData().toString() == "premultiplied");
+        savePersistedSettings();
+    });
+    sourceLayout->addWidget(syphonAlphaSelect_);
+    auto *permissionButton = new QPushButton("Screen Recording…", this);
+    permissionButton->setObjectName("screenRecordingPermissionButton");
+    permissionButton->setToolTip("Allow access to app windows in macOS Privacy & Security settings.");
+    connect(permissionButton, &QPushButton::clicked, this, [this] {
+        if (!platform::screenCapturePermissionGranted()) {
+            platform::requestScreenCapturePermission();
+            if (!platform::screenCapturePermissionGranted())
+                QDesktopServices::openUrl(QUrl("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"));
+        }
+        onRefreshWindows();
+    });
+    sourceLayout->addWidget(permissionButton);
+#endif
     layout->addLayout(sourceLayout);
 
     cameraOptionsPanel_ = new QWidget(this);
@@ -1824,13 +2024,18 @@ void MainWindow::setupUI() {
 
     audioSourceSelect_ = new QComboBox(this);
     audioSourceSelect_->setObjectName("audioSourceSelect");
-    audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
-    audioSourceSelect_->addItem("Default output mix", QVariant("default-output"));
-    audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
-    audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
+    if (platform::capabilities().audioCapture) {
+        audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
+        audioSourceSelect_->addItem(platform::capabilities().communicationsAudioCapture ? "Default output mix" : "System audio (all apps)", QVariant("default-output"));
+        if (platform::capabilities().communicationsAudioCapture)
+            audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
+        if (platform::capabilities().microphoneCapture)
+            audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
+    }
     audioSourceSelect_->addItem("No audio", QVariant("none"));
-    audioSourceSelect_->setToolTip(
-        "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above.");
+    audioSourceSelect_->setToolTip(platform::capabilities().communicationsAudioCapture
+        ? "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above."
+        : "Selected app audio includes its child processes and other windows. Default output mix shares audio from all apps.");
     installComboWheelGuard(audioSourceSelect_);
     advancedForm->addRow("Audio Source", audioSourceSelect_);
 
@@ -1966,21 +2171,43 @@ void MainWindow::setupUI() {
 
     encoderSelect_ = new QComboBox(this);
     encoderSelect_->setObjectName("encoderSelect");
-    encoderSelect_->addItem("Auto (Hardware, then Software)", QVariant("auto"));
-    encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
-    encoderSelect_->addItem("FFmpeg NVENC (Advanced)", QVariant("ffmpeg_nvenc"));
-    encoderSelect_->addItem("Intel Quick Sync", QVariant("qsv"));
-    encoderSelect_->addItem("AMD AMF", QVariant("amf"));
-    encoderSelect_->addItem("Software", QVariant("software"));
+    if (platform::capabilities().videoEncoding) {
+        encoderSelect_->addItem("Auto (Hardware, then Software)", QVariant("auto"));
+#ifdef __APPLE__
+        encoderSelect_->addItem("Apple VideoToolbox", QVariant("videotoolbox"));
+        encoderSelect_->addItem("Software (x264 / VP9 / AV1)", QVariant("software"));
+#else
+        encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
+        encoderSelect_->addItem("FFmpeg NVENC (Advanced)", QVariant("ffmpeg_nvenc"));
+        encoderSelect_->addItem("Intel Quick Sync", QVariant("qsv"));
+        encoderSelect_->addItem("AMD AMF", QVariant("amf"));
+        encoderSelect_->addItem("Software", QVariant("software"));
+#endif
+    } else {
+        encoderSelect_->addItem("No encoders available", QVariant("unavailable"));
+        encoderSelect_->setEnabled(false);
+        encoderSelect_->setToolTip(platform::capabilities().unavailableReason);
+    }
     installComboWheelGuard(encoderSelect_);
     advancedForm->addRow("Encoder", encoderSelect_);
 
     codecSelect_ = new QComboBox(this);
     codecSelect_->setObjectName("codecSelect");
-    codecSelect_->addItem("H.264 (Compatibility)", QVariant("h264"));
-    codecSelect_->addItem("H.265 / HEVC (Experimental, auto fallback)", QVariant("h265"));
-    codecSelect_->addItem("AV1 (Experimental, auto fallback)", QVariant("av1"));
-    codecSelect_->addItem("VP9 (OBS Alpha Preview, auto fallback)", QVariant("vp9"));
+    if (platform::capabilities().videoEncoding) {
+        codecSelect_->addItem("H.264 (Compatibility)", QVariant("h264"));
+#ifdef __APPLE__
+        codecSelect_->addItem("H.265 / HEVC (Apple VideoToolbox)", QVariant("h265"));
+        codecSelect_->addItem("VP9 (Software, experimental)", QVariant("vp9"));
+        codecSelect_->addItem("AV1 (Software, experimental)", QVariant("av1"));
+#else
+        codecSelect_->addItem("H.265 / HEVC (Experimental, auto fallback)", QVariant("h265"));
+        codecSelect_->addItem("AV1 (Experimental, auto fallback)", QVariant("av1"));
+        codecSelect_->addItem("VP9 (OBS Alpha Preview, auto fallback)", QVariant("vp9"));
+#endif
+    } else {
+        codecSelect_->addItem("No codecs available", QVariant("unavailable"));
+        codecSelect_->setEnabled(false);
+    }
     installComboWheelGuard(codecSelect_);
     advancedForm->addRow("Video Codec", codecSelect_);
 
@@ -1996,8 +2223,13 @@ void MainWindow::setupUI() {
     alphaBackgroundModeSelect_->addItem("Chroma background", QVariant("chroma"));
     alphaBackgroundModeSelect_->addItem("Opaque background", QVariant("opaque"));
     alphaBackgroundModeSelect_->setToolTip(
+#ifdef __APPLE__
+        "Composites transparent window or Syphon pixels over the chosen color before encoding. "
+        "Use chroma background for green-screen output or opaque background for a solid fill.");
+#else
         "Composites transparent BGRA/Spout2 pixels over a solid color before encoding. "
         "Use chroma background with H.264/NVENC when true VP9 alpha is too CPU-heavy.");
+#endif
     installComboWheelGuard(alphaBackgroundModeSelect_);
     advancedForm->addRow("Alpha Background", alphaBackgroundModeSelect_);
 
@@ -2265,8 +2497,12 @@ void MainWindow::setupUI() {
     layout->addLayout(footerLayout);
 
     if (runtimeOptions_.systemIntegrationsEnabled) {
-        const QString cachePath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
-                                  + "/GameCapture/update-check.ini";
+        QString cachePath;
+        if (runtimeOptions_.persistedSettingsEnabled) {
+            cachePath = runtimeOptions_.settingsDirectory.isEmpty()
+                ? QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/GameCapture/update-check.ini"
+                : QDir(runtimeOptions_.settingsDirectory).filePath("update-check.ini");
+        }
         auto *checker = new UpdateChecker(APP_VERSION_TEXT, cachePath, this);
         const auto refreshUpdateStatus = [checker, updateLabel, releasesLink] {
             const auto &result = checker->result();
@@ -2282,6 +2518,9 @@ void MainWindow::setupUI() {
                 break;
             case UpdateStatus::Unavailable:
                 updateLabel->setText(tr("Update check unavailable"));
+                break;
+            case UpdateStatus::NoCompatibleDownload:
+                updateLabel->setText(tr("Latest release has no Apple Silicon download"));
                 break;
             }
             releasesLink->setVisible(result.status == UpdateStatus::Available);
@@ -2613,6 +2852,9 @@ void MainWindow::onWindowSelected(const QString &windowId) {
     if (hasSelection) {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
         updateStatus(
+#ifdef __APPLE__
+            sourceMode == "syphon" ? "Ready to capture Syphon sender" :
+#endif
             sourceMode == "spout"
                 ? "Ready to capture Spout2 sender"
                 : (sourceMode == "camera"
@@ -2622,6 +2864,9 @@ void MainWindow::onWindowSelected(const QString &windowId) {
     } else {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
         updateStatus(
+#ifdef __APPLE__
+            sourceMode == "syphon" ? "Select a Syphon sender" :
+#endif
             sourceMode == "spout"
                 ? "Select a Spout2 sender"
                 : (sourceMode == "camera"
@@ -2645,8 +2890,28 @@ void MainWindow::onAutoRefreshWindows() {
 }
 
 void MainWindow::refreshWindowList() {
+    if (!platform::capabilities().canCapture()) {
+        windowListWidget_->setHeaderText("Capture unavailable");
+        windowListWidget_->setEmptyText(platform::capabilities().unavailableReason);
+        windowListWidget_->setWindowList({});
+        selectedWindowId_.clear();
+        updateStatus("Capture unavailable", "idle");
+        return;
+    }
     if (core_) {
         const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
+#ifdef __APPLE__
+        windowListWidget_->setSyphonModeEnabled(sourceMode == "syphon");
+        if (sourceMode == "syphon") {
+            windowListWidget_->setHeaderText("Select Syphon Sender:");
+            windowListWidget_->setEmptyText("No Syphon senders detected. Enable Syphon output in the sending app, keep it running, then Refresh.");
+            const auto senders = core_->listSyphonServers();
+            windowListWidget_->setWindowList(senders);
+            if (selectedWindowId_.isEmpty()) {
+                updateStatus(senders.empty() ? "Waiting for Syphon sender" : "Select a Syphon sender", "idle");
+            }
+        } else
+#endif
         if (sourceMode == "spout") {
             windowListWidget_->setSpoutModeEnabled(true);
             windowListWidget_->setCameraModeEnabled(false);
@@ -2663,7 +2928,11 @@ void MainWindow::refreshWindowList() {
             windowListWidget_->setCameraModeEnabled(true);
             windowListWidget_->setHeaderText("Select Camera / Webcam:");
             windowListWidget_->setEmptyText(
+#ifdef __APPLE__
+                "No cameras detected. Connect a camera, check System Settings > Privacy & Security > Camera, then Refresh.");
+#else
                 "No cameras detected. Connect a camera, allow desktop camera access in Windows Settings, then Refresh.");
+#endif
             auto cameras = core_->listCameras();
             windowListWidget_->setWindowList(cameras);
             if (selectedWindowId_.isEmpty()) {
@@ -2675,6 +2944,10 @@ void MainWindow::refreshWindowList() {
             windowListWidget_->setHeaderText("Select Game/Window:");
             windowListWidget_->setEmptyText("No windows detected. Launch a game and click Refresh.");
             auto windows = core_->listWindows();
+#ifdef __APPLE__
+            const auto captureStatus = platform::screenCaptureStatus();
+            if (!captureStatus.empty()) windowListWidget_->setEmptyText(QString::fromStdString(captureStatus));
+#endif
             windowListWidget_->setWindowList(windows);
             if (selectedWindowId_.isEmpty()) {
                 updateStatus(windows.empty() ? "Waiting for window" : "Select a window to capture", "idle");
@@ -2694,10 +2967,14 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
     QSignalBlocker blocker(microphoneDeviceSelect_);
     microphoneDeviceSelect_->clear();
     microphoneDeviceSelect_->addItem("No microphone", QVariant(QString("none")));
-    microphoneDeviceSelect_->addItem("Windows default microphone/input", QVariant(QString()));
+    if (!platform::capabilities().microphoneCapture) {
+        microphoneDeviceSelect_->setEnabled(false);
+        return;
+    }
+    microphoneDeviceSelect_->addItem(QString::fromUtf8(platform::capabilities().name) + " default microphone/input", QVariant(QString()));
     microphoneDeviceSelect_->setItemData(
         1,
-        "Uses the current Windows default input device at the moment capture starts.",
+        "Uses the current system default input device at the moment capture starts.",
         Qt::ToolTipRole);
 
     if (core_) {
@@ -2751,6 +3028,10 @@ bool MainWindow::alphaWorkflowEffectiveForSelectedCodec() const {
     if (!alphaWorkflowCheck_ || !alphaWorkflowCheck_->isChecked()) {
         return false;
     }
+#ifdef __APPLE__
+    if (sourceModeSelect_ && sourceModeSelect_->currentData().toString() != "window" &&
+        sourceModeSelect_->currentData().toString() != "syphon") return false;
+#endif
     const versus::video::VideoCodec selectedCodec = codecFromUiValue(
         codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     return codecSupportsAlphaWorkflow(selectedCodec);
@@ -2782,6 +3063,12 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
         alphaBackgroundModeSelect_
             ? alphaBackgroundModeSelect_->currentData().toString()
             : QString("none"));
+#ifdef __APPLE__
+    if (sourceModeSelect_ && sourceModeSelect_->currentData().toString() != "window" &&
+        sourceModeSelect_->currentData().toString() != "syphon") {
+        config.alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
+    }
+#endif
     config.alphaBackgroundRed = static_cast<uint8_t>(
         std::clamp(alphaBackgroundColor_.red(), 0, 255));
     config.alphaBackgroundGreen = static_cast<uint8_t>(
@@ -2799,7 +3086,10 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     const QString encoderMode = encoderSelect_
         ? encoderSelect_->currentData().toString()
         : QString("auto");
-    if (encoderMode == "nvenc") {
+    if (encoderMode == "videotoolbox") {
+        config.preferredHardware = versus::video::HardwareEncoder::VideoToolbox;
+        config.explicitEncoderSelection = true;
+    } else if (encoderMode == "nvenc") {
         config.preferredHardware = versus::video::HardwareEncoder::NVENC;
         config.explicitEncoderSelection = true;
     } else if (encoderMode == "ffmpeg_nvenc") {
@@ -2816,7 +3106,7 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
         config.preferredHardware = versus::video::HardwareEncoder::None;
         config.explicitEncoderSelection = true;
     } else {
-        config.preferredHardware = versus::video::HardwareEncoder::NVENC;
+        config.preferredHardware = versus::video::EncoderConfig{}.preferredHardware;
         config.explicitEncoderSelection = false;
     }
     if (outputSelect_ && outputSelect_->currentData().toString() != "vdo") {
@@ -2824,6 +3114,12 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
         config.enableAlpha = false;
         config.bFrames = 0;
     }
+#ifdef __APPLE__
+    // Keep saved software tuning without passing it to native H.264/HEVC encoders,
+    // including destinations which select H.264 above.
+    if (config.codec != versus::video::VideoCodec::VP9 && config.codec != versus::video::VideoCodec::AV1)
+        config.ffmpegOptions.clear();
+#endif
     return config;
 }
 
@@ -3020,6 +3316,20 @@ void MainWindow::onGoLiveClicked() {
         const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : versus::defaults::AudioBitrateKbps;
         const int audioChannels = audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2;
         const bool externalOutput = outputSelect_->currentData().toString() != "vdo";
+#ifdef __APPLE__
+        if (!externalOutput && config.codec == versus::video::VideoCodec::H265 && encoderMode == "software") {
+            updateStatus("H.265 requires Apple VideoToolbox. Select Apple VideoToolbox or use H.264 with x264.", "error");
+            return;
+        }
+        if (!externalOutput && config.codec == versus::video::VideoCodec::VP9 && encoderMode == "videotoolbox") {
+            updateStatus("VP9 requires software encoding. Select Software or Auto.", "error");
+            return;
+        }
+        if (!externalOutput && config.codec == versus::video::VideoCodec::AV1 && encoderMode == "videotoolbox") {
+            updateStatus("AV1 requires software encoding. Select Software or Auto.", "error");
+            return;
+        }
+#endif
         const bool muxedOutput = (outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "udp" || outputSelect_->currentData().toString() == "rist") || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp"));
         const bool pcmAudio = !externalOutput && audioCodecSelect_->currentData().toString() == "pcm";
         const bool audioRed = !externalOutput && audioRedCheck_->isChecked() && !pcmAudio;
@@ -3127,6 +3437,11 @@ void MainWindow::onGoLiveClicked() {
                                !info.hasLibvpxVp9) {
                         failureStatus = "FFmpeg lacks libvpx-vp9. Choose a compatible FFmpeg for the VP9/alpha workflow.";
                     }
+#ifdef __APPLE__
+                    else if (config.codec == versus::video::VideoCodec::AV1 && !info.hasLibaomAv1) {
+                        failureStatus = "FFmpeg lacks libaom-av1. Choose a compatible FFmpeg for AV1 publishing.";
+                    }
+#endif
                 }
                 if (failureStatus.isEmpty()) {
                     const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
@@ -3372,7 +3687,7 @@ void MainWindow::updateGoLiveButton() {
             goLiveMenuAction_->setEnabled(true);
         }
     } else {
-        const bool sourceSelected = !selectedWindowId_.isEmpty();
+        const bool sourceSelected = !selectedWindowId_.isEmpty() && platform::capabilities().canPublish();
         goLiveButton_->setText(sourceSelected ? "GO LIVE" : "SELECT A SOURCE");
         goLiveButton_->setAccessibleName(sourceSelected ? "Go live" : "Go live unavailable");
         goLiveButton_->setAccessibleDescription(
@@ -3473,6 +3788,11 @@ void MainWindow::onStatsTimer() {
             }
         }
         stats.frameRate = metrics.frameRate > 0.0 ? metrics.frameRate : fpsSelect_->currentData().toInt();
+#ifdef __APPLE__
+        if (core_->getSourceHealth().suspended) {
+            updateStatus("Window capture paused. Restore the source window to resume video.", "connecting");
+        }
+#endif
         stats.width = metrics.width;
         stats.height = metrics.height;
 
@@ -3610,6 +3930,12 @@ void MainWindow::updateOutputControls() {
     for (QWidget *field : std::initializer_list<QWidget *>{roomInput_, labelInput_, viewerLimitSpin_, roomModeLqCheck_,
              remoteControlCheck_, remoteControlTokenInput_, codecSelect_, alphaWorkflowCheck_})
         setFormRowVisible(advancedForm_, field, vdo);
+#ifdef __APPLE__
+    setFormRowVisible(advancedForm_, alphaWorkflowCheck_, vdo &&
+        (!sourceModeSelect_ || sourceModeSelect_->currentData().toString() == "window" ||
+         sourceModeSelect_->currentData().toString() == "syphon") &&
+        codecSupportsAlphaWorkflow(codecFromUiValue(codecSelect_->currentData().toString())));
+#endif
     setFormRowVisible(advancedForm_, iceModeSelect_, vdo || whip);
     iceModeSelect_->setToolTip(whip
         ? "WHIP uses the ICE servers advertised by its endpoint. Relay Only requires an advertised TURN server."
@@ -3695,29 +4021,59 @@ void MainWindow::syncCodecUiState() {
         ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
     if (ffmpegOptionsInput_) {
+#ifdef __APPLE__
+        const bool softwareCodec = !externalOutput &&
+            (selectedCodec == versus::video::VideoCodec::VP9 || selectedCodec == versus::video::VideoCodec::AV1);
+        ffmpegOptionsInput_->setEnabled(configControlsEnabled_ && softwareCodec);
+        ffmpegOptionsInput_->setPlaceholderText("Optional VP9/AV1 options (for example: -threads 4)");
+        setFormRowVisible(advancedForm_, ffmpegOptionsInput_, softwareCodec);
+        setFormRowVisible(advancedForm_, ffmpegPathInput_, muxedOutput || softwareCodec || alphaWorkflowSelected);
+        setFormRowVisible(advancedForm_, ffmpegStatusLabel_, muxedOutput || softwareCodec || alphaWorkflowSelected);
+#else
         ffmpegOptionsInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
+#endif
     }
 
-    const bool supportsAlpha = codecSupportsAlphaWorkflow(selectedCodec);
+    const bool supportsAlpha = codecSupportsAlphaWorkflow(selectedCodec)
+#ifdef __APPLE__
+        && (!sourceModeSelect_ || sourceModeSelect_->currentData().toString() == "window" ||
+         sourceModeSelect_->currentData().toString() == "syphon")
+#endif
+        ;
     if (alphaWorkflowCheck_) {
+#ifdef __APPLE__
+        setFormRowVisible(advancedForm_, alphaWorkflowCheck_, !externalOutput && supportsAlpha);
+#endif
         alphaWorkflowCheck_->setEnabled(configControlsEnabled_ && supportsAlpha);
         alphaWorkflowCheck_->setText(alphaWorkflowTextFor(selectedCodec));
         alphaWorkflowCheck_->setToolTip(alphaWorkflowTooltipFor(selectedCodec));
     }
     const bool alphaWorkflowEnabled = alphaWorkflowSelected;
+#ifdef __APPLE__
+    const bool supportsBackground = !sourceModeSelect_ || sourceModeSelect_->currentData().toString() == "window" ||
+         sourceModeSelect_->currentData().toString() == "syphon";
+    setFormRowVisible(advancedForm_, alphaBackgroundModeSelect_, supportsBackground);
+    setFormRowVisible(advancedForm_, alphaBackgroundColorButton_, supportsBackground);
+#else
+    const bool supportsBackground = true;
+#endif
     if (alphaBackgroundModeSelect_) {
         alphaBackgroundModeSelect_->setEnabled(
-            configControlsEnabled_ && !alphaWorkflowEnabled);
+            configControlsEnabled_ && supportsBackground && !alphaWorkflowEnabled && alphaBackgroundModeSelect_->count() > 1);
         alphaBackgroundModeSelect_->setToolTip(alphaWorkflowEnabled
             ? "Alpha-preserving encode is enabled, so Game Capture keeps the source alpha instead of compositing a background."
+#ifdef __APPLE__
+            : "Composites transparent window or Syphon pixels over the chosen color before encoding. Use chroma background for green-screen output or opaque background for a solid fill.");
+#else
             : "Composites transparent BGRA/Spout2 pixels over a solid color before encoding. Use chroma background with H.264/NVENC when true VP9 alpha is too CPU-heavy.");
+#endif
     }
     if (alphaBackgroundColorButton_) {
         const bool backgroundEnabled = alphaBackgroundModeSelect_ &&
             alphaBackgroundModeSelect_->currentData().toString() != "none" &&
             !alphaWorkflowEnabled;
         alphaBackgroundColorButton_->setEnabled(
-            configControlsEnabled_ && backgroundEnabled);
+            configControlsEnabled_ && supportsBackground && backgroundEnabled);
     }
 
     if (codecSelect_) {
@@ -3772,11 +4128,19 @@ void MainWindow::refreshFfmpegStatus() {
                              (encoderSelect_->currentData().toString() == "qsv" || encoderSelect_->currentData().toString() == "amf"))) ||
          alphaWorkflowSelected);
     if (!needsFfmpeg) {
+#ifdef __APPLE__
+        ffmpegStatusLabel_->setText("The bundled FFmpeg helper handles VP9, AV1 and SRT, RTMP, RTSP, UDP and RIST output.");
+#else
         ffmpegStatusLabel_->setText("Needed for VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, or OBS alpha.");
+#endif
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
         return;
     }
+#ifdef __APPLE__
+    ffmpegStatusLabel_->setText("Checking FFmpeg...");
+#else
     ffmpegStatusLabel_->setText("Checking ffmpeg.exe...");
+#endif
     ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
     ffmpegProbeRequested_ = true;
     if (!ffmpegProbeTimer_) {
@@ -3837,7 +4201,11 @@ void MainWindow::showFfmpegStatus(const versus::video::FfmpegProbeInfo &info) {
         return;
     }
     if (!info.resolved) {
+#ifdef __APPLE__
+        ffmpegStatusLabel_->setText("FFmpeg was not found. Repair the bundled installation or select a compatible helper.");
+#else
         ffmpegStatusLabel_->setText("ffmpeg.exe not found. Use the bundled FFmpeg or a compatible custom path for the selected codec/workflow.");
+#endif
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
         return;
     }
@@ -3868,6 +4236,16 @@ void MainWindow::showFfmpegStatus(const versus::video::FfmpegProbeInfo &info) {
             ? "\nlibvpx-vp9 available; the alpha mask is CPU encoded."
             : "\nlibvpx-vp9 available.";
     }
+#ifdef __APPLE__
+    if (selectedCodec == versus::video::VideoCodec::AV1) {
+        status += info.hasLibaomAv1 ? "\nlibaom-av1 available; AV1 is CPU encoded." : "\nMissing libaom-av1; AV1 will not start.";
+        if (!info.hasLibaomAv1) {
+            ffmpegStatusLabel_->setText(status);
+            ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px; font-weight: 600;").arg(COLOR_YELLOW));
+            return;
+        }
+    }
+#endif
     ffmpegStatusLabel_->setText(status);
     ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
 }
@@ -3902,7 +4280,7 @@ QString MainWindow::microphoneSourceSummaryText() const {
     const QString text = microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentText().trimmed() : QString();
     const int gain = microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100;
     return QStringLiteral("Mic/input: %1 (%2%)")
-        .arg(text.isEmpty() ? QStringLiteral("Windows default") : text)
+        .arg(text.isEmpty() ? DEFAULT_MICROPHONE_LABEL : text)
         .arg(gain);
 }
 
@@ -4045,7 +4423,7 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     configControlsEnabled_ = enabled;
     for (QWidget *field : std::initializer_list<QWidget *>{outputSelect_, outputUrlInput_, outputSecretInput_,
             outputSecretRevealButton_, outputStreamIdInput_, outputLatencySpin_, aacBitrateSpin_})
-        if (field) field->setEnabled(enabled);
+        if (field) field->setEnabled(enabled && platform::capabilities().canPublish());
     if (!enabled && outputSecretRevealButton_) outputSecretRevealButton_->setChecked(false);
 
     if (resetDefaultsAction_) {
@@ -4055,8 +4433,11 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (windowListWidget_) {
         windowListWidget_->setEnabled(enabled);
     }
+#ifdef __APPLE__
+    if (syphonAlphaSelect_) syphonAlphaSelect_->setEnabled(enabled);
+#endif
     if (sourceModeSelect_) {
-        sourceModeSelect_->setEnabled(enabled);
+        sourceModeSelect_->setEnabled(enabled && platform::capabilities().canCapture());
     }
     if (cameraResolutionSelect_) {
         cameraResolutionSelect_->setEnabled(enabled);
@@ -4114,7 +4495,7 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
         iceModeSelect_->setEnabled(enabled);
     }
     if (audioSourceSelect_) {
-        audioSourceSelect_->setEnabled(enabled);
+        audioSourceSelect_->setEnabled(enabled && platform::capabilities().audioCapture);
     }
     if (audioBitrateSpin_) {
         audioBitrateSpin_->setEnabled(enabled);
@@ -4125,10 +4506,10 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (audioCodecSelect_) audioCodecSelect_->setEnabled(enabled);
     updateAudioEncodingControls();
     if (includeMicrophoneCheck_) {
-        includeMicrophoneCheck_->setEnabled(enabled);
+        includeMicrophoneCheck_->setEnabled(enabled && platform::capabilities().microphoneCapture);
     }
     if (microphoneDeviceSelect_) {
-        microphoneDeviceSelect_->setEnabled(enabled);
+        microphoneDeviceSelect_->setEnabled(enabled && platform::capabilities().microphoneCapture);
     }
     if (primaryAudioGainSpin_) {
         primaryAudioGainSpin_->setEnabled(enabled);
@@ -4152,10 +4533,10 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
             "control token");
     }
     if (encoderSelect_) {
-        encoderSelect_->setEnabled(enabled);
+        encoderSelect_->setEnabled(enabled && platform::capabilities().videoEncoding);
     }
     if (codecSelect_) {
-        codecSelect_->setEnabled(enabled);
+        codecSelect_->setEnabled(enabled && platform::capabilities().videoEncoding);
     }
     if (enabled) {
         onBitratePresetChanged(bitrateSelect_ ? bitrateSelect_->currentIndex() : 0);
@@ -4176,11 +4557,19 @@ void MainWindow::refreshSelectedWindowPreview() {
     if (!previewLabel_) {
         return;
     }
+    if (!platform::capabilities().canCapture()) {
+        previewLabel_->setText(platform::capabilities().unavailableReason);
+        previewLabel_->setWordWrap(true);
+        return;
+    }
 
     const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
     if (selectedWindowId_.isEmpty()) {
         previewLabel_->setPixmap(QPixmap());
         previewLabel_->setText(
+#ifdef __APPLE__
+            sourceMode == "syphon" ? "Select a Syphon sender" :
+#endif
             sourceMode == "spout"
                 ? "Select a Spout2 sender"
                 : (sourceMode == "camera"
@@ -4209,7 +4598,7 @@ void MainWindow::refreshSelectedWindowPreview() {
             ? microphoneDeviceSelect_->currentText().trimmed()
             : QString();
         lines << QString("Microphone: %1").arg(
-            microphoneName.isEmpty() ? QStringLiteral("Windows default") : microphoneName);
+            microphoneName.isEmpty() ? DEFAULT_MICROPHONE_LABEL : microphoneName);
 
         const QString audioMode = audioSourceSelect_
             ? audioSourceSelect_->currentData().toString()
@@ -4240,6 +4629,25 @@ void MainWindow::refreshSelectedWindowPreview() {
         return;
     }
 
+#ifdef __APPLE__
+    if (sourceMode == "syphon") {
+        previewLabel_->setPixmap(QPixmap());
+        QStringList lines{"Syphon sender selected", selectedWindowId_};
+        if (core_) {
+            const auto health = core_->getSourceHealth();
+            if (health.mode == versus::app::VideoSourceMode::Syphon &&
+                QString::fromStdString(health.sourceId) == selectedWindowId_ && health.hasFrame) {
+                lines << QString("%1x%2").arg(health.width).arg(health.height);
+                lines << (health.alphaDetected ? "Transparency detected" : "No transparency detected");
+                if (health.resizeCount) lines << QString("Sender resized %1 times").arg(health.resizeCount);
+            }
+        }
+        lines << "Video only; choose audio separately";
+        lines << "For transparency: OBS alpha workflow or chroma background";
+        previewLabel_->setText(lines.join('\n'));
+        return;
+    }
+#endif
     if (sourceMode == "spout") {
         previewLabel_->setPixmap(QPixmap());
         QStringList lines;

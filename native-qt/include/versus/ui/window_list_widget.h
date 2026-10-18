@@ -7,6 +7,9 @@
 #include <QMap>
 #include <QLabel>
 #include <QPixmap>
+#ifdef __APPLE__
+#include <QLineEdit>
+#endif
 
 #include "versus/video/window_capture.h"
 
@@ -26,6 +29,9 @@ class WindowListWidget : public QWidget {
     void setHeaderText(const QString &text);
     void setEmptyText(const QString &text);
     void setSpoutModeEnabled(bool enabled);
+#ifdef __APPLE__
+    void setSyphonModeEnabled(bool enabled);
+#endif
     void setCameraModeEnabled(bool enabled);
     void clearSelection();
 
@@ -47,6 +53,10 @@ class WindowListWidget : public QWidget {
     void updateSelectionVisuals();
 
     QListWidget *listWidget_ = nullptr;
+#ifdef __APPLE__
+    QLineEdit *sourceFilter_ = nullptr;
+    void applySourceFilter();
+#endif
     QLabel *headerLabel_ = nullptr;
     QPushButton *refreshButton_ = nullptr;
     QTimer *autoRefreshTimer_ = nullptr;
@@ -56,6 +66,9 @@ class WindowListWidget : public QWidget {
     QString emptyText_ = "No windows detected. Launch a game and click Refresh.";
     bool forceThumbnailRefreshOnNextSet_ = false;
     bool spoutModeEnabled_ = false;
+#ifdef __APPLE__
+    bool syphonModeEnabled_ = false;
+#endif
     bool cameraModeEnabled_ = false;
 };
 
