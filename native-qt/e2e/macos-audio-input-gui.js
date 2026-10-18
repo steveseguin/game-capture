@@ -22,6 +22,7 @@ for(const name of ['macos-audio-input-gui.js','macos-audio-input-fixture.mm','ma
 assert(['stale','reported'].includes(result.expectedLossStatus));
 const systemAudio=opts['system-audio']==='true';result.systemAudio=systemAudio;
 const expectedPermission=opts['expect-microphone-permission'];
+result.expectInputWarning=opts['expect-input-warning']==='true';
 if(expectedPermission){
   assert(['not_determined','denied','restricted'].includes(expectedPermission));assert(!systemAudio);
   result.scope='Packaged GUI with existing unavailable microphone permission: visible warning, received video without audio, Stop, and restart with No microphone. No privacy setting is changed.';
@@ -227,6 +228,7 @@ async function stop(entry,discovery){
       item.video=await video(page);item.audio=await sound(page,item);
       assert.equal(item.before.audio.active_microphone_source,inputName);assert.equal(item.before.audio.source_mode,systemAudio?'default-output':'none');
       assert(item.before.audio.include_microphone);assert.equal(item.before.video.hardware_encoder,encoder==='videotoolbox');
+      if(result.expectInputWarning)assert(!find('microphoneWarningLabel')?.AXValue,'Active input produced an unavailable warning');
       if(phase==='initial-loss'){
         await command('retire','retired');await listed(false);await sleep(2000);
         const before=await api('/diagnostics');
@@ -237,6 +239,11 @@ async function stop(entry,discovery){
         if(systemAudio)assert(item.after.metrics.audio_packets_sent>before.metrics.audio_packets_sent,'Independent system audio stopped');
         else assert.equal(item.after.metrics.audio_packets_sent,before.metrics.audio_packets_sent);
         const status=find('statusLabel');item.status=status?.AXValue||status?.AXTitle||'';
+        if(result.expectInputWarning){
+          item.inputWarning=find('microphoneWarningLabel')?.AXValue||'';
+          assert(item.inputWarning.startsWith('Microphone audio is off.')&&item.inputWarning.includes('stop and start streaming again'));
+          assert.equal(item.after.platform_permissions.microphone,'granted','Input-loss workflow requires preexisting microphone permission');
+        }
         if(result.expectedLossStatus==='reported'){
           assert.equal(item.after.audio.active_microphone_source,'none','Disconnected input still reported active');
           if(systemAudio){
@@ -260,6 +267,7 @@ async function stop(entry,discovery){
       await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.live&&!d.app.capturing;},15000,'GUI Stop did not finish');
       await waitFor(()=>find('goLiveButton')?.AXTitle==='Go live'&&find('goLiveButton')?.AXEnabled,10000,'GUI did not return to ready');
       item.stopped=await api('/diagnostics');assert.equal(item.stopped.peers.length,0);assert.equal(item.stopped.audio.level_rms,0);
+      if(result.expectInputWarning)assert(!find('microphoneWarningLabel')?.AXValue,'Input warning remained after Stop');
       await page.close();item.passed=true;save();console.log(encoder+' '+phase+': passed');
     }
     await stop(entry,discovery);entry.passed=true;
