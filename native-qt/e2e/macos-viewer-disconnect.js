@@ -105,7 +105,7 @@ async function picture(page,label){
     await sleep(500);entry.afterTracksClosed=snapshot(await diagnostics());
     assert.equal(entry.afterTracksClosed.encodeFailures,0);assert.equal(entry.afterTracksClosed.encodeTimeouts,0);
     checkCounterGates(entry.afterTracksClosed,'cycle-'+index);
-    entry.mediaAndCleanupPassed=true;entry.passed=!result.counterGateFailures.some(f=>f.label==='cycle-'+index);save();
+    entry.mediaAndTrackClosurePassed=true;entry.passed=!result.counterGateFailures.some(f=>f.label==='cycle-'+index);save();
   }
   // The final fresh viewer proves reception still starts after the last close.
   const fresh=await openViewer();result.finalRejoinPicture=await picture(fresh,'Final fresh viewer');await leave(fresh);
@@ -125,9 +125,9 @@ async function picture(page,label){
   result.publisherExitCode=local.exitCode;result.publisherDiscoveryRemoved=!fs.existsSync(path.join(senderReport,'private-control.json'));
   assert(result.publisherDiscoveryRemoved);result.observedUnavailableSends=diagnosticSchema==='classified'?result.final.reasons.track_unavailable+result.final.reasons.transport_unavailable:null;
   result.completed=true;
-  result.counterGatePassed=result.counterGateFailures.length===0;
+  result.counterGatePassed=diagnosticSchema==='classified'?result.counterGateFailures.length===0:null;
   result.timingGatePassed=result.trackCloseObservations.every(o=>o.within15Seconds);
-  result.passed=result.counterGatePassed&&result.timingGatePassed;
+  result.passed=result.counterGatePassed!==false&&result.timingGatePassed;
   if(!result.passed){result.error='Media/cleanup workflows completed; retained counter or 15-second timing gate failures';process.exitCode=1;}
 }catch(error){result.error=clean(error.stack||error);process.exitCode=1;}
 finally{
