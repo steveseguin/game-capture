@@ -8,7 +8,8 @@ namespace versus::platform::detail {
 // Two even-width rows of straight BGRA to limited-range BT.601 I420.
 // Preserve the existing integer contract: round each 2x2 RGB average before
 // applying the chroma matrix. Alpha never participates in the color track.
-inline void bgraRowsToI420(const uint8_t *top, const uint8_t *bottom, int width,
+template<bool Interleaved>
+inline void bgraRowsTo420(const uint8_t *top, const uint8_t *bottom, int width,
                           uint8_t *yTop, uint8_t *yBottom, uint8_t *u, uint8_t *v) {
     const auto luma = [](uint8x8_t b, uint8x8_t g, uint8x8_t r) {
         auto sum = vmull_u8(r, vdup_n_u8(66));
@@ -37,8 +38,15 @@ inline void bgraRowsToI420(const uint8_t *top, const uint8_t *bottom, int width,
         auto cr = vmulq_n_s16(red, 112);
         cr = vmlaq_n_s16(cr, green, -94);
         cr = vmlaq_n_s16(cr, blue, -18);
-        vst1_u8(u + x / 2, vqmovun_s16(vaddq_s16(vrshrq_n_s16(cb, 8), vdupq_n_s16(128))));
-        vst1_u8(v + x / 2, vqmovun_s16(vaddq_s16(vrshrq_n_s16(cr, 8), vdupq_n_s16(128))));
+        const auto u8 = vqmovun_s16(vaddq_s16(vrshrq_n_s16(cb, 8), vdupq_n_s16(128)));
+        const auto v8 = vqmovun_s16(vaddq_s16(vrshrq_n_s16(cr, 8), vdupq_n_s16(128)));
+        if constexpr (Interleaved) {
+            const uint8x8x2_t uv = {{u8, v8}};
+            vst2_u8(u + x, uv);
+        } else {
+            vst1_u8(u + x / 2, u8);
+            vst1_u8(v + x / 2, v8);
+        }
     }
     // Encoders accept even dimensions that need not be multiples of sixteen.
     for (; x < width; x += 2) {
@@ -54,9 +62,21 @@ inline void bgraRowsToI420(const uint8_t *top, const uint8_t *bottom, int width,
             }
         }
         red = (red + 2) / 4; green = (green + 2) / 4; blue = (blue + 2) / 4;
-        u[x / 2] = ((-38 * red - 74 * green + 112 * blue + 128) >> 8) + 128;
-        v[x / 2] = ((112 * red - 94 * green - 18 * blue + 128) >> 8) + 128;
+        const auto cb = ((-38 * red - 74 * green + 112 * blue + 128) >> 8) + 128;
+        const auto cr = ((112 * red - 94 * green - 18 * blue + 128) >> 8) + 128;
+        if constexpr (Interleaved) { u[x] = cb; u[x + 1] = cr; }
+        else { u[x / 2] = cb; v[x / 2] = cr; }
     }
+}
+
+inline void bgraRowsToI420(const uint8_t *top, const uint8_t *bottom, int width,
+                          uint8_t *yTop, uint8_t *yBottom, uint8_t *u, uint8_t *v) {
+    bgraRowsTo420<false>(top, bottom, width, yTop, yBottom, u, v);
+}
+
+inline void bgraRowsToNV12(const uint8_t *top, const uint8_t *bottom, int width,
+                          uint8_t *yTop, uint8_t *yBottom, uint8_t *uv) {
+    bgraRowsTo420<true>(top, bottom, width, yTop, yBottom, uv, nullptr);
 }
 
 } // namespace versus::platform::detail

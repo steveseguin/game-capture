@@ -516,6 +516,11 @@ if(VERSUS_BUILD_TESTS)
         target_include_directories(test_macos_i420 PRIVATE include)
         add_test(NAME MacI420ArithmeticGate COMMAND test_macos_i420)
 
+        add_executable(test_macos_fitted_rows tests/test_macos_fitted_rows.cpp)
+        target_include_directories(test_macos_fitted_rows PRIVATE include)
+        target_link_libraries(test_macos_fitted_rows PRIVATE Qt6::Gui)
+        add_test(NAME MacFittedRowsGate COMMAND test_macos_fitted_rows)
+
         add_executable(test_macos_encoder tests/test_macos_encoder.cpp)
         set_target_properties(test_macos_encoder PROPERTIES AUTOMOC ON)
         target_link_libraries(test_macos_encoder PRIVATE versus-lib Qt6::Test)

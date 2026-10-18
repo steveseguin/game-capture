@@ -1,5 +1,6 @@
 #include "versus/platform/macos_encoder.h"
 #include "versus/platform/macos_i420.h"
+#include "versus/platform/macos_fitted_rows.h"
 #include "versus/platform/macos_ffmpeg_encoder.h"
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
@@ -41,31 +42,16 @@ bool setProperty(VTCompressionSessionRef session, CFStringRef property, CFTypeRe
 }
 
 bool toI420(const CapturedFrame &frame, int width, int height, std::vector<uint8_t> &pixels) {
-    if (frame.format != CapturedFrame::Format::BGRA || frame.width <= 0 || frame.height <= 0 ||
-        frame.width > 8192 || frame.height > 8192 || frame.stride < frame.width * 4 ||
-        frame.data.size() < static_cast<size_t>(frame.stride) * frame.height) return false;
-    // Capture supplies straight BGRA. Color and alpha are separate tracks;
-    // never multiply the color by alpha before the receiver composites them.
-    QImage input(frame.data.data(), frame.width, frame.height, frame.stride, QImage::Format_RGB32);
-    QImage fitted(width, height, QImage::Format_RGB32);
-    if (fitted.isNull()) return false;
-    fitted.fill(Qt::black);
-    const auto fit = computeAspectFitRect(frame.width, frame.height, width, height);
-    {
-        QPainter painter(&fitted);
-        painter.drawImage(QRect(fit.x, fit.y, fit.width, fit.height), input);
-    }
     const size_t area = static_cast<size_t>(width) * height;
     pixels.resize(area * 3 / 2);
     auto *yPlane = pixels.data(), *uPlane = pixels.data() + area, *vPlane = pixels.data() + area * 5 / 4;
-    for (int y = 0; y < height; y += 2) {
+    return detail::withFittedBgraRows(frame, width, height, [&](const uint8_t *top, const uint8_t *bottom, int y) {
         const size_t chroma = static_cast<size_t>(y / 2) * (width / 2);
-        detail::bgraRowsToI420(fitted.constScanLine(y), fitted.constScanLine(y + 1), width,
+        detail::bgraRowsToI420(top, bottom, width,
                               yPlane + static_cast<size_t>(y) * width,
                               yPlane + static_cast<size_t>(y + 1) * width,
                               uPlane + chroma, vPlane + chroma);
-    }
-    return true;
+    });
 }
 
 bool normalizeSample(CMSampleBufferRef sample, VideoCodec codec, EncodedPacket &packet) {
@@ -279,11 +265,11 @@ bool MacVideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet, 
     if (!state_->initialized) return false;
     if (state_->ffmpeg) return state_->ffmpeg->encode(frame, packet, sourceTimestamp);
     const auto &config = state_->config;
-    if (!toI420(frame, config.width, config.height, state_->i420)) {
-        state_->failure = EncodeFailureKind::InvalidInput; return false;
-    }
     const size_t area = static_cast<size_t>(config.width) * config.height;
     if (state_->software) {
+        if (!toI420(frame, config.width, config.height, state_->i420)) {
+            state_->failure = EncodeFailureKind::InvalidInput; return false;
+        }
         x264_picture_t input, output;
         x264_picture_init(&input); x264_picture_init(&output);
         input.img.i_csp = X264_CSP_I420; input.img.i_plane = 3;
@@ -321,16 +307,15 @@ bool MacVideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet, 
     }
     auto *yPlane = static_cast<uint8_t *>(CVPixelBufferGetBaseAddressOfPlane(buffer, 0));
     auto *uvPlane = static_cast<uint8_t *>(CVPixelBufferGetBaseAddressOfPlane(buffer, 1));
-    for (int y = 0; y < config.height; ++y)
-        std::memcpy(yPlane + y * CVPixelBufferGetBytesPerRowOfPlane(buffer, 0), state_->i420.data() + y * config.width, config.width);
-    for (int y = 0; y < config.height / 2; ++y) {
-        auto *row = uvPlane + y * CVPixelBufferGetBytesPerRowOfPlane(buffer, 1);
-        for (int x = 0; x < config.width / 2; ++x) {
-            const size_t offset = static_cast<size_t>(y) * config.width / 2 + x;
-            row[x * 2] = state_->i420[area + offset]; row[x * 2 + 1] = state_->i420[area * 5 / 4 + offset];
-        }
-    }
+    const auto yStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0);
+    const auto uvStride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 1);
+    const bool converted = detail::withFittedBgraRows(frame, config.width, config.height,
+        [&](const uint8_t *top, const uint8_t *bottom, int y) {
+            detail::bgraRowsToNV12(top, bottom, config.width,
+                yPlane + y * yStride, yPlane + (y + 1) * yStride, uvPlane + (y / 2) * uvStride);
+        });
     CVPixelBufferUnlockBaseAddress(buffer, 0);
+    if (!converted) { CFRelease(buffer); state_->failure = EncodeFailureKind::InvalidInput; return false; }
     CVBufferSetAttachment(buffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(buffer, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_sRGB, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(buffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_601_4, kCVAttachmentMode_ShouldPropagate);

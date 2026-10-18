@@ -42,6 +42,17 @@ static void compare(const uint8_t *a, const uint8_t *b, int width) {
                      static_cast<unsigned long long>(pixels));
         std::exit(1);
     }
+    std::vector<uint8_t> nv12(width + 17, 0xcd), expectedNv12 = nv12;
+    for (int x = 0; x < width / 2; ++x) {
+        expectedNv12[1 + 2*x] = expected[2][1+x];
+        expectedNv12[2 + 2*x] = expected[3][1+x];
+    }
+    std::fill(actual[0].begin(), actual[0].end(), 0xcd);
+    std::fill(actual[1].begin(), actual[1].end(), 0xcd);
+    versus::platform::detail::bgraRowsToNV12(a, b, width, actual[0].data()+1, actual[1].data()+1, nv12.data()+1);
+    if (actual[0] != expected[0] || actual[1] != expected[1] || nv12 != expectedNv12) {
+        std::fprintf(stderr, "NV12 mismatch, width=%d\n", width); std::exit(1);
+    }
     pixels += width * 2;
 }
 
