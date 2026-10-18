@@ -21,6 +21,12 @@ for(const name of ['macos-audio-input-gui.js','macos-audio-input-fixture.mm','ma
   fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 assert(['stale','reported'].includes(result.expectedLossStatus));
 const systemAudio=opts['system-audio']==='true';result.systemAudio=systemAudio;
+const expectedPermission=opts['expect-microphone-permission'];
+if(expectedPermission){
+  assert(['not_determined','denied','restricted'].includes(expectedPermission));assert(!systemAudio);
+  result.scope='Packaged GUI with existing unavailable microphone permission: visible warning, received video without audio, Stop, and restart with No microphone. No privacy setting is changed.';
+  result.expectedMicrophonePermission=expectedPermission;
+}
 assert(!systemAudio||result.expectedLossStatus==='reported','System-audio preservation requires the fixed candidate');
 const children=new Set();let browser,input,source,tone,uid,inputName,control,publisher,publisherOwnership;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');
@@ -166,6 +172,49 @@ async function stop(entry,discovery){
       assert(fs.readFileSync(ini,'utf8').includes('microphoneDeviceId='+uid),'GUI did not save the explicit owned UID');
     };
     ui('set','streamIdInput',stream);ui('set','passwordInput','false');
+    if(expectedPermission){
+      await listed(true);await select();
+      const warning=()=>{const row=find('microphoneWarningLabel');return row?.AXValue||row?.AXTitle||'';};
+      for(const phase of ['permission-unavailable','microphone-disabled']){
+        if(phase==='microphone-disabled'){
+          ui('press','microphoneDeviceSelect');
+          await waitFor(()=>rows().some(r=>r.AXTitle==='No microphone'),5000,'No microphone choice absent');
+          ui('press','No microphone');
+          await waitFor(()=>find('microphoneDeviceSelect')?.AXTitle==='No microphone',5000,'No microphone did not commit');
+          assert(fs.readFileSync(ini,'utf8').includes('microphoneDeviceId=none'));
+        }
+        assert.equal(warning(),'','Permission warning remained while idle');
+        const idle=await api('/diagnostics');assert(!idle.app.live&&!idle.app.capturing);
+        assert.equal(idle.platform_permissions.microphone,expectedPermission,'Existing privacy state differs from this workflow');
+        const item={phase,passed:false};entry.phases.push(item);save();
+        ui('press','goLiveButton');
+        await waitFor(async()=>{alive(publisher);return (await api('/diagnostics')).app.live;},20000,'Go Live did not start');
+        const page=await receiver(browser,stream,publisher);
+        item.video=await video(page);item.audio=await observeAudio(page);item.before=await api('/diagnostics');item.beforeUi=audioRows();
+        item.warning=warning();save();
+        assert(item.audio.spectra.length>=25&&item.audio.spectra.every(s=>s.rms<.0005),'Unexpected received audio');
+        assert(item.audio.tracks.every(t=>(t.packetsReceived||0)===0),'Unexpected received audio packets');
+        assert.equal(item.before.audio.active_microphone_source,'none');assert.equal(item.before.metrics.audio_packets_sent,0);
+        assert.equal(item.before.audio.include_microphone,phase==='permission-unavailable');
+        assert.equal(item.before.platform_permissions.microphone,expectedPermission);
+        assert.equal(item.before.video.hardware_encoder,encoder==='videotoolbox');
+        if(phase==='permission-unavailable'){
+          assert(item.warning.startsWith('Microphone audio is off.'));
+          assert(item.warning.includes(expectedPermission==='not_determined'?'macOS microphone prompt':'Privacy & Security > Microphone'));
+          assert(item.warning.includes('stop and start streaming again'));
+          ui('press','advancedToggle');await sleep(1200);
+          assert.equal(warning(),item.warning,'Warning disappeared after changing advanced visibility');
+        }else assert.equal(item.warning,'','Disabled microphone produced a permission warning');
+        const windowId=ui('window').trim();execFileSync('/usr/sbin/screencapture',['-x','-l',windowId,path.join(report,encoder+'-'+phase+'.png')],{timeout:10000,stdio:'pipe'});
+        ui('press','goLiveButton');
+        await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.live&&!d.app.capturing;},15000,'GUI Stop did not finish');
+        await waitFor(()=>find('goLiveButton')?.AXTitle==='Go live'&&find('goLiveButton')?.AXEnabled,10000,'GUI did not return to ready');
+        assert.equal(warning(),'','Warning remained after Stop');
+        item.stopped=await api('/diagnostics');assert.equal(item.stopped.peers.length,0);assert.equal(item.stopped.audio.level_rms,0);
+        await page.close();item.passed=true;save();console.log(encoder+' '+phase+': passed');
+      }
+      await stop(entry,discovery);entry.passed=true;save();continue;
+    }
     for(const phase of ['initial-loss','restored-start']){
       if(phase==='restored-start')await command('restore','created');
       await listed(true);await select();
