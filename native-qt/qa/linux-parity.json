@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum). All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified. See x11_damage_endurance_checkpoint for all interval decisions, timing phases, resource range and cleanup."
+      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum). All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified. See x11_damage_endurance_checkpoint for all interval decisions, timing phases, resource range and cleanup. The three-way X11 reference diagnostic now confirms reference-path differences and receiver startup skew under both references; see av_desktop_reference_checkpoint. Absolute calibration and startup synchronization remain open."
     },
     {
       "id": "arm-portability",
@@ -21578,6 +21578,67 @@
         "sha256": "e11777cdab5c044ec7ddbf090e835ec6b49a23b2107e48199bbfac46acecc4ef",
         "passed": true
       }
+    },
+    {
+      "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/results.json",
+      "reportSha256": "64cca34f4efaf87fc58e667af6fdbce8ff1ddb24695d9f1b99edf468ffbeab0c",
+      "passed": false,
+      "scope": "Exact-package bounded X11 three-way A/V reference diagnostic. Not independently calibrated timing qualification.",
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "9fb36c4db8c614c126c80db4b0132ef6b889443b0c3cffc69a0c8774f907c437",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+        "linux-av-compare-references.py": "54848c5b8a74f3819425c878c4df40fe16897f4bd8635ee16b2b3a6431b73aea"
+      },
+      "recordingWorkflowPassed": true,
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "comparison": {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/reference-comparison.json",
+        "sha256": "eb6031fad3955e7f1eab3410a6094e07f0f5d707f7b778ea15fad1340edce89a",
+        "comparisonComplete": true,
+        "calibrated": false,
+        "matchedPulses": 13,
+        "summary": {
+          "referenceDifferenceMs": {
+            "median": 33.500000000000085,
+            "minimum": 26.499999999998636,
+            "maximum": 50.50000000000044
+          },
+          "receiverMinusBrowserMs": {
+            "median": -1.0000000000012221,
+            "minimum": -18.000000000000682,
+            "maximum": 75.00000000000017
+          },
+          "receiverMinusDesktopMs": {
+            "median": 34.499999999997755,
+            "minimum": 13.500000000000512,
+            "maximum": 125.50000000000061
+          }
+        },
+        "desktopAudioClockContinuousWithin3ms": true,
+        "desktopAudioMinusBrowserOutputEstimateMs": {
+          "median": 9.83056640625,
+          "minimum": 6.75048828125,
+          "maximum": 10.99462890625,
+          "scope": "Agreement with Chrome output-clock estimate, including pulse-detector onset; not independent absolute calibration."
+        }
+      },
+      "receiverBuffering": {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/receiver-buffering.json",
+        "sha256": "8f1122b76ee0a020535f14f4cf4bcf8cc2801f58dbdfc1887f6a2948d2eb0362"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/host-cleanup.json",
+        "sha256": "40ac10300460bda98bc33c38645e6563c32e23fb9c5c56bde7196b38a47d02dc",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -21643,7 +21704,8 @@
     "Use linux-av-reference.js under a separate owned X11 desktop with --source-fixture=<saved linux-av-source.html> --analysis-python=<venv Python> --seconds=60 --hold-seconds=60 for the browser-only clock/recording control. This is not packaged application testing.",
     "Run linux-av-sync.js --trace-capture=true with total requested capture <=240 seconds under the owned X11 wrapper for bounded native capture/submit identity diagnostics; frame-trace-analysis.json requires readable markers and exact capture joins. Keep tracing disabled for endurance.",
     "Run linux-av-sync.js --backend=wayland under linux-wayland-desktop.py. It owns a temporary 1440x1000 monitor, verifies a fully visible native 1280x720 source from monitor pixels, uses real portal consent, and restores the original layout. This requires the existing authorized keyboard fixture, GNOME Mutter ScreenCast, GStreamer and Pillow.",
-    "For X11 DAMAGE regression use linux-window-publish.js --backend=x11 --idle-source=true under the private X11 wrapper; --gui=true --preview=true adds Qt/preview coverage. The source sends one final identity then stops drawing, while decoded output must remain paced and capture readbacks must stop. Separately run the ordinary CLI workflow on Xvfb with -extension DAMAGE to exercise timed fallback. Native trace diagnostics now allow up to 360 requested seconds at the fixed one-receiver 60fps profile; actual 100,000-row truncation is still rejected."
+    "For X11 DAMAGE regression use linux-window-publish.js --backend=x11 --idle-source=true under the private X11 wrapper; --gui=true --preview=true adds Qt/preview coverage. The source sends one final identity then stops drawing, while decoded output must remain paced and capture readbacks must stop. Separately run the ordinary CLI workflow on Xvfb with -extension DAMAGE to exercise timed fallback. Native trace diagnostics now allow up to 360 requested seconds at the fixed one-receiver 60fps profile; actual 100,000-row truncation is still rejected.",
+    "linux-av-sync.js --source-reference=desktop is an opt-in X11 diagnostic limited to <=60 seconds without hold. It records the owned X11 drawable and dedicated Pulse sink monitor with lossless H264/PCM using one common wall-clock offset, plus simultaneous canvas/WebAudio and receiver recordings. reference-comparison.json compares matching pulses and browser output-clock estimates. This mode deliberately keeps passed=false until independently calibrated; inspect recordingWorkflowPassed, diagnosticPassed, comparison and cleanup separately."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -24884,5 +24946,87 @@
     },
     "interpretation": "All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified.",
     "remaining": "Resolve the absolute A/V reference and startup timing before claiming calibrated skew/drift. Isolate native Wayland source/compositor/PipeWire throughput, then run its separate >=30-minute default-profile workflow. Full parity requirements remain in force."
+  },
+  "av_desktop_reference_checkpoint": {
+    "evidence": {
+      "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/results.json",
+      "reportSha256": "64cca34f4efaf87fc58e667af6fdbce8ff1ddb24695d9f1b99edf468ffbeab0c",
+      "passed": false,
+      "scope": "Exact-package bounded X11 three-way A/V reference diagnostic. Not independently calibrated timing qualification.",
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd",
+      "executableSha256": "a2e29d461624ffa60b6eb11bdf1b9b83a95bf46bfffd904e8569cdc8d42ac214",
+      "harnesses": {
+        "linux-av-sync.js": "9fb36c4db8c614c126c80db4b0132ef6b889443b0c3cffc69a0c8774f907c437",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-desktop-reference.js": "5a577879329d3997ea14cc809c99d35510acf1ecd3c634001d7da6163d45fd9f",
+        "linux-av-compare-references.py": "54848c5b8a74f3819425c878c4df40fe16897f4bd8635ee16b2b3a6431b73aea"
+      },
+      "recordingWorkflowPassed": true,
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "comparison": {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/reference-comparison.json",
+        "sha256": "eb6031fad3955e7f1eab3410a6094e07f0f5d707f7b778ea15fad1340edce89a",
+        "comparisonComplete": true,
+        "calibrated": false,
+        "matchedPulses": 13,
+        "summary": {
+          "referenceDifferenceMs": {
+            "median": 33.500000000000085,
+            "minimum": 26.499999999998636,
+            "maximum": 50.50000000000044
+          },
+          "receiverMinusBrowserMs": {
+            "median": -1.0000000000012221,
+            "minimum": -18.000000000000682,
+            "maximum": 75.00000000000017
+          },
+          "receiverMinusDesktopMs": {
+            "median": 34.499999999997755,
+            "minimum": 13.500000000000512,
+            "maximum": 125.50000000000061
+          }
+        },
+        "desktopAudioClockContinuousWithin3ms": true,
+        "desktopAudioMinusBrowserOutputEstimateMs": {
+          "median": 9.83056640625,
+          "minimum": 6.75048828125,
+          "maximum": 10.99462890625,
+          "scope": "Agreement with Chrome output-clock estimate, including pulse-detector onset; not independent absolute calibration."
+        }
+      },
+      "receiverBuffering": {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/receiver-buffering.json",
+        "sha256": "8f1122b76ee0a020535f14f4cf4bcf8cc2801f58dbdfc1887f6a2948d2eb0362"
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/7a46864b-5f58-4a17-8ef9-8538192535c7/host-cleanup.json",
+        "sha256": "40ac10300460bda98bc33c38645e6563c32e23fb9c5c56bde7196b38a47d02dc",
+        "passed": true
+      }
+    },
+    "failedFixtureAttempts": [
+      {
+        "report": "native-qt/qa/reports/linux-av-desktop-reference/175b1ede-4d60-493b-b3a6-c55a29f7b0a9/results.json",
+        "sha256": "3512ef79b0a731623207aff3593df95538ea41b1b75507be4f7027c110ced8a2",
+        "error": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:\n\n  assert(owned && owned.name === 'module-null-sink')\n\n    at Object.record (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-desktop-reference.js:25:3)\n    at phase (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:113:63)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:120:11",
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-av-desktop-reference/175b1ede-4d60-493b-b3a6-c55a29f7b0a9/host-cleanup.json",
+          "sha256": "670c1ddbb50ca755b50dd12083479c2e696cad4b7988ed894c979672a88b15d8"
+        }
+      }
+    ],
+    "interpretation": "The simultaneous canvas/WebAudio reference differs from the desktop/Pulse reference by a median 33.5 ms (26.5\u201350.5 ms) for 13 matched pulses. Receiver-minus-desktop skew reaches +125.5 ms during startup and settles to about +13.5\u201321.5 ms in later pulses; the full diagnostic still fails the unchanged 50 ms limit. Desktop audio timestamps track Chrome output-clock estimates within about 6.75\u201310.99 ms, including detector onset; this is supporting consistency, not independent absolute calibration. Saved receiver statistics show video jitter-buffer target rising from about 55 ms cumulative initially to 167 ms, with minimum near 11 ms, while audio target settles near 20 ms and packet loss/concealment remain zero. This supports investigating startup synchronization and the Linux app-audio mixer delay; it does not prove the cause or authorize a blanket timestamp correction.",
+    "fixtureCorrection": "pactl JSON module listings on this PipeWire host omit IDs. The optional desktop recorder and Linux A/V cleanup now use numeric record headers from the short inventory, allowing multiline arguments on unrelated modules. Existing endurance cleanup was independently verified by exact owned sink name and process disappearance.",
+    "remaining": "Calibrate the desktop reference with controlled timing changes, distinguish receiver/recording startup behavior from publisher delay, and qualify any production fix with selected-app multi-stream/recovery and unchanged Windows/macOS behavior. Native Wayland and the complete parity ledger remain open.",
+    "gates": {
+      "report": "native-qt/build-linux/av-desktop-reference-gates.json",
+      "sha256": "c23f373fe5d57efc7c6b578228ae42fccc04016ff9e078478d8163a89c99a031",
+      "classification": "Syntax, JSON, whitespace and executed-harness/source-integrity gates only; not application testing. Actual packaged workflow evidence remains in the linked reports, with timing qualification incomplete."
+    }
   }
 }

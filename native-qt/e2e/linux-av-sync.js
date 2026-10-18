@@ -10,6 +10,9 @@ assert.equal(process.platform,'linux');const backend=opts.backend||'x11';assert(
 assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'Use the matching owned desktop wrapper');
 for(const k of ['publisher','manifest-sha256','reports'])assert(opts[k],k);
 const seconds=Number(opts.seconds||60),hold=Number(opts['hold-seconds']||0),analysisPython=opts['analysis-python']||'python3';
+const sourceReference=opts['source-reference']||'canvas';assert(['canvas','desktop'].includes(sourceReference));
+const desktopReference=sourceReference==='desktop';
+if(desktopReference)assert(!wayland&&hold===0&&seconds<=60,'Uncalibrated desktop reference is limited to a bounded X11 diagnostic');
 // One receiver produces about 240 native trace rows/second at this fixed
 // 60fps profile. Six minutes leaves room for startup below the 100,000-row
 // limit; the offline analyzer also rejects an actually truncated trace.
@@ -23,7 +26,9 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 const harnesses={};for(const name of ['linux-av-sync.js','linux-av-probe.js','macos-av-source.html','macos-continuous-audio.js','macos-media-receiver.js','macos-analyze-av-sync.py','macos-calibrate-av-sync.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(wayland)for(const name of ['linux-av-wayland.js','linux-source-monitor.py','linux-virtual-monitor.py','linux-portal-select.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(traceCapture){const name='linux-av-trace-report.js';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
+if(desktopReference)for(const name of ['linux-av-desktop-reference.js','linux-av-compare-references.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 const result={backend,traceCapture,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
+  sourceReference,diagnosticOnly:desktopReference,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
 const pactl=(...a)=>execFileSync('pactl',a,{encoding:'utf8',timeout:5000}).trim();
@@ -44,6 +49,15 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     modules.push(pactl('load-module','module-null-sink','sink_name='+sink,'rate=48000','channels=2'));
     // Generate a larger Linux source from the unchanged shared clocked fixture.
     let fixture=fs.readFileSync(path.join(report,'macos-av-source.html'),'utf8').replace('Owned Mac A/V Fixture',title).replace('width="960" height="540"','width="1280" height="720"').replace('frames:0,events:[]','frames:0,trace:[],events:[]').replace('fixture.frames++;requestAnimationFrame(draw);','fixture.trace.push({stamp,wall:performance.timeOrigin+performance.now()});if(fixture.trace.length>12000)fixture.trace.shift();fixture.frames++;requestAnimationFrame(draw);');
+    if(desktopReference){
+      // Observe Chrome's output-clock estimate without changing stimulus timing.
+      // currentTime minus contextTime is not itself an output-latency estimate:
+      // https://www.w3.org/TR/webaudio-1.1/#dom-audiocontext-getoutputtimestamp
+      const event='fixture.events.push({pulse,phaseMs:phase*10,wall:performance.timeOrigin+performance.now()});';
+      assert(fixture.includes(event),'Shared source event layout changed');
+      fixture=fixture.replace(event,'fixture.events.push({pulse,phaseMs:phase*10,wall:performance.timeOrigin+performance.now(),contextTime:audio.currentTime,timeOrigin:performance.timeOrigin,outputTimestamp:audio.getOutputTimestamp(),baseLatency:audio.baseLatency,outputLatency:audio.outputLatency});');
+      result.sourceClockTelemetry='Browser-reported output-clock estimates at each pulse, diagnostic only; not independent physical latency calibration.';
+    }
     if(traceCapture){
       // The existing native trace reads twelve bits and their adjacent inverse.
       // These dim sentinels satisfy that reader without entering the brighter
@@ -95,7 +109,11 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     }
     async function phase(name){
       const entry={name,started:Date.now()};result.phases.push(entry);save();const pair=[];
-      for(const [kind,target,settings] of [['source',source,{includeVideo:true,sourceStreamKey:'fixtureReference'}],['receiver',page,{includeVideo:true}]]){const r=await audio.record(target,path.join(report,name+'-'+kind+'.webm'),settings);pair.push(r);recordings.add(r);entry[kind]=r.metadata;save();}
+      if(desktopReference){
+        const r=await require('./linux-av-desktop-reference').record(path.join(report,name+'-source.mkv'),{pid:sourcePid,title,sink,moduleId:modules[0],env});
+        pair.push(r);recordings.add(r);entry.source=r.metadata;save();
+      }
+      for(const [kind,target,settings] of [[desktopReference?'browserSource':'source',source,{includeVideo:true,sourceStreamKey:'fixtureReference'}],['receiver',page,{includeVideo:true}]]){const r=await audio.record(target,path.join(report,name+'-'+kind+'.webm'),settings);pair.push(r);recordings.add(r);entry[kind]=r.metadata;save();}
       for(let n=0;n<seconds;n+=5)await sample(Math.min(5,seconds-n)*1000);
       for(const r of pair){await r.stop();recordings.delete(r);}entry.ended=Date.now();save();
     }
@@ -104,7 +122,16 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     await audio.stop(page);continuous=false;await quit();result.recordingWorkflowPassed=true;save();
     const analyzer=spawn(analysisPython,[path.join(report,'macos-analyze-av-sync.py'),report,'--ffmpeg','/usr/bin/ffmpeg'],{stdio:['ignore','ignore','pipe']});let errors='';analyzer.stderr.on('data',d=>errors+=d);result.analysisExitCode=await new Promise(resolve=>analyzer.once('close',resolve));
     result.analysisErrors=errors;result.analysis=JSON.parse(fs.readFileSync(path.join(report,'av-analysis.json')));
-    result.passed=result.analysisExitCode===0&&result.analysis.passed&&result.samples.every(s=>s.passed);
+    const observedPass=result.analysisExitCode===0&&result.analysis.passed&&result.samples.every(s=>s.passed);
+    if(desktopReference){
+      result.diagnosticPassed=observedPass;result.qualificationPending='Independent desktop/Pulse reference calibration';save();
+      const comparison=spawn(analysisPython,[path.join(report,'linux-av-compare-references.py'),report,'--ffmpeg','/usr/bin/ffmpeg'],{stdio:['ignore','ignore','pipe']});
+      let comparisonErrors='';comparison.stderr.on('data',d=>comparisonErrors+=d);
+      result.referenceComparisonExitCode=await new Promise(resolve=>comparison.once('close',resolve));result.referenceComparisonErrors=comparisonErrors;
+      result.referenceComparison=JSON.parse(fs.readFileSync(path.join(report,'reference-comparison.json')));
+      result.diagnosticPassed&&=result.referenceComparisonExitCode===0&&result.referenceComparison.comparisonComplete;
+    }
+    result.passed=observedPass&&!desktopReference;
   }catch(error){result.error=String(error.stack||error);}
   finally{
     const errors=[];
@@ -115,7 +142,7 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     for(const browser of browsers.reverse())try{await browser.close();}catch(e){errors.push(String(e));}
     if(server)await new Promise(resolve=>server.close(resolve));
     for(const id of modules.reverse())try{pactl('unload-module',id);}catch(e){errors.push(String(e));}
-    try{assert.equal(pactl('get-default-sink'),defaultSink);assert(!JSON.parse(pactl('--format=json','list','modules')).some(m=>modules.includes(String(m.index))));result.audioCleanupPassed=true;}catch(e){errors.push(String(e));}
+    try{assert.equal(pactl('get-default-sink'),defaultSink);const remaining=pactl('list','short','modules').split('\n').filter(line=>/^\d+\t/.test(line)).map(line=>line.split('\t')[0]);assert(!remaining.some(id=>modules.includes(id)));result.audioCleanupPassed=true;}catch(e){errors.push(String(e));}
     if(traceCapture&&fs.existsSync(path.join(report,'capture-frame-trace.csv'))){
       const f=path.join(report,'capture-frame-trace.csv');result.frameTrace.sha256=sha(f);result.frameTrace.bytes=fs.statSync(f).size;save();
       try{execFileSync(process.execPath,[path.join(report,'linux-av-trace-report.js'),report],{encoding:'utf8',timeout:30000});const analysis=path.join(report,'frame-trace-analysis.json');result.frameTrace.analysisSha256=sha(analysis);assert(JSON.parse(fs.readFileSync(analysis)).traceComplete,'Native identity trace is incomplete');}catch(e){errors.push(String(e));}
