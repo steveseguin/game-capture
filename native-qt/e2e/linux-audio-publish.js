@@ -17,6 +17,9 @@ const communicationsMix = opts['communications-mix'] === 'true';
 const audioWarnings = opts['audio-warnings'] === 'true';
 const previewBeforeLive = opts['preview-before-live'] === 'true';
 const previewServiceLoss = opts['preview-service-loss'] === 'true';
+const previewCoreStartupDown = opts['preview-core-startup-down'] === 'true';
+const unavailableCoreAction = opts['unavailable-core-action'] || 'preview';
+assert(['preview','go-live'].includes(unavailableCoreAction) && (previewCoreStartupDown || unavailableCoreAction === 'preview'), 'Unavailable-core action requires the core-startup fixture');
 assert(!previewBeforeLive || (wayland && matrix === 'gui' && opts.case === 'mix'), 'Audio preview promotion requires Wayland GUI mixed audio');
 assert(opts['combined-audio-loss'] !== 'true' || (communications && communicationsMix), 'Combined loss requires communications mixing');
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
@@ -26,6 +29,7 @@ const audioServerQuitDown = opts['audio-server-quit-down'] === 'true';
 const audioServerStartupDown = opts['audio-server-startup-down'] === 'true';
 const captureServerLoss = opts['capture-server-loss'] === 'true';
 assert(!previewServiceLoss || (previewBeforeLive && audioServerLoss && !audioServerStopDown && !audioServerQuitDown && !audioServerStartupDown), 'Preview fault requires preview/mixed-audio service-loss fixture and excludes post-live lifecycle variants');
+assert(!previewCoreStartupDown || (previewServiceLoss && captureServerLoss), 'Whole-core unavailable startup requires the preview core-loss fixture');
 assert(!captureServerLoss || (audioServerLoss && wayland && !audioServerStopDown && !audioServerStartupDown), 'Capture-server loss requires Wayland server loss; capture should stop automatically, and unavailable video startup is a separate workflow');
 assert(!audioServerStopDown || audioServerLoss,'Stop during an audio outage requires the server-loss workflow');
 assert(!audioServerQuitDown || (audioServerLoss && !audioServerStopDown),'Quit during an audio outage requires server loss and excludes the separate Stop workflow');
@@ -83,7 +87,7 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
-if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,phase:previewServiceLoss?'local-preview':'publishing',scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
+if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,phase:previewServiceLoss?'local-preview':'publishing',previewCoreStartupDown,unavailableCoreAction,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
 if(previewBeforeLive)result.previewBeforeLive={requested:true,observerSha256:sha(path.join(report,'linux-preview-observer.py'))};
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
@@ -334,6 +338,26 @@ function barriers() {
         await waitFor(async () => (await api('/diagnostics')).app.live, wayland ? 30000 : 15000, 'GUI did not go live');
         if (wayland && !promotePreview) await selectedPortal();
       };
+      const launchSaved = async (label, unavailableInput=false) => {
+        log=fs.createWriteStream(path.join(report,label+'-private-publisher.log'));
+        publisher=spawn(exe,args,{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
+        publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
+        publisher.closed=new Promise(resolve=>publisher.once('close',resolve));
+        publisher.on('error',error=>{entry.recoveryLaunchError=String(error);});
+        await waitFor(()=>{assert.equal(publisher.exitCode,null);assert(!entry.recoveryLaunchError);return fs.existsSync(discovery);},15000,'Audio outage relaunch did not publish discovery');
+        control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
+        const rows=JSON.parse(ui('dump'));
+        fs.writeFileSync(path.join(report,label+'-idle-ui.json'),JSON.stringify(rows,null,2));
+        screenshot(label+'-idle.png');
+        assert(rows.some(row=>row.role==='combo box'&&row.name==='System audio (all apps)'));
+        assert(rows.some(row=>row.role==='combo box'&&(unavailableInput?row.name==='Selected input unavailable; choose again':row.name.startsWith('GameCaptureOwnedQAInput'))),'Saved microphone selection was lost on relaunch');
+        for(const name of ['Game Audio Gain','Mic Gain'])assert.equal(rows.find(row=>row.role==='spin button'&&row.name===name).value,50);
+        const idle=await api('/diagnostics');assert(!idle.app.live&&!idle.app.capturing);
+        assert.equal(idle.metrics.audio_packets_sent,0);assert.equal(idle.video.frames_captured,0);
+        assert(!idle.app.primary_audio_capturing&&!idle.app.microphone_capturing);
+        return idle;
+      };
+
       if (gui) {
         ui('press', 'Show advanced settings');
         ui('choose', 'Auto (Hardware, then Software)', 'Software (x264 / VP9 / AV1 / HEVC)');
@@ -436,6 +460,27 @@ function barriers() {
               fault.stoppedWhileDown=true;
             }
             fs.writeFileSync(path.join(report,'preview-service-down-ui.json'),ui('dump'));screenshot('preview-service-down.png');save();
+            if(previewCoreStartupDown){
+              const down=fault.startupWhileDown={action:unavailableCoreAction};
+              down.quitAction=JSON.parse(ui('quit-menu'));
+              await waitFor(()=>publisher.exitCode!==null,8000,'Quit with PipeWire unavailable did not finish');
+              await quit();down.firstExitAndDiscoveryRetired=true;
+              down.idle=await launchSaved('core-unavailable',true);
+              ui('source','Choose a window');
+              down.idleLocalOnly=await localOnly(false,false,false);save();
+              selectPortal();ui('press',unavailableCoreAction==='preview'?'Preview window':'Go live');
+              await selectedPortal(30000);down.permissionSelected=true;
+              await waitFor(async()=>{
+                const d=await api('/diagnostics');const rows=JSON.parse(ui('dump'));
+                return !d.app.window_preview&&!d.app.live&&!d.app.capturing&&rows.some(r=>r.name==='Preview window'&&r.states.includes('sensitive'))&&rows.some(r=>r.name==='Go live'&&r.states.includes('sensitive'));
+              },75000,'Capture request with unavailable PipeWire did not settle into retry state');
+              down.failedCaptureAttempt=await localOnly(false,false,false);
+              const rows=JSON.parse(ui('dump'));down.visibleStatus=rows.filter(r=>r.role==='label'&&r.states.includes('visible')&&/preview|unavailable|failed|PipeWire/i.test(r.name)).map(r=>r.name);
+              assert(down.visibleStatus.includes(unavailableCoreAction==='preview'?'Window preview cancelled or unavailable.':'Failed to start capture'),'Unavailable-core request has no failure status');
+              await checkAudioWarning(null,'unavailableCorePreviewHasNoAudioWarning');
+              down.clearedPixels=await previewShot('core-unavailable','none');
+              fs.writeFileSync(path.join(report,'core-unavailable-failed-ui.json'),JSON.stringify(rows,null,2));save();
+            }
             fault.start=command('start');
             modules.push(pactl('load-module','module-null-sink','sink_name='+sinkName,'rate=48000','channels=2'));inputModule=createInput();
             systemTone=tone(defaultSink,'owned system after preview fault');inputTone=tone(sinkName,'owned microphone after preview fault');inputTone.frequencies=[1200,1200];
@@ -651,25 +696,6 @@ function barriers() {
       }
       if (audioServerLoss && !previewServiceLoss) {
         const command = action => JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-private-audio.py'),'--request='+action],{env,encoding:'utf8',timeout:25000}));
-        const launchSaved = async (label, unavailableInput=false) => {
-          log=fs.createWriteStream(path.join(report,label+'-private-publisher.log'));
-          publisher=spawn(exe,args,{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
-          publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
-          publisher.closed=new Promise(resolve=>publisher.once('close',resolve));
-          publisher.on('error',error=>{entry.recoveryLaunchError=String(error);});
-          await waitFor(()=>{assert.equal(publisher.exitCode,null);assert(!entry.recoveryLaunchError);return fs.existsSync(discovery);},15000,'Audio outage relaunch did not publish discovery');
-          control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
-          const rows=JSON.parse(ui('dump'));
-          fs.writeFileSync(path.join(report,label+'-idle-ui.json'),JSON.stringify(rows,null,2));
-          screenshot(label+'-idle.png');
-          assert(rows.some(row=>row.role==='combo box'&&row.name==='System audio (all apps)'));
-          assert(rows.some(row=>row.role==='combo box'&&(unavailableInput?row.name==='Selected input unavailable; choose again':row.name.startsWith('GameCaptureOwnedQAInput'))),'Saved microphone selection was lost on relaunch');
-          for(const name of ['Game Audio Gain','Mic Gain'])assert.equal(rows.find(row=>row.role==='spin button'&&row.name===name).value,50);
-          const idle=await api('/diagnostics');assert(!idle.app.live&&!idle.app.capturing);
-          assert.equal(idle.metrics.audio_packets_sent,0);assert.equal(idle.video.frames_captured,0);
-          assert(!idle.app.primary_audio_capturing&&!idle.app.microphone_capturing);
-          return idle;
-        };
         const nodesBeforeFault = wayland ? captureNodes() : null;
         if(wayland)assert.equal(nodesBeforeFault.length,1,'Missing portal video stream before service fault');
         const faultStarted = Date.now();
