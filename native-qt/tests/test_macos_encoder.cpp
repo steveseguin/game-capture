@@ -16,6 +16,60 @@ using namespace versus::video;
 class MacEncoderGate : public QObject {
     Q_OBJECT
 private slots:
+    void keyframePolicy_data() {
+        QTest::addColumn<bool>("hardware");
+        QTest::addColumn<bool>("lowLatency");
+        QTest::newRow("vt-low-latency") << true << true;
+        QTest::newRow("x264-low-latency") << false << true;
+        QTest::newRow("vt-explicit-long-gop") << true << false;
+        QTest::newRow("x264-explicit-long-gop") << false << false;
+    }
+    void keyframePolicy() {
+        QFETCH(bool, hardware);
+        QFETCH(bool, lowLatency);
+        EncoderConfig config;
+        config.width = 128; config.height = 72; config.frameRate = 15;
+        config.gopSize = 60; config.lowLatency = lowLatency;
+        config.preferredHardware = hardware ? HardwareEncoder::VideoToolbox : HardwareEncoder::None;
+        config.explicitEncoderSelection = true;
+        VideoEncoder encoder;
+        QVERIFY(encoder.initialize(config));
+        QTemporaryDir directory;
+        QFile stream(directory.filePath("constant.h264"));
+        QVERIFY(stream.open(QIODevice::WriteOnly));
+        CapturedFrame frame;
+        frame.width = 128; frame.height = 72; frame.stride = 128 * 4;
+        frame.data.assign(frame.stride * frame.height, 128);
+        for (int i = 0; i < 76; ++i) {
+            frame.timestamp = 100000000LL + i * 10000000LL / 15;
+            EncodedPacket packet;
+            QVERIFY(encoder.encode(frame, packet));
+            QCOMPARE(packet.pts, packet.dts);
+            QCOMPARE(stream.write(reinterpret_cast<const char *>(packet.data.data()), packet.data.size()),
+                     qint64(packet.data.size()));
+        }
+        encoder.shutdown(); stream.close();
+        QProcess probe;
+        probe.start(QStandardPaths::findExecutable("ffprobe"), {"-v", "error", "-show_frames",
+            "-show_entries", "frame=key_frame,pict_type", "-of", "json", stream.fileName()});
+        QVERIFY(probe.waitForFinished(15000)); QCOMPARE(probe.exitCode(), 0);
+        const auto frames = QJsonDocument::fromJson(probe.readAllStandardOutput()).object().value("frames").toArray();
+        QCOMPARE(frames.size(), 76);
+        int lastKey = -1, longest = 0;
+        for (int i = 0; i < frames.size(); ++i) {
+            const auto decoded = frames[i].toObject();
+            QVERIFY(decoded.value("pict_type").toString() != "B");
+            if (decoded.value("key_frame").toInt()) {
+                if (lastKey >= 0) longest = std::max(longest, i - lastKey);
+                lastKey = i;
+            }
+            QVERIFY(lastKey >= 0);
+            QVERIFY(i - lastKey < (lowLatency ? 15 : 60));
+        }
+        QVERIFY(longest > 0);
+        QVERIFY(longest <= (lowLatency ? 15 : 60));
+        if (!lowLatency) QVERIFY(longest > 15);
+    }
     void encodeAndDecode_data() {
         QTest::addColumn<int>("hardware");
         QTest::addColumn<int>("codec");
