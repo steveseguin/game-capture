@@ -1239,6 +1239,10 @@ void VersusApp::stopCapture() {
     }
     audioCapture_.StopCapture();
     microphoneAudioCapture_.StopCapture();
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        activeMicrophoneSourceName_ = "none";
+    }
     primaryAudioResampler_ = {};
     additionalAudioResampler_ = {};
     {
@@ -2844,7 +2848,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         spdlog::warn("[Audio] {} microphone capture failed: {}",
                      role,
                      micResult.error.empty() ? "unknown error" : micResult.error);
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         emitRuntimeEvent(micResult.error.empty() ? "Microphone capture failed." : micResult.error, false);
 #endif
         setActiveMicrophoneSource("none");
@@ -2878,6 +2882,9 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         default:
             if (selectedWindowProcessId == 0) {
                 spdlog::warn("[Audio] Selected-window audio requested but no process id was available");
+#ifdef __linux__
+                emitRuntimeEvent("Selected-app audio is not available in this Linux build. Select system audio, a microphone/input, or no audio.", false);
+#endif
                 if (includeMicrophone) {
                     spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
                     startMicrophoneAsPrimary();
@@ -2899,6 +2906,9 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         spdlog::warn("[Audio] Capture source={} failed: {}",
                      audioSourceModeName(audioSourceMode),
                      result.error.empty() ? "unknown error" : result.error);
+#ifdef __linux__
+        emitRuntimeEvent(result.error.empty() ? "Audio capture failed. Select an available audio source." : result.error, false);
+#endif
         if (includeMicrophone && audioSourceMode != AudioSourceMode::DefaultMicrophone) {
             spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
             startMicrophoneAsPrimary();
@@ -3084,13 +3094,13 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
     int64_t pts = audioPts100ns_.load();
     if (!pts || std::abs(captureTime100ns - pts) > 500000) {
         pts = captureTime100ns;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         audioPtsFraction_.reset();
 #endif
     }
-#ifdef __APPLE__
-    // Core Audio commonly delivers 512 frames: truncating each duration loses
-    // 11.25 ms in 30 minutes. Retain the fraction until the next capture anchor.
+#if defined(__APPLE__) || defined(__linux__)
+    // Core Audio and PipeWire can deliver 512-frame blocks. Carry fractions
+    // across callbacks so their partitioning cannot change the sample clock.
     audioPts100ns_.store(pts + audioPtsFraction_.duration100ns(static_cast<uint32_t>(frames)));
 #else
     audioPts100ns_.store(pts + chunkDuration100ns);
@@ -7590,6 +7600,9 @@ void VersusApp::startVideoMaintenanceThread() {
     const VideoSourceMode sourceMode = lifecycleStateSnapshot().videoSourceMode;
     videoMaintenanceThread_ = std::thread([this, sourceMode]() {
         int64_t lastInfoBroadcastMs = 0;
+#ifdef __linux__
+        bool primaryAudioWasCapturing = audioCapture_.IsCapturing();
+#endif
 #ifdef __APPLE__
         bool windowSuspended = false;
 #endif
@@ -7658,10 +7671,23 @@ void VersusApp::startVideoMaintenanceThread() {
                 continue;
             }
 
-#ifdef __APPLE__
-            // AVFoundation stops this exact input on loss; it never opens a
-            // replacement. Reconcile the app state once, outside the native
-            // notification callback, so operators see the loss as well.
+#ifdef __linux__
+            if (primaryAudioWasCapturing && !stopRequested_.load() && !audioCapture_.IsCapturing()) {
+                primaryAudioWasCapturing = false;
+                audioCapture_.StopCapture();
+                primaryAudioLevelRms_.store(0.0f, std::memory_order_relaxed);
+                primaryAudioPeak_.store(0.0f, std::memory_order_relaxed);
+                if (!microphoneAudioCapture_.IsCapturing()) {
+                    audioLevelRms_.store(0.0f, std::memory_order_relaxed);
+                    audioPeak_.store(0.0f, std::memory_order_relaxed);
+                }
+                emitRuntimeEvent("System audio stopped. Video continues. Check the selected output and audio service, then stop and start streaming again.", false);
+            }
+#endif
+#if defined(__APPLE__) || defined(__linux__)
+            // These backends stop the exact input on loss without replacing it.
+            // Reconcile the app state outside native callbacks so operators
+            // see the loss and stale samples/meters are cleared.
             bool microphoneStopped = false;
             if (!stopRequested_.load() && !microphoneAudioCapture_.IsCapturing()) {
                 std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
@@ -7693,6 +7719,8 @@ void VersusApp::startVideoMaintenanceThread() {
                 spdlog::warn("[Audio] {}", message);
                 emitRuntimeEvent(message, false);
             }
+#endif
+#ifdef __APPLE__
             if (sourceMode == VideoSourceMode::Window) {
                 const bool suspended = windowCapture_.isSuspended();
                 if (suspended != windowSuspended) {

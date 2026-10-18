@@ -35,25 +35,25 @@
       "id": "application-audio",
       "required": true,
       "status": "missing",
-      "remaining": "PipeWire per-application routing, explicit selector when portal video cannot be matched, process/helper lifetimes and exclusion of unrelated sources"
+      "remaining": "Application-only routing and explicit app selector for Wayland remain missing. Linux GUI currently starts with No audio and omits selected-app audio until that backend is implemented; no implicit system-audio substitution."
     },
     {
       "id": "system-audio",
       "required": true,
-      "status": "missing",
-      "remaining": "Output monitor selection, mute/silence/device changes"
+      "status": "bounded-e2e-passed",
+      "remaining": "Packaged CLI and X11 GUI default-output capture, decoded stereo, silence, system/mic mixing, mute and 50/50 gain passed. Output changes, audio-server loss, Wayland GUI, timestamp/drift and endurance qualification remain."
     },
     {
       "id": "microphone",
       "required": true,
-      "status": "missing",
-      "remaining": "Discovery, physical input, explicit selection, format conversion, mute/gain/mixing, hotplug and recovery"
+      "status": "bounded-e2e-passed",
+      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, Wayland GUI and long-run clock drift remain."
     },
     {
       "id": "audio-codecs",
       "required": true,
-      "status": "shared-unqualified",
-      "remaining": "Opus 128 kbps default, mono/stereo, PCM/RED negotiation, simultaneous fallback viewers, bitrate overrides and decoded audio"
+      "status": "bounded-e2e-passed",
+      "remaining": "Packaged Opus/PCM/RED mono/stereo, decoded channel content, 128 kbps Opus, authenticated 96 kbps override/restoration, simultaneous Opus fallback viewers and RTCP sender reports passed. Broader receiver compatibility, packet loss/reconnect and endurance remain."
     },
     {
       "id": "software-encoding",
@@ -100,8 +100,8 @@
     {
       "id": "gui",
       "required": true,
-      "status": "shared-unqualified",
-      "remaining": "Feature-capability-driven choices, preview, saved settings, keyboard/accessibility, tray/reopen, update links, permission and actionable errors"
+      "status": "partial-e2e-passed",
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Wayland GUI, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain; Linux audio and FFmpeg help text needs correction."
     },
     {
       "id": "profiles",
@@ -254,6 +254,99 @@
       "executableSha256": "cdff6fac22fe3c47a1a0aae8617abf26de0f947910bce10030d68fed6eacb713",
       "passed": false,
       "finding": "Three scanlines in a physical HDMI frame contained distinct consecutive source IDs. Independent FFmpeg reproduced input tearing; high-motion fidelity remains unqualified."
+    },
+    {
+      "backend": "pulse-routes",
+      "report": "native-qt/qa/reports/linux-audio-publish/e23699d0-b69e-4455-b9d2-19db1c578de5/results.json",
+      "reportSha256": "6fe4eb1fc44cd4eca2398534f773c5c8a1ee62a4352f40feeadffb777e916a7f",
+      "executableSha256": "80d6f7d297e36bfd05e575f51731a51e84b40df945c409efa0f0f92f045402e1",
+      "manifestSha256": "484b6e98f958d2e8115ae165c029c4f35e2ec0e4c917d9dd275e13a2069510c7",
+      "harnessSha256": "5fb3c9987b1077628ee34c70e21ff48f2282548d62fb42f5592d0d3b6e2e39a7",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "passed": true,
+      "finding": "System, owned virtual microphone and mixed audio; decoded stereo/silence/late viewer; removed input stops without replacement while video continues.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and stereo audio via default system output and owned virtual microphone. Physical microphones, application-only routing, GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "pulse-codecs",
+      "report": "native-qt/qa/reports/linux-audio-codecs/d4047119-1f9e-4fbd-9908-5dfa1d112f02/results.json",
+      "reportSha256": "9c6b23d27f6d3d64ae32453bb4134257688502b2a2b4a4362af71f71b8a3d194",
+      "executableSha256": "72b8dd21cac2498f03bcb25aa613ed81aad48d9eb3766aa650597d4745b8977a",
+      "manifestSha256": "f436f91e81d621e161ee054c540a9a99931d4f3ffdd04d99f8f91f7ba978eaf7",
+      "harnessSha256": "d74940b79ea850f3015a42273ba5ad63e86822d40ede2297e0ada60c02808865",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "passed": true,
+      "finding": "Six Opus/PCM/RED mono/stereo cases; actual receiver content/bitrate, concurrent Opus fallback, authenticated override/restoration, RTCP sender reports. Original scope text says stereo but case records include mono.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and stereo audio via default system output and owned virtual microphone. Physical microphones, application-only routing, GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "pulse-gui",
+      "report": "native-qt/qa/reports/linux-audio-gui/fb4d9e68-311c-4feb-a508-55f46a8e59dd/results.json",
+      "reportSha256": "d0f18b5975c3661afc454ebc418ce05b9aca70ca3aa6f286a806379a091b0154",
+      "executableSha256": "72b8dd21cac2498f03bcb25aa613ed81aad48d9eb3766aa650597d4745b8977a",
+      "manifestSha256": "f436f91e81d621e161ee054c540a9a99931d4f3ffdd04d99f8f91f7ba978eaf7",
+      "harnessSha256": "f9fd936b4dbba706236e684f7b3e1c8a45df7585a2d1642b3f148e94f571f4c7",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "finding": "Actual packaged Qt GUI controls through AT-SPI and owned X11 keyboard focus. Three routes, mute/unmute, mixed 50 percent gains, input loss, stop/counter settling. Does not include relaunch.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, application-only routing, Wayland GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "pulse-gui-relaunch-failure",
+      "report": "native-qt/qa/reports/linux-audio-gui-relaunch/763ffa8e-248f-4142-8a48-74f53cb5fb6e/results.json",
+      "reportSha256": "8fedef8581b05c547c942327ffea4336fc7ae5b6f7e0345fb79125a3f93372fb",
+      "executableSha256": "72b8dd21cac2498f03bcb25aa613ed81aad48d9eb3766aa650597d4745b8977a",
+      "manifestSha256": "f436f91e81d621e161ee054c540a9a99931d4f3ffdd04d99f8f91f7ba978eaf7",
+      "harnessSha256": "df8a2ce8db31cde0560ab473890b1b76fb7a39d9317eee09459df5bd696aa3e0",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": false,
+      "finding": "Saved choices restored, but idle diagnostics incorrectly reported default-microphone. No physical input stream was open. Fixed shared initial/stop microphone status to none; separate fresh-package evidence required.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, application-only routing, Wayland GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "pulse-harness-diagnostic-failure",
+      "report": "native-qt/qa/reports/linux-audio-publish/abdc366b-596d-4a4f-aea5-cc68a7a2afba/results.json",
+      "reportSha256": "379c0f3b1af3df165ac729089e70c39a11ad92d3e38bd62506e4795affbda805",
+      "executableSha256": "80d6f7d297e36bfd05e575f51731a51e84b40df945c409efa0f0f92f045402e1",
+      "manifestSha256": "484b6e98f958d2e8115ae165c029c4f35e2ec0e4c917d9dd275e13a2069510c7",
+      "harnessSha256": "9d1ad52d74d8a4242d44b5fa457211ef49f23bc87d3d3f30f1854c309afcb69b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "passed": false,
+      "finding": "Harness used wrong diagnostic key configured_bitrate_kbps; corrected to configured_opus_bitrate_kbps. Not an audio product failure.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and stereo audio via default system output and owned virtual microphone. Physical microphones, application-only routing, GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "pulse-harness-label-failure",
+      "report": "native-qt/qa/reports/linux-audio-gui/b5b04da0-be14-46a6-b79a-beeabe614ce5/results.json",
+      "reportSha256": "751a607c1ed3e95b99015d2e29613a95612fc76220707e804af1f9a9d3af58bf",
+      "executableSha256": "72b8dd21cac2498f03bcb25aa613ed81aad48d9eb3766aa650597d4745b8977a",
+      "manifestSha256": "f436f91e81d621e161ee054c540a9a99931d4f3ffdd04d99f8f91f7ba978eaf7",
+      "harnessSha256": "d401844709143c85b8dd5cde3b5ffe998529356772ced99ea8c58fb5ed8271be",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": false,
+      "finding": "Harness searched for Start streaming instead of actual Go live button. Corrected before passing GUI run.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and stereo audio via default system output and owned virtual microphone. Physical microphones, application-only routing, GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "pulse-gui-relaunch",
+      "report": "native-qt/qa/reports/linux-audio-gui-relaunch/2655cc58-5cec-400e-b96d-dc9d6925de47/results.json",
+      "reportSha256": "0d3b3c7e13ea86fc4aca2cc7b012acec4e92f8427d209ccf5ddfa616fc845b0a",
+      "executableSha256": "7e82ccad194055690fa15584937994acf98e83fd6824bc145acade1710be1a30",
+      "manifestSha256": "a687a57f7b982f35f621755db56c4807fcc5685d05cf51f43ad8345c4b70528e",
+      "harnessSha256": "75ff36718b5f3807056eeb9de23c3b840aa33a1958bfb83118a266bcee7510d7",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "finding": "Fresh package passed mixed audio, mute/unmute, 50 percent gains, late viewer, GUI stop with counters settled and microphone status none; relaunch restored exact source/input/gains without capture or audio packets.",
+      "limits": "Extracted Ubuntu DEB; bounded X11 H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, application-only routing, Wayland GUI, endurance and A/V drift excluded."
     }
   ],
   "host_environment": {
@@ -272,14 +365,15 @@
     "hdmi_reference": "Independent FFmpeg capture reproduces multiple scanout identities in individual frames; this host has no usable NVIDIA display driver. The bounded functional camera fixture changes identity at 10 Hz, not a 60 fps fidelity qualification."
   },
   "development_commands": [
-    "sudo apt-get install cmake ninja-build qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-composite0-dev ffmpeg",
+    "sudo apt-get install cmake ninja-build qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-composite0-dev ffmpeg libpulse-dev",
     "cmake -S native-qt -B native-qt/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DVERSUS_BUILD_TESTS=OFF",
     "cmake --build native-qt/build-linux --target game-capture -j 4",
     "python3 native-qt/qa/package-linux.py --build native-qt/build-linux",
     "npm ci --prefix native-qt",
     "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --reports=<reports> --manifest-sha256=<sha256>",
     "WAYLAND_DISPLAY=wayland-0 node native-qt/e2e/linux-window-publish.js --backend=wayland --publisher=<extracted>/usr/bin/game-capture --reports=<reports> --manifest-sha256=<sha256>",
-    "node native-qt/e2e/linux-camera-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<exact V4L2 id> --hdmi-loopback=true"
+    "node native-qt/e2e/linux-camera-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<exact V4L2 id> --hdmi-loopback=true",
+    "xvfb-run -a node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=routes|codecs|gui"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -293,5 +387,17 @@
     "log": "native-qt/build-linux-gates-run.log",
     "logSha256": "54f269c6e290400bdf0f1c45c96d72732e3dd7af3533c4087fcbf83cdd076b74",
     "secret_guard": "Pinned Gitleaks 8.30.1 staged scan passed; local commit and push hooks installed."
+  },
+  "audio_regression_gates": {
+    "classification": "Gates only; not application testing.",
+    "passed": [
+      "PlatformCapabilitiesGate",
+      "AudioSampleClockGate",
+      "AudioFormatConverterTest",
+      "OpusEncoderTest"
+    ],
+    "log": "native-qt/build-linux-audio-gates.log",
+    "logSha256": "149d890974f0bd56bc5fea13c6a0da21a977093907085fc13c0b454ee295d757",
+    "cross_platform": "Shared idle microphone status correction and macOS sample-clock reuse still require Windows/macOS regression qualification."
   }
 }

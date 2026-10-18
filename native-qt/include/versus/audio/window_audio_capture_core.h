@@ -88,6 +88,9 @@ class WindowAudioCaptureCore {
 #ifdef __APPLE__
     struct MacImpl;
     std::unique_ptr<MacImpl> mac_;
+#elif defined(__linux__)
+    struct LinuxImpl;
+    std::unique_ptr<LinuxImpl> linux_;
 #endif
     CaptureResult StartProcessLoopback(uint32_t processId);
     CaptureResult StartDefaultEndpoint(DefaultAudioEndpoint endpoint);

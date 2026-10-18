@@ -2027,7 +2027,9 @@ void MainWindow::setupUI() {
     audioSourceSelect_ = new QComboBox(this);
     audioSourceSelect_->setObjectName("audioSourceSelect");
     if (platform::capabilities().audioCapture) {
+#ifndef __linux__
         audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
+#endif
         audioSourceSelect_->addItem(platform::capabilities().communicationsAudioCapture ? "Default output mix" : "System audio (all apps)", QVariant("default-output"));
         if (platform::capabilities().communicationsAudioCapture)
             audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
@@ -2035,6 +2037,11 @@ void MainWindow::setupUI() {
             audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
     }
     audioSourceSelect_->addItem("No audio", QVariant("none"));
+#ifdef __linux__
+    // Application-only routing is still a parity gap. Never substitute the
+    // whole system mix for the Windows default of selected-app audio.
+    audioSourceSelect_->setCurrentIndex(audioSourceSelect_->findData("none"));
+#endif
     audioSourceSelect_->setToolTip(platform::capabilities().communicationsAudioCapture
         ? "Use Communications output for VOIP-style games, or Selected microphone/input for the device chosen above."
         : "Selected app audio includes its child processes and other windows. Default output mix shares audio from all apps.");
