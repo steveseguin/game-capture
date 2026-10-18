@@ -41,11 +41,13 @@ def main():
     parser.add_argument('--request', choices=['stop', 'start'])
     parser.add_argument('--reports', type=Path)
     parser.add_argument('--receiver', action='store_true', help='Expose this stable server to receiver browsers; nest another fixture for publisher faults')
+    parser.add_argument('--receiver-only', action='store_true', help='Expose only the receiver server address; preserve child desktop and publisher audio environment')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.request: return request(args.request)
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
-    assert command and args.reports and os.environ.get('GC_QA_PRIVATE_DESKTOP')
+    assert command and args.reports and (os.environ.get('GC_QA_PRIVATE_DESKTOP') or os.environ.get('GC_QA_OWNED_WAYLAND'))
+    assert not args.receiver_only or args.receiver
     assert '0.4.' in subprocess.check_output(['wireplumber','--version'], text=True)
     report = args.reports.resolve()/str(uuid.uuid4()); report.mkdir(parents=True, mode=0o700)
     shutil.copyfile(__file__, report/Path(__file__).name)
@@ -73,6 +75,8 @@ def main():
                    GC_QA_AUDIO_SOCKET=str(root/'control.sock'))
         if args.receiver: env['GC_QA_RECEIVER_PULSE_SERVER'] = env['PULSE_SERVER']
         result['pulseServer'] = env['PULSE_SERVER']
+        result['receiverOnly'] = args.receiver_only
+        child_env = {**os.environ, 'GC_QA_RECEIVER_PULSE_SERVER':env['PULSE_SERVER']} if args.receiver_only else env
         def pactl(*values):
             return subprocess.check_output(['pactl',*values],env=env,text=True,stderr=subprocess.DEVNULL,timeout=3).strip()
         def stop():
@@ -117,7 +121,7 @@ def main():
             start()
             with socket.socket(socket.AF_UNIX) as server:
                 server.bind(env['GC_QA_AUDIO_SOCKET']); os.chmod(env['GC_QA_AUDIO_SOCKET'],0o600); server.listen(1)
-                child = subprocess.Popen(command,env=env,start_new_session=True)
+                child = subprocess.Popen(command,env=child_env,start_new_session=True)
                 result['childPid'] = child.pid
                 while child.poll() is None:
                     ready,_,_ = select.select([server],[],[],.2)

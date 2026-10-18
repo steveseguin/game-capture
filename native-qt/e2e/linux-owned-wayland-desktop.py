@@ -6,6 +6,7 @@ Hardware monitors are disabled. Keyboard input targets only this compositor's
 RemoteDesktop session; it never uses the host keyboard or /dev/uinput.
 """
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -35,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--pulse-fault', action='store_true', help='Allow child to stop/start only the owned Pulse service; keep video PipeWire running')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -46,6 +48,7 @@ def main():
               'harnessSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'commandSha256': hashlib.sha256(json.dumps(command).encode()).hexdigest()}
     processes = []; logs = []; child = session = None
+    retired_pids = set()
 
     def save():
         (report/'results.json').write_text(json.dumps(result, indent=2)+'\n')
@@ -67,7 +70,7 @@ def main():
             'DESKTOP_AUTOSTART_ID', 'AT_SPI_BUS_ADDRESS', 'PULSE_SERVER', 'PIPEWIRE_REMOTE',
             'PIPEWIRE_RUNTIME_DIR', 'PIPEWIRE_CONFIG_DIR', 'PIPEWIRE_CONFIG_NAME',
             'PULSE_RUNTIME_PATH', 'PULSE_SINK', 'PULSE_SOURCE', 'PULSE_COOKIE',
-            'WIREPLUMBER_CONFIG_DIR', 'GC_QA_KEYBOARD_SOCKET'] and not k.startswith(
+            'WIREPLUMBER_CONFIG_DIR', 'GC_QA_KEYBOARD_SOCKET', 'GC_QA_AUDIO_SOCKET', 'GC_QA_AUDIO_FAULT_SCOPE'] and not k.startswith(
                 ('QT_', 'GNOME_', 'GAME_CAPTURE_', 'VERSUS_'))}
         for key, name in [('XDG_RUNTIME_DIR', 'runtime'), ('XDG_CONFIG_HOME', 'config'),
                           ('XDG_DATA_HOME', 'data'), ('XDG_STATE_HOME', 'state'), ('XDG_CACHE_HOME', 'cache')]:
@@ -78,6 +81,9 @@ def main():
                    PIPEWIRE_RUNTIME_DIR=env['XDG_RUNTIME_DIR'],
                    PULSE_SERVER='unix:'+env['XDG_RUNTIME_DIR']+'/pulse/native',
                    GC_QA_OWNED_WAYLAND=str(report), GC_QA_KEYBOARD_SOCKET=str(root/'input.sock'))
+        if args.pulse_fault:
+            env.update(GC_QA_AUDIO_SOCKET=str(root/'audio.sock'), GC_QA_AUDIO_FAULT_SCOPE='pulse-only')
+            result['audioFault'] = {'scope':'Owned pipewire-pulse only; compositor and video PipeWire stay running', 'actions':[]}
         config = root/'wireplumber'; shutil.copytree('/usr/share/wireplumber', config)
         main_config = config/'wireplumber.conf'
         main_config.write_text('\n'.join(line for line in main_config.read_text().splitlines()
@@ -98,7 +104,7 @@ def main():
         def wait_for(check, seconds=15):
             end = time.monotonic()+seconds
             while not check():
-                assert all(p.poll() is None for _, p in processes), 'Owned desktop service exited'
+                assert all(p.poll() is None or p.pid in retired_pids for _, p in processes), 'Owned desktop service exited'
                 if time.monotonic() >= end: raise RuntimeError('Owned desktop startup timed out')
                 time.sleep(.1)
 
@@ -114,14 +120,42 @@ def main():
                     for code in reversed(pressed): session.NotifyKeyboardKeycode(dbus.UInt32(code), False)
                 time.sleep(.2)
 
+        def pactl(*values):
+            return subprocess.check_output(['pactl', *values], env=env, text=True, stderr=subprocess.DEVNULL, timeout=3).strip()
+
+        def audio_ready():
+            def ready():
+                try: pactl('info'); return True
+                except subprocess.SubprocessError: return False
+            wait_for(ready)
+            pactl('load-module', 'module-null-sink', 'sink_name=gc_audio_default', 'rate=48000', 'channels=2')
+            pactl('set-default-sink', 'gc_audio_default')
+
+        def audio_action(action):
+            nonlocal pulse
+            assert action in ['stop', 'start']
+            if action == 'stop':
+                assert pulse.poll() is None, 'Owned Pulse service already stopped'
+                retire(pulse); retired_pids.add(pulse.pid)
+                state = {'retiredPid':pulse.pid, 'exitCode':pulse.returncode}
+            else:
+                assert pulse.poll() is not None, 'Owned Pulse service already running'
+                pulse = launch('pulse-'+str(len(result['audioFault']['actions'])), ['pipewire-pulse'])
+                audio_ready(); state = {'startedPid':pulse.pid}
+            assert pipewire.poll() is None and shell.poll() is None, 'Audio-only fault interrupted desktop/video service'
+            state.update(pipewirePid=pipewire.pid, shellPid=shell.pid)
+            result['audioFault']['actions'].append({'action':action, **state}); save()
+            return state
+
         print('Owned Wayland desktop:', report, flush=True)
         try:
             bus = launch('bus', ['dbus-daemon', '--session', '--nofork', '--print-address=1'], True)
             env['DBUS_SESSION_BUS_ADDRESS'] = bus.stdout.readline().strip()
             assert env['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:')
-            launch('pipewire', ['pipewire'])
+            pipewire = launch('pipewire', ['pipewire'])
             wait_for(lambda: (root/'runtime/pipewire-0').is_socket())
-            launch('wireplumber', ['wireplumber']); launch('pulse', ['pipewire-pulse'])
+            launch('wireplumber', ['wireplumber']); pulse = launch('pulse', ['pipewire-pulse'])
+            if args.pulse_fault: audio_ready()
             shell = launch('shell', ['gnome-shell', '--headless', '--wayland', '--no-x11', '--sm-disable',
                                      '--virtual-monitor=1440x1000', '--wayland-display=gc-qa'])
             wait_for(lambda: (root/'runtime/gc-qa').is_socket())
@@ -141,16 +175,23 @@ def main():
             cards = json.loads(subprocess.check_output(['pactl', '--format=json', 'list', 'cards'], env=env, text=True, timeout=5))
             assert cards == []; result['hardwareCards'] = 0
             result['ownedPids'] = {name:p.pid for name,p in processes}; result['runtime'] = str(root)
-            with socket.socket(socket.AF_UNIX) as server:
+            with ExitStack() as stack:
+                server = stack.enter_context(socket.socket(socket.AF_UNIX))
                 server.bind(env['GC_QA_KEYBOARD_SOCKET']); os.chmod(env['GC_QA_KEYBOARD_SOCKET'], 0o600); server.listen(1)
+                servers = [server]; audio_server = None
+                if args.pulse_fault:
+                    audio_server = stack.enter_context(socket.socket(socket.AF_UNIX))
+                    audio_server.bind(env['GC_QA_AUDIO_SOCKET']); os.chmod(env['GC_QA_AUDIO_SOCKET'], 0o600); audio_server.listen(1)
+                    servers.append(audio_server)
                 child = subprocess.Popen(command, env=env, start_new_session=True)
                 result['childPid'] = child.pid; save(); end = time.monotonic()+args.timeout
                 while child.poll() is None:
                     assert shell.poll() is None, 'Owned compositor exited during workflow'
                     if time.monotonic() >= end: raise RuntimeError('Owned workflow deadline exceeded')
-                    ready, _, _ = select.select([server], [], [], .2)
+                    ready, _, _ = select.select(servers, [], [], .2)
                     if not ready: continue
-                    with server.accept()[0] as client:
+                    selected = ready[0]
+                    with selected.accept()[0] as client:
                         client.settimeout(3)
                         _, uid, _ = struct.unpack('3i', client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
                         assert uid == os.getuid()
@@ -159,7 +200,15 @@ def main():
                             block = client.recv(4096-len(data))
                             if not block: break
                             data += block
-                        keys(json.loads(data)); client.sendall(b'ok')
+                        if selected is audio_server:
+                            try:
+                                action = data.decode().strip()
+                                response = {'passed':True, 'action':action, 'result':audio_action(action)}
+                            except Exception as error:
+                                response = {'passed':False, 'error':repr(error)}
+                            client.sendall((json.dumps(response)+'\n').encode())
+                        else:
+                            keys(json.loads(data)); client.sendall(b'ok')
                 result['exitCode'] = child.wait()
                 result['compositorSurvived'] = shell.poll() is None and str(daemon.GetNameOwner('org.gnome.Shell')) == owner
                 result['passed'] = result['exitCode'] == 0 and result['compositorSurvived']
