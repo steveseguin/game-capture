@@ -137,8 +137,11 @@ async function stop(entry,discovery){
     const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(control.pid),action,...(name?[name]:[]),...(value===undefined?[]:[value])],{encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
     const rows=()=>JSON.parse(ui('dump')),find=name=>rows().find(r=>String(r.AXIdentifier||'').endsWith('.'+name));
     const audioRows=()=>rows().filter(r=>/\.(statusLabel|audioMeter|audioLevelLabel|primaryAudioMeter|primaryAudioLevelLabel|microphoneAudioMeter|microphoneAudioLevelLabel|microphoneAudioSourceLabel|microphoneDeviceSelect|goLiveButton)$/.test(r.AXIdentifier||''));
+    // Request foreground activation during launch, before polling Qt's AX tree.
+    // The same-PID foreground postcondition is checked again after UI readiness.
+    ui('activate');entry.launch.startupActivationVerified=true;
     await waitFor(()=>!!find('advancedToggle'),15000,'GUI not ready');
-    ui('activate');
+    ui('activate');entry.launch.readyActivationVerified=true;
     await waitFor(async()=>(await api('/sources/syphon')).sources.some(s=>s.id===sourceId),15000,'Owned Syphon source missing');
     const select=async()=>{
       ui('press','refreshSourcesButton');ui('set','sourceFilterInput',title);
