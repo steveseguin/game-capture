@@ -2342,3 +2342,28 @@ observation remains necessary to separate browser presentation from delivery.
 These same-host virtual-device/loopback workflows do not qualify physical
 hardware, WAN/TURN interruption, calibrated timing or matched picture quality.
 Public app binaries and Windows production remain unchanged.
+
+
+## Released Beta 2 paired WHIP cadence — October 18, 2026
+
+The unchanged released executable completes three paired ten-second GUI
+1080p30/4 Mbps WHIP observations per encoder. `MediaStreamTrackProcessor` receives
+900 distinct VT images (29.97–29.99/s) and 899 x264 images (29.89–30.00/s), with
+consecutive identities and no new native dropped frames, encode failures/timeouts
+or send failures. Simultaneous browser presentation measures 29.28–29.99/s and
+29.80–29.97/s respectively. Source/publisher/receiver counter windows independently
+show approximately 30 fps; they are not exactly coextensive with the image
+observations. Both full GUI stereo/recovery/cleanup workflows complete afterward.
+
+The first combined attempt remains failed: its planned x264 case used a control
+before the accessibility tree exposed it. Local-control discovery precedes
+`MainWindow` construction and cannot establish GUI readiness. The QA harness
+now waits for existing read-only `actions`/`source-ready` checks, recording probe
+counts/times, before performing each startup selection. It does not retry UI
+mutations. The x264 follow-up passes after that correction. No app runtime or
+VDO.Ninja API changed.
+
+[Raw observations, initial failure and independent cadence audits](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip-cadence)
+preserve the earlier lower presentation counts. The new observations establish
+bounded steady-state delivery, not the cause of prior startup variation,
+physical display cadence, long-run camera performance or production readiness.
