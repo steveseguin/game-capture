@@ -1,6 +1,6 @@
 # macOS 0.2.65 Beta 1 qualification — October 18, 2026 UTC
 
-This experimental Apple Silicon candidate incorporates the Windows 0.2.65 baseline and the Mac persistent microphone warning. The app is Developer ID signed, notarized and stapled, with complete matching source/build materials. **This is not a production-readiness or matched OBS/FFmpeg quality result.**
+This experimental Apple Silicon beta incorporates the Windows 0.2.65 baseline and the Mac persistent microphone warning. The app is Developer ID signed, notarized and stapled, with complete matching source/build materials. **This is not a production-readiness or matched OBS/FFmpeg quality result.**
 
 Runtime source: `de8a9410dc6f4ad9a7e65dd5ad5593e8ced74b15`. Executable SHA-256: `301dacfd38a6a4321ea548a68c674c499c7350fe651616968d020046a8f190aa`.
 
@@ -37,7 +37,7 @@ Apple accepted notarization `e37ba14b-e6b2-4af7-afc6-882ed6589cc4`; stapling, st
 
 ## Publication and remaining limits
 
-The prerelease assets are staged; public-browser download/launch verification follows publication. Windows stable and public Mac Beta 2 remain unchanged at this checkpoint.
+Published as [macOS 0.2.65 Beta 1 — Experimental](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.1). A real browser downloaded the public GitHub asset with its expected SHA-256 and original quarantine preserved. The extracted app passed GUI settings/replacement/relaunch, then separate sixty-second VT/x264 video/stereo workflows and their subsequent control/static/resize/late-viewer checks. [Public-download outcomes](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-18-apple-m1-0265-beta1/public-delivery.json) and [publication receipt](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-18-apple-m1-0265-beta1/publication.json). Windows 0.2.65 remains the latest stable release; earlier Mac releases and their assets are preserved.
 
 Keep this release experimental. Physical macOS 14.2, fresh permission transitions, physical camera/microphone/USB/Bluetooth behavior, sleep/wake, display/audio-route changes and VoiceOver remain unqualified. The hosted Mac result excludes hardware VT and audio. Matched independent OBS/FFmpeg/gameplay quality, physical A/V latency and broader sustained load are not established here.
 
