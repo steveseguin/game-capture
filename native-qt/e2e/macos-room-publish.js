@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Real hosted director/scene/guest pages, packaged Mac publisher and controlled media.
+// Shared hosted director/scene/guest assertions with packaged Mac/Linux launch adapters.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),assert=require('assert/strict');
 const {gzipSync}=require('node:zlib');
 const {spawn,execFileSync}=require('child_process'),{chromium}=require('playwright');
@@ -10,8 +10,10 @@ const {create:createSignalingProxy}=require('./signaling-fault-proxy');
 const roomRecovery=require('./macos-room-recovery-observer');
 const continuousAudio=require('./macos-continuous-audio');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
-for(const key of ['app','reports','camera-device','camera-helper','microphone-device','tone-helper'])assert(opts[key],'Required --'+key);
-assert.equal(process.platform,'darwin');
+const linux=process.platform==='linux';assert(linux||process.platform==='darwin');
+const linuxAdapter=linux?require('./linux-room-fixture'):null;
+const linuxPackage=linux?linuxAdapter.verify(opts):null;
+if(!linux)for(const key of ['app','reports','camera-device','camera-helper','microphone-device','tone-helper'])assert(opts[key],'Required --'+key);
 assert(['enabled','disabled'].includes(opts['remote-control']||'enabled'),'--remote-control must be enabled or disabled');
 const remoteEnabled=opts['remote-control']!=='disabled';
 const rtcLog=opts['rtc-log']||'off';assert(['off','debug'].includes(rtcLog),'--rtc-log must be off or debug');
@@ -46,18 +48,21 @@ assert(!extraScenes||performanceSeconds,'Additional scene receivers require a ti
 assert(!compact||performanceSeconds,'Compact reports require a timed room observation');
 assert(Number.isInteger(performanceSeconds)&&performanceSeconds>=0&&performanceSeconds<=1800&&performanceSeconds%10===0,
   '--performance-seconds must be 0..1800 in ten-second increments');
-const app=path.resolve(opts.app),exe=path.join(app,'Contents/MacOS/game-capture');assert(fs.existsSync(path.join(app,'Contents/Frameworks')),'Use the deployed app');
-const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
+const app=linux?null:path.resolve(opts.app),exe=linux?linuxPackage.exe:path.join(app,'Contents/MacOS/game-capture');if(!linux)assert(fs.existsSync(path.join(app,'Contents/Frameworks')),'Use the deployed app');
+const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
   directorHarnessSha256:hash(path.join(__dirname,'director-room-e2e.js')),remoteControlEnabled:remoteEnabled,rtcLog,performanceSeconds,extraScenes,compactPerformanceReport:compact,continuousAudio:continuous,recoverSignaling,passwordProtected,
   continuousAudioHarnessSha256:hash(path.join(__dirname,'macos-continuous-audio.js')),guestCycles,dropGuestBye,expectClosedGuestCleanup,guestRefresh,fuzzSeed,fuzzPlan,fuzzLocalControl,
-  cameraFixtureSha256:hash(path.resolve(opts['camera-helper'])),toneFixtureSha256:hash(path.resolve(opts['tone-helper'])),
-  scope:'Packaged controlled camera/input with real VDO.Ninja director, scene and guest camera-join UI; optional bounded dual-tier load observation; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
+  cameraFixtureSha256:linux?null:hash(path.resolve(opts['camera-helper'])),toneFixtureSha256:linux?null:hash(path.resolve(opts['tone-helper'])),
+  ...(linux?{manifestSha256:linuxPackage.manifestSha256,linuxFixtureSha256:linuxPackage.fixtureSha256,backend:'x11'}:{}),
+  scope:(linux?'Extracted Ubuntu DEB, private X11 window and owned virtual stereo input':'Packaged controlled camera/input')+' with real VDO.Ninja director, scene and guest camera-join UI; physical devices, calibrated A/V timing and release qualification excluded',cases:[],passed:false};
 for(const name of ['macos-room-publish.js','macos-room-fuzz-plan.js','macos-live-control-fuzz.js','macos-media-receiver.js','macos-continuous-audio.js','director-room-e2e.js','macos-camera-fixture.mm','macos-audio-tone.mm','signaling-fault-proxy.js','macos-room-recovery-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
-const children=new Set(),proxies=new Map();let browser;
+if(linux)for(const name of ['linux-room-fixture.js','linux-system-resource-observer.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+const children=new Set(),proxies=new Map();let browser,linuxFixture;
 function launch(program,args,name){const log=fs.createWriteStream(path.join(report,name+'.log'));
   const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(k)));
+  if(linux){env.QT_QPA_PLATFORM='xcb';env.XDG_SESSION_TYPE='x11';delete env.WAYLAND_DISPLAY;}
   if(path.resolve(program)===exe&&rtcLog==='debug')env.GAME_CAPTURE_RTC_LOG='debug';
   const p=spawn(path.resolve(program),args,{cwd:report,env,stdio:['pipe','pipe','pipe']});children.add(p);
   p.stdout.pipe(log,{end:false});p.stderr.pipe(log,{end:false});let output='';p.stdout.on('data',d=>output+=d);p.output=()=>output;
@@ -105,8 +110,9 @@ async function dimensions(page,width,height,peerUuid=null){await waitFor(()=>pag
 async function media(page,width,height,label,seconds=4,peerUuid=null){await dimensions(page,width,height,peerUuid);const observed=await observe(page,seconds*1000,peerUuid);const distinct=requireMoving(observed,label);assert.equal(observed.width,width);assert.equal(observed.height,height);return {distinctFrames:distinct,...observed};}
 async function videoCounters(page){return page.evaluate(async()=>{let frames=0,keyframes=0;for(const pc of window.reviewPCs)if(pc.connectionState==='connected')for(const s of(await pc.getStats()).values())if(s.type==='inbound-rtp'&&s.kind==='video'){frames+=s.framesDecoded||0;keyframes+=s.keyFramesDecoded||0;}return {frames,keyframes};});}
 (async()=>{console.log('Reports: '+report);try{
-  const fixture=launch(opts['camera-helper'],[opts['camera-device']],'camera'),tone=launch(opts['tone-helper'],[opts['microphone-device'],'440','880'],'tone');
-  for(const p of [fixture,tone])await waitFor(()=>{assert.equal(p.exitCode,null,'Fixture exited');return p.output().includes('READY');},5000,'Fixture not ready');
+  if(linux)linuxFixture=await linuxAdapter.create(opts,report);
+  const fixture=linux?null:launch(opts['camera-helper'],[opts['camera-device']],'camera'),tone=linux?null:launch(opts['tone-helper'],[opts['microphone-device'],'440','880'],'tone');
+  for(const p of (linux?[]:[fixture,tone]))await waitFor(()=>{assert.equal(p.exitCode,null,'Fixture exited');return p.output().includes('READY');},5000,'Fixture not ready');
   async function sourceState(){
     const offset=fixture.output().length;fixture.stdin.write('state\n');let state;
     await waitFor(()=>{assert(fixture.exitCode===null&&!fixture.signalCode,'Camera fixture exited');
@@ -115,19 +121,36 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     },3000,'Camera fixture does not report published-frame state; rebuild macos-camera-fixture');
     return state;
   }
-  browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});result.browserVersion=browser.version();
-  for(const encoder of (opts.encoders||'videotoolbox,x264').split(',')){
+  browser=await chromium.launch({...(linux?{executablePath:opts.browser||'/usr/bin/google-chrome'}:{}),headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio','--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});result.browserVersion=browser.version();
+  for(const encoder of (opts.encoders||(linux?'software':'videotoolbox,x264')).split(',')){
     const entry={encoder,passed:false,phases:[],checks:[]};result.cases.push(entry);
     const stream='macroom'+crypto.randomBytes(10).toString('hex'),room='mac'+crypto.randomBytes(10).toString('hex'),remoteToken=crypto.randomBytes(24).toString('hex');
     const password=passwordProtected?crypto.randomBytes(16).toString('hex'):'false';
     const config={baseUrl:'https://vdo.ninja/',streamId:stream,room,password,timeoutMs:30000};
     const proxy=recoverSignaling?await createSignalingProxy():null;if(proxy)proxies.set(proxy,entry);
     const discovery=path.join(report,encoder+'-control.json');
-    const publisherArgs=['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,`--stream=${stream}`,`--room=${room}`,`--password=${password}`,...(proxy?['--server='+proxy.url]:[]),
-      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--resolution=1280x720','--fps=30','--bitrate-kbps=4000',
+    const publisherArgs=['--headless',...(linux?linuxFixture.sourceArgs:['--source=camera',`--camera-id=${opts['camera-device']}`]),`--stream=${stream}`,`--room=${room}`,`--password=${password}`,...(proxy?['--server='+proxy.url]:[]),
+      ...(linux?linuxFixture.audioArgs:['--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`]),`--video-encoder=${encoder}`,'--video-codec=h264','--resolution=1280x720','--fps=30','--bitrate-kbps=4000',
       ...(remoteEnabled?['--remote-control']:[]),`--remote-token=${remoteToken}`,`--duration-ms=${480000+performanceSeconds*1000+fuzzPlan.length*90000}`,'--max-viewers=8','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
     const publisher=launch(exe,publisherArgs,encoder+'-publisher');
     await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return fs.existsSync(discovery);},15000,'No local control');const control=JSON.parse(fs.readFileSync(discovery));
+    if(passwordProtected){
+      const wrong=await pageAt(`https://vdo.ninja/?view=${stream}&password=${crypto.randomBytes(16).toString('hex')}&autostart&cleanoutput`);
+      await sleep(8000);
+      entry.wrongPassword=await wrong.evaluate(async()=>{
+        let frames=0,audioPackets=0,connected=0;
+        for(const pc of window.reviewPCs){connected+=Number(pc.connectionState==='connected');
+          for(const stat of (await pc.getStats()).values())if(stat.type==='inbound-rtp'){
+            if(stat.kind==='video')frames+=stat.framesDecoded||0;
+            if(stat.kind==='audio')audioPackets+=stat.packetsReceived||0;
+          }
+        }
+        return {frames,audioPackets,connected};
+      });
+      assert.deepEqual(entry.wrongPassword,{frames:0,audioPackets:0,connected:0},'Wrong password received media');
+      assert.equal((await api(control,'/diagnostics')).peers.length,0,'Wrong password established a publisher peer');
+      entry.wrongPassword.observedMs=8000;entry.wrongPassword.passed=true;await wrong.close();
+    }
     const dir=await pageAt(director.buildDirectorUrl(config)+'&stereo=1');
     const peer=check(await director.waitForDirectorPeer(dir,config),'Director peer');const uuid=peer.uuid;
     check(await director.waitForDecodedDirectorVideo(dir,config),'Director video');
@@ -221,10 +244,10 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       assert(entry.performance.meetsTarget,'Sustained dual-tier room video/audio delivery missed its target');
     }
     for(const page of additional)await page.close();
-    fixture.stdin.write('pause\n');await sleep(800);
+    if(linux)await linuxFixture.pause();else fixture.stdin.write('pause\n');await sleep(800);
     entry.static=await Promise.all([observe(dir,2500),observe(scene,2500)]);
     for(const observation of entry.static){assert(observation.observations.length>40,'Static frames not paced');assert.equal(new Set(observation.observations.map(f=>f.id)).size,1);}
-    fixture.stdin.write('resume\n');
+    if(linux)await linuxFixture.resume();else fixture.stdin.write('resume\n');
     if(!remoteEnabled){
       // Run the existing Windows director UI contract against the Mac bundle.
       // Only the launch adapter differs; its shared assertions stay intact.
@@ -243,10 +266,12 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
       entry.phases.push({phase:'controls-disabled',director:await media(dir,640,360,'Disabled director still plays'),scene:await media(scene,1280,720,'Disabled scene unchanged')});
       entry.finalAudio=await observeAudio(scene);requireAudio(entry.finalAudio);
       entry.finalDiagnostics=await api(control,'/diagnostics');
+      if(linux)entry.systemResources=require('./linux-system-resource-observer')(entry.finalDiagnostics.system);
       assert.equal(entry.finalDiagnostics.video.configured_bitrate_kbps,4000);
       assert.equal(entry.finalDiagnostics.video.configured_width,1280);assert.equal(entry.finalDiagnostics.video.configured_height,720);
       await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher did not quit');assert.equal(await publisher.closed,0);assert(!fs.existsSync(discovery));
       assert(!fs.readFileSync(path.join(report,encoder+'-publisher.log'),'utf8').includes(remoteToken),'Remote token in logs');
+      if(passwordProtected){assert(!fs.readFileSync(path.join(report,encoder+'-publisher.log'),'utf8').includes(password),'Password in logs');entry.passwordNotExposedInLog=true;}
       await dir.close();await scene.close();entry.passed=true;console.log(encoder+': disabled remote controls passed');
       fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));continue;
     }
@@ -507,6 +532,7 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
     diag=await api(control,'/diagnostics');entry.finalDiagnostics=diag;
     assert(diag.room_quality.effective&&diag.video.lq_encoder_initialized&&diag.video.lq_encoder.includes('x264'));assert.equal(diag.video.hardware_encoder,encoder==='videotoolbox');
     assert(diag.system.cpu_percent>=0&&diag.system.cpu_percent<=100&&diag.system.memory_total_bytes>0,'Native system resource metrics unavailable');
+    if(linux)entry.systemResources=require('./linux-system-resource-observer')(diag.system);
     await dir.screenshot({path:path.join(report,encoder+'-director.png'),fullPage:true});await late.screenshot({path:path.join(report,encoder+'-scene.png')});
     await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher did not quit');assert.equal(await publisher.closed,0);assert(!fs.existsSync(discovery));
     assert(!fs.readFileSync(path.join(report,encoder+'-publisher.log'),'utf8').includes(remoteToken),'Remote token in logs');
@@ -519,4 +545,5 @@ async function videoCounters(page){return page.evaluate(async()=>{let frames=0,k
   if(browser)for(const [i,page] of browser.contexts().flatMap(c=>c.pages()).entries())try{await page.screenshot({path:path.join(report,'failure-'+i+'.png')});fs.writeFileSync(path.join(report,'failure-'+i+'.json'),JSON.stringify(await page.evaluate(()=>({url:location.href,text:document.body.innerText.slice(0,5000),rpc:Object.fromEntries(Object.entries(window.session?.rpcs||{}).map(([k,r])=>[k,{stream:r.streamID,info:r.stats?.info}]))})),null,2));}catch{}
 }finally{for(const p of children)p.kill('SIGTERM');if(browser)await browser.close().catch(()=>{});await Promise.all([...children].map(async p=>{await Promise.race([p.closed,sleep(3000)]);if(p.exitCode===null&&!p.signalCode)p.kill('SIGKILL');await p.closed;}));
   for(const [proxy,entry] of proxies){entry.proxyFinal=proxy.snapshot();try{await proxy.close();entry.proxyClosed=proxy.snapshot();assert.equal(entry.proxyClosed.unexpectedErrors,0);}catch(error){result.passed=false;entry.passed=false;entry.proxyCleanupError=String(error);process.exitCode=1;}}
+  if(linuxFixture)try{await linuxFixture.close();result.linuxFixtureRetired=true;}catch(error){result.passed=false;result.fixtureCleanupError=String(error);process.exitCode=1;}
   fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({report,passed:result.passed}));}})();

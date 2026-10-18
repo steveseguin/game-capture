@@ -83,8 +83,8 @@
     {
       "id": "vdo-rooms",
       "required": true,
-      "status": "shared-unqualified",
-      "remaining": "HQ/LQ, director controls and authorization, overrides/restoration, guest lifecycle and multi-viewer recovery"
+      "status": "bounded-e2e-passed",
+      "remaining": "Exact extracted Ubuntu package passed private-X11 CLI software H264 1280x720/30 HQ plus independent 640x360/30 x264 LQ with decoded stereo Opus on real hosted director, scene and guest UI. Real random password, bounded wrong-password negative control, unauthorized/invalid-token rejection, authorized overrides/restoration, director audio/video mute, resolution/bitrate/keyframe controls, late scene, guest join/leave and signaling-outage continuity/reconnect passed. Disabled-control Windows UI contract and valid-token rejection also passed. Native Qt room configuration, Wayland room capture, TURN/WAN/packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
     },
     {
       "id": "whip",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1); this adds no room-configuration GUI qualification."
     },
     {
       "id": "profiles",
@@ -120,13 +120,13 @@
       "id": "automation",
       "required": true,
       "status": "partial",
-      "remaining": "Local API paths wired; MCP launch/discovery/diagnostics and Linux permissions; headless consent limits must be explicit"
+      "remaining": "Local API paths wired; MCP launch/discovery/diagnostics and Linux permissions; headless consent limits must be explicit Linux CPU/RAM diagnostics now return sampled host usage and passed authenticated queries during real protected-room and GUI publication. MCP and other automation gaps remain."
     },
     {
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open. Physical camera X11 GUI Stop/restart and app relaunch passed twice, with decoded media and preview identities after reopening; a competing CLI open did not interrupt the GUI camera. Hotplug and broader camera recovery remain open. Native Wayland external-output Stop/restart passed across seven protocols; local server recovery, RTMP helper-stall recovery and late direct receivers passed. Pending-permission GNOME crash was reproduced again during fixture failure and remains a release gap; healthy consent/restart runs kept the portal owner stable. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open. Physical camera X11 GUI Stop/restart and app relaunch passed twice, with decoded media and preview identities after reopening; a competing CLI open did not interrupt the GUI camera. Hotplug and broader camera recovery remain open. Native Wayland external-output Stop/restart passed across seven protocols; local server recovery, RTMP helper-stall recovery and late direct receivers passed. Pending-permission GNOME crash was reproduced again during fixture failure and remains a release gap; healthy consent/restart runs kept the portal owner stable. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room X11 CLI publisher signaling refusal for 33.166 seconds preserved decoded director/scene/guest media and surviving peer identities, recovered in 3.204 seconds and supported late scene/guest lifecycle. This covers an owned publisher-signaling proxy outage, not arbitrary host network or TURN failure."
     },
     {
       "id": "packaging",
@@ -16884,6 +16884,430 @@
           "screenshotSha256": "c3345ded5f6230b37951d45a7a7f4e0efc3f485d18fe32efe95d0fef7f6d1899"
         }
       }
+    },
+    {
+      "executableSha256": "889464cc76f157ea497e37b6243cf013229b626094db35bb972e8d99e222a6a8",
+      "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457",
+      "harnessSha256": "532dc4735341715823ccda930d73d06632bf31c83593ccb58a97d9f9fd70542f",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "directorHarnessSha256": "bb63a5326cde4777fbc53e7f6d3b052448555057c189737f9046cee80deeef3a",
+      "linuxFixtureSha256": "23a4294a21b6bb75aa4c2fc6a0e5970f9c62621f67164047eb1633bb0c229cf9",
+      "scope": "Extracted Ubuntu DEB, private X11 window and owned virtual stereo input with real VDO.Ninja director, scene and guest camera-join UI; physical devices, calibrated A/V timing and release qualification excluded",
+      "passwordProtected": true,
+      "remoteControlEnabled": true,
+      "recoverSignaling": true,
+      "linuxFixtureRetired": true,
+      "backend": "linux-room-recovery",
+      "report": "native-qt/qa/reports/linux-room-recovery/84a37ac9-8614-4aae-bfe4-9b177ca81537/results.json",
+      "reportSha256": "e31f7bf9c6412e237d184342a1c2b9f6635f25b0bc6fe41d04a0fd80fa5385d2",
+      "passed": true,
+      "case": {
+        "encoder": "software",
+        "wrongPassword": {
+          "frames": 0,
+          "audioPackets": 0,
+          "connected": 0,
+          "observedMs": 8000,
+          "passed": true
+        },
+        "passwordNotExposedInLog": true,
+        "systemResources": {
+          "passed": true,
+          "application": {
+            "cpu_percent": 16.05255359083276,
+            "memory_percent": 13.713101310390755,
+            "memory_total_bytes": 33434648576,
+            "memory_used_bytes": 4584927232
+          },
+          "reference": {
+            "totalBytes": 33434648576,
+            "availableBytes": 28841455616
+          },
+          "toleranceBytes": 334346485.76
+        },
+        "keyframe": {
+          "before": {
+            "frames": 4163,
+            "keyframes": 155
+          },
+          "after": {
+            "frames": 4175,
+            "keyframes": 157
+          },
+          "elapsedMs": 411
+        },
+        "proxyClosed": {
+          "mode": "reject",
+          "forwardedConnections": 2,
+          "rejectedConnections": 8,
+          "stalledHandshakes": 0,
+          "clientMessages": 44,
+          "serverMessages": 27,
+          "unexpectedErrors": 0,
+          "activeTcpSockets": 0,
+          "activeUpstreams": 0
+        },
+        "phases": [
+          {
+            "phase": "simultaneous",
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 115
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 119
+              }
+            }
+          },
+          {
+            "phase": "authorized-viewer",
+            "receivers": {
+              "viewer": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 119
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 115
+              }
+            }
+          },
+          {
+            "phase": "resized",
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 120
+              },
+              "scene": {
+                "width": 960,
+                "height": 540,
+                "distinctFrames": 120
+              }
+            }
+          },
+          {
+            "phase": "bitrate",
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 120
+              },
+              "scene": {
+                "width": 960,
+                "height": 540,
+                "distinctFrames": 120
+              }
+            }
+          },
+          {
+            "phase": "late-scene",
+            "receivers": {
+              "scene": {
+                "width": 960,
+                "height": 540,
+                "distinctFrames": 120
+              },
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 120
+              }
+            }
+          }
+        ],
+        "checks": [],
+        "guests": [
+          {
+            "label": "Guest UI initial",
+            "decodedFps": 29.999249286364293,
+            "leaveAction": "Hosted guest Hang up button",
+            "cleanupMs": 240
+          },
+          {
+            "label": "Guest UI rejoin",
+            "decodedFps": 29.74777036975012,
+            "leaveAction": "Close guest tab without running beforeunload",
+            "cleanupMs": 33
+          }
+        ],
+        "recovery": {
+          "refusedSignalingMs": 33166,
+          "reconnectMs": 3204,
+          "peerIdentitiesRetained": true,
+          "during": {
+            "director": {
+              "distinctFrames": 450,
+              "decodedFps": 29.999600102986907,
+              "stereoSamples": 30
+            },
+            "scene": {
+              "distinctFrames": 449,
+              "decodedFps": 29.93293432498027,
+              "stereoSamples": 30
+            },
+            "guest": {
+              "distinctFrames": 450,
+              "decodedFps": 29.99979980602343,
+              "stereoSamples": 30
+            }
+          },
+          "after": {
+            "director": {
+              "distinctFrames": 180,
+              "decodedFps": 29.992501874531367,
+              "stereoSamples": 30
+            },
+            "scene": {
+              "distinctFrames": 180,
+              "decodedFps": 29.969032243903243,
+              "stereoSamples": 30
+            }
+          }
+        }
+      },
+      "finding": "Exact extracted package, software H264 1280x720/30 HQ and independent x264 640x360/30 LQ, stereo Opus, random real password. Wrong-password direct receiver decoded nothing and created no publisher peer during an eight-second negative observation. Director/scene/guest routing, unauthorized/invalid-token rejection, authorized token overrides/restoration, selective director audio/video mute, resolution/bitrate changes, keyframes, late scene and two guest join/leave cycles passed. Refused publisher signaling for 33.166 seconds while media and peer identities survived; reconnect took 3.204 seconds. Native resource diagnostics matched host memory accounting. Owned signaling proxy/audio/source fixtures retired."
+    },
+    {
+      "executableSha256": "889464cc76f157ea497e37b6243cf013229b626094db35bb972e8d99e222a6a8",
+      "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457",
+      "harnessSha256": "532dc4735341715823ccda930d73d06632bf31c83593ccb58a97d9f9fd70542f",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "directorHarnessSha256": "bb63a5326cde4777fbc53e7f6d3b052448555057c189737f9046cee80deeef3a",
+      "linuxFixtureSha256": "23a4294a21b6bb75aa4c2fc6a0e5970f9c62621f67164047eb1633bb0c229cf9",
+      "scope": "Extracted Ubuntu DEB, private X11 window and owned virtual stereo input with real VDO.Ninja director, scene and guest camera-join UI; physical devices, calibrated A/V timing and release qualification excluded",
+      "passwordProtected": true,
+      "remoteControlEnabled": false,
+      "recoverSignaling": false,
+      "linuxFixtureRetired": true,
+      "backend": "linux-room-disabled",
+      "report": "native-qt/qa/reports/linux-room-disabled/e24c2e9f-099c-4908-a320-76e6b48eebef/results.json",
+      "reportSha256": "b94689065dfd978e1b7776a0cb9f7e0a693863469b58f9f5a74a6524130f72eb",
+      "passed": true,
+      "case": {
+        "encoder": "software",
+        "wrongPassword": {
+          "frames": 0,
+          "audioPackets": 0,
+          "connected": 0,
+          "observedMs": 8000,
+          "passed": true
+        },
+        "passwordNotExposedInLog": true,
+        "systemResources": {
+          "passed": true,
+          "application": {
+            "cpu_percent": 36.820573550983056,
+            "memory_percent": 15.224857878883064,
+            "memory_total_bytes": 33434648576,
+            "memory_used_bytes": 5090377728
+          },
+          "reference": {
+            "totalBytes": 33434648576,
+            "availableBytes": 28344111104
+          },
+          "toleranceBytes": 334346485.76
+        },
+        "phases": [
+          {
+            "phase": "simultaneous",
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 114
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 120
+              }
+            }
+          },
+          {
+            "phase": "controls-disabled",
+            "receivers": {
+              "director": {
+                "width": 640,
+                "height": 360,
+                "distinctFrames": 119
+              },
+              "scene": {
+                "width": 1280,
+                "height": 720,
+                "distinctFrames": 119
+              }
+            }
+          }
+        ],
+        "checks": [
+          {
+            "name": "remote-control-disabled-publisher-flag-contract",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-reported-setting-contract",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-device-change-is-unauthorized",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-opens-scene-stats-control",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-scene-stats-populates",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-bitrate-visible-control-action",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-bitrate-rejection-is-unauthorized",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-bitrate-remains-unchanged",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-bitrate-action-keeps-fresh-media",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-opens-video-settings-control",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-resolution-visible-control-action",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-resolution-rejection-is-unauthorized",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-resolution-settings-refresh",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-resolution-remains-unchanged",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-resolution-action-keeps-fresh-media",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-closes-video-settings-before-hangup",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-hangup-visible-control-action",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-hangup-is-rejected",
+            "ok": true
+          },
+          {
+            "name": "remote-control-disabled-hangup-leaves-publisher-live",
+            "ok": true
+          }
+        ]
+      },
+      "finding": "Exact extracted package, software H264 1280x720/30 HQ and independent x264 640x360/30 LQ, stereo Opus, random real password. Wrong-password direct receiver decoded nothing and created no publisher peer during an eight-second negative observation. Nineteen shared Windows director UI disabled-control checks passed, including bitrate/resolution/hangup rejection with fresh media continuing; a valid remote token was also rejected while controls were disabled. CPU/RAM diagnostics and fixture cleanup passed."
+    },
+    {
+      "executableSha256": "889464cc76f157ea497e37b6243cf013229b626094db35bb972e8d99e222a6a8",
+      "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457",
+      "harnessSha256": "66bc26700187a6179a238c43028d0216bc90fd7317d768789aca3b5e68a113bf",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "systemResources": {
+        "passed": true,
+        "application": {
+          "cpu_percent": 55.31496062992126,
+          "memory_percent": 15.491863287350498,
+          "memory_total_bytes": 33434648576,
+          "memory_used_bytes": 5179650048
+        },
+        "reference": {
+          "totalBytes": 33434648576,
+          "availableBytes": 28251127808
+        },
+        "toleranceBytes": 334346485.76,
+        "guiLabel": "System: CPU 55% | RAM 15%"
+      },
+      "backend": "linux-system-resources-x11",
+      "report": "native-qt/qa/reports/linux-resource-x11/e2f480fb-1eda-4601-9af2-56af8bc11596/results.json",
+      "reportSha256": "f9d6273b90d66027172e2e67d0fe5fff03f5714bd5d308e39532e41f024f0b5c",
+      "passed": true,
+      "decodedPhases": [
+        "moving",
+        "static",
+        "resized",
+        "late"
+      ],
+      "finding": "Exact extracted package passed actual Qt GUI source selection, software H264 publication, moving/static reception, resize, late viewer and preview pixel/clearing checks. CPU/RAM label contains numeric percentages and diagnostics memory values agree with free(1). Private Xvfb/xfwm4 desktop; physical Xorg remains unqualified."
+    },
+    {
+      "executableSha256": "889464cc76f157ea497e37b6243cf013229b626094db35bb972e8d99e222a6a8",
+      "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457",
+      "harnessSha256": "66bc26700187a6179a238c43028d0216bc90fd7317d768789aca3b5e68a113bf",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "systemResources": {
+        "passed": true,
+        "application": {
+          "cpu_percent": 24.101796407185628,
+          "memory_percent": 13.243480510749066,
+          "memory_total_bytes": 33434648576,
+          "memory_used_bytes": 4427911168
+        },
+        "reference": {
+          "totalBytes": 33434648576,
+          "availableBytes": 29018800128
+        },
+        "toleranceBytes": 334346485.76,
+        "guiLabel": "System: CPU 20% | RAM 14%"
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.4241',)",
+        "survived": true
+      },
+      "guiRestartPassed": true,
+      "previewModeSwitchPassed": true,
+      "backend": "linux-system-resources-wayland",
+      "report": "native-qt/qa/reports/linux-resource-wayland/45c4cf6f-886f-461e-bf34-0e57f34bf960/results.json",
+      "reportSha256": "cb819a2ed51a1165c3a953c5bd37febf6779e8447dff3a916a4d3cc2a65a4566",
+      "passed": true,
+      "decodedPhases": [
+        "moving",
+        "static",
+        "resized",
+        "late",
+        "restarted"
+      ],
+      "finding": "Exact extracted package passed actual Qt GUI source selection, software H264 publication, moving/static reception, resize, late viewer and preview pixel/clearing checks. CPU/RAM label contains numeric percentages and diagnostics memory values agree with free(1). Native GNOME Wayland permission selection and Stop/fresh-consent restart passed with unchanged portal owner; pending cancellation remains dependent on the earlier desktop backport."
     }
   ],
   "host_environment": {
@@ -16931,7 +17355,9 @@
     "xvfb-run -a -s \"-screen 0 1440x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- python3 native-qt/e2e/linux-camera-unavailable.py --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports>",
     "WAYLAND_DISPLAY=wayland-0 python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-whip-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports>",
     "WAYLAND_DISPLAY=wayland-0 python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-mux-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --helper-stall=true",
-    "python3 native-qt/qa/build-gnome-portal-backport.py --source=<local GNOME portal git clone with pinned commits> --output=<new isolated directory> (dependency build gate only; does not install/activate a service)"
+    "python3 native-qt/qa/build-gnome-portal-backport.py --source=<local GNOME portal git clone with pinned commits> --output=<new isolated directory> (dependency build gate only; does not install/activate a service)",
+    "xvfb-run -a -s \"-screen 0 1600x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --password-protected=true --signaling-recovery=true (shared room assertions, Linux adapter; --remote-control=disabled selects disabled UI contract instead)",
+    "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --preview=true --system-resources=true (appropriate isolated X11/native Wayland desktop wrapper required)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -17716,6 +18142,130 @@
       "ownedApplicationProcessesRemaining": [],
       "ownedSecretStoresRetired": true,
       "portalCrashRecords": false
+    }
+  },
+  "room_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-889464cc76f1-a03d5ab44b80.deb",
+      "sha256": "67151b5dd6894f028f827f62f3188b315ef479773ef0d5ee08ea750d4df7b36e",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-889464cc76f1-a03d5ab44b80",
+      "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457"
+    },
+    "qualification": "Extracted Ubuntu amd64 DEB; protected X11 CLI rooms with real hosted browser controls and owned virtual stereo input. Software HQ 1280x720/30 and independent LQ 640x360/30. Enabled/recovery and disabled-control workflows passed. GUI rooms, physical audio, Wayland room capture, default 720p60/endurance and cross-platform runtime regression remain open.",
+    "reports": [
+      {
+        "kind": "recovery",
+        "report": "native-qt/qa/reports/linux-room-recovery/84a37ac9-8614-4aae-bfe4-9b177ca81537/results.json",
+        "reportSha256": "e31f7bf9c6412e237d184342a1c2b9f6635f25b0bc6fe41d04a0fd80fa5385d2"
+      },
+      {
+        "kind": "disabled",
+        "report": "native-qt/qa/reports/linux-room-disabled/e24c2e9f-099c-4908-a320-76e6b48eebef/results.json",
+        "reportSha256": "b94689065dfd978e1b7776a0cb9f7e0a693863469b58f9f5a74a6524130f72eb"
+      }
+    ],
+    "earlierFailures": [
+      {
+        "report": "native-qt/qa/reports/linux-room-enabled/9f602af5-34d8-4b03-91ca-6259cb334ac0/results.json",
+        "reportSha256": "a1bec46f6454bb79f690a154cea6a11aaf8dc297586f24b7cf71038017bd8682",
+        "passed": false,
+        "finding": "Fixture microphone ID lacked the required pulse: prefix. Video decoded but audio was correctly refused; full workflow failed. Corrected adapter ID before subsequent runs.",
+        "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+        "fixtureRetired": true
+      },
+      {
+        "report": "native-qt/qa/reports/linux-room-enabled/77666ed6-bed6-474c-b45d-7b65e88f06c1/results.json",
+        "reportSha256": "0e5798c0af090939ebadcf7f721c9fe4c8ad982d9a74b59da1e3ce099d86e5fd",
+        "passed": false,
+        "finding": "Full room workflow failed its final native-resource check: old package exposed CPU/RAM as unavailable (-1/zero). Media, guest and control phases had passed. Added Linux resource sampling and qualified the new exact package with the full protected-room recovery workflow.",
+        "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+        "fixtureRetired": true
+      }
+    ],
+    "reusedAssertions": "Existing Windows director UI contract, macOS room/browser observations, recovery observer, shared role/authorization/media core. Added a Linux launch/source/audio adapter; no Linux fork of room behavior.",
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-room-recovery/84a37ac9-8614-4aae-bfe4-9b177ca81537/host-cleanup.json",
+      "reportSha256": "bc7c3ad96b95de5519b4d6cec9cba81cabf3b99edc60ca024081963aec31c4ab",
+      "passed": true
+    }
+  },
+  "system_resources_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-889464cc76f1-a03d5ab44b80.deb",
+      "sha256": "67151b5dd6894f028f827f62f3188b315ef479773ef0d5ee08ea750d4df7b36e",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-889464cc76f1-a03d5ab44b80",
+      "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457"
+    },
+    "qualification": "New Linux host-wide CPU/memory sampler feeds the existing shared UI and diagnostics. Packaged protected-room API and X11/native Wayland GUI workflows passed. Independent free(1) total/available-memory comparison passed; CPU is an aggregate interval percentage, not process load or cgroup capacity. Detailed CPU calibration, restricted procfs and other Linux environments remain unqualified.",
+    "reports": [
+      {
+        "kind": "recovery",
+        "report": "native-qt/qa/reports/linux-room-recovery/84a37ac9-8614-4aae-bfe4-9b177ca81537/results.json",
+        "reportSha256": "e31f7bf9c6412e237d184342a1c2b9f6635f25b0bc6fe41d04a0fd80fa5385d2"
+      },
+      {
+        "kind": "disabled",
+        "report": "native-qt/qa/reports/linux-room-disabled/e24c2e9f-099c-4908-a320-76e6b48eebef/results.json",
+        "reportSha256": "b94689065dfd978e1b7776a0cb9f7e0a693863469b58f9f5a74a6524130f72eb"
+      },
+      {
+        "kind": "x11",
+        "report": "native-qt/qa/reports/linux-resource-x11/e2f480fb-1eda-4601-9af2-56af8bc11596/results.json",
+        "reportSha256": "f9d6273b90d66027172e2e67d0fe5fff03f5714bd5d308e39532e41f024f0b5c"
+      },
+      {
+        "kind": "wayland",
+        "report": "native-qt/qa/reports/linux-resource-wayland/45c4cf6f-886f-461e-bf34-0e57f34bf960/results.json",
+        "reportSha256": "cb819a2ed51a1165c3a953c5bd37febf6779e8447dff3a916a4d3cc2a65a4566"
+      }
+    ],
+    "implementation": [
+      "native-qt/src/platform/linux/system_resources.cpp",
+      "native-qt/include/versus/platform/linux_system_resources.h"
+    ],
+    "references": [
+      "https://www.kernel.org/doc/html/latest/filesystems/proc.html"
+    ],
+    "gates": {
+      "report": "native-qt/build-linux/room-gates.json",
+      "reportSha256": "d906cef6184f48f3b5a36c7f698c5ee64b96f66f235bd8546d90e775cf2ee803",
+      "classification": "Build, packaging, CTest and syntax gates only; not application testing.",
+      "passed": true,
+      "package": {
+        "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-889464cc76f1-a03d5ab44b80.deb",
+        "sha256": "67151b5dd6894f028f827f62f3188b315ef479773ef0d5ee08ea750d4df7b36e",
+        "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-889464cc76f1-a03d5ab44b80",
+        "manifestSha256": "1543bcb2e66bf029644d384e705d8593069b4261c3c502bdfb7ce293adea3457"
+      },
+      "files": {
+        "native-qt/cmake/platform-linux.cmake": "6626c04b3a97d0fffc34336544371f220e2bea1f2b03e5b189f6710bb129f319",
+        "native-qt/src/app/versus_app.cpp": "8860ebb2eb5bfb45edc7f544aeeed10117314481abcdfcdf9d9b2bb37d324f60",
+        "native-qt/src/platform/linux/system_resources.cpp": "2f6249e1c0706816bdd33895c920bea99423c6d8b51f233b6aa9d2a5da8d5783",
+        "native-qt/include/versus/platform/linux_system_resources.h": "40cad359b917fb69bb4bcacff32320e4c3a6da59e21636e21a44fa6844e6aff2",
+        "native-qt/e2e/linux-room-fixture.js": "23a4294a21b6bb75aa4c2fc6a0e5970f9c62621f67164047eb1633bb0c229cf9",
+        "native-qt/e2e/linux-system-resource-observer.js": "38be0a7af6a59879f961ef46ad22cbbf7bbfe3f4969c1d81d0b41ab9cee8f9e7",
+        "native-qt/e2e/macos-room-publish.js": "532dc4735341715823ccda930d73d06632bf31c83593ccb58a97d9f9fd70542f",
+        "native-qt/e2e/linux-window-publish.js": "66bc26700187a6179a238c43028d0216bc90fd7317d768789aca3b5e68a113bf"
+      },
+      "logs": {
+        "native-qt/build-linux-room-resources.log": "85a30a259175c48bf0e98fccf7b6ca50bfe7e4288050fcc36d9480ae7cb1e9ea",
+        "native-qt/build-linux-room-package.log": "1bb555be3c5da12e3d6b5df3ec3e7fa2ec6694fab1366bf9d3d19d8c4ce0c4be",
+        "native-qt/build-linux-room-gates.log": "47f0bf2ae2041ae55ecad3a90bfbef2ace5f12e064fc96d710cc2c9d1a24666b"
+      },
+      "checks": [
+        "Release build and DEB packaging",
+        "Exact new source/header present in hashed packaged source archive",
+        "PlatformCapabilitiesGate",
+        "VdoSignalingLifecycleGate",
+        "Node syntax for four fixtures",
+        "git diff --check"
+      ],
+      "crossPlatform": "Linux sampler selected only by __linux__ and Linux CMake branch. Existing Windows/macOS resource implementations retained. Shared room assertions keep the macOS capture adapter; actual Windows/macOS runtime regression remains open."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-room-recovery/84a37ac9-8614-4aae-bfe4-9b177ca81537/host-cleanup.json",
+      "reportSha256": "bc7c3ad96b95de5519b4d6cec9cba81cabf3b99edc60ca024081963aec31c4ab",
+      "passed": true
     }
   }
 }

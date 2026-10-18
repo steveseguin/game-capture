@@ -16,6 +16,9 @@
 #include "versus/platform/macos_system_resources.h"
 #include "versus/platform/macos_media_activity.h"
 #endif
+#ifdef __linux__
+#include "versus/platform/linux_system_resources.h"
+#endif
 
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -2054,6 +2057,12 @@ void VersusApp::populateSystemResourceUsage(ConnectionHealth &health) const {
     health.systemCpuPercent = lastSystemCpuPercent_;
 #elif defined(__APPLE__)
     const auto resources = platform::macSystemResources();
+    health.systemCpuPercent = resources.cpuPercent;
+    health.systemMemoryPercent = resources.memoryPercent;
+    health.systemMemoryTotalBytes = resources.memoryTotalBytes;
+    health.systemMemoryUsedBytes = resources.memoryUsedBytes;
+#elif defined(__linux__)
+    const auto resources = platform::linuxSystemResources();
     health.systemCpuPercent = resources.cpuPercent;
     health.systemMemoryPercent = resources.memoryPercent;
     health.systemMemoryTotalBytes = resources.memoryTotalBytes;

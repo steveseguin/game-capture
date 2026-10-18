@@ -213,6 +213,16 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   assert.equal(result.phases.moving.width,width);assert.equal(result.phases.moving.height,height);
   await checkPreview('live');
   const diagnostics=await api('/diagnostics');
+  if(opts['system-resources']==='true'){
+    result.systemResources=require('./linux-system-resource-observer')(diagnostics.system);
+    fs.copyFileSync(path.join(__dirname,'linux-system-resource-observer.js'),path.join(report,'linux-system-resource-observer.js'));
+    if(gui){
+      const label=JSON.parse(ui('dump')).find(row=>row.role==='label'&&row.name.startsWith('System: CPU '));
+      assert(label&&/^System: CPU \d+(?:\.\d+)?% \| RAM \d+(?:\.\d+)?%$/.test(label.name),'GUI resource usage unavailable');
+      result.systemResources.guiLabel=label.name;
+    }
+    save();
+  }
   result.activeEncoder=diagnostics.video.active_encoder;result.hardwareEncoder=diagnostics.video.hardware_encoder;
   result.configuredBitrateKbps=diagnostics.video.configured_bitrate_kbps;
   assert.equal(result.configuredBitrateKbps,result.requested.bitrateKbps);

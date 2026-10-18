@@ -13,6 +13,7 @@ list(APPEND VERSUS_PLATFORM_SOURCES
     src/platform/linux/video_encoder.cpp
     src/platform/linux/network.cpp
     src/platform/linux/window_capture.cpp
+    src/platform/linux/system_resources.cpp
     src/platform/linux/camera_capture.cpp
     src/platform/linux/audio_capture.cpp
     src/platform/linux/output_profiles.cpp
