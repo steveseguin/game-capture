@@ -99,13 +99,43 @@ cleaned up. No application runtime or VDO.Ninja API changed.
 CLI receives 640×360 at a 2 Mbps target; GUI receives 1920×1080 at 4 Mbps, both
 requested at 30 fps. Initial browser presentation observations contain
 **26.16–29.48 distinct images/s**, so this is functional coverage, **not sustained
-30 fps camera qualification**. Decoded-track throughput needs a separate
-observation to distinguish delivery from browser presentation. The installed
+30 fps camera qualification**. The subsequent paired observation below distinguishes decoded delivery from
+browser presentation for a bounded steady-state interval. The installed
 OBS virtual camera and BlackHole stereo fixtures do not qualify physical devices,
 WAN/TURN interruption, calibrated A/V timing or matched picture quality.
 
 [Raw observations, screenshots, independent audits and retained instrumentation controls](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip)
 are published in the private benchmark repository.
+
+## Paired decoded/presentation cadence
+
+A follow-up on the same released app measures decoded-track frames and browser
+presentation simultaneously, with source, publisher and receiver counters around
+three ten-second intervals per encoder. The GUI publishes 1920×1080/30 fps at a
+4 Mbps target through the same virtual-device/loopback setup.
+
+| Encoder | Distinct decoded images | Decoded images/s, interval range | Presentation images/s, interval range |
+| --- | ---: | ---: | ---: |
+| Apple VT | 900 | 29.97–29.99 | 29.28–29.99 |
+| x264 | 899 | 29.89–30.00 | 29.80–29.97 |
+
+All six intervals meet the 95% cadence criterion. Decoded identities are
+consecutive without repeats inside each observed interval; native dropped-frame,
+encode-failure/timeout and send-failure deltas are zero. Source/publisher/receiver
+counter rates are also near 30 fps. Their surrounding sampling windows differ
+slightly, so raw frame totals across those clocks are not directly equated.
+The complete subsequent GUI stereo, silence, late-viewer, recovery and cleanup
+workflows pass for both encoders.
+
+This supports bounded steady-state delivery. It does not establish the exact
+cause of the earlier lower startup-presentation counts or qualify sustained
+physical-camera performance. The first combined attempt remains failed because
+its planned x264 case tried to access a GUI control before it existed. A QA-only
+change now waits for read-only accessibility readiness before acting; x264 then
+completed. No application runtime change was required.
+
+[Original observations, retained failed attempt, source bindings and independent cadence audits](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip-cadence)
+are available in the private benchmark repository. Mac remains experimental.
 
 ## Remaining qualification
 
