@@ -130,21 +130,22 @@ async function create(opts,report){
       assert.equal(read('Room'),config.room);
       ui('source',wayland?'Choose a window':title);
       evidence.configuredThroughGui=true;evidence.controlTokenAccessible=true;evidence.remoteControlEnabled=config.remoteEnabled;
-      async function goLive(){
+      async function goLive(observeStart){
         let selected;
         if(wayland){
           checkPortal();assert(title.startsWith('Owned Linux Capture '));selected=path.join(report,'room-portal-'+(evidence.portalSelections.length+1)+'.json');
           const log=fs.createWriteStream(selected+'.log');selector=spawn('python3',[portal,'--title='+title,'--output='+selected],{env,stdio:['ignore','pipe','pipe']});
           selector.stdout.pipe(log,{end:false});selector.stderr.pipe(log,{end:false});selector.closed=new Promise(resolve=>selector.once('close',()=>log.end(resolve)));
         }
-        ui('press','Go live');await waitFor(async()=>{if(wayland)assert(selector.exitCode===null||selector.exitCode===0,'Portal selection failed');return (await api(control,'/diagnostics')).app.live;},30000,'Room GUI did not go live');
+        ui('press','Go live');
+        if(observeStart)await observeStart();else await waitFor(async()=>{if(wayland)assert(selector.exitCode===null||selector.exitCode===0,'Portal selection failed');return (await api(control,'/diagnostics')).app.live;},30000,'Room GUI did not go live');
         if(wayland){await waitFor(()=>selector.exitCode!==null,10000,'Portal selector did not finish');await selector.closed;assert.equal(selector.exitCode,0);assert(JSON.parse(fs.readFileSync(selected)).passed);evidence.portalSelections.push({file:path.basename(selected),sha256:sha(selected)});checkPortal();}
       }
       async function stop(){
         ui('press','Stop streaming');await waitFor(async()=>{const d=await api(control,'/diagnostics');return !d.app.live&&!d.app.capturing;},10000,'Room Stop did not retire capture');
         const before=await api(control,'/diagnostics');await sleep(500);assert.equal((await api(control,'/diagnostics')).video.frames_captured,before.video.frames_captured);
       }
-      await goLive();
+      await goLive(config.observeInitialStart);
       return {stop,goLive,recoveryState:async recovering=>{
         let status;
         await waitFor(()=>{
