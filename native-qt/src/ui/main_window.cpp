@@ -3670,7 +3670,12 @@ void MainWindow::onGoLiveClicked() {
                         } else
 #endif
                         if (!core->goLive(options)) {
+#ifdef __linux__
+                            failureStatus = core->captureStartCancelled()
+                                ? "Capture startup cancelled" : "Failed to connect";
+#else
                             failureStatus = "Failed to connect";
+#endif
                             cleanupFailedStartup();
                         } else {
                             started = true;

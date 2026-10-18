@@ -50,7 +50,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "close-window", "paste", "copy"])
+    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -99,6 +99,29 @@ def main():
                            "bounds": geometry(node),
                            "states": [str(state.value_nick) for state in node.get_state_set().get_states()]}
                           for node in nodes(app)], indent=2))
+    elif args.command == "quit-menu":
+        frame = find("frame", "Game Capture - Powered by VDO.Ninja")
+        assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), "Owned application is not active"
+        def send_menu_keys(values):
+            if os.environ.get("QT_QPA_PLATFORM") == "xcb":
+                subprocess.run(['xdotool', 'key', '--clearmodifiers', *values], check=True, timeout=3)
+            else:
+                assert os.environ.get('GC_QA_KEYBOARD_SOCKET'), 'Owned keyboard is required'
+                subprocess.run([sys.executable, str(Path(__file__).with_name('linux-portal-select.py')), '--keys', *[v.upper() for v in values]], check=True, timeout=8)
+            time.sleep(.15); pump()
+        menus = [n for n in nodes(app) if n.get_role_name() in ['menu', 'menu item'] and n.get_name() == 'File']
+        assert len(menus) == 1
+        if os.environ.get('QT_QPA_PLATFORM') == 'xcb':
+            press(menus[0])
+        else:
+            send_menu_keys(['ALT_F'])
+        send_menu_keys(['Up'])
+        item = find('menu item', 'Quit')
+        states = item.get_state_set()
+        assert states.contains(Atspi.StateType.SHOWING) and states.contains(Atspi.StateType.FOCUSED), 'Owned Quit item is not focused: '+str([(n.get_name(),[str(x.value_nick) for x in n.get_state_set().get_states()]) for n in nodes(app) if n.get_role_name() in ['menu','menu item']])
+        started = int(time.time()*1000)
+        send_menu_keys(['Return'] if os.environ.get("QT_QPA_PLATFORM") == "xcb" else ['ENTER'])
+        print(json.dumps({'action':'File menu Quit', 'actionStartedAtMs':started}))
     elif args.command == "close-window":
         frame = find("frame", "Game Capture - Powered by VDO.Ninja")
         assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), "Owned application is not active"

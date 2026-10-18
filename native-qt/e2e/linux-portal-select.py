@@ -17,7 +17,7 @@ import sys
 import time
 
 
-ALLOWED_KEYS = {"HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
+ALLOWED_KEYS = {"ALT_F", "UP", "HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
 
 
 def emit_keys(device, keys):
@@ -25,7 +25,7 @@ def emit_keys(device, keys):
     if not isinstance(keys, list) or len(keys) > 64 or any(key not in ALLOWED_KEYS for key in keys):
         raise RuntimeError("Unexpected QA keys")
     for key in keys:
-        chords = {"ALT_TAB": (ec.KEY_LEFTALT, ec.KEY_TAB), "ALT_F4": (ec.KEY_LEFTALT, ec.KEY_F4),
+        chords = {"ALT_F": (ec.KEY_LEFTALT, ec.KEY_F), "ALT_TAB": (ec.KEY_LEFTALT, ec.KEY_TAB), "ALT_F4": (ec.KEY_LEFTALT, ec.KEY_F4),
                   "CTRL_A": (ec.KEY_LEFTCTRL, ec.KEY_A), "CTRL_V": (ec.KEY_LEFTCTRL, ec.KEY_V), "CTRL_C": (ec.KEY_LEFTCTRL, ec.KEY_C)}
         if key in chords:
             modifier, button = chords[key]

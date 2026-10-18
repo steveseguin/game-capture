@@ -1541,7 +1541,15 @@ bool VersusApp::goLive(const StartOptions &options) {
     bool signalingConnected = false;
     {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
+#ifdef __linux__
+        // The GUI can cancel startup after capture has begun but while the
+        // initial signaling handshake is still pending.
+        signalingConnected = signaling_.connect(options.server, [this]() {
+            return captureStartCancelled();
+        });
+#else
         signalingConnected = signaling_.connect(options.server);
+#endif
     }
     if (!signalingConnected) {
         spdlog::error("[App] Failed to connect to signaling server");
