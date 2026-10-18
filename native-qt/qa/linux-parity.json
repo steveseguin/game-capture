@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified."
     },
     {
       "id": "x11-window",
@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Final Linux audio behavior has changed again to retain healthy direct monitors and react to playback events. The current bounded A/V results are in linux_app_monitor_retention_checkpoint; they do not establish absolute software-reference calibration or endurance. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but failed initial A/V skew; it does not qualify current behavior. Prior native Wayland delivery was 47\u201349 fps with source cadence also below target in three windows; isolate source/compositor/PipeWire throughput. Higher profiles and high-motion content require separate evidence. See linux_av_receiver_rtp_checkpoint: unmuted playback still fails recorded startup skew. Exact incoming RTP/source identity evidence is stable, while receiver recording adds changing skew. Separate actual presentation from recording and establish calibration before final endurance qualification. See linux_visible_receiver_av_checkpoint: two bounded actual visible-output/Pulse comparisons stay within 50 ms while MediaRecorder adds roughly 16.5-29 ms. Original statuses and independent-calibration requirement remain; neither bounded run proves endurance or native Wayland throughput."
+      "remaining": "Final Linux audio behavior has changed again to retain healthy direct monitors and react to playback events. The current bounded A/V results are in linux_app_monitor_retention_checkpoint; they do not establish absolute software-reference calibration or endurance. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but failed initial A/V skew; it does not qualify current behavior. Prior native Wayland delivery was 47\u201349 fps with source cadence also below target in three windows; isolate source/compositor/PipeWire throughput. Higher profiles and high-motion content require separate evidence. See linux_av_receiver_rtp_checkpoint: unmuted playback still fails recorded startup skew. Exact incoming RTP/source identity evidence is stable, while receiver recording adds changing skew. Separate actual presentation from recording and establish calibration before final endurance qualification. See linux_visible_receiver_av_checkpoint: two bounded actual visible-output/Pulse comparisons stay within 50 ms while MediaRecorder adds roughly 16.5-29 ms. Original statuses and independent-calibration requirement remain; neither bounded run proves endurance or native Wayland throughput. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified."
     },
     {
       "id": "arm-portability",
@@ -25128,6 +25128,149 @@
         "sha256": "ba70ce69dc3f13ed6cc55052c616074832beee76056ba21eb1a25e1ff577765d",
         "passed": true
       }
+    },
+    {
+      "case": "linux-wayland-baseline",
+      "report": "native-qt/qa/reports/linux-av-wayland-trace/2ecbb313-b523-4519-9d75-c01dbcd03c48/results.json",
+      "reportSha256": "fad295c144a548a8207d7c2ab3b7b96829613df6c1987b58855a45a221b687b3",
+      "passed": false,
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "measurements": {
+        "sourceFps": [
+          50.795937317122785,
+          54.596723663409065
+        ],
+        "receiverFps": [
+          46.730836992184074,
+          47.39715570779469
+        ],
+        "additionalRecordedAvOffsetMs": [
+          -70.99999999999795,
+          8.9999999999999
+        ],
+        "recordedAvPassed": false,
+        "cadenceIntervalsPassed": 0,
+        "continuousAudioIntervalsPassed": 6,
+        "traceComplete": true
+      },
+      "frameTraceAnalysisSha256": "d0f734dd37341ef973b804c8c68b3c9293a4557d8c1fdfe76d4a49d93c6ee793",
+      "fixtureSha256": "8f58a2ae50a65d1c24f9801373d9bc694cd64f977ad7d1b94181fd4c155470f8",
+      "wrapperReport": "native-qt/qa/reports/linux-av-wayland-trace-desktop/953be22d-8faa-4286-9227-730e6cb3b036/results.json",
+      "wrapperSha256": "9651712d84cfe8d46990d0be7e8601f52b7f471406cecaecef97b101327bd3b9"
+    },
+    {
+      "case": "linux-wayland-input-trace",
+      "report": "native-qt/qa/reports/linux-av-wayland-input/5c0b2215-5474-4dfd-ae20-302152b1a37d/results.json",
+      "reportSha256": "720c4b4c7456abaf5f8a3128d0abc9d17d64a88e935cdbcfb616cad192b69106",
+      "passed": false,
+      "packageSha256": "9a9797b7a681243d36c93df218918aff8ad8eda3671a7aed9f11e7405cc81aa1",
+      "manifestSha256": "e4cb76fa5342ffa60f86440020ac73f3b0d3079c81570e3da590acc9854cf0ec",
+      "executableSha256": "361d963a67a26597f969952baf198e34135f8c403adfbc8b662e5fbf1c7c47d7",
+      "measurements": {
+        "sourceFps": [
+          52.995761374163536,
+          56.1966276535456
+        ],
+        "receiverFps": [
+          47.59619323415442,
+          48.79707169916415
+        ],
+        "additionalRecordedAvOffsetMs": [
+          -62.000000000001165,
+          -7.0000000000014495
+        ],
+        "recordedAvPassed": false,
+        "cadenceIntervalsPassed": 0,
+        "continuousAudioIntervalsPassed": 6,
+        "traceComplete": true,
+        "pipewire": {
+          "arrivals": 1481,
+          "copied": 1472,
+          "admissionRejected": 0,
+          "invalidOrStopped": 9,
+          "arrivalFpsRange": [
+            48.596113260082035,
+            49.99699969176655
+          ],
+          "medianProducerGapMsRange": [
+            18.806,
+            19.561
+          ],
+          "p95ProducerGapMsRange": [
+            26.434,
+            27.563
+          ],
+          "medianCallbackMsRange": [
+            0.5517,
+            0.5855
+          ],
+          "maximumCallbackMs": 1.3655,
+          "missingProducerPts": 0,
+          "nonIncreasingProducerPts": 0
+        }
+      },
+      "frameTraceAnalysisSha256": "ea0ee49dafdf61eb1e3050e515ef829a11461240ba878d361470e7daf84db0cc",
+      "fixtureSha256": "d843f3751d912924a07a4597dbf3114e32ab15b6752627fda379c2539391d9b7",
+      "wrapperReport": "native-qt/qa/reports/linux-av-wayland-input-desktop/87a132c8-36f0-4385-b51a-36e1d24554da/results.json",
+      "wrapperSha256": "b69e34d1a5d73310e8ebe14491b3235c96af0b96c60b64d4ab5b09573bca32ed"
+    },
+    {
+      "case": "linux-wayland-paused-consumer",
+      "report": "native-qt/qa/reports/linux-av-wayland-paused/ff48fd61-87b4-44c7-8607-501e56493152/results.json",
+      "reportSha256": "10c6de1c66a588c47985842b351a6d4486d8a4cf04ac88f70878979aeb62d039",
+      "passed": false,
+      "packageSha256": "9a9797b7a681243d36c93df218918aff8ad8eda3671a7aed9f11e7405cc81aa1",
+      "manifestSha256": "e4cb76fa5342ffa60f86440020ac73f3b0d3079c81570e3da590acc9854cf0ec",
+      "executableSha256": "361d963a67a26597f969952baf198e34135f8c403adfbc8b662e5fbf1c7c47d7",
+      "measurements": {
+        "sourceFps": [
+          59.77250406441451,
+          62.17637115738682
+        ],
+        "receiverFps": [
+          47.991360149176266,
+          50.19598285078651
+        ],
+        "additionalRecordedAvOffsetMs": [
+          -39.00000000000148,
+          13.000000000000789
+        ],
+        "recordedAvPassed": true,
+        "cadenceIntervalsPassed": 0,
+        "continuousAudioIntervalsPassed": 6,
+        "traceComplete": true,
+        "pipewire": {
+          "arrivals": 1515,
+          "copied": 1498,
+          "admissionRejected": 0,
+          "invalidOrStopped": 17,
+          "arrivalFpsRange": [
+            49.99699969176655,
+            51.395886823315266
+          ],
+          "medianProducerGapMsRange": [
+            18.86,
+            19.369
+          ],
+          "p95ProducerGapMsRange": [
+            24.219,
+            25.606
+          ],
+          "medianCallbackMsRange": [
+            0.5599,
+            0.5928
+          ],
+          "maximumCallbackMs": 1.3399,
+          "missingProducerPts": 0,
+          "nonIncreasingProducerPts": 0
+        }
+      },
+      "frameTraceAnalysisSha256": "3cd36d1164d771fb4df3e5088e8efae1b3002482b0cdada2c02f1d6cfd24e04a",
+      "fixtureSha256": "c9b691b597dee0de434e945f3c6b9cabeba814aa702a36175a709802118caead",
+      "wrapperReport": "native-qt/qa/reports/linux-av-wayland-paused-desktop/7e78612e-7d3e-4739-9636-2d05425746e4/results.json",
+      "wrapperSha256": "c0afd34525697a7c2509d1ec52babb560c579e02a8104b6605cc7476d7b8e2a4"
     }
   ],
   "host_environment": {
@@ -25203,7 +25346,8 @@
     "With --continuous-app-audio=true, --app-resume-recording=true retains a bounded received-track MediaRecorder WebM plus frame-PTS-aware PCM analysis; --app-encoded-audio=true copies incoming Opus with RTCRtpScriptTransform, forwards original frames unchanged, and decodes copies with libopus. Both preserve existing continuous checks and failed results. Linux continuous PCM capture retains up to sixteen bad 100 ms windows per drain; shared default remains two.",
     "With --continuous-app-audio=true, --app-playout-reference=true launches an unmuted receiver into its own null sink and independently records bounded pre-pause/resume playback; --app-playout-headed=true makes that receiver visible. Sink ownership, playing unmuted media, routing and cleanup are recorded. Raw evidence budgets exclude fully silent windows only; all 10 ms/100 ms summaries, phase clocks and acceptance thresholds remain. --app-resume-recording=true prepares MediaRecorder before draining the intentional-silence phase.",
     "linux-av-sync.js --receiver-playback=owned-sink removes Chrome mute and verifies receiver-only sink routing; muted remains the diagnostic default. --rtp-timing=true on a bounded desktop-reference run copies Opus and records presentation RTP metadata. Combine with --trace-capture=true for exact submitted-video-RTP/source-frame joins and rtp-av-analysis.json. --output-dir on linux-av-rtp-report.py preserves corrected offline reanalysis separately. All qualification thresholds and historical failures remain intact.",
-    "linux-av-sync.js --receiver-desktop-reference=true requires --source-reference=desktop --receiver-playback=owned-sink and a wide owned X11 desktop (2880x1000). It places the receiver beside the source, records both drawables/Pulse sinks with guarded identities and checks non-overlap. linux-av-compare-playback.py preserves original MediaRecorder results. linux-av-playback-controls.py runs +/-150 ms copies as offline measurement/rejection controls, not packaged testing or absolute calibration."
+    "linux-av-sync.js --receiver-desktop-reference=true requires --source-reference=desktop --receiver-playback=owned-sink and a wide owned X11 desktop (2880x1000). It places the receiver beside the source, records both drawables/Pulse sinks with guarded identities and checks non-overlap. linux-av-compare-playback.py preserves original MediaRecorder results. linux-av-playback-controls.py runs +/-150 ms copies as offline measurement/rejection controls, not packaged testing or absolute calibration.",
+    "Wayland linux-av-sync.js --trace-capture=true now includes raw PipeWire arrival/rejection/copy/return timing and is bounded to <=120 seconds. --pause-monitor-consumer=true is an optional <=60-second diagnostic of virtual-monitor readback load; it preserves the real portal workflow, resumes its owned child during cleanup, and forces overall qualification false."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -30057,5 +30201,56 @@
     "gates": "Syntax/AST, archive hashes, window bounds/ownership, pulse arithmetic and offline offset controls are sanity/integrity or analyzer checks, not additional application testing. Two packaged E2E workflows provide testing. Final source-bounds guard is verified from captured geometry; final source/receiver hash guards are exercised by offline controls. Shared Windows/macOS production is unchanged; runtime remains unqualified.",
     "ownedProcessesRemaining": [],
     "next": "Establish independent reference calibration and then final-package X11/Wayland skew/drift endurance using actual output alongside recorded-media evidence. The native Wayland 47-49 fps throughput failure remains a separate concrete delivery gap worth isolating next; software source/compositor cadence must be measured before changing capture code."
+  },
+  "linux_wayland_input_cadence_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-361d963a67a2-f30d4ea2ad8b.deb",
+      "sha256": "9a9797b7a681243d36c93df218918aff8ad8eda3671a7aed9f11e7405cc81aa1",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-361d963a67a2-f30d4ea2ad8b",
+      "manifestSha256": "e4cb76fa5342ffa60f86440020ac73f3b0d3079c81570e3da590acc9854cf0ec"
+    },
+    "baselinePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20.deb",
+      "sha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16"
+    },
+    "evidence": [
+      {
+        "case": "linux-wayland-baseline",
+        "report": "native-qt/qa/reports/linux-av-wayland-trace/2ecbb313-b523-4519-9d75-c01dbcd03c48/results.json",
+        "reportSha256": "fad295c144a548a8207d7c2ab3b7b96829613df6c1987b58855a45a221b687b3",
+        "passed": false
+      },
+      {
+        "case": "linux-wayland-input-trace",
+        "report": "native-qt/qa/reports/linux-av-wayland-input/5c0b2215-5474-4dfd-ae20-302152b1a37d/results.json",
+        "reportSha256": "720c4b4c7456abaf5f8a3128d0abc9d17d64a88e935cdbcfb616cad192b69106",
+        "passed": false
+      },
+      {
+        "case": "linux-wayland-paused-consumer",
+        "report": "native-qt/qa/reports/linux-av-wayland-paused/ff48fd61-87b4-44c7-8607-501e56493152/results.json",
+        "reportSha256": "10c6de1c66a588c47985842b351a6d4486d8a4cf04ac88f70878979aeb62d039",
+        "passed": false
+      }
+    ],
+    "productionChange": "Linux-only opt-in PipeWire arrival/rejection/copy/return stages reuse the shared bounded frame trace; negotiated rate/max-rate are logged. Capture admission, copying, timestamps, encoder and transport behavior remain unchanged. Raw producer PTS is explicitly kept separate from mapped application timestamps. Shared Windows/macOS production inputs and dependencies are byte-identical to baseline.",
+    "findings": "Three packaged 30-second native GNOME Wayland workflows completed through the real window portal with owned receiver audio. All 18 cadence intervals fail; all 18 continuous-PCM intervals pass. Instrumented normal fixture receives 48.6-50.0 PipeWire buffers/sec and delivers 47.6-48.8 distinct frames/sec. No admission rejections occur. Median callback duration is 0.55-0.59 ms, maximum 1.37 ms across measured intervals. Both monitor and capture negotiate maximum 60 fps. The paused-consumer control restores source cadence to 59.8-62.2 fps but PipeWire still supplies only 50.0-51.4 buffers/sec and receiver delivers 48.0-50.2 fps. Extra fixture load explains source slowdown but not the remaining producer-delivery gap. Do not infer a precise GNOME scheduling cause from these observations.",
+    "audioVideo": "Original paired MediaRecorder offsets remain unqualified: baseline -71..9 ms, instrumented -62..-7 ms fail 50 ms. Paused control -39..13 ms passes the bounded skew check but fails cadence and is diagnostic-only. Independent absolute calibration, physical output latency and long-run drift remain open.",
+    "control": "--pause-monitor-consumer=true is restricted to native Wayland, <=60 seconds, no endurance hold. It SIGSTOPs only the fixture-owned GStreamer child after real portal selection, verifies unchanged monitor layout, keeps the application stream live, and SIGCONTs the child before cleanup. Default monitor behavior is unchanged; this control cannot produce an overall qualification pass.",
+    "gates": {
+      "report": "native-qt/build-linux/linux-wayland-trace-gates.json",
+      "sha256": "b3fad99289db7493c51aa5ac493443061830e0ba063cb05616f5be92fd385452",
+      "classification": "Release build, JS/Python syntax, package/source hashes and report arithmetic are gates only. The three packaged application workflows are testing; none qualifies 60 fps Wayland."
+    },
+    "sourceReview": [
+      "https://docs.pipewire.org/page_tutorial5.html",
+      "https://raw.githubusercontent.com/GNOME/mutter/46.2/src/backends/meta-screen-cast-stream-src.c",
+      "https://raw.githubusercontent.com/GNOME/mutter/46.2/src/backends/meta-screen-cast-virtual-stream-src.c",
+      "https://raw.githubusercontent.com/GNOME/mutter/46.2/src/backends/meta-screen-cast-window-stream-src.c"
+    ],
+    "cleanup": "All owned publisher/source/receiver/monitor/keyboard/keyring processes retired; sinks removed, discovery files gone, original single-monitor layout/default sink/portal and secret-store owners preserved.",
+    "next": "Keep the 60 fps gap open. Isolate compositor readback/scheduling on this software-rendered host and compare a suitable physical/native Wayland source or maintained compositor fix before changing application pacing. Do not weaken 57 fps source, 0.95 delivery, 35.33 ms gap, 50 ms A/V or 30 ms drift thresholds. Final-package X11/Wayland endurance, independent A/V calibration and all prior parity gaps remain required."
   }
 }

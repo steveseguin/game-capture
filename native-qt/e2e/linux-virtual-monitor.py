@@ -10,6 +10,7 @@ import argparse
 import json
 from pathlib import Path
 import select
+import signal
 import subprocess
 import sys
 import time
@@ -32,6 +33,7 @@ assert len(before[1]) == len(before[2]) == 1, 'This HDMI fixture requires one or
 assert list(before[2][0][:5]) == [0, 0, 1.0, 0, 1], 'Unexpected original layout'
 result = {'before': before, 'requestedSize': [args.width, args.height], 'passed': False}
 session = process = None
+consumer_paused = False
 try:
     cast = dbus.Interface(bus.get_object('org.gnome.Mutter.ScreenCast', '/org/gnome/Mutter/ScreenCast'), 'org.gnome.Mutter.ScreenCast')
     session_path = cast.CreateSession(dbus.Dictionary({}, signature='sv'))
@@ -61,13 +63,33 @@ try:
         print(json.dumps({'ready':True,'node':nodes[0],'bounds':[800,0,args.width,args.height]}),flush=True)
         while True:
             assert process.poll() is None, 'Virtual monitor consumer exited'
-            if select.select([sys.stdin],[],[],.2)[0] and not sys.stdin.buffer.read(1): break
+            if select.select([sys.stdin],[],[],.2)[0]:
+                command = sys.stdin.buffer.read(1)
+                if not command: break
+                # Bounded A/V diagnostic: keep the virtual monitor and its
+                # negotiated 60 Hz mode, but stop draining its unused pixels.
+                # Signal only the child we launched; always resume on cleanup.
+                assert command == b'P' and not consumer_paused
+                process.send_signal(signal.SIGSTOP)
+                consumer_paused = True
+                deadline = time.monotonic()+2
+                while time.monotonic()<deadline:
+                    if Path(f'/proc/{process.pid}/stat').read_text().rsplit(')',1)[1].split()[0] == 'T': break
+                    time.sleep(.01)
+                assert Path(f'/proc/{process.pid}/stat').read_text().rsplit(')',1)[1].split()[0] == 'T'
+                unchanged = display.GetCurrentState()[1:] == active[1:]
+                assert unchanged, 'Pausing the owned consumer changed the monitor layout'
+                result['consumerPause'] = {'pid':process.pid,'layoutUnchanged':unchanged,'scope':'Diagnostic only: owned virtual-monitor readback consumer suspended; application portal stream remains live.'}
+                print(json.dumps({'consumerPaused':True,**result['consumerPause']}),flush=True)
         result['passed']=True
 except Exception as error:
     result['error']=str(error)
     raise
 finally:
     if process and process.poll() is None:
+        if consumer_paused:
+            process.send_signal(signal.SIGCONT)
+            result['consumerResumedForCleanup'] = True
         process.terminate();process.wait(timeout=10)
     if session: session.Stop()
     deadline=time.monotonic()+10

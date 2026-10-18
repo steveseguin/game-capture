@@ -1,4 +1,5 @@
 #include "versus/video/window_capture.h"
+#include "versus/app/frame_trace.h"
 #include "versus/webrtc/media_clock.h"
 #include <QCoreApplication>
 #include <QDBusArgument>
@@ -302,15 +303,33 @@ struct WindowCapture::Impl {
                 SPA_PARAM_META_type, SPA_POD_Id(SPA_META_VideoCrop),
                 SPA_PARAM_META_size, SPA_POD_Int(sizeof(spa_meta_region))))};
         pw_stream_update_params(self.stream, metadata, 2);
-        spdlog::info("[PipeWire] Capture format {}x{}", format.size.width, format.size.height);
+        spdlog::info("[PipeWire] Capture format {}x{}, rate {}/{}, maximum {}/{}",
+            format.size.width, format.size.height, format.framerate.num, format.framerate.denom,
+            format.max_framerate.num, format.max_framerate.denom);
     }
     static void process(void *data) {
         auto &self = *static_cast<Impl *>(data);
         auto *buffer = pw_stream_dequeue_buffer(self.stream);
         if (!buffer) return;
-        struct ReturnBuffer { pw_stream *stream; pw_buffer *buffer; ~ReturnBuffer() { pw_stream_queue_buffer(stream, buffer); } } release{self.stream, buffer};
+        const auto *header = static_cast<spa_meta_header *>(spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header, sizeof(spa_meta_header)));
+        // Reuse the bounded, opt-in trace. These stages carry the producer's
+        // raw PTS (100 ns) in output100ns, not the application's mapped clock.
+        const int64_t producerPts = header && header->pts >= 0 ? header->pts / 100 : -1;
+        auto &trace = app::detail::FrameTrace::instance();
+        trace.record("pipewire-arrival", nullptr, producerPts);
+        struct ReturnBuffer {
+            pw_stream *stream; pw_buffer *buffer; int64_t pts;
+            ~ReturnBuffer() {
+                pw_stream_queue_buffer(stream, buffer);
+                app::detail::FrameTrace::instance().record("pipewire-return", nullptr, pts);
+            }
+        } release{self.stream, buffer, producerPts};
         const auto *spa = buffer->buffer;
-        if (!self.running || !self.format.size.width || spa->n_datas < 1 || !self.admit()) return;
+        if (!self.running || !self.format.size.width || spa->n_datas < 1) return;
+        if (!self.admit()) {
+            trace.record("pipewire-rejected", nullptr, producerPts);
+            return;
+        }
         const auto &pixels = spa->datas[0];
         const auto *chunk = pixels.chunk;
         auto width = self.format.size.width, height = self.format.size.height;
@@ -345,8 +364,8 @@ struct WindowCapture::Impl {
                 destination[x * 4 + 3] = 255;
             }
         }
+        trace.record("pipewire-copied", nullptr, producerPts);
         frame.timestamp = webrtc::mediaTime100ns();
-        const auto *header = static_cast<spa_meta_header *>(spa_buffer_find_meta_data(buffer->buffer, SPA_META_Header, sizeof(spa_meta_header)));
         if (header && header->pts >= 0) {
             if (!self.haveTimestampOffset) {
                 self.timestampOffset = frame.timestamp - header->pts / 100;

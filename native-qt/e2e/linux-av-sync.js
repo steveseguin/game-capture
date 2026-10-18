@@ -26,6 +26,9 @@ if(Object.values(fixtureTimingControl).some(Boolean))assert(desktopReference,'St
 // 60fps profile. Six minutes leaves room for startup below the 100,000-row
 // limit; the offline analyzer also rejects an actually truncated trace.
 const traceCapture=opts['trace-capture']==='true';if(traceCapture)assert(seconds*(hold?2:1)+hold<=360,'Keep the opt-in native trace below its 100,000-row bound');
+if(traceCapture&&wayland)assert(seconds*(hold?2:1)+hold<=120,'Wayland producer/copy/return stages require a shorter bounded trace');
+const pauseMonitorConsumer=opts['pause-monitor-consumer']==='true';
+if(pauseMonitorConsumer)assert(wayland&&hold===0&&seconds<=60,'Paused monitor consumer is a bounded Wayland diagnostic');
 const traceAudio=opts['trace-audio']==='true';if(traceAudio)assert(desktopReference,'Native audio timing traces require the bounded desktop diagnostic');
 assert(Number.isInteger(seconds)&&seconds>=30&&seconds<=120&&Number.isInteger(hold)&&hold>=0&&hold<=7200);
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
@@ -41,7 +44,7 @@ if(traceAudio){const name='linux-audio-timing-report.py';fs.copyFileSync(path.jo
 if(rtpTiming)for(const name of ['linux-encoded-audio.js','linux-decode-opus-report.py','linux-av-rtp-report.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(receiverDesktop){const name='linux-av-compare-playback.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 const result={backend,traceCapture,traceAudio,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
-  sourceReference,receiverPlayback,receiverDesktop,rtpTiming,diagnosticOnly:desktopReference,fixtureTimingControl,
+  sourceReference,receiverPlayback,receiverDesktop,rtpTiming,pauseMonitorConsumer,diagnosticOnly:desktopReference||pauseMonitorConsumer,fixtureTimingControl,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
 const pactl=(...a)=>execFileSync('pactl',a,{encoding:'utf8',timeout:5000}).trim();
@@ -121,6 +124,7 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     if(wayland)waylandFixture.selectPortal(title);
     await waitFor(()=>{assert(!launchError,launchError);assert.equal(child.exitCode,null);return fs.existsSync(discovery);},15000,'No publisher discovery');control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,child.pid);
     if(wayland)await waylandFixture.selectedPortal();
+    if(pauseMonitorConsumer)await waylandFixture.pauseMonitorConsumer();
     if(rtpTiming)result.rtpClockAnchor={...JSON.parse(execFileSync('python3',['-c','import time,json;print(json.dumps({"monotonicNs":time.clock_gettime_ns(time.CLOCK_MONOTONIC),"wallNs":time.time_ns()}))'],{encoding:'utf8',timeout:5000})),scope:'Linux CLOCK_MONOTONIC anchor for RTP wrap disambiguation only; not independent A/V calibration.'};
     page=await receiver(viewer,stream,child,rtpTiming?async p=>{encodedAudio=await require('./linux-encoded-audio').install(p,report);}:undefined);
     if(encodedAudio){result.encodedAudioSelectedId=await encodedAudio.select();save();}
@@ -207,7 +211,8 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
         result.diagnosticPassed&&=result.playbackComparisonExitCode===0&&result.playbackComparison.comparisonComplete&&result.receiverDesktopSkewPassed;
       }
     }
-    result.passed=observedPass&&!desktopReference;
+    if(pauseMonitorConsumer){result.diagnosticPassed=observedPass;result.qualificationPending='Virtual-monitor consumer suspension is an upstream-load diagnostic, not normal-desktop qualification';}
+    result.passed=observedPass&&!desktopReference&&!pauseMonitorConsumer;
   }catch(error){result.error=String(error.stack||error);}
   finally{
     const errors=[];

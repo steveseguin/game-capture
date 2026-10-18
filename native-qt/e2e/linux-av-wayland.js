@@ -35,6 +35,12 @@ async function create(env,report){
     evidence.monitorReady=JSON.parse(display.trim().split('\n').find(line=>line.includes('"ready": true')));
     return {
       evidence,close,
+      async pauseMonitorConsumer(){
+        assert(monitor&&monitor.exitCode===null&&!evidence.consumerPaused);
+        monitor.stdin.write('P');
+        await waitFor(()=>{assert.equal(monitor.exitCode,null);return display.includes('"consumerPaused": true');},5000,'Owned monitor consumer did not pause');
+        evidence.consumerPaused=JSON.parse(display.trim().split('\n').find(line=>line.includes('"consumerPaused": true')));
+      },
       async placeSource(page,pid,title){
         await page.bringToFront();
         const client=await page.context().newCDPSession(page),{windowId}=await client.send('Browser.getWindowForTarget');
