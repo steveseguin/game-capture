@@ -1,5 +1,7 @@
 # Mac cursor and preview candidate — October 18, 2026
 
+**Subsequent delivery:** this report records pre-release qualification. The same executable is now notarized and published as [experimental 0.2.65 Beta 2](macos-0265-beta2-validation-2026-10-18.md).
+
 This signed Apple Silicon candidate fixes system-cursor capture, oversaturated previews and missing source thumbnails. **It is experimental and has not been notarized or released.** The public Mac 0.2.65 Beta 1 and production Windows release are unchanged.
 
 Runtime source: `ea1c552c6c833fecc16914e18710a589a6bb2db1`. Executable SHA-256: `2a6354f12b92ac1d8ef2a415c76316ea8452b040503087c1b8ec716be69ad1b0`.
