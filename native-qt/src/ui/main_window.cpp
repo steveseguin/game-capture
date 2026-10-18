@@ -2655,7 +2655,11 @@ void MainWindow::setupUI() {
                 updateLabel->setText(tr("Update check unavailable"));
                 break;
             case UpdateStatus::NoCompatibleDownload:
+#ifdef __linux__
+                updateLabel->setText(tr("Latest release has no compatible Linux download"));
+#else
                 updateLabel->setText(tr("Latest release has no Apple Silicon download"));
+#endif
                 break;
             }
             releasesLink->setVisible(result.status == UpdateStatus::Available);

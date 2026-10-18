@@ -146,18 +146,26 @@ int compareCore(const Version &a, const Version &b) {
     return 0;
 }
 
-// Mac release naming is an explicit distribution contract. A source archive,
-// Intel build or Windows installer must not advertise an Apple Silicon update.
-QJsonObject macArm64Asset(const QJsonObject &release) {
+// Match the platform packaging contract, then apply the same origin and upload
+// checks. Source archives and other architectures are never compatible downloads.
+QJsonObject compatibleAsset(const QJsonObject &release, UpdatePlatform platform) {
     const auto tag = release["tag_name"].toString();
     const auto version = tag.startsWith('v') ? tag.mid(1) : tag;
-    const auto stem = QStringLiteral("game-capture-macos-arm64-") + version;
+    const auto macStem = QStringLiteral("game-capture-macos-arm64-") + version;
+    // package-linux.py emits immutable, revisioned DEBs with executable/source
+    // identity suffixes. Keep this contract synchronized with that packager.
+    const QRegularExpression linuxName(QStringLiteral(
+        "^game-capture-%1~linux\\.[1-9][0-9]*-amd64-[0-9a-f]{12}-[0-9a-f]{12}\\.deb\\z")
+        .arg(QRegularExpression::escape(version)));
     const QString prefix = QStringLiteral("/steveseguin/game-capture/releases/download/");
     for (const auto &value : release["assets"].toArray()) {
         const auto asset = value.toObject();
         const auto name = asset["name"].toString();
-        if ((name != stem + ".dmg" && name != stem + ".zip") ||
-            asset["state"].toString() != "uploaded" || asset["size"].toDouble() <= 0) continue;
+        const bool matches = platform == UpdatePlatform::MacArm64
+            ? name == macStem + ".dmg" || name == macStem + ".zip"
+            : platform == UpdatePlatform::LinuxAmd64 && linuxName.match(name).hasMatch();
+        if (!matches || asset["state"].toString() != "uploaded" ||
+            asset["size"].toDouble() <= 0) continue;
         const QUrl url(asset["browser_download_url"].toString(), QUrl::StrictMode);
         if (!url.isValid() || url.scheme() != "https" ||
             url.host().compare("github.com", Qt::CaseInsensitive) != 0 ||
@@ -194,7 +202,7 @@ UpdateResult evaluateRelease(const QByteArray &json, const QString &installedVer
     const auto installed = parseVersion(installedVersion);
     // Flags alone are insufficient: a prerelease tag must never be recommended.
     if (!latest || latest->prerelease || !installed) return {};
-    if (platform == UpdatePlatform::MacArm64 && macArm64Asset(release).isEmpty())
+    if (platform != UpdatePlatform::VersionOnly && compatibleAsset(release, platform).isEmpty())
         return {UpdateStatus::NoCompatibleDownload, tag.startsWith('v') ? tag.mid(1) : tag};
     const int order = compareCore(*latest, *installed);
     const bool newer = order > 0 || (order == 0 && installed->prerelease);
@@ -259,12 +267,12 @@ void UpdateChecker::finishCheck(int httpStatus, const QByteArray &body) {
     if (lastAttemptSucceeded_) {
         lastSuccess_ = QDateTime::currentSecsSinceEpoch();
         QJsonObject metadata{{"tag_name", result_.version}, {"draft", false}, {"prerelease", false}};
-        if (platform_ == UpdatePlatform::MacArm64) {
+        if (platform_ != UpdatePlatform::VersionOnly) {
             const auto original = QJsonDocument::fromJson(body).object();
             // Preserve the original tag spelling because it is part of the
             // asset URL; stripping its leading v would invalidate a warm cache.
             metadata["tag_name"] = original["tag_name"];
-            const auto asset = macArm64Asset(original);
+            const auto asset = compatibleAsset(original, platform_);
             metadata["assets"] = asset.isEmpty() ? QJsonArray{} : QJsonArray{asset};
         }
         release_ = QJsonDocument(metadata).toJson(QJsonDocument::Compact);

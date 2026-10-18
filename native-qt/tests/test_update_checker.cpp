@@ -78,11 +78,74 @@ class UpdateCheckerTest : public QObject {
             QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", UpdatePlatform::MacArm64).status,
                      UpdateStatus::NoCompatibleDownload);
         }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58").status, UpdateStatus::NoCompatibleDownload);
 #else
         QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58").status, UpdateStatus::Available);
 #endif
+    }
+    void linuxDownloadsAndCache() {
+        const QString name = "game-capture-0.2.59~linux.2-amd64-0123456789ab-abcdef012345.deb";
+        const auto url = "https://github.com/steveseguin/game-capture/releases/download/v0.2.59/" + name;
+        const QJsonObject asset{{"name", name}, {"state", "uploaded"}, {"size", 1000},
+                               {"browser_download_url", url}};
+        const auto platform = UpdatePlatform::LinuxAmd64;
+        QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", platform).status, UpdateStatus::Available);
+        QCOMPARE(evaluateRelease(macRelease(asset), "0.2.59", platform).status, UpdateStatus::UpToDate);
+        QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", UpdatePlatform::LinuxUnsupported).status,
+                 UpdateStatus::NoCompatibleDownload);
+        QCOMPARE(evaluateRelease(macRelease(macAsset()), "0.2.58", platform).status,
+                 UpdateStatus::NoCompatibleDownload);
+        const QList<QPair<QString, QJsonValue>> invalid{
+            {"name", QString(name).replace("amd64", "arm64")},
+            {"name", QString(name).replace("0.2.59", "0.2.58")},
+            {"name", QString(name).replace("linux.2", "linux.0")},
+            {"name", QString(name).replace("0123456789ab", "unknown")},
+            {"name", name + "-source.tar.gz"}, {"name", name + "\n"},
+            {"size", 0}, {"size", "1000"}, {"state", "starter"},
+            {"browser_download_url", QString(url).replace("https:", "http:")},
+            {"browser_download_url", QString(url).replace("github.com", "example.com")},
+            {"browser_download_url", QString(url).replace("/v0.2.59/", "/v0.2.58/")},
+            {"browser_download_url", url + "?download=1"},
+            {"browser_download_url", url + "#fragment"},
+            {"browser_download_url", QString(url).replace("github.com", "user@github.com")},
+            {"browser_download_url", QString(url).replace("github.com", "github.com:444")}
+        };
+        for (const auto &[key, value] : invalid) {
+            auto altered = asset; altered[key] = value;
+            QCOMPARE(evaluateRelease(macRelease(altered), "0.2.58", platform).status,
+                     UpdateStatus::NoCompatibleDownload);
+        }
+        for (bool hasDownload : {false, true}) {
+            QTemporaryDir dir;
+            const auto path = dir.filePath("update.ini");
+            FakeRequest network;
+            const auto expected = hasDownload ? UpdateStatus::Available : UpdateStatus::NoCompatibleDownload;
+            {
+                UpdateChecker checker("0.2.58", path, nullptr, &network, platform);
+                checker.checkForUpdates();
+                network.finish(200, hasDownload ? macRelease(asset) : release("v0.2.59"));
+                QCOMPARE(checker.result().status, expected);
+                QVERIFY(QFileInfo(path).size() < 16 * 1024);
+            }
+            UpdateChecker warm("0.2.58", path, nullptr, &network, platform);
+            QCOMPARE(warm.result().status, expected);
+            warm.checkForUpdates();
+            QCOMPARE(network.requests, 1);
+        }
+        // Existing Linux caches were version-only. Never keep advertising a
+        // download without asset evidence while waiting for the next refresh.
+        QTemporaryDir dir;
+        const auto path = dir.filePath("update.ini");
+        FakeRequest network;
+        {
+            UpdateChecker previous("0.2.58", path, nullptr, &network, UpdatePlatform::VersionOnly);
+            previous.checkForUpdates(); network.finish(200, release("v0.2.59"));
+        }
+        UpdateChecker migrated("0.2.58", path, nullptr, &network, platform);
+        QCOMPARE(migrated.result().status, UpdateStatus::NoCompatibleDownload);
+        migrated.checkForUpdates();
+        QCOMPARE(network.requests, 1);
     }
     void macCacheAndPlatformMigration() {
         for (bool hasDownload : {false, true}) {

@@ -10,9 +10,13 @@ inline constexpr const char *LatestReleaseApi =
     "https://api.github.com/repos/steveseguin/game-capture/releases/latest";
 
 enum class UpdateStatus { Checking, UpToDate, Available, Unavailable, NoCompatibleDownload };
-enum class UpdatePlatform { VersionOnly, MacArm64 };
+enum class UpdatePlatform { VersionOnly, MacArm64, LinuxAmd64, LinuxUnsupported };
 #ifdef __APPLE__
 inline constexpr auto NativeUpdatePlatform = UpdatePlatform::MacArm64;
+#elif defined(__linux__) && defined(__x86_64__)
+inline constexpr auto NativeUpdatePlatform = UpdatePlatform::LinuxAmd64;
+#elif defined(__linux__)
+inline constexpr auto NativeUpdatePlatform = UpdatePlatform::LinuxUnsupported;
 #else
 inline constexpr auto NativeUpdatePlatform = UpdatePlatform::VersionOnly;
 #endif
