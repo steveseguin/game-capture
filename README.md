@@ -46,7 +46,7 @@ For a VDO.Ninja room, show advanced settings and enter **Room** and **Stream pas
 
 While live, **Copy Link** copies the displayed viewer URL and **Open Link** opens it in your default browser. The URL includes the stream password. For a room, this link opens a solo scene at your configured resolution, matching the Windows app.
 
-If the signaling connection drops, the app shows a reconnecting notice and retries automatically. Existing peer connections may continue carrying audio and video; new viewers must wait for signaling to reconnect. **Stop streaming** remains available.
+If the signaling connection drops, the app shows a reconnecting notice and retries automatically. Existing peer connections may continue carrying audio and video; new viewers must wait for signaling to reconnect. **Stop streaming** and **Quit** remain available, including while a reconnect is waiting for a server response.
 
 For application audio, choose **Selected window/app audio**. X11 can use the selected window's process automatically; on Wayland, choose a running **Audio app** explicitly. **Refresh audio apps** updates the list after an app starts playing sound. The selection covers that process and its children, and is cleared when Game Capture is relaunched. If the app closes, select its new instance before restarting the stream. The CLI equivalent is `--audio-source=selected-window --audio-process=<PID>`; omit `--audio-process` for automatic X11 selection. System audio and microphone/input selection remain separate choices.
 

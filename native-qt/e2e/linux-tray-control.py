@@ -18,6 +18,11 @@ from gi.repository import Atspi, GLib
 stale_nodes_skipped = 0
 
 
+def trace(stage):
+    if os.environ.get('GC_QA_TRACE_TRAY') == '1':
+        print(json.dumps({'stage':stage,'timeMs':int(time.time()*1000)}),file=sys.stderr,flush=True)
+
+
 def read_accessible(call):
     global stale_nodes_skipped
     try:
@@ -96,6 +101,7 @@ def main():
     assert len(owned) == 1, 'Owned process must register exactly one tray item'
     service, path = owned[0]
     item = bus.get_object(service, path)
+    trace('owned-item-properties')
     properties = item.GetAll('org.kde.StatusNotifierItem', dbus_interface='org.freedesktop.DBus.Properties')
     result = {key: str(properties[key]) for key in ['Id', 'Title', 'Status']}
     result['tooltip'] = str(properties['ToolTip'][2])
@@ -106,13 +112,15 @@ def main():
     desktop = Atspi.get_desktop(0)
     applications = [desktop.get_child_at_index(i) for i in range(desktop.get_child_count())]
     shell = next(node for node in applications if node is not None and name(node) == 'gnome-shell')
+    trace('find-shell-icon')
     menus = [node for node in nodes(shell) if role(node) == 'menu' and name(node) == result['Title'] and has(node, Atspi.StateType.SHOWING)]
     assert len(menus) == 1, 'Tray icon is absent or ambiguous in the actual desktop'
     def shown_quit():
         return [node for node in nodes(shell) if role(node) == 'label' and name(node) == 'Quit' and has(node, Atspi.StateType.SHOWING)]
+    trace('find-popup')
     labels = shown_quit()
     if not labels:
-        focus(menus[0]); keys(['SPACE']); labels = shown_quit()
+        trace('open-popup');focus(menus[0]); keys(['SPACE']); labels = shown_quit()
     assert len(labels) == 1, 'Owned tray popup did not open uniquely'
     panel = labels[0].get_parent().get_parent()
     rows = [node for node in nodes(panel) if role(node) == 'label' and name(node)]
@@ -124,7 +132,7 @@ def main():
     if args.command == 'action':
         targets = [node.get_parent() for node in rows if name(node) == args.name]
         assert len(targets) == 1 and has(targets[0], Atspi.StateType.SENSITIVE), 'Tray action is missing or disabled'
-        focus(targets[0]); keys(['ENTER']); result['action'] = args.name
+        trace('focus-action');focus(targets[0]); result['actionStartedAtMs']=int(time.time()*1000);trace('activate-action');keys(['ENTER']); result['action'] = args.name
     result['staleNodesSkipped'] = stale_nodes_skipped
     print(json.dumps(result))
 

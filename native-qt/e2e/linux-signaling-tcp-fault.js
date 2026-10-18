@@ -6,11 +6,22 @@ const {spawn}=require('child_process'),{waitFor,sleep}=require('./macos-media-re
 async function create(report){
   const addresses=await dns.lookup('wss.vdo.ninja',{all:true});assert(addresses.length&&addresses.every(a=>a.family===4),'This owned route fixture requires IPv4 signaling resolution');
   const ips=[...new Set(addresses.map(a=>a.address))];let mode='forward',closed=false,route;
-  const sockets=new Set(),counts={forwardedConnections:0,rejectedConnections:0,clientBytes:0,serverBytes:0,unexpectedErrors:0};
+  const sockets=new Set(),stalled=new Set(),counts={forwardedConnections:0,rejectedConnections:0,stalledHandshakes:0,clientBytes:0,serverBytes:0,unexpectedErrors:0};
   function track(socket){sockets.add(socket);socket.once('close',()=>sockets.delete(socket));}
   const server=net.createServer(client=>{
     track(client);
     if(mode==='reject'){counts.rejectedConnections++;client.on('error',()=>{});client.destroy();return;}
+    if(mode==='stall'){
+      stalled.add(client);client.once('close',()=>stalled.delete(client));client.on('error',()=>{});
+      let header=Buffer.alloc(0);
+      client.on('data',data=>{
+        counts.clientBytes+=data.length;
+        if(header.length<3){header=Buffer.concat([header,data]).subarray(0,3);if(header.length===3){
+          if(header[0]===22&&header[1]===3)counts.stalledHandshakes++;
+          else{counts.unexpectedErrors++;client.destroy();}
+        }}
+      });return;
+    }
     const remote=net.connect(443,ips[0]);track(remote);
     remote.once('connect',()=>counts.forwardedConnections++);
     client.on('data',d=>counts.clientBytes+=d.length);remote.on('data',d=>counts.serverBytes+=d.length);
@@ -20,7 +31,7 @@ async function create(report){
   });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   const snapshot=()=>({mode,...counts,activeTcpSockets:sockets.size,activeUpstreams:[...sockets].filter(s=>s.remotePort===443).length,
-    transport:'Opaque TLS TCP gate with publisher-only cgroup DNAT',routeAttached:!!route});
+    activeStalledConnections:stalled.size,transport:'Opaque TLS TCP gate with publisher-only cgroup DNAT',routeAttached:!!route});
   return {snapshot,
     async attach(publisher,exe){
       assert(!route);const helper=path.join(report,'linux-signaling-route.py'),log=fs.createWriteStream(path.join(report,'signaling-route.log'));
@@ -29,8 +40,8 @@ async function create(report){
       route.closed=new Promise(resolve=>route.once('close',code=>log.end(()=>resolve(code))));let output='';route.stdout.on('data',d=>output+=d);route.stdout.pipe(log,{end:false});route.stderr.pipe(log,{end:false});
       await waitFor(()=>{assert.equal(route.exitCode,null,'Publisher route setup failed; inspect signaling-route.log');return output.includes('"ready": true');},15000,'Publisher route did not become ready');
     },
-    fault(next){assert.equal(next,'reject');assert(route&&route.exitCode===null);mode=next;for(const socket of sockets)socket.destroy();},
-    restore(){assert(route&&route.exitCode===null);mode='forward';},
+    fault(next){assert(['reject','stall'].includes(next));assert(route&&route.exitCode===null);mode=next;for(const socket of sockets)socket.destroy();},
+    restore(){assert(route&&route.exitCode===null);mode='forward';for(const socket of stalled)socket.destroy();},
     async close(){
       closed=true;mode='reject';const retired=[...sockets].map(s=>new Promise(resolve=>s.once('close',resolve)));for(const s of sockets)s.destroy();
       await Promise.all([...retired,new Promise(resolve=>server.close(resolve))]);assert.equal(sockets.size,0);

@@ -84,7 +84,7 @@
       "id": "vdo-rooms",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged X11 CLI protected rooms and signaling recovery passed previously. Exact packaged X11 and native GNOME Wayland Qt GUI now passed room/password/input/software-encoder configuration, enabled and disabled director controls, bounded wrong-password rejection, authorized/unauthorized requests, HQ/LQ media and GUI Stop/fresh-consent restart. Enabled runs passed real guest lifecycle, director resolution/bitrate/mute/keyframe controls and late scene; disabled runs passed the shared Windows UI contract. Packaged X11 and native Wayland GUI now also passed HQ-only 1280x720 routing for director/scene/guest, LQ re-enablement, and two clean relaunches restoring room credentials, quality preference, encoder/resolution/fps/input while idle before explicit source reselection/Go live. Each phase verified decoded moving video and stereo audio; four fresh Wayland portal selections passed. Generated protected standalone/room links, focused keyboard Copy Link and GUI Open Link through the system launcher to real Chrome now passed on both desktops, with encoded-password round trip, exact clipboard/opened URL equality and decoded HQ/stereo; room+solo naturally joins scene/HQ as in Windows. Direct AT-SPI Copy after Wayland portal restart without fresh input, other browser and tray/menu Open variants, Packaged X11/native Wayland GUI signaling rejection/recovery now passed through a publisher-only opaque TLS gate: over 30 seconds of continuing near-30fps HQ/LQ/stereo, stable receiver objects and SSRCs, visible reconnect/reconnected notices with Stop available, guest Hang up during outage, rejoin/tab-close after recovery, late scene and GUI Stop/restart. Stop/Quit during prolonged outage, handshake stalls and DNS/IPv6 variants, TURN/WAN/media-path packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
+      "remaining": "Packaged X11 CLI protected rooms and signaling recovery passed previously. Exact packaged X11 and native GNOME Wayland Qt GUI now passed room/password/input/software-encoder configuration, enabled and disabled director controls, bounded wrong-password rejection, authorized/unauthorized requests, HQ/LQ media and GUI Stop/fresh-consent restart. Enabled runs passed real guest lifecycle, director resolution/bitrate/mute/keyframe controls and late scene; disabled runs passed the shared Windows UI contract. Packaged X11 and native Wayland GUI now also passed HQ-only 1280x720 routing for director/scene/guest, LQ re-enablement, and two clean relaunches restoring room credentials, quality preference, encoder/resolution/fps/input while idle before explicit source reselection/Go live. Each phase verified decoded moving video and stereo audio; four fresh Wayland portal selections passed. Generated protected standalone/room links, focused keyboard Copy Link and GUI Open Link through the system launcher to real Chrome now passed on both desktops, with encoded-password round trip, exact clipboard/opened URL equality and decoded HQ/stereo; room+solo naturally joins scene/HQ as in Windows. Direct AT-SPI Copy after Wayland portal restart without fresh input, other browser and tray/menu Open variants remain open. Packaged X11/native Wayland GUI signaling rejection/recovery now passed through a publisher-only opaque TLS gate: over 30 seconds of continuing near-30fps HQ/LQ/stereo, stable receiver objects and SSRCs, visible reconnect/reconnected notices with Stop available, guest Hang up during outage, rejoin/tab-close after recovery, late scene and GUI Stop/restart. Packaged Stop and actual GUI Quit now also passed without restoring signaling during 30-second rejection and approximately 15-second TLS reconnect-handshake stalls on both desktops, with media shutdown and fresh decoded restart. Initial publish connection failure/cancellation, post-TLS WebSocket upgrade stalls, repeated faults and DNS/IPv6 variants, TURN/WAN/media-path packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
     },
     {
       "id": "whip",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch remain open. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Stop/Quit during a prolonged signaling outage and other fault modes remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial publish failure/cancellation and other fault modes remain open."
     },
     {
       "id": "profiles",
@@ -18810,6 +18810,283 @@
           "sha256": "fca99473dbbc0c7fba45afe95d280d7d17be79ef232531d45e5d23034fc65891"
         }
       ]
+    },
+    {
+      "backend": "x11",
+      "report": "native-qt/qa/reports/linux-room-outage-stop-x11-enabled/d8d2a1ae-c5e3-47fc-b66e-9519fd09aed5/results.json",
+      "reportSha256": "c3b39db410ac105d55c34d8c0f8dbc31ace2bc1db28aecbbec02ac3b2da4d05c",
+      "wrapperReport": "native-qt/qa/reports/linux-room-outage-stop-x11-desktop/d8f4c62d-08b2-43b1-82a3-3012f9a633d8/results.json",
+      "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "cases": [
+        {
+          "mode": "reject",
+          "passed": true,
+          "stopMs": 1069,
+          "quitMs": 1135,
+          "quitMenuObservationMs": null,
+          "quitAction": "File menu Quit",
+          "stopFaultMs": 30000,
+          "quitFaultMs": 30000,
+          "faultMedia": {
+            "stopFault": {
+              "director": {
+                "fps": 29.897907292475402,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.899402157950014,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            },
+            "quitFault": {
+              "director": {
+                "fps": 29.89910288092186,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.999100612901543,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            }
+          },
+          "mediaStopped": true,
+          "captureAndPeersRetired": true,
+          "retryObservationAfterStopMs": 1500,
+          "noSignalingSocketsAfterStop": true,
+          "decodedRestartPassed": true,
+          "routeCleanup": {
+            "report": "native-qt/qa/reports/linux-room-outage-stop-x11-enabled/d8d2a1ae-c5e3-47fc-b66e-9519fd09aed5/reject/signaling-route-cleanup.json",
+            "reportSha256": "147e60e478afb5e21c1b8a12b2552245779982744c8f887157c0c5652267e05f"
+          }
+        },
+        {
+          "mode": "stall",
+          "passed": true,
+          "stopMs": 1016,
+          "quitMs": 1141,
+          "quitMenuObservationMs": null,
+          "quitAction": "File menu Quit",
+          "stopFaultMs": 15001,
+          "quitFaultMs": 14999,
+          "faultMedia": {
+            "stopFault": {
+              "director": {
+                "fps": 29.899402157950014,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.99070258931936,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            },
+            "quitFault": {
+              "director": {
+                "fps": 29.899402157950014,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.999400158478274,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            }
+          },
+          "mediaStopped": true,
+          "captureAndPeersRetired": true,
+          "retryObservationAfterStopMs": 1500,
+          "noSignalingSocketsAfterStop": true,
+          "decodedRestartPassed": true,
+          "routeCleanup": {
+            "report": "native-qt/qa/reports/linux-room-outage-stop-x11-enabled/d8d2a1ae-c5e3-47fc-b66e-9519fd09aed5/stall/signaling-route-cleanup.json",
+            "reportSha256": "af4f0377727a03f8ffac293fd95de9da5d104736253d6b5b5251d5f8ea42a4b0"
+          }
+        }
+      ],
+      "desktop": {
+        "backend": "x11",
+        "gui": true,
+        "portalSelections": [],
+        "configuredThroughGui": true,
+        "controlTokenAccessible": true,
+        "remoteControlEnabled": true
+      },
+      "scope": "Packaged Qt GUI, owned window/virtual stereo input, protected director/scene; Stop and GUI Quit while publisher-only signaling TCP is refused or TLS handshake is stalled; explicit capture restart after Stop. No WAN/media-path fault or endurance qualification.",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387",
+      "harnesses": {
+        "linux-room-outage-stop.js": "389c5bc58ede00653393fa214e46762c5645212746b9b3ec71371b897fba604e",
+        "linux-signaling-tcp-fault.js": "343ff8a52c7abb0ac4bd210c0e9e2c166091d9cd627f5621b96652ff3b91c8ef",
+        "linux-signaling-route.py": "757aed416a1d170b848a95b0af964e6e1f5057bc401d7d9e947c419a1f776d1b",
+        "linux-room-fixture.js": "0de4fc51d84d33c412838f29490a1734eb3ece5f7da56ddc77de78eb08559752",
+        "linux-ui-control.py": "4d73797440c73bd98395934f48c0dd9df7ff9215adfdc6ad24c594bf34d5f465",
+        "linux-portal-select.py": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+        "linux-tray-control.py": "bd5883a66b6b436a4a23cc90e9c05405e99e7bc970a622c363d0c66abc99795d",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "director-room-e2e.js": "bb63a5326cde4777fbc53e7f6d3b052448555057c189737f9046cee80deeef3a"
+      }
+    },
+    {
+      "backend": "wayland",
+      "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/results.json",
+      "reportSha256": "aae1232f5c6b3e2c0d936db34e7720d0d72cb85fd750992a840a4491aadf3063",
+      "wrapperReport": "native-qt/qa/reports/linux-room-outage-stop-wayland-desktop/2163ae1e-aee6-49c8-ae3d-97d5aa03e65c/results.json",
+      "wrapperSha256": "1108a920baf523aee159e3c216814378f7eeb5090929249c428391bf060553a8",
+      "passed": true,
+      "cases": [
+        {
+          "mode": "reject",
+          "passed": true,
+          "stopMs": 1083,
+          "quitMs": 1093,
+          "quitMenuObservationMs": 19138,
+          "quitAction": "Quit",
+          "stopFaultMs": 30000,
+          "quitFaultMs": 30000,
+          "faultMedia": {
+            "stopFault": {
+              "director": {
+                "fps": 29.99969971003708,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.999400158478274,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            },
+            "quitFault": {
+              "director": {
+                "fps": 29.999099880523605,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.99970044244431,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            }
+          },
+          "mediaStopped": true,
+          "captureAndPeersRetired": true,
+          "retryObservationAfterStopMs": 1500,
+          "noSignalingSocketsAfterStop": true,
+          "decodedRestartPassed": true,
+          "routeCleanup": {
+            "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/reject/signaling-route-cleanup.json",
+            "reportSha256": "e5942c57c38f6cf7fd3bcc0cc021bdbc0a8aed7b9a61403a33533c0e721181f6"
+          }
+        },
+        {
+          "mode": "stall",
+          "passed": true,
+          "stopMs": 971,
+          "quitMs": 1093,
+          "quitMenuObservationMs": 30365,
+          "quitAction": "Quit",
+          "stopFaultMs": 15000,
+          "quitFaultMs": 15000,
+          "faultMedia": {
+            "stopFault": {
+              "director": {
+                "fps": 29.49941015583697,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.599408156365232,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            },
+            "quitFault": {
+              "director": {
+                "fps": 29.799701711970165,
+                "stereoSamples": 30,
+                "width": 640,
+                "height": 360
+              },
+              "scene": {
+                "fps": 29.69970343801987,
+                "stereoSamples": 30,
+                "width": 1280,
+                "height": 720
+              }
+            }
+          },
+          "mediaStopped": true,
+          "captureAndPeersRetired": true,
+          "retryObservationAfterStopMs": 1500,
+          "noSignalingSocketsAfterStop": true,
+          "decodedRestartPassed": true,
+          "routeCleanup": {
+            "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/stall/signaling-route-cleanup.json",
+            "reportSha256": "0e610d2cf5edc39b6f86e77f5ccea2a7055349b5103eb983e4106eba46bcb88b"
+          }
+        }
+      ],
+      "desktop": {
+        "backend": "wayland",
+        "gui": true,
+        "portalSelections": [
+          {
+            "file": "room-portal-1.json",
+            "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+          },
+          {
+            "file": "room-portal-2.json",
+            "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+          },
+          {
+            "file": "room-portal-3.json",
+            "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+          },
+          {
+            "file": "room-portal-4.json",
+            "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+          }
+        ],
+        "portalOwner": "(':1.4241',)",
+        "configuredThroughGui": true,
+        "controlTokenAccessible": true,
+        "remoteControlEnabled": true,
+        "portalSurvived": true
+      },
+      "scope": "Packaged Qt GUI, owned window/virtual stereo input, protected director/scene; Stop and GUI Quit while publisher-only signaling TCP is refused or TLS handshake is stalled; explicit capture restart after Stop. No WAN/media-path fault or endurance qualification.",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387",
+      "harnesses": {
+        "linux-room-outage-stop.js": "389c5bc58ede00653393fa214e46762c5645212746b9b3ec71371b897fba604e",
+        "linux-signaling-tcp-fault.js": "343ff8a52c7abb0ac4bd210c0e9e2c166091d9cd627f5621b96652ff3b91c8ef",
+        "linux-signaling-route.py": "757aed416a1d170b848a95b0af964e6e1f5057bc401d7d9e947c419a1f776d1b",
+        "linux-room-fixture.js": "0de4fc51d84d33c412838f29490a1734eb3ece5f7da56ddc77de78eb08559752",
+        "linux-ui-control.py": "4d73797440c73bd98395934f48c0dd9df7ff9215adfdc6ad24c594bf34d5f465",
+        "linux-portal-select.py": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+        "linux-tray-control.py": "bd5883a66b6b436a4a23cc90e9c05405e99e7bc970a622c363d0c66abc99795d",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "director-room-e2e.js": "bb63a5326cde4777fbc53e7f6d3b052448555057c189737f9046cee80deeef3a"
+      }
     }
   ],
   "host_environment": {
@@ -18863,7 +19140,8 @@
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --password-protected=true --remote-control=<enabled|disabled> (X11 wrapper requires an owned Xvfb DISPLAY; native Wayland uses owned keyboard and explicit portal consent)",
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-settings.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (X11 requires an owned Xvfb DISPLAY; verifies HQ-only, LQ enablement and two clean relaunches with explicit source reselection)",
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-share-link.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (X11 requires owned Xvfb DISPLAY; private browser MIME association and owned local-password-store Chrome are cleaned up)",
-    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --password-protected=true --signaling-recovery=true (owned Xvfb required for X11; GUI recovery requires sudo/cgroup-v2/iptables and currently IPv4 signaling DNS; exact owned route rules/cgroup are removed on fixture EOF)"
+    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --password-protected=true --signaling-recovery=true (owned Xvfb required for X11; GUI recovery requires sudo/cgroup-v2/iptables and currently IPv4 signaling DNS; exact owned route rules/cgroup are removed on fixture EOF)",
+    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-outage-stop.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (owned Xvfb for X11; GNOME tray for Wayland Quit; sudo/cgroup-v2/iptables and IPv4 signaling DNS required for isolated TCP/TLS faults)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -20546,5 +20824,284 @@
       "passed": true
     },
     "remaining": "Stop/Quit during prolonged GUI signaling outage; handshake stalls, DNS changes/IPv6, actual media-path WAN loss/TURN/packet loss; guest refresh/fuzz and suppressed-BYE/transport-loss variants; default 720p60 and calibrated A/V/endurance; physical microphone and Windows/macOS runtime qualification. Direct AT-SPI clipboard follow-up and stock GNOME pending-request cancellation/fix delivery remain open."
+  },
+  "room_outage_stop_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-c243429eb61a-cfe2e5874341.deb",
+      "sha256": "770a0f98ae487e3d462834a15db7a06b690d6f1bc0da8da36656fd28b83aa400",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-c243429eb61a-cfe2e5874341",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387"
+    },
+    "qualification": "Packaged protected-room GUI on X11 and native GNOME Wayland, software H264 1280x720 HQ/640x360 LQ at 30fps with owned virtual stereo input. For both TCP rejection held for 30 seconds and withheld TLS handshake responses held for approximately 15 seconds (measured 14,999\u201315,001 ms; a 5 ms timer tolerance is allowed by evidence validation): director/scene media remains decoded, GUI Stop completes before restoring network, capture/peers/reconnecting state retire, received media counters stop advancing, no signaling sockets remain and attempts remain stable during a 1.5-second post-stop observation. Restore network, explicitly Go live (fresh Wayland consent), decode again, fault again, then actual File menu Quit on X11 or GNOME tray Quit on Wayland exits cleanly without restoring network. No force quit or local-API Quit is used. All route/cgroup fixtures retire.",
+    "productionChange": "None. Existing shared cancellation/shutdown behavior reused. Added packaged workflow and TLS-stall mode to the Linux-only transparent signaling gate. TLS headers are accumulated across data chunks; payloads are not decrypted or rewritten.",
+    "reports": [
+      {
+        "backend": "x11",
+        "report": "native-qt/qa/reports/linux-room-outage-stop-x11-enabled/d8d2a1ae-c5e3-47fc-b66e-9519fd09aed5/results.json",
+        "reportSha256": "c3b39db410ac105d55c34d8c0f8dbc31ace2bc1db28aecbbec02ac3b2da4d05c",
+        "wrapperReport": "native-qt/qa/reports/linux-room-outage-stop-x11-desktop/d8f4c62d-08b2-43b1-82a3-3012f9a633d8/results.json",
+        "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true,
+        "cases": [
+          {
+            "mode": "reject",
+            "passed": true,
+            "stopMs": 1069,
+            "quitMs": 1135,
+            "quitMenuObservationMs": null,
+            "quitAction": "File menu Quit",
+            "stopFaultMs": 30000,
+            "quitFaultMs": 30000,
+            "faultMedia": {
+              "stopFault": {
+                "director": {
+                  "fps": 29.897907292475402,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.899402157950014,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              },
+              "quitFault": {
+                "director": {
+                  "fps": 29.89910288092186,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.999100612901543,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              }
+            },
+            "mediaStopped": true,
+            "captureAndPeersRetired": true,
+            "retryObservationAfterStopMs": 1500,
+            "noSignalingSocketsAfterStop": true,
+            "decodedRestartPassed": true,
+            "routeCleanup": {
+              "report": "native-qt/qa/reports/linux-room-outage-stop-x11-enabled/d8d2a1ae-c5e3-47fc-b66e-9519fd09aed5/reject/signaling-route-cleanup.json",
+              "reportSha256": "147e60e478afb5e21c1b8a12b2552245779982744c8f887157c0c5652267e05f"
+            }
+          },
+          {
+            "mode": "stall",
+            "passed": true,
+            "stopMs": 1016,
+            "quitMs": 1141,
+            "quitMenuObservationMs": null,
+            "quitAction": "File menu Quit",
+            "stopFaultMs": 15001,
+            "quitFaultMs": 14999,
+            "faultMedia": {
+              "stopFault": {
+                "director": {
+                  "fps": 29.899402157950014,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.99070258931936,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              },
+              "quitFault": {
+                "director": {
+                  "fps": 29.899402157950014,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.999400158478274,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              }
+            },
+            "mediaStopped": true,
+            "captureAndPeersRetired": true,
+            "retryObservationAfterStopMs": 1500,
+            "noSignalingSocketsAfterStop": true,
+            "decodedRestartPassed": true,
+            "routeCleanup": {
+              "report": "native-qt/qa/reports/linux-room-outage-stop-x11-enabled/d8d2a1ae-c5e3-47fc-b66e-9519fd09aed5/stall/signaling-route-cleanup.json",
+              "reportSha256": "af4f0377727a03f8ffac293fd95de9da5d104736253d6b5b5251d5f8ea42a4b0"
+            }
+          }
+        ],
+        "desktop": {
+          "backend": "x11",
+          "gui": true,
+          "portalSelections": [],
+          "configuredThroughGui": true,
+          "controlTokenAccessible": true,
+          "remoteControlEnabled": true
+        }
+      },
+      {
+        "backend": "wayland",
+        "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/results.json",
+        "reportSha256": "aae1232f5c6b3e2c0d936db34e7720d0d72cb85fd750992a840a4491aadf3063",
+        "wrapperReport": "native-qt/qa/reports/linux-room-outage-stop-wayland-desktop/2163ae1e-aee6-49c8-ae3d-97d5aa03e65c/results.json",
+        "wrapperSha256": "1108a920baf523aee159e3c216814378f7eeb5090929249c428391bf060553a8",
+        "passed": true,
+        "cases": [
+          {
+            "mode": "reject",
+            "passed": true,
+            "stopMs": 1083,
+            "quitMs": 1093,
+            "quitMenuObservationMs": 19138,
+            "quitAction": "Quit",
+            "stopFaultMs": 30000,
+            "quitFaultMs": 30000,
+            "faultMedia": {
+              "stopFault": {
+                "director": {
+                  "fps": 29.99969971003708,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.999400158478274,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              },
+              "quitFault": {
+                "director": {
+                  "fps": 29.999099880523605,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.99970044244431,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              }
+            },
+            "mediaStopped": true,
+            "captureAndPeersRetired": true,
+            "retryObservationAfterStopMs": 1500,
+            "noSignalingSocketsAfterStop": true,
+            "decodedRestartPassed": true,
+            "routeCleanup": {
+              "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/reject/signaling-route-cleanup.json",
+              "reportSha256": "e5942c57c38f6cf7fd3bcc0cc021bdbc0a8aed7b9a61403a33533c0e721181f6"
+            }
+          },
+          {
+            "mode": "stall",
+            "passed": true,
+            "stopMs": 971,
+            "quitMs": 1093,
+            "quitMenuObservationMs": 30365,
+            "quitAction": "Quit",
+            "stopFaultMs": 15000,
+            "quitFaultMs": 15000,
+            "faultMedia": {
+              "stopFault": {
+                "director": {
+                  "fps": 29.49941015583697,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.599408156365232,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              },
+              "quitFault": {
+                "director": {
+                  "fps": 29.799701711970165,
+                  "stereoSamples": 30,
+                  "width": 640,
+                  "height": 360
+                },
+                "scene": {
+                  "fps": 29.69970343801987,
+                  "stereoSamples": 30,
+                  "width": 1280,
+                  "height": 720
+                }
+              }
+            },
+            "mediaStopped": true,
+            "captureAndPeersRetired": true,
+            "retryObservationAfterStopMs": 1500,
+            "noSignalingSocketsAfterStop": true,
+            "decodedRestartPassed": true,
+            "routeCleanup": {
+              "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/stall/signaling-route-cleanup.json",
+              "reportSha256": "0e610d2cf5edc39b6f86e77f5ccea2a7055349b5103eb983e4106eba46bcb88b"
+            }
+          }
+        ],
+        "desktop": {
+          "backend": "wayland",
+          "gui": true,
+          "portalSelections": [
+            {
+              "file": "room-portal-1.json",
+              "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+            },
+            {
+              "file": "room-portal-2.json",
+              "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+            },
+            {
+              "file": "room-portal-3.json",
+              "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+            },
+            {
+              "file": "room-portal-4.json",
+              "sha256": "6ec404512961de41155f4bc1ff565e7a43ddc71178cc0b81f52ef3de7c1bcc45"
+            }
+          ],
+          "portalOwner": "(':1.4241',)",
+          "configuredThroughGui": true,
+          "controlTokenAccessible": true,
+          "remoteControlEnabled": true,
+          "portalSurvived": true
+        }
+      }
+    ],
+    "gates": {
+      "report": "native-qt/build-linux/room-outage-stop-gates.json",
+      "reportSha256": "a209858056740e3b0aa5eeefc45d0e26dd56d9d4d42b80d8e4a111c4ff31ec08",
+      "classification": "Syntax and source-provenance gates only; not application testing."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/d63ba658-f4e8-46c6-a725-4351ae43fb32/host-cleanup.json",
+      "reportSha256": "7ca5f02aea3a512151b3c3be9bcba6017d46c75eef0cba80592a7d96902340f2",
+      "passed": true
+    },
+    "remaining": "Initial Go live connection failure/cancellation, WebSocket upgrade stalls after TLS, repeated faults and DNS/IPv6 variants, full network/media-path loss and TURN/WAN/packet loss, long-run backoff/endurance and calibrated A/V, default 720p60, physical microphone, Windows/macOS integrated runtime regression. GNOME pending-permission cancellation/fix delivery and direct accessibility clipboard follow-up remain open.",
+    "observerDiagnostic": {
+      "report": "native-qt/qa/reports/linux-room-outage-stop-wayland-enabled/db61bb58-1cb2-4cb1-ad2a-96ab54c4db2f/results.json",
+      "reportSha256": "b2ac02509dc7d6fd9ea916d4b0acc25433ed4dd71b5d3e33dcf11111cc5f5f42",
+      "explanation": "The original 20-second tray observer timed out without a completed Quit observation; the owned workflow was cleaned up. The final observer traces menu lookup and timestamps actual Quit activation, with a 60-second observation deadline. Qualified Wayland quitMs starts at the recorded activation; menu-observation time is recorded separately. This diagnostic is not an application Quit failure or a qualified pass."
+    }
   }
 }
