@@ -193,7 +193,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
         const shot=previewShot('idle','none');assert(/Go live.*choose a window/i.test(shot.description));
         assert.equal((await api('/diagnostics')).video.frames_captured,0);
         ui('choose','Window','Camera / Webcam');
-        assert.equal(previewShot('camera-mode','none').description,'','Window guidance survived source-mode change');
+        const cameraDescription=previewShot('camera-mode','none').description;assert(!/choose a window|selected window/i.test(cameraDescription),'Window guidance survived source-mode change');if(cameraDescription)assert(cameraDescription.includes('Camera opens when streaming starts'));
         ui('choose','Camera / Webcam','Window');ui('source','Choose a window');
         assert(/Go live.*choose a window/i.test(previewShot('window-mode-restored','none').description));
         const idle=await api('/diagnostics');assert(!idle.app.capturing);assert.equal(idle.video.frames_captured,0);

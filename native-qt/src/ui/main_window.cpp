@@ -1602,6 +1602,10 @@ void MainWindow::setupUI() {
         sourceModeSelect_->addItem("Syphon (texture sharing)", QVariant("syphon"));
         sourceModeSelect_->setToolTip(
             "Share an app/game window, a selected camera, or a Syphon sender. Enable Syphon output in the sending app first. Camera and microphone access starts only when you go live.");
+#elif defined(__linux__)
+        sourceModeSelect_->setToolTip(
+            "Share an app/game window or a selected camera. On Wayland, choose a window in the desktop permission dialog after selecting Go live. "
+            "Camera and microphone access starts only when you go live.");
 #else
         sourceModeSelect_->setToolTip(
             "Window captures visible app/game windows. Camera / Webcam captures a Windows video input device. "
@@ -3044,6 +3048,8 @@ void MainWindow::refreshWindowList() {
             windowListWidget_->setEmptyText(
 #ifdef __APPLE__
                 "No cameras detected. Connect a camera, check System Settings > Privacy & Security > Camera, then Refresh.");
+#elif defined(__linux__)
+                "No cameras found. Check connection and permissions, then Refresh.");
 #else
                 "No cameras detected. Connect a camera, allow desktop camera access in Windows Settings, then Refresh.");
 #endif
@@ -4865,10 +4871,14 @@ void MainWindow::refreshSelectedWindowPreview() {
 
     const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
 #ifdef __linux__
-    if (sourceMode != "window" || selectedWindowId_ != QStringLiteral("portal:window"))
+    if (sourceMode != "camera" &&
+        (sourceMode != "window" || selectedWindowId_ != QStringLiteral("portal:window")))
         previewLabel_->setAccessibleDescription(QString());
 #endif
     if (selectedWindowId_.isEmpty()) {
+#ifdef __linux__
+        previewLabel_->setAccessibleDescription(QString());
+#endif
         previewLabel_->setPixmap(QPixmap());
         previewLabel_->setText(
 #ifdef __APPLE__
@@ -4944,6 +4954,9 @@ void MainWindow::refreshSelectedWindowPreview() {
         }
         lines << "Camera opens when streaming starts";
         previewLabel_->setText(lines.join('\n'));
+#ifdef __linux__
+        previewLabel_->setAccessibleDescription(previewLabel_->text());
+#endif
         return;
     }
 
@@ -5060,7 +5073,8 @@ void MainWindow::refreshPublisherPreview() {
     // Reuse the current capture generation; Wayland preview must not create a
     // second portal session or retain pixels after consent/capture has ended.
 #ifdef __linux__
-    if (!camera) previewLabel_->setAccessibleDescription("Live preview of the selected window");
+    previewLabel_->setAccessibleDescription(camera ? "Live preview of the selected camera"
+                                                   : "Live preview of the selected window");
 #endif
     const auto frame = core_->getPublisherPreviewFrame();
     if (!frame || frame->data.empty() || frame->width <= 0 || frame->height <= 0) {

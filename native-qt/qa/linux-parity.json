@@ -29,7 +29,7 @@
       "id": "camera",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, permission errors and GUI preview remain; multi-plane devices unsupported."
+      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, permission errors and native Wayland GUI preview remain; multi-plane devices unsupported. Packaged X11 GUI now passed physical camera publication at 1280x720/30, exact live/restarted preview pixels, idle/Stop clearing, busy-camera isolation, camera release/reopen, and saved settings across two app launches without automatic capture. HDMI identities held at 10 Hz; high-motion input tearing remains a separate unqualified gap."
     },
     {
       "id": "application-audio",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings."
     },
     {
       "id": "profiles",
@@ -126,7 +126,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open. Physical camera X11 GUI Stop/restart and app relaunch passed twice, with decoded media and preview identities after reopening; a competing CLI open did not interrupt the GUI camera. Hotplug and broader camera recovery remain open."
     },
     {
       "id": "packaging",
@@ -12240,6 +12240,1484 @@
         }
       },
       "screenshots": []
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "bade155da2a4a731cd28488e85140b9e4303a9ffc075ba4ae7e97e808021ce33",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/3c760081-68fd-4b44-b3f8-bb683145cda0/results.json",
+      "reportSha256": "287443133fa6a8ce89d0bfdc8c59c32251c68deb1fede6600f83db48ff24bb4f",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 960,
+        "height": 540,
+        "fps": 30,
+        "audio": "none"
+      },
+      "errorSummary": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:",
+      "finding": "Baseline package exposed no accessible camera preview explanation. The first reader assumed Qt QLabel Text support. Two subsequent invocations still referenced the baseline package because the launch manifest was stale; neither exercised the new binary. All reports retained; final package manifest and source archive were verified before qualification.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": false,
+          "idlePreview": {
+            "role": "label",
+            "description": "",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "media": {}
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/3c760081-68fd-4b44-b3f8-bb683145cda0/cycle-0-preview-idle.png",
+          "sha256": "e980f735a836d28f038634b5c3fa2c771e4fc906370126bef10efe9ee269c7b5"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "99724037bc17055a5b4ee61a9f979b17f022b92d3dd1ec1a52f806191fd7d3a3",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/491bdace-a746-4aaf-9590-6c008bbb99e7/results.json",
+      "reportSha256": "771969a9757c33dad6743ca83e2b35ff52243766dde51306209bfa0bf012a7b0",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 640,
+        "height": 360,
+        "fps": 30,
+        "audio": "none"
+      },
+      "errorSummary": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/qa/reports/linux-camera-gui/491bdace-a746-4aaf-9590-6c008bbb99e7/linux-ui-control.py 2693353 choose 1280x720 640x360\n/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-camera-gui/491bdace-a746-4aaf-9590-6c008bbb99e7/linux-ui-control.py:31: DeprecationWarning: Atspi.Action.get_action_name is deprecated\n  return [interface.get_action_name(i) for i in range(interface.get_n_actions())] if interface else []\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-camera-gui/491bdace-a746-4aaf-9590-6c008bbb99e7/linux-ui-control.py\", line 260, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-camera-gui/491bdace-a746-4aaf-9590-6c008bbb99e7/linux-ui-control.py\", line 148, in main\n    raise RuntimeError(\"Requested combo choice is absent or ambiguous\")\nRuntimeError: Requested combo choice is absent or ambiguous",
+      "finding": "Fixture requested a resolution absent from the GUI preset list; stopped before camera publication. Corrected to explicit supported camera and stream controls.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": false,
+          "media": {}
+        }
+      ],
+      "screenshots": []
+    },
+    {
+      "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+      "harnessSha256": "7a9f4f50632a902899943209f589c442e168f6598627500cf9ae99963d0a0735",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/results.json",
+      "reportSha256": "629a98e3ce943c3bae97e960967d124d8787a53754400cb6c08105d29d6156ac",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 1280,
+        "height": 720,
+        "fps": 30,
+        "audio": "none"
+      },
+      "finding": "Packaged X11 GUI selected the physical Cam Link, exposed idle camera guidance, published 1280x720/30 software H264, displayed exact physical source identities in preview, cleared preview on Stop, and reopened camera on Go live. Two app launches each passed preview and publishing restart, decoded moving/static/color/late-viewer media; saved camera settings restored without capture. Competing CLI camera open failed without interrupting the GUI stream. 10 Hz HDMI source remains bounded functional evidence, not high-motion or endurance qualification.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": true,
+          "idlePreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "distinct": 56,
+          "counters": {
+            "captured": 243,
+            "sent": 202,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "livePreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              154
+            ],
+            "expected": "154"
+          },
+          "colors": [
+            [
+              253,
+              0,
+              2,
+              255
+            ],
+            [
+              1,
+              253,
+              1,
+              255
+            ]
+          ],
+          "busyError": "Device or resource busy",
+          "stoppedPreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nLast capture: 1280x720\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "restartedPreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              312
+            ],
+            "expected": "312"
+          },
+          "exitCode": 0,
+          "media": {
+            "moving": {
+              "width": 1280,
+              "height": 720,
+              "samples": 174,
+              "distinctIdentities": 56,
+              "identityReadFailures": 0,
+              "rowDisagreements": 6
+            },
+            "static": {
+              "width": 1280,
+              "height": 720,
+              "samples": 75,
+              "distinctIdentities": 1,
+              "identityReadFailures": 0,
+              "rowDisagreements": 0
+            },
+            "afterBusy": {
+              "width": 1280,
+              "height": 720,
+              "samples": 89,
+              "distinctIdentities": 29,
+              "identityReadFailures": 0,
+              "rowDisagreements": 4
+            },
+            "late": {
+              "width": 1280,
+              "height": 720,
+              "samples": 88,
+              "distinctIdentities": 28,
+              "identityReadFailures": 0,
+              "rowDisagreements": 2
+            },
+            "restarted": {
+              "width": 1280,
+              "height": 720,
+              "samples": 118,
+              "distinctIdentities": 38,
+              "identityReadFailures": 0,
+              "rowDisagreements": 7
+            }
+          }
+        },
+        {
+          "cycle": 1,
+          "passed": true,
+          "settingsRestoredWithoutCapture": true,
+          "idlePreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "distinct": 56,
+          "counters": {
+            "captured": 244,
+            "sent": 206,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "livePreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              421
+            ],
+            "expected": "421"
+          },
+          "colors": [
+            [
+              253,
+              0,
+              2,
+              255
+            ],
+            [
+              1,
+              253,
+              1,
+              255
+            ]
+          ],
+          "stoppedPreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nLast capture: 1280x720\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "restartedPreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              540
+            ],
+            "expected": "540"
+          },
+          "exitCode": 0,
+          "media": {
+            "moving": {
+              "width": 1280,
+              "height": 720,
+              "samples": 172,
+              "distinctIdentities": 56,
+              "identityReadFailures": 0,
+              "rowDisagreements": 9
+            },
+            "static": {
+              "width": 1280,
+              "height": 720,
+              "samples": 75,
+              "distinctIdentities": 1,
+              "identityReadFailures": 0,
+              "rowDisagreements": 0
+            },
+            "late": {
+              "width": 1280,
+              "height": 720,
+              "samples": 84,
+              "distinctIdentities": 28,
+              "identityReadFailures": 0,
+              "rowDisagreements": 1
+            },
+            "restarted": {
+              "width": 1280,
+              "height": 720,
+              "samples": 116,
+              "distinctIdentities": 38,
+              "identityReadFailures": 0,
+              "rowDisagreements": 3
+            }
+          }
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-0-preview-idle.png",
+          "sha256": "eb5fa80941b42394bce5c8d6309534a6cdc2b073458cc115d899c365c8919ddc"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-0-preview-live.png",
+          "sha256": "9752b44559485a1e32c51feae3446f6654904a0ac32b21b7ef7001fde7ff9a5d"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-0-preview-restarted.png",
+          "sha256": "b90c15c506bb6d0e6d2010977f9bf3616736dfd26634bd3b0e6ae60def3eecf8"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-0-preview-stopped.png",
+          "sha256": "87455fe0f2e04b8f1b516644a8f5a2916a7a75afc88bc21d53f5cff35976bb4e"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-1-preview-idle.png",
+          "sha256": "f09a2e2bc7bdb4df4c93a75e31dadbe5ba8c6012177891cfba6bd711d62d3d7f"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-1-preview-live.png",
+          "sha256": "9c66c08148872e7222ab7ddd04b8e82b0a97a7c26ea9c2a59df1d8010df3ab45"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-1-preview-restarted.png",
+          "sha256": "c8742c04b3210f8346b3933583f27e62e037348e082eae87bb92432970f3e848"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/83520ece-92b0-450b-8f03-178afa2686d7/cycle-1-preview-stopped.png",
+          "sha256": "73f7cfb19259683ab48efaec0d58223172e0e9f0b4a80ee7b940a1c2cfe7740b"
+        }
+      ]
+    },
+    {
+      "executableSha256": "9f7db2e38fae10be74d913feeead34039e9ceb375667f25f70e81c95f2b368de",
+      "manifestSha256": "47e1a320b3b1dd74c5634b47168e57a25a9224a2143d93687daa3f384d2630f3",
+      "harnessSha256": "7a9f4f50632a902899943209f589c442e168f6598627500cf9ae99963d0a0735",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/results.json",
+      "reportSha256": "2759662425a17495cdef1617a001316a09e0f3c63c828eee5182e2d8b882ce58",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 1280,
+        "height": 720,
+        "fps": 30,
+        "audio": "none"
+      },
+      "finding": "Packaged X11 GUI selected the physical Cam Link, exposed idle camera guidance, published 1280x720/30 software H264, displayed exact physical source identities in preview, cleared preview on Stop, and reopened camera on Go live. Two app launches each passed preview and publishing restart, decoded moving/static/color/late-viewer media; saved camera settings restored without capture. Competing CLI camera open failed without interrupting the GUI stream. 10 Hz HDMI source remains bounded functional evidence, not high-motion or endurance qualification.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": true,
+          "idlePreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "distinct": 57,
+          "counters": {
+            "captured": 242,
+            "sent": 207,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "livePreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              155
+            ],
+            "expected": "155"
+          },
+          "colors": [
+            [
+              253,
+              0,
+              2,
+              255
+            ],
+            [
+              1,
+              253,
+              1,
+              255
+            ]
+          ],
+          "busyError": "Device or resource busy",
+          "stoppedPreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nLast capture: 1280x720\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "restartedPreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              316
+            ],
+            "expected": "316"
+          },
+          "exitCode": 0,
+          "media": {
+            "moving": {
+              "width": 1280,
+              "height": 720,
+              "samples": 176,
+              "distinctIdentities": 57,
+              "identityReadFailures": 0,
+              "rowDisagreements": 5
+            },
+            "static": {
+              "width": 1280,
+              "height": 720,
+              "samples": 75,
+              "distinctIdentities": 1,
+              "identityReadFailures": 0,
+              "rowDisagreements": 0
+            },
+            "afterBusy": {
+              "width": 1280,
+              "height": 720,
+              "samples": 89,
+              "distinctIdentities": 28,
+              "identityReadFailures": 0,
+              "rowDisagreements": 1
+            },
+            "late": {
+              "width": 1280,
+              "height": 720,
+              "samples": 87,
+              "distinctIdentities": 29,
+              "identityReadFailures": 0,
+              "rowDisagreements": 0
+            },
+            "restarted": {
+              "width": 1280,
+              "height": 720,
+              "samples": 118,
+              "distinctIdentities": 38,
+              "identityReadFailures": 0,
+              "rowDisagreements": 6
+            }
+          }
+        },
+        {
+          "cycle": 1,
+          "passed": true,
+          "settingsRestoredWithoutCapture": true,
+          "idlePreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "distinct": 56,
+          "counters": {
+            "captured": 243,
+            "sent": 206,
+            "failures": 0,
+            "timeouts": 0
+          },
+          "livePreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              427
+            ],
+            "expected": "427"
+          },
+          "colors": [
+            [
+              253,
+              0,
+              2,
+              255
+            ],
+            [
+              1,
+              253,
+              1,
+              255
+            ]
+          ],
+          "stoppedPreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nLast capture: 1280x720\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "restartedPreview": {
+            "role": "image",
+            "description": "Live preview of the selected camera",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 64,
+            "identities": [
+              546
+            ],
+            "expected": "546"
+          },
+          "exitCode": 0,
+          "media": {
+            "moving": {
+              "width": 1280,
+              "height": 720,
+              "samples": 174,
+              "distinctIdentities": 56,
+              "identityReadFailures": 0,
+              "rowDisagreements": 7
+            },
+            "static": {
+              "width": 1280,
+              "height": 720,
+              "samples": 75,
+              "distinctIdentities": 1,
+              "identityReadFailures": 0,
+              "rowDisagreements": 0
+            },
+            "late": {
+              "width": 1280,
+              "height": 720,
+              "samples": 87,
+              "distinctIdentities": 29,
+              "identityReadFailures": 0,
+              "rowDisagreements": 2
+            },
+            "restarted": {
+              "width": 1280,
+              "height": 720,
+              "samples": 120,
+              "distinctIdentities": 38,
+              "identityReadFailures": 0,
+              "rowDisagreements": 7
+            }
+          }
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-0-preview-idle.png",
+          "sha256": "fe2e03a03aa99d88150d7051986fe80b6703ae2b7ae1f331d5e70e9f991e8123"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-0-preview-live.png",
+          "sha256": "88e13f3b9fc044f605385094a8e0b140e8edd5400196f4abd61b0ab716eaeae5"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-0-preview-restarted.png",
+          "sha256": "38619fe81b6260cefaa8bc7598e422557f9b29f5b9bd97a8c6f1099754bb2d10"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-0-preview-stopped.png",
+          "sha256": "cadbc7c66de3e6828eeda6aa4fec7b59c76c88a752cfcd96ceeaf2ca4e31c8f2"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-1-preview-idle.png",
+          "sha256": "329170c3e29a44121fa3e3238af6324b8a926f582480d49ecc06beb72a23d2d5"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-1-preview-live.png",
+          "sha256": "3a6f755ea699a7867c5e949e3d1be88138c76b2e1855259c088147ca018f01dd"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-1-preview-restarted.png",
+          "sha256": "1705a73273e48be40b874988ab9c389c67f27f96c71fa1c6bf75f4ca55153dae"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/8681ad40-34db-4124-82d1-ee5916223d6c/cycle-1-preview-stopped.png",
+          "sha256": "fda7afb257d37ed34235a2a1184939b3c423eb9599053ec6416509de5fd3447b"
+        }
+      ]
+    },
+    {
+      "executableSha256": "9f7db2e38fae10be74d913feeead34039e9ceb375667f25f70e81c95f2b368de",
+      "manifestSha256": "47e1a320b3b1dd74c5634b47168e57a25a9224a2143d93687daa3f384d2630f3",
+      "harnessSha256": "bade155da2a4a731cd28488e85140b9e4303a9ffc075ba4ae7e97e808021ce33",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/90165073-73a5-4860-a41c-1a698dd4c85d/results.json",
+      "reportSha256": "5e54d54852fe483e367fba4404eb985a8c7c1e6117cad45c13166704a40acd61",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 960,
+        "height": 540,
+        "fps": 30,
+        "audio": "none"
+      },
+      "errorSummary": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:",
+      "finding": "Fixture incorrectly expected the general stream resolution. Shared GUI intentionally uses Camera Resolution in camera mode; actual decoded 1280x720 matched that selected control. Corrected expected dimensions without production resolution changes.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": false,
+          "idlePreview": {
+            "role": "label",
+            "description": "Camera selected\nCam Link 4K: Cam Link 4K\nRequested mode: 1280x720 at 30 fps\nMicrophone: No microphone\nAudio is disabled\nCamera opens when streaming starts",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "distinct": 57,
+          "media": {
+            "moving": {
+              "width": 1280,
+              "height": 720,
+              "samples": 178,
+              "distinctIdentities": 57,
+              "identityReadFailures": 0,
+              "rowDisagreements": 6
+            }
+          }
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/90165073-73a5-4860-a41c-1a698dd4c85d/cycle-0-preview-idle.png",
+          "sha256": "01bdcb5e0e9ca0dbb44680d7a0ec24cc29f2e9e9e1fc837c5418fa7b4ca4c72c"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "acead2127a267e6a042751b5ece080db45fdb89404d19cff93dde5014ee0cec6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/94a4445d-3e97-4cbb-83de-282c9b72b74b/results.json",
+      "reportSha256": "fa460725dc193bf3289239458cd1d61d459e8b8f30735ffd5407447c3260f61e",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 960,
+        "height": 540,
+        "fps": 30,
+        "audio": "none"
+      },
+      "errorSummary": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:",
+      "finding": "Baseline package exposed no accessible camera preview explanation. The first reader assumed Qt QLabel Text support. Two subsequent invocations still referenced the baseline package because the launch manifest was stale; neither exercised the new binary. All reports retained; final package manifest and source archive were verified before qualification.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": false,
+          "idlePreview": {
+            "role": "label",
+            "description": "",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "media": {}
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/94a4445d-3e97-4cbb-83de-282c9b72b74b/cycle-0-preview-idle.png",
+          "sha256": "1235603fd6030e10e48b3a834132d62e4de386599af8243e7f589804d8f75b1b"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "bade155da2a4a731cd28488e85140b9e4303a9ffc075ba4ae7e97e808021ce33",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-x11-camera-gui",
+      "report": "native-qt/qa/reports/linux-camera-gui/ff26b331-dc24-49ab-9c5a-c193b7ad4dc8/results.json",
+      "reportSha256": "287443133fa6a8ce89d0bfdc8c59c32251c68deb1fede6600f83db48ff24bb4f",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, physical V4L2 HDMI loopback with 10 Hz source identities and 30 fps software H264; excludes audio, MJPEG, other devices, disconnection, high-motion fidelity, endurance and release qualification; actual X11 Qt camera selection, idle/live/Stop/restart preview screenshots, persisted settings and independent physical camera reception. Source is on host Wayland HDMI display; app is on separate private Xvfb display to avoid visual feedback. Native Wayland GUI camera preview remains unqualified.",
+      "cameraId": "v4l2:/dev/v4l/by-id/usb-Elgato_Cam_Link_4K_0123456789000-video-index0",
+      "requested": {
+        "codec": "h264",
+        "encoder": "software",
+        "width": 960,
+        "height": 540,
+        "fps": 30,
+        "audio": "none"
+      },
+      "errorSummary": "AssertionError [ERR_ASSERTION]: The expression evaluated to a falsy value:",
+      "finding": "Baseline package exposed no accessible camera preview explanation. The first reader assumed Qt QLabel Text support. Two subsequent invocations still referenced the baseline package because the launch manifest was stale; neither exercised the new binary. All reports retained; final package manifest and source archive were verified before qualification.",
+      "cycles": [
+        {
+          "cycle": 0,
+          "passed": false,
+          "idlePreview": {
+            "role": "label",
+            "description": "",
+            "text": "",
+            "frame": [
+              5,
+              29,
+              980,
+              720
+            ],
+            "imageSize": [
+              980,
+              720
+            ],
+            "decodedRows": 0,
+            "identities": [],
+            "expected": "none"
+          },
+          "media": {}
+        }
+      ],
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-camera-gui/ff26b331-dc24-49ab-9c5a-c193b7ad4dc8/cycle-0-preview-idle.png",
+          "sha256": "30546703a25e2164358e8c9a9843d5594a9562e518b9c74f9d54854e902fda7e"
+        }
+      ]
+    },
+    {
+      "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+      "harnessSha256": "69758e3213221bfa2d186b1bd510a550117ec097dd9b8af44a592390dd233f00",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "trayHelperSha256": null,
+      "portalJournalSha256": "e8b6a4557ee4143bf102bf4d2f4f7cefe1dc3d750ef02cc18a58e5ce2c23b3c5",
+      "backend": "linux-wayland-camera-description-regression",
+      "report": "native-qt/qa/reports/linux-camera-preview-regression/f9ca627a-6a0e-4f3c-8048-adae26434193/results.json",
+      "reportSha256": "b55b2d51af8e6d3f2d42475437f2c3581c41318ede8b4ecbe0a63edac21a855e",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": false,
+        "trayCopyFocus": false,
+        "trayCopy": "tray",
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "a5c598883fcfc5a99a7689c19c226334da5aa9c35394b33fe4e14e29a18ae8df"
+        },
+        "camera-mode": {
+          "role": "label",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        "window-mode-restored": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "3df8b8f9d908b20bfaae07b31a7d34418c5f4bcd251774dee78a4e83565b6ead"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "cf59a7439c954da00efaec2247d1eff1c54138ecf0853f0d2445380c5908527e"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "9ab4639d2d7acbf4760f858a511d7a976be365c502a0194c86c1d8c2042cd0f9"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "77fcd0ed6d63f74aee19a4c83bbb8f337087de8594848be4888a25e4fc010901"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "f12175a2680c70dfcbe7bdd1172d40447f6e5e61b3379b4d55421f86610d3009"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "5c444228abb96c292d20e8de525fbf42d7a63a83198a2b6113d1c1e882d6ab80"
+        },
+        "restarted-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "77fcd0ed6d63f74aee19a4c83bbb8f337087de8594848be4888a25e4fc010901"
+        },
+        "restarted-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "f12175a2680c70dfcbe7bdd1172d40447f6e5e61b3379b4d55421f86610d3009"
+        }
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.3318',)",
+        "survived": true
+      },
+      "finding": "Packaged native Wayland window-preview regression passed idle permission guidance, switching to camera and back without stale window description, live/resized preview identities, Stop clearing, fresh-consent restart and decoded media. This does not qualify live Wayland camera preview."
+    },
+    {
+      "executableSha256": "9f7db2e38fae10be74d913feeead34039e9ceb375667f25f70e81c95f2b368de",
+      "manifestSha256": "47e1a320b3b1dd74c5634b47168e57a25a9224a2143d93687daa3f384d2630f3",
+      "harnessSha256": "69758e3213221bfa2d186b1bd510a550117ec097dd9b8af44a592390dd233f00",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "trayHelperSha256": null,
+      "portalJournalSha256": "4e4787f4a3107e0f5f144ede9d716aff7f6d90bbc7b51968f18b1cd3d69bd3ed",
+      "backend": "linux-wayland-camera-description-regression",
+      "report": "native-qt/qa/reports/linux-camera-preview-regression/0f6e0014-d44e-4e42-b5fa-b9395c899962/results.json",
+      "reportSha256": "d8081d91abe0d99a87c69ad2159c2b26bfec0e86ac74662efd328b83d608b2c7",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": false,
+        "trayCopyFocus": false,
+        "trayCopy": "tray",
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "f06720cf3e594e673cf6f5ae8d57b381e56d54d9c034044489253cc58b1c27d6"
+        },
+        "camera-mode": {
+          "role": "label",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        "window-mode-restored": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "96bb184e64d4764a76dc750f0b43b801f968a687d325a93a87acc3caeb609683"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "184b3fd459c0e5087f5a992f6462bb352f954b42595fc3fde0472b9295817472"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "cb658b9b6ade4ec843b571cbf7b8ced3ab91117d8df74b49d7e92e73c6f132d1"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "6402acdbea388b598aab1f62106b073440fa38909e94518974c11df4fb4aaf54"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "d6c4920c0a3e68fe2d13785d30f595417f108a55494c6e840421e3c7ec1cc7ab"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "19857538098004cfb500b6ee300aa14f78b48596edf10e7557db5875356019c6"
+        },
+        "restarted-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "6402acdbea388b598aab1f62106b073440fa38909e94518974c11df4fb4aaf54"
+        },
+        "restarted-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "d6c4920c0a3e68fe2d13785d30f595417f108a55494c6e840421e3c7ec1cc7ab"
+        }
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.3318',)",
+        "survived": true
+      },
+      "finding": "Packaged native Wayland window-preview regression passed idle permission guidance, switching to camera and back without stale window description, live/resized preview identities, Stop clearing, fresh-consent restart and decoded media. This does not qualify live Wayland camera preview."
+    },
+    {
+      "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+      "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+      "harnessSha256": "18e2c6e136c57d4f31b0bba5c23398a72b80f341de7ee8d2821b95356ea3e4a4",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "screenshotSha256": "1ab9c3821a6b15f2257bb067f92be7db7f637d3a25ac53a72903555607546482",
+      "backend": "linux-x11-camera-unavailable",
+      "report": "native-qt/qa/reports/linux-camera-unavailable/15076924-2856-4f4c-ab8d-8b4e5ddb9553/results.json",
+      "reportSha256": "c7cff4e42b1863e86799b1e8664227c67f000df575a3f6e545062c1e5ad9547d",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual X11 camera selection with V4L2 nodes masked only in the owned publisher mount namespace. Visible Linux empty-camera guidance, unavailable Go live, no capture, clean quit. Not physical disconnect or permission-denied qualification.",
+      "guidance": "No cameras found. Check connection and permissions, then Refresh.",
+      "goLiveDisabled": true,
+      "capturing": false,
+      "hostDevicesUnchanged": true,
+      "finding": "Owned publisher namespace masked camera nodes without changing host devices. Actual GUI showed Linux recovery guidance, disabled Go live and captured nothing. First screenshot revealed text wider than the source list; final package uses a shorter explanation confirmed to fit. Physical disconnect and permission-denied behavior remain unqualified."
+    },
+    {
+      "executableSha256": "9f7db2e38fae10be74d913feeead34039e9ceb375667f25f70e81c95f2b368de",
+      "manifestSha256": "47e1a320b3b1dd74c5634b47168e57a25a9224a2143d93687daa3f384d2630f3",
+      "harnessSha256": "638563496cc1e88122027c1e93775f2920de2132cb8ed00391809917c4573ceb",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "screenshotSha256": "aeeb95cd6f41d322e2090dd01dbd675e36d9bc90e3afb5e12458b2d52dd15494",
+      "backend": "linux-x11-camera-unavailable",
+      "report": "native-qt/qa/reports/linux-camera-unavailable/d3b47152-1165-4b22-bb54-a9b5a02b479d/results.json",
+      "reportSha256": "795ff59a61a92195e83f595074e06e3fada602c39538f684f9a3015891a72955",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual X11 camera selection with V4L2 nodes masked only in the owned publisher mount namespace. Visible Linux empty-camera guidance, unavailable Go live, no capture, clean quit. Not physical disconnect or permission-denied qualification.",
+      "guidance": "No cameras detected. Connect a camera and check that your user account has access to it, then Refresh.",
+      "goLiveDisabled": true,
+      "capturing": false,
+      "hostDevicesUnchanged": true,
+      "finding": "Owned publisher namespace masked camera nodes without changing host devices. Actual GUI showed Linux recovery guidance, disabled Go live and captured nothing. First screenshot revealed text wider than the source list; final package uses a shorter explanation confirmed to fit. Physical disconnect and permission-denied behavior remain unqualified."
     }
   ],
   "host_environment": {
@@ -12282,7 +13760,9 @@
     "python3 native-qt/e2e/linux-portal-cancel-reference.py --reports=<reports> --close-mode=request (independent desktop diagnostic; reproduces a portal crash on installed GNOME 46.2, not application qualification)",
     "node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --matrix=gui|apps-gui (real GNOME portal and owned keyboard helper; serial audio fixtures)",
     "node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --matrix=communications-gui (or xvfb-run -a with --backend=x11 --communications-mix=true)",
-    "xvfb-run -a node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=communications-cli"
+    "xvfb-run -a node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=communications-cli",
+    "xvfb-run -a -s \"-screen 0 1440x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- node native-qt/e2e/linux-camera-publish.js --gui=true --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<exact V4L2 id> --camera-label=<unique camera label> --hdmi-loopback=true --source-wayland-socket=<absolute socket for the physical HDMI display>",
+    "xvfb-run -a -s \"-screen 0 1440x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- python3 native-qt/e2e/linux-camera-unavailable.py --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports>"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -12681,6 +14161,83 @@
       {
         "path": "native-qt/build-linux-tray-gates.log",
         "sha256": "5e0ebf57131baaea75578072947e78a2c03f05c0da72f5f6406addee4cb59868"
+      }
+    ]
+  },
+  "camera_gui_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-b30bf2c97e0b-a93b2efb3a86.deb",
+    "sha256": "4358de4ea2652c3d18be83f922d6230bd93837e2f2e7a50992a24485f1fa8ff0",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-b30bf2c97e0b-a93b2efb3a86",
+    "manifestSha256": "e0568399e34b3b641603457c5283911bb0dc799610386f532e3fddcef8b3352c",
+    "executableSha256": "b30bf2c97e0b529de2d00ad3d22f552c42866a893385c6580ada83f6d2b42619",
+    "privateDesktopReports": [
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/1cc57aa9-4e8d-4a72-a882-d60cee017e6f/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/6b222a40-698f-4eb0-9622-75d6292f8666/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/72f0fa20-1777-42e7-bc41-1d31e5f9e40c/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "passed": false
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/8b52c4e8-ca36-4a81-bdf3-300fb3e329dd/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "passed": false
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/9957b6a8-e8d2-461b-8285-e7751e08b5ed/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "passed": false
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/d3339285-c9dd-44f2-bdd4-e34149f9ba5b/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "passed": false
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-gui-desktop/e2b56844-eb37-46e2-b784-7d55a8f46745/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "passed": false
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-unavailable-desktop/a8eaf759-77c3-4439-8bf1-263ab56ea4d3/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camera-unavailable-desktop/ce7e93b6-d916-469f-9c26-2f2b10f8203b/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true
+      }
+    ],
+    "cleanup": {
+      "path": "native-qt/qa/reports/linux-camera-gui/cleanup.json",
+      "sha256": "2da2326712e22ff4a969f8230ee1391990e9d24cb9afdb591b97f66a662faed7"
+    },
+    "qualification": "Development checkpoint: physical Cam Link X11 GUI preview/publishing, Stop/restart and settings restoration; native GNOME Wayland window-preview/source-mode regression. Linux camera guidance no longer references Windows and preview explanations are accessible. Windows/macOS code paths preserved but runtime regression unqualified. Native Wayland live camera preview, permission-denied/hotplug, other cameras/formats, physical microphone, high-motion HDMI fidelity and endurance remain open."
+  },
+  "camera_gui_gates": {
+    "classification": "Build, packaging, syntax and diff gates only; application workflow evidence is separate.",
+    "passed": true,
+    "logs": [
+      {
+        "path": "native-qt/build-linux-camera-gui.log",
+        "sha256": "c0f358cb967b1ad40354fc029a463fc5e63bccdb366b89f9c0c906dec70525b9"
+      },
+      {
+        "path": "native-qt/build-linux-camera-package.log",
+        "sha256": "8c19290935beffe706f8cd8aa6ad14e273f09e5489ec59f8510542a1ea889d7b"
+      },
+      {
+        "path": "native-qt/build-linux-camera-gates.log",
+        "sha256": "42fb7f6dc0cab87d05397c5c1b411d713232ff646ebb04c248d59609e9181e94"
       }
     ]
   }
