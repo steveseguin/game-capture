@@ -193,7 +193,11 @@ function audioCheck(value,silent=false){
           (entry.bitrateChanges??=[]).push(change);
           // These are the existing user-facing controls, not a new control or
           // VDO.Ninja command. Each mutating action is attempted exactly once.
-          ui('press','bitrateSelect');ui('press',bitrateLabels.get(requested));
+          if(change.before.video.configured_bitrate_kbps!==requested){
+            ui('press','bitrateSelect');
+            await waitUiRead('actions',bitrateLabels.get(requested),'live bitrate menu');
+            ui('press',bitrateLabels.get(requested));
+          }
           await waitFor(async()=>{
             const state=await appState();
             if(state.video.configured_bitrate_kbps!==requested||state.output.state!==2)return false;
@@ -264,7 +268,16 @@ function audioCheck(value,silent=false){
   if(unresponsiveStun&&result.unresponsiveStun.requests<2)throw Error('Unresponsive STUN fixture did not receive retries');
   result.passed=true;
 }catch(e){result.error=String(e.stack||e).split(token).join('<redacted>');console.error(result.error);process.exitCode=1;}
-finally{for(const p of children)p.kill('SIGTERM');if(browser)await browser.close().catch(()=>{});if(proxy){proxy.closeAllConnections();proxy.close();}if(stalledStun)stalledStun.close();await Promise.all([...children].map(p=>p.closed));
+finally{
+  // Preserve the observation even if a failed GUI action leaves a child unable
+  // to handle graceful shutdown. Escalate only the children owned by this run.
+  fs.writeFileSync(path.join(report,'results-before-cleanup.json'),JSON.stringify(result,null,2));
+  const pending=[...children];for(const p of pending)p.kill('SIGTERM');
+  const reap=setTimeout(()=>{for(const p of pending)if(children.has(p)){
+    (result.forcedCleanup??=[]).push({pid:p.pid,signal:'SIGKILL'});p.kill('SIGKILL');
+  }},5000);
+  try{if(browser)await browser.close().catch(()=>{});if(proxy){proxy.closeAllConnections();proxy.close();}if(stalledStun)stalledStun.close();await Promise.all(pending.map(p=>p.closed));}
+  finally{clearTimeout(reap);}
   if(opts.gui){const ini=path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini');if(fs.existsSync(ini)){
     const encoded=fs.readFileSync(ini,'utf8').match(/^profilesEncrypted="?@ByteArray\(([A-Za-z0-9+/=]+)\)"?$/m)?.[1];const reference=encoded?Buffer.from(encoded,'base64').toString():'';
     if(/^mac-keychain-v1:[0-9a-f-]{36}$/.test(reference))try{execFileSync('/usr/bin/security',['delete-generic-password','-s','ninja.vdo.game-capture.output-profiles','-a',reference],{stdio:'pipe'});result.ownedProfileRemoved=true;}catch(e){result.cleanupError=String(e);result.passed=false;process.exitCode=1;}
