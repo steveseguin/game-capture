@@ -7,7 +7,10 @@ const {chromium}=require('playwright');
 const {receiver,observe,requireMoving,waitFor,sleep}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 const gui=opts.gui==='true',external=opts.external==='true',width=gui?960:640,height=gui?540:360;
-const rateControl=opts['rate-control']==='true',portalCancel=opts['portal-cancel']==='true';
+const rateControl=opts['rate-control']==='true',portalCancel=opts['portal-cancel']==='true',pendingQuit=opts['pending-quit']==='true',pendingStop=opts['pending-stop']==='true',sourceLoss=opts['source-loss']==='true';
+assert(!(pendingQuit&&pendingStop));
+assert(!(pendingStop||sourceLoss)||(gui&&opts.backend==='wayland'),'Recovery fixture requires Wayland GUI');
+assert(!pendingQuit||(gui&&opts.backend==='wayland'),'Pending quit requires Wayland GUI');
 assert(!portalCancel||(gui&&opts.backend==='wayland'),'Portal cancellation fixture requires Wayland GUI');
 assert(!rateControl||!gui,'Rate control currently qualifies CLI only');
 const targetBitrate=Number(opts['target-bitrate']||1000);
@@ -45,8 +48,15 @@ const result={scope:`Extracted Ubuntu DEB, ${gui?'actual Qt GUI':'CLI'} ${extern
   receiverHarnessSha256:sha(path.join(__dirname,'macos-media-receiver.js')),portalHarnessSha256:sha(path.join(__dirname,'linux-portal-select.py')),
   guiHelperSha256:sha(path.join(__dirname,'linux-ui-control.py')),
   host:{platform:os.platform(),release:os.release(),arch:os.arch(),logicalCpus:os.cpus().length},
-  requested:{backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
-let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector,keyboardServer,keyboardDirectory;
+  requested:{backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,portalCancel,pendingQuit,pendingStop,sourceLoss,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
+let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector,keyboardServer,keyboardDirectory,portalOwner;
+const startedAtSeconds=Math.floor(Date.now()/1000);
+const portalBackend='org.freedesktop.impl.portal.desktop.gnome';
+const checkPortalOwner=()=>{
+  const owner=execFileSync('gdbus',['call','--session','--dest','org.freedesktop.DBus','--object-path','/org/freedesktop/DBus','--method','org.freedesktop.DBus.GetNameOwner',portalBackend],{encoding:'utf8',timeout:5000,stdio:['ignore','pipe','pipe']}).trim();
+  if(portalOwner)assert.equal(owner,portalOwner,'GNOME portal backend restarted during workflow');
+  else{portalOwner=owner;result.portalBackend={name:portalBackend,owner};}
+};
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');
 const processStart=pid=>{try{return fs.readFileSync('/proc/'+pid+'/stat','utf8').split(') ').pop().split(' ')[19];}catch{return null;}};
 const helperProcesses=()=>{
@@ -71,8 +81,9 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     keyboardServer.closed=new Promise(resolve=>keyboardServer.once('close',resolve));let ready='';keyboardServer.stdout.on('data',d=>ready+=d);keyboardServer.stderr.on('data',d=>process.stderr.write(d));
     await waitFor(()=>{assert.equal(keyboardServer.exitCode,null,'Owned keyboard exited');return ready.includes('ready');},10000,'Owned keyboard not ready');
   }
-  sourceBrowser=await chromium.launch({executablePath:opts.browser||'/usr/bin/google-chrome',headless:false,env,args:[...(opts.backend==='wayland'?['--ozone-platform=wayland']:[]),'--window-position=10,10',opts.backend==='wayland'?'--window-size=720,560':'--window-size=900,650','--disable-background-timer-throttling','--disable-renderer-backgrounding']});
-  const source=await sourceBrowser.newPage(opts.backend==='wayland'?{viewport:null}:{viewport:{width:800,height:450},deviceScaleFactor:1});
+  const sourceBrowserOptions={executablePath:opts.browser||'/usr/bin/google-chrome',headless:false,env,args:[...(opts.backend==='wayland'?['--ozone-platform=wayland']:[]),'--window-position=10,10',opts.backend==='wayland'?'--window-size=720,560':'--window-size=900,650','--disable-background-timer-throttling','--disable-renderer-backgrounding']};
+  sourceBrowser=await chromium.launch(sourceBrowserOptions);
+  let source=await sourceBrowser.newPage(opts.backend==='wayland'?{viewport:null}:{viewport:{width:800,height:450},deviceScaleFactor:1});
   const title='Owned Linux Capture '+crypto.randomBytes(8).toString('hex');
   await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
     const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,paused:false};
@@ -97,7 +108,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   log=fs.createWriteStream(path.join(report,'private-publisher.log'));
   publisher=spawn(exe,args,{cwd:bundle,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
   publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
-  const selectPortal=(name='portal-selection',cancel=false)=>{portalSelector=spawn('python3',[path.join(__dirname,'linux-portal-select.py'),'--title='+title,'--output='+path.join(report,name+'.json'),...(cancel?['--cancel']:[])],{env,stdio:['ignore','pipe','pipe']});portalSelector.stdout.pipe(log,{end:false});portalSelector.stderr.pipe(log,{end:false});};
+  const selectPortal=(name='portal-selection',cancel=false,observe='')=>{portalSelector=spawn('python3',[path.join(__dirname,'linux-portal-select.py'),'--title='+title,'--output='+path.join(report,name+'.json'),...(cancel?['--cancel']:[]),...(observe?['--observe='+observe]:[])],{env,stdio:['ignore','pipe','pipe']});portalSelector.stdout.pipe(log,{end:false});portalSelector.stderr.pipe(log,{end:false});};
   if(opts.backend==='wayland'&&!gui)selectPortal();
   publisher.closed=new Promise(resolve=>publisher.once('close',resolve));
   publisher.on('error',error=>{result.launchError=String(error);});
@@ -114,6 +125,27 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     ui('source',opts.backend==='wayland'?'Choose a window':title);ui('text','Stream ID or VDO.Ninja URL',stream);ui('text','Stream password','false');
     if(external){ui('text','FFmpeg Path',helperPath);ui('text','FFmpeg Options','-threads 2');}
     fs.writeFileSync(path.join(report,'ui-before-live.json'),ui('dump'));
+    if(pendingQuit||pendingStop){
+      selectPortal('portal-pending',false,'open');ui('press','Go live');
+      await waitFor(()=>portalSelector.exitCode!==null,30000,'Permission dialog did not open');assert.equal(portalSelector.exitCode,0);
+      assert(JSON.parse(fs.readFileSync(path.join(report,'portal-pending.json'))).passed);
+      const d=await api('/diagnostics');assert(!d.app.capturing&&!d.app.live);assert.equal(d.video.frames_captured,0);
+      checkPortalOwner();
+      const started=Date.now();await api('/commands',{command:pendingQuit?'quit':'stop'});
+      if(pendingQuit){
+        await waitFor(()=>publisher.exitCode!==null,8000,'Quit did not cancel pending portal permission');await publisher.closed;
+        assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));
+      }else{
+        await waitFor(()=>JSON.parse(ui('dump')).some(r=>r.name==='Go live'&&r.states.includes('sensitive')),8000,'Stop did not cancel pending permission');
+        const stopped=await api('/diagnostics');assert(!stopped.app.live&&!stopped.app.capturing);assert.equal(stopped.video.frames_captured,0);
+      }
+      const elapsedMs=Date.now()-started;
+      selectPortal('portal-after-command',false,'closed');await waitFor(()=>portalSelector.exitCode!==null,12000,'Portal closure observer timed out');assert.equal(portalSelector.exitCode,0);
+      result[pendingQuit?'pendingQuit':'pendingStop']={passed:false,appStopped:true,elapsedMs};save();
+      await sleep(2000);checkPortalOwner();
+      result[pendingQuit?'pendingQuit':'pendingStop'].passed=true;
+      if(pendingQuit){result.passed=true;return;}
+    }
     if(portalCancel){
       selectPortal('portal-cancel',true);ui('press','Go live');
       await waitFor(()=>portalSelector.exitCode!==null,30000,'Portal cancellation did not finish');assert.equal(portalSelector.exitCode,0);
@@ -128,7 +160,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   }
 
   if(opts.backend==='wayland'&&!gui)await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during portal selection');return fs.readFileSync(path.join(report,'private-publisher.log'),'utf8').includes('[Headless] Going live');},75000,'Portal selection/startup did not finish');
-  if(opts.backend==='wayland'){await waitFor(()=>portalSelector.exitCode!==null,10000,'Portal selector did not finish');assert.equal(portalSelector.exitCode,0);assert(JSON.parse(fs.readFileSync(path.join(report,'portal-selection.json'))).passed);}
+  if(opts.backend==='wayland'){await waitFor(()=>portalSelector.exitCode!==null,10000,'Portal selector did not finish');assert.equal(portalSelector.exitCode,0);assert(JSON.parse(fs.readFileSync(path.join(report,'portal-selection.json'))).passed);checkPortalOwner();}
   viewerBrowser=await chromium.launch({executablePath:opts.browser||'/usr/bin/google-chrome',headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
   const capabilities=await viewerBrowser.newPage();result.receiverCapabilities=await capabilities.evaluate(()=>RTCRtpReceiver.getCapabilities('video'));await capabilities.close();save();
   const viewer=await receiver(viewerBrowser,stream,publisher);
@@ -201,10 +233,18 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   const late=await receiver(viewerBrowser,stream,publisher);result.phases.late=await observe(late,3000);requireMoving(result.phases.late,'Late Linux receiver',expectedCodec);save();
   if(external){result.helpersBeforeStop=helperProcesses();assert.equal(result.helpersBeforeStop.length,1);}
   if(gui){
-    ui('press','Stop streaming');await waitFor(async()=>!(await api('/diagnostics')).app.capturing,10000,'GUI stop did not finish');
+    let replacementMarkup;
+    if(sourceLoss){
+      replacementMarkup=await source.content();await sourceBrowser.close();sourceBrowser=null;
+      await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.live&&!d.app.capturing;},15000,'GUI did not retire a destroyed source');
+      const rows=JSON.parse(ui('dump'));assert(rows.some(r=>r.role==='label'&&/window capture stopped/i.test(r.name)),'Missing source-loss status');
+      assert(rows.some(r=>r.name==='Go live'&&r.states.includes('sensitive')),'Source loss did not enable retry');result.guiSourceLossPassed=true;
+    }else{ui('press','Stop streaming');await waitFor(async()=>!(await api('/diagnostics')).app.capturing,10000,'GUI stop did not finish');}
+
     const before=await api('/diagnostics');await sleep(500);const after=await api('/diagnostics');
-    assert.equal(before.video.frames_captured,after.video.frames_captured);result.guiStopSettled=true;
+    assert.equal(before.video.frames_captured,after.video.frames_captured);result[sourceLoss?'guiSourceLossSettled':'guiStopSettled']=true;
     if(opts.backend==='wayland'){
+      if(sourceLoss){sourceBrowser=await chromium.launch(sourceBrowserOptions);source=await sourceBrowser.newPage({viewport:null});await source.setContent(replacementMarkup);await source.bringToFront();await sleep(1000);ui('source','Choose a window');}
       selectPortal('portal-restarted');ui('press','Go live');
       await waitFor(async()=> (await api('/diagnostics')).app.live,30000,'Wayland GUI restart did not go live');
       await waitFor(()=>portalSelector.exitCode!==null,10000,'Restarted portal selection did not finish');assert.equal(portalSelector.exitCode,0);
@@ -225,7 +265,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     await waitFor(()=>[...result.helperProcesses,...result.helpersBeforeStop].every(p=>processStart(p.pid)!==p.startTimeTicks),5000,'Owned FFmpeg helper survived shutdown');
     result.helpersRetired=true;
   }
-}catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;if(gui&&opts.backend==='wayland'){try{fs.writeFileSync(path.join(report,'ui-failure.json'),execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),'dump'],{env:{...process.env,QT_QPA_PLATFORM:'wayland'},timeout:10000}));execFileSync('gnome-screenshot',['-f',path.join(report,'desktop-failure.png')],{env:{...process.env,WAYLAND_DISPLAY:process.env.WAYLAND_DISPLAY||'wayland-0'},timeout:10000});}catch{}}}finally{
+}catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;if(gui&&opts.backend==='wayland'&&publisher?.exitCode===null){try{fs.writeFileSync(path.join(report,'ui-failure.json'),execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),'dump'],{env:{...process.env,QT_QPA_PLATFORM:'wayland'},timeout:10000}));execFileSync('gnome-screenshot',['-f',path.join(report,'desktop-failure.png')],{env:{...process.env,WAYLAND_DISPLAY:process.env.WAYLAND_DISPLAY||'wayland-0'},timeout:10000});}catch{}}}finally{
   if(publisher&&publisher.exitCode===null){
     try{if(control)await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,6000,'Cleanup quit timed out');}
     catch{publisher.kill();await publisher.closed;}
@@ -236,5 +276,15 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   if(log)await new Promise(resolve=>log.end(resolve));
   if(publisher){result.exitCode=publisher.exitCode;result.exitSignal=publisher.signalCode;}
   if(gui){const nativeLog=path.join(report,'private-state/GameCapture/logs/game-capture-debug.log');if(fs.existsSync(nativeLog))fs.copyFileSync(nativeLog,path.join(report,'private-native.log'));}
+  if(opts.backend==='wayland'){
+    await sleep(2000);
+    try{
+      const journal=execFileSync('journalctl',['--user','-u','xdg-desktop-portal.service','-u','xdg-desktop-portal-gnome.service','--since=@'+startedAtSeconds,'--no-pager','-o','short-iso'],{encoding:'utf8',timeout:5000});
+      const journalFile=path.join(report,'portal-journal.log');fs.writeFileSync(journalFile,journal);result.portalJournalSha256=sha(journalFile);
+      assert(!/status=\d+\/(?:SEGV|ABRT)|Failed with result 'core-dump'/.test(journal),'Portal service crashed during workflow');
+      if(portalOwner)checkPortalOwner();
+      if(result.portalBackend)result.portalBackend.survived=true;
+    }catch(error){result.passed=false;result.error=[result.error,String(error.stack||error)].filter(Boolean).join('\n');process.exitCode=1;}
+  }
   save();console.log(JSON.stringify({report,passed:result.passed,error:result.error}));
 }})();

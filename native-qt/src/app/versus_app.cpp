@@ -863,6 +863,12 @@ std::string VersusApp::lastCaptureError() const {
     return {};
 }
 
+#ifdef __linux__
+void VersusApp::prepareCaptureStart() { windowCapture_.prepareCaptureStart(); }
+void VersusApp::cancelCaptureStart() { windowCapture_.cancelCaptureStart(); }
+bool VersusApp::captureStartCancelled() const { return windowCapture_.captureStartCancelled(); }
+#endif
+
 bool VersusApp::startCapture(const std::string &windowId) {
     return startCapture(lifecycleStateSnapshot().videoSourceMode, windowId);
 }

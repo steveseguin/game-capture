@@ -89,6 +89,7 @@ def main():
     parser.add_argument("--title")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--cancel", action="store_true")
+    parser.add_argument("--observe", choices=["open", "closed"])
     parser.add_argument("--keys", nargs="+")
     parser.add_argument("--keyboard-server", type=Path)
     args = parser.parse_args()
@@ -125,7 +126,7 @@ def main():
                         return list(nodes(dialog))
         return []
 
-    result = {"title": args.title, "mode": "cancel" if args.cancel else "share", "actions": [], "passed": False}
+    result = {"title": args.title, "mode": args.observe or ("cancel" if args.cancel else "share"), "actions": [], "passed": False}
     def save():
         if args.output:
             args.output.write_text(json.dumps(result, indent=2) + "\n")
@@ -135,6 +136,14 @@ def main():
         subprocess.run([*(["sudo", "-n"] if not os.environ.get("GC_QA_KEYBOARD_SOCKET") else []), sys.executable, str(Path(__file__).resolve()), "--keys", *keys], check=True, timeout=10)
 
     try:
+        if args.observe == 'closed':
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if not any(n.get_role_name() == 'list item' and n.get_name().startswith(args.title) for n in dialog_nodes()):
+                    result['passed'] = True
+                    return
+                time.sleep(.1)
+            raise RuntimeError('Owned portal dialog did not close')
         deadline = time.monotonic() + 20
         target = None
         while time.monotonic() < deadline:
@@ -147,6 +156,9 @@ def main():
             time.sleep(0.2)
         if target is None:
             raise RuntimeError("Owned fixture is absent from the real portal picker")
+        if args.observe == 'open':
+            result['passed'] = True
+            return
         siblings = [target.get_parent().get_child_at_index(i) for i in range(target.get_parent().get_child_count())]
         if not any(node.get_state_set().contains(Atspi.StateType.FOCUSED) for node in siblings):
             raise RuntimeError("Portal source list does not own keyboard focus")

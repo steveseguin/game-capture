@@ -69,6 +69,13 @@ class WindowCapture {
                       int fps,
                       bool preserveAlpha = false);
     void stopCapture();
+#ifdef __linux__
+    // Reset only before scheduling a new startup. Cancellation is safe from
+    // the UI thread; the startup worker retains ownership of all cleanup.
+    void prepareCaptureStart();
+    void cancelCaptureStart();
+    bool captureStartCancelled() const;
+#endif
     bool isCapturing() const;
     void setFrameRate(int fps);
 #ifdef __APPLE__

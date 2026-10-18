@@ -192,6 +192,11 @@ class VersusApp {
     bool startCapture(const std::string &windowId);
     bool startCapture(VideoSourceMode mode, const std::string &sourceId);
     void stopCapture();
+#ifdef __linux__
+    void prepareCaptureStart();
+    void cancelCaptureStart();
+    bool captureStartCancelled() const;
+#endif
     void setSelectedWindow(const std::string &windowId);
     void setVideoSourceMode(VideoSourceMode mode);
 

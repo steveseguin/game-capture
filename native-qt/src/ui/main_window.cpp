@@ -941,6 +941,11 @@ void MainWindow::maybeQuitAfterPendingOperations() {
 
 void MainWindow::requestQuit() {
     quitRequested_ = true;
+#ifdef __linux__
+    if (core_ && (startInProgress_ || (startFuture_.isValid() && !startFuture_.isFinished()))) {
+        core_->cancelCaptureStart();
+    }
+#endif
     if (hasPendingAsyncOperation()) {
         if (forceQuitEnabled_ || quitAfterPendingOps_) {
             forceQuitRequested_ = true;
@@ -965,6 +970,9 @@ void MainWindow::requestStop() {
     const bool startPending = startFuture_.isValid() && !startFuture_.isFinished();
     if (startInProgress_ || startPending) {
         stopAfterPendingStart_ = true;
+#ifdef __linux__
+        core_->cancelCaptureStart();
+#endif
         updateStatus("Stop requested; waiting for startup to finish...", "connecting");
         return;
     }
@@ -3475,6 +3483,9 @@ void MainWindow::onGoLiveClicked() {
 
         reconnectNoticeActive_ = false;
         startInProgress_ = true;
+#ifdef __linux__
+        core_->prepareCaptureStart();
+#endif
         forceQuitEnabled_ = false;
         const quint64 startOpId = ++startOpId_;
         updateStatus("Starting...", "connecting");
@@ -3546,6 +3557,11 @@ void MainWindow::onGoLiveClicked() {
                     }
 #endif
                 }
+#ifdef __linux__
+                if (core->captureStartCancelled()) {
+                    failureStatus = "Capture startup cancelled";
+                }
+#endif
                 if (failureStatus.isEmpty()) {
                     const auto sourceMode = videoSourceModeFromUiValue(sourceModeValue);
                     core->setSelectedWindow(selectedWindowId);
@@ -3563,10 +3579,21 @@ void MainWindow::onGoLiveClicked() {
                         failureStatus = "Failed to apply audio encoding settings";
                     } else if (!core->startCapture(sourceMode, selectedWindowId)) {
                         const std::string detail = core->lastCaptureError();
+#ifdef __linux__
+                        if (core->captureStartCancelled()) {
+                            failureStatus = "Capture startup cancelled";
+                        } else
+#endif
                         failureStatus = detail.empty()
                             ? QStringLiteral("Failed to start capture")
                             : QString::fromStdString(detail);
                     } else {
+#ifdef __linux__
+                        if (core->captureStartCancelled()) {
+                            failureStatus = "Capture startup cancelled";
+                            cleanupFailedStartup();
+                        } else
+#endif
                         if (!core->goLive(options)) {
                             failureStatus = "Failed to connect";
                             cleanupFailedStartup();
@@ -3602,7 +3629,11 @@ void MainWindow::onGoLiveClicked() {
                 self->forceQuitEnabled_ = false;
                 if (!started) {
                     self->isLive_ = false;
-                    self->updateStatus(failureStatus.isEmpty() ? "Failed to start stream" : failureStatus, "error");
+                    self->updateStatus(failureStatus.isEmpty() ? "Failed to start stream" : failureStatus,
+#ifdef __linux__
+                        self->core_->captureStartCancelled() ? "idle" :
+#endif
+                        "error");
                     self->setConfigControlsEnabled(true);
                     if (self->previewTimer_) {
                         self->previewTimer_->start();
@@ -4951,6 +4982,11 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 
     if (hasPendingAsyncOperation() && !forceQuitRequested_) {
         quitRequested_ = true;
+#ifdef __linux__
+        if (core_ && (startInProgress_ || (startFuture_.isValid() && !startFuture_.isFinished()))) {
+            core_->cancelCaptureStart();
+        }
+#endif
         if (forceQuitEnabled_ || quitAfterPendingOps_) {
             forceQuitRequested_ = true;
             qApp->setProperty("force_exit_without_shutdown", true);

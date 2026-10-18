@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor, GUI source loss and preview remain."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor, preview remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception."
     },
     {
       "id": "x11-window",
@@ -101,7 +101,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash."
     },
     {
       "id": "profiles",
@@ -119,7 +119,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap."
     },
     {
       "id": "packaging",
@@ -6698,6 +6698,273 @@
       "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
       "portalHarnessSha256": "2321fe9fc365261c7310ea3365fc7d1c90f28678b85262395ca59d5451849d5c",
       "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631"
+    },
+    {
+      "backend": "linux-wayland-pending-quit-before-fix",
+      "report": "native-qt/qa/reports/linux-wayland-recovery/8e73605a-3c62-4612-ae0d-a10691c8403a/results.json",
+      "reportSha256": "76e951414bfb5654152088d77fb142023674f7c20940c595b101978fbf93b77a",
+      "passed": false,
+      "finding": "Packaged GUI opened the real portal permission dialog with no capture, then authenticated Quit failed to close within eight seconds. Cleanup required the existing second-quit force exit. GUI was waiting for startup without cancelling the pending portal request.",
+      "limits": "Native GNOME Wayland GUI, no capture permission granted. Quit uses the authenticated local-control command routed to MainWindow::requestQuit. This is not File-menu or window-close-to-tray qualification.",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "bda13ededc991802a29c8817fd0652375505ac06f373147f7531b4dfed8b3abc",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "exitCode": 0,
+      "exitSignal": null
+    },
+    {
+      "backend": "linux-wayland-pending-quit-initial-fix",
+      "report": "native-qt/qa/reports/linux-wayland-recovery/dbaedac1-53ba-47f1-b255-ea66d800e460/results.json",
+      "reportSha256": "1937dc4eecf3f4cd11f4fe526a8b403c986e46bf6f567cb5ca908ea4cb4834ec",
+      "passed": false,
+      "finding": "Intermediate package exited in 208 ms and removed discovery/dialog, but the initial fixture did not monitor the portal service. Subsequent journal audit found GNOME backend SIGSEGV at 06:05:20 EDT. App-only success does not qualify the workflow; the original frozen report is preserved. A later artifact with backend-owner/journal checks also failed.",
+      "limits": "Native GNOME Wayland GUI, no capture permission granted. Quit uses the authenticated local-control command routed to MainWindow::requestQuit. This is not File-menu or window-close-to-tray qualification. Superseded qualification: portal cancellation recovery remains failed, not passed.",
+      "executableSha256": "dbe43098c61f915ffdc39296ffb7f2db6e07e44ff97339fc9b0491963e0ac7ab",
+      "manifestSha256": "3325c6572e19ff54247b5c28481406778b015f3617239ffdc62d836422cc4e59",
+      "harnessSha256": "a3b04d9cef27d93a34b4dd79a133402bd05c43f1f9e475b6703721c7aa695a69",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "pendingQuit": {
+        "passed": true,
+        "elapsedMs": 208
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "reportedPassBeforePortalAudit": true
+    },
+    {
+      "backend": "linux-wayland-pending-stop-retry",
+      "report": "native-qt/qa/reports/linux-wayland-recovery/5a861e6e-103b-4adf-940a-c0ef1d20b3c9/results.json",
+      "reportSha256": "f213cb06940cb395f4a45875af56d8df4e9b58facec7d0315227a030f7ea7695",
+      "passed": false,
+      "finding": "Stop returned to idle in 331 ms with zero frames, but GNOME portal crashed. The next CreateSession failed while the backend was restarting. Successful retry and source-loss phases were not reached; the app-only pendingStop flag does not qualify desktop recovery.",
+      "requested": {
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": true,
+        "pendingQuit": false,
+        "pendingStop": true,
+        "sourceLoss": true,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "ba216e7d3515095410e3435cf8c952bb8fda70d54cd5659097b392e0c5b77263",
+      "manifestSha256": "4f91d6566286ff3bdb85d9d229dff047ee188eef2af2b5bc3752d6864a390637",
+      "harnessSha256": "9dd4131106823280e8c14187776bb032e08bb5f040ff87c10300d2261f21219e",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "pendingStop": {
+        "passed": true,
+        "elapsedMs": 331
+      },
+      "exitCode": 0,
+      "exitSignal": null
+    },
+    {
+      "backend": "linux-wayland-gui-source-loss",
+      "report": "native-qt/qa/reports/linux-wayland-recovery/5ca4afc3-c1b9-4275-bd66-d107cf6c8778/results.json",
+      "reportSha256": "524ee58816fd0995f6b00e6d2dcb35ce53f9d6e0cb0292c9d0486f02da1935d3",
+      "passed": true,
+      "finding": "Exact packaged GUI passed user Cancel/retry, decoded moving/static video, native resize and late viewer. Closing the owned selected window stopped capture/publication, exposed a visible capture-stopped status, enabled Go live and settled frame counters. Explicitly selecting a replacement window through a fresh portal restored decoded moving video; Stop and clean Quit passed. GNOME backend retained its bus owner and journal showed no crash.",
+      "requested": {
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": true,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": true,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "ba216e7d3515095410e3435cf8c952bb8fda70d54cd5659097b392e0c5b77263",
+      "manifestSha256": "4f91d6566286ff3bdb85d9d229dff047ee188eef2af2b5bc3752d6864a390637",
+      "harnessSha256": "c2fe8232ea1b934db07a2e8c4be4a08a5f71b341a66ec0856f65049ab194d4f9",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalJournalSha256": "312b0bb7219f5d5cf7a176d75828c621eec751981ed94da0d1e111f5714b3384",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1427',)",
+        "survived": true
+      },
+      "portalCancellation": {
+        "passed": true,
+        "noFramesCaptured": true,
+        "retryEnabled": true
+      },
+      "guiSourceLossPassed": true,
+      "guiSourceLossSettled": true,
+      "guiRestartPassed": true,
+      "exitCode": 0,
+      "exitSignal": null,
+      "phases": {
+        "moving": {
+          "width": 960,
+          "height": 540,
+          "observations": 177,
+          "distinctIdentities": 177,
+          "identityReadFailures": 0
+        },
+        "static": {
+          "width": 960,
+          "height": 540,
+          "observations": 75,
+          "distinctIdentities": 1,
+          "identityReadFailures": 0
+        },
+        "resized": {
+          "width": 960,
+          "height": 540,
+          "observations": 120,
+          "distinctIdentities": 120,
+          "identityReadFailures": 0
+        },
+        "late": {
+          "width": 960,
+          "height": 540,
+          "observations": 88,
+          "distinctIdentities": 88,
+          "identityReadFailures": 0
+        },
+        "restarted": {
+          "width": 960,
+          "height": 540,
+          "observations": 119,
+          "distinctIdentities": 119,
+          "identityReadFailures": 0
+        }
+      }
+    },
+    {
+      "backend": "linux-wayland-pending-quit-portal-audited",
+      "report": "native-qt/qa/reports/linux-wayland-recovery-wayland/dedf9c9b-e6d4-4b0c-87cf-929abc91f025/results.json",
+      "reportSha256": "a405baa859da47da5ff46db507ff597ef83b897f3bd3e21f4584986e2e5a765a",
+      "passed": false,
+      "finding": "Exact package exited normally and closed its pending dialog, but the strengthened fixture failed because GNOME lost its bus owner and journal recorded SIGSEGV. Pending permission Quit is explicitly not qualified.",
+      "requested": {
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": true,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "ba216e7d3515095410e3435cf8c952bb8fda70d54cd5659097b392e0c5b77263",
+      "manifestSha256": "4f91d6566286ff3bdb85d9d229dff047ee188eef2af2b5bc3752d6864a390637",
+      "harnessSha256": "31f313e7b9429a5cb4fd97db4f949b663d3775413545f66ccd30617d061cefe3",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalJournalSha256": "26c1274c82a53add75a24094e3019926e8eae1dda97be0e43dd4b3f2f49dc1ee",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1427',)"
+      },
+      "exitCode": 0,
+      "exitSignal": null
+    },
+    {
+      "backend": "linux-wayland-recovery-x11-regression",
+      "report": "native-qt/qa/reports/linux-wayland-recovery-x11/4be0207c-b4a5-484c-a596-fd5758edee3d/results.json",
+      "reportSha256": "cec81b96993e258151c0ddb832551838d62728b8b96957432af3e9f29a2fd6db",
+      "passed": true,
+      "finding": "Same package passed actual X11 GUI H264/no-audio settings, publishing, decoded moving/static/resize/late viewer, Stop and clean exit after Linux startup cancellation changes.",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "executableSha256": "ba216e7d3515095410e3435cf8c952bb8fda70d54cd5659097b392e0c5b77263",
+      "manifestSha256": "4f91d6566286ff3bdb85d9d229dff047ee188eef2af2b5bc3752d6864a390637",
+      "harnessSha256": "31f313e7b9429a5cb4fd97db4f949b663d3775413545f66ccd30617d061cefe3",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "exitCode": 0,
+      "exitSignal": null,
+      "phases": {
+        "moving": {
+          "width": 960,
+          "height": 540,
+          "observations": 177,
+          "distinctIdentities": 177,
+          "identityReadFailures": 0
+        },
+        "static": {
+          "width": 960,
+          "height": 540,
+          "observations": 75,
+          "distinctIdentities": 1,
+          "identityReadFailures": 0
+        },
+        "resized": {
+          "width": 960,
+          "height": 540,
+          "observations": 120,
+          "distinctIdentities": 120,
+          "identityReadFailures": 0
+        },
+        "late": {
+          "width": 960,
+          "height": 540,
+          "observations": 86,
+          "distinctIdentities": 86,
+          "identityReadFailures": 0
+        }
+      }
     }
   ],
   "host_environment": {
@@ -6734,7 +7001,10 @@
     "xvfb-run -a node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<reports> --helper-stall=true",
     "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-mux-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true --helper-stall=true",
     "xvfb-run -a python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-whip-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --server=<mediamtx> --reports=<media-reports> --gui=true",
-    "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --portal-cancel=true (active GNOME Wayland session; owned uinput helper requires sudo)"
+    "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --portal-cancel=true (active GNOME Wayland session; owned uinput helper requires sudo)",
+    "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --portal-cancel=true --source-loss=true",
+    "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=wayland --gui=true --codec=h264 --pending-quit=true (or --pending-stop=true); currently expected to expose GNOME 46.2 portal crash",
+    "python3 native-qt/e2e/linux-portal-cancel-reference.py --reports=<reports> --close-mode=request (independent desktop diagnostic; reproduces a portal crash on installed GNOME 46.2, not application qualification)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -6926,5 +7196,47 @@
     "log": "native-qt/build-linux-wayland-gui-gates.log",
     "logSha256": "e76c2bfe656bfb57eaf90087bde674a33259aa8ed173245d3e8dace3b89937b2",
     "cross_platform": "No production code changed; Windows/macOS runtime regression gaps remain."
+  },
+  "wayland_portal_cancellation_diagnostic": {
+    "classification": "Independent desktop comparison, not application testing or an accepted parity exception.",
+    "installedPackages": [
+      "xdg-desktop-portal 1.18.4-1ubuntu2.24.04.3",
+      "xdg-desktop-portal-gnome 46.2-0ubuntu1"
+    ],
+    "referenceReport": "native-qt/qa/reports/linux-portal-cancel-reference/3cf746d0-ad0c-433b-a5ca-fc0db66cc4fc/results.json",
+    "referenceReportSha256": "0d292c5ccf7fe5a2ce16ff98f7d480cf5e7b80ea08c8a9bf33803cdf39b9b938",
+    "finding": "A standalone private D-Bus client created its own screencast session, selected window sources, left Start pending, then called only Request.Close. GNOME backend disappeared before client disconnect; journal records SIGSEGV. No Game Capture process or media permission was involved. Session.Close-only followed by client disconnect also crashed in an earlier diagnostic; that first process exited before writing results, so it is not treated as a complete comparison.",
+    "inference": "Installed GNOME 46.2 source frees the pending dialog without clearing the session pointer; the portal frontend automatically closes unsuccessful sessions. This matches an upstream fixed freed-dialog access, but no host stack trace or patched-backend rerun has yet established the exact crash root cause.",
+    "upstreamFixes": [
+      "https://github.com/GNOME/xdg-desktop-portal-gnome/commit/9a4dffaf775f6bdb372768f568167fa2c1187257",
+      "https://github.com/GNOME/xdg-desktop-portal-gnome/commit/056029c6506dd1e7bd285943099e9fcc091cff8b"
+    ],
+    "portalContract": "https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html",
+    "remaining": "Obtain and qualify an Ubuntu-compatible portal fix; rerun pending Stop/retry and pending Quit with stable backend owner, clean journal and no leaked sessions. Do not claim production readiness or hide crashes with retry/delay. No desktop package or service override was installed.",
+    "restorationReport": "native-qt/qa/reports/linux-wayland-recovery/desktop-restored.json",
+    "restorationReportSha256": "dad73ab85bbbdf69b569ac02e23b7481af5c1fa3dfd8b6a4334afcfb5462b291"
+  },
+  "wayland_recovery_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-ba216e7d3515-d360a17c3317.deb",
+    "sha256": "d44a89604f47d1819f30b138da37a963bd3e64f467f08dde3b5305cecc60842b",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-ba216e7d3515-d360a17c3317",
+    "manifestSha256": "4f91d6566286ff3bdb85d9d229dff047ee188eef2af2b5bc3752d6864a390637",
+    "executableSha256": "ba216e7d3515095410e3435cf8c952bb8fda70d54cd5659097b392e0c5b77263",
+    "qualification": "Development checkpoint only. Native Wayland GUI source-loss/replacement restart and X11 GUI regression passed. Pending permission cancellation stops the application but crashes installed GNOME 46.2; that workflow remains failed. Windows/macOS paths are conditionally unchanged and unqualified on this branch. No parity requirement is waived.",
+    "cleanupReport": "native-qt/qa/reports/linux-wayland-recovery/cleanup.json",
+    "cleanupReportSha256": "a467361dd525d90ee952dbf7e7c24061f4f3cd4cf28cb931d21255ba846a09fd"
+  },
+  "wayland_recovery_gates": {
+    "classification": "Build, CTest and syntax gates only; not application testing.",
+    "gates": [
+      "Release build and Debian package creation",
+      "PlatformCapabilitiesGate",
+      "VdoSignalingLifecycleGate",
+      "node --check native-qt/e2e/linux-window-publish.js",
+      "python3 -m py_compile native-qt/e2e/linux-portal-select.py native-qt/e2e/linux-portal-cancel-reference.py"
+    ],
+    "log": "native-qt/build-linux-wayland-recovery-gates.log",
+    "logSha256": "29aa7bc018053b97c52eb2decc7e60b0d78c83b558116ac713ab9fc4eec3da72",
+    "passed": true
   }
 }

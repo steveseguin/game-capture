@@ -51,7 +51,8 @@ public slots:
 };
 
 bool portalRequest(const QString &method, QVariantList arguments, QVariantMap options,
-                   QVariantMap &results, const std::atomic<bool> &running) {
+                   QVariantMap &results, const std::atomic<bool> &running, const std::atomic<bool> &cancelled) {
+    if (cancelled.load()) return false;
     auto bus = QDBusConnection::sessionBus();
     const auto token = "gc_" + QUuid::createUuid().toString(QUuid::Id128);
     auto sender = bus.baseService().mid(1); sender.replace('.', '_');
@@ -71,11 +72,11 @@ bool portalRequest(const QString &method, QVariantList arguments, QVariantMap op
     timeout.setSingleShot(true);
     QObject::connect(&timeout, &QTimer::timeout, &request.loop, &QEventLoop::quit);
     QObject::connect(&cancellation, &QTimer::timeout, &request.loop, [&] {
-        if (!running.load()) request.loop.quit();
+        if (!running.load() || cancelled.load()) request.loop.quit();
     });
     timeout.start(60000); cancellation.start(50);
-    if (!request.complete && running.load()) request.loop.exec();
-    if (!request.complete || request.code != 0 || !running.load()) {
+    if (!request.complete && running.load() && !cancelled.load()) request.loop.exec();
+    if (!request.complete || request.code != 0 || !running.load() || cancelled.load()) {
         auto close = QDBusMessage::createMethodCall(portalService, path, "org.freedesktop.portal.Request", "Close");
         bus.asyncCall(close);
         spdlog::info("[Portal] {} cancelled, denied, or timed out (response {})", method.toStdString(), request.code);
@@ -174,6 +175,7 @@ QImage readXImage(XConnection &x, xcb_drawable_t drawable) {
 namespace versus::video {
 struct WindowCapture::Impl {
     std::atomic<bool> running{false};
+    std::atomic<bool> startCancelled{false};
     std::atomic<int> fps{60};
     std::atomic<uint64_t> skipped{0};
     FrameCallback callback;
@@ -296,13 +298,19 @@ struct WindowCapture::Impl {
     bool startPortal() {
         QVariantMap result;
         const auto token = "gc_" + QUuid::createUuid().toString(QUuid::Id128);
-        if (!portalRequest("CreateSession", {}, {{"session_handle_token", token}}, result, running)) return false;
+        // Keep the documented session handle even if cancellation wins the
+        // race with CreateSession's Response, so rollback can close it.
+        // https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Session.html
+        auto sender = QDBusConnection::sessionBus().baseService().mid(1);
+        sender.replace('.', '_');
+        session = "/org/freedesktop/portal/desktop/session/" + sender + "/" + token;
+        if (!portalRequest("CreateSession", {}, {{"session_handle_token", token}}, result, running, startCancelled)) return false;
         const auto handle = result.value("session_handle");
         session = handle.canConvert<QDBusObjectPath>() ? qvariant_cast<QDBusObjectPath>(handle).path() : handle.toString();
         if (session.isEmpty()) return false;
         const auto object = QVariant::fromValue(QDBusObjectPath(session));
-        if (!portalRequest("SelectSources", {object}, {{"types", uint(2)}, {"multiple", false}, {"cursor_mode", uint(2)}}, result, running)) return false;
-        if (!portalRequest("Start", {object, QString()}, {}, result, running)) return false;
+        if (!portalRequest("SelectSources", {object}, {{"types", uint(2)}, {"multiple", false}, {"cursor_mode", uint(2)}}, result, running, startCancelled)) return false;
+        if (!portalRequest("Start", {object, QString()}, {}, result, running, startCancelled)) return false;
         const auto streams = qvariant_cast<QDBusArgument>(result.value("streams"));
         uint node = PW_ID_ANY;
         QVariantMap properties;
@@ -344,7 +352,7 @@ struct WindowCapture::Impl {
             static_cast<pw_stream_flags>(PW_STREAM_FLAG_AUTOCONNECT | PW_STREAM_FLAG_MAP_BUFFERS), parameters, 1);
         if (status < 0 || pw_thread_loop_start(loop) < 0) return false;
         std::unique_lock lock(readyMutex);
-        return ready.wait_for(lock, std::chrono::seconds(8), [&] { return firstFrame || !running; }) && firstFrame && running;
+        return ready.wait_for(lock, std::chrono::seconds(8), [&] { return firstFrame || !running || startCancelled; }) && firstFrame && running && !startCancelled;
     }
     bool startX11(xcb_window_t window) {
         worker = std::thread([this, window] {
@@ -382,7 +390,7 @@ struct WindowCapture::Impl {
             ready.notify_all();
         });
         std::unique_lock lock(readyMutex);
-        return ready.wait_for(lock, std::chrono::seconds(5), [&] { return firstFrame || !running; }) && firstFrame && running;
+        return ready.wait_for(lock, std::chrono::seconds(5), [&] { return firstFrame || !running || startCancelled; }) && firstFrame && running && !startCancelled;
     }
     void stop() {
         running = false;
@@ -415,6 +423,7 @@ WindowInfo *WindowCapture::findWindowByName(const std::string &filter) {
 }
 bool WindowCapture::startCapture(const std::string &id, int, int, int fps, bool preserveAlpha) {
     stopCapture();
+    if (impl_->startCancelled.load()) return false;
     if (preserveAlpha) spdlog::warn("[LinuxCapture] Desktop window capture currently supplies opaque pixels");
     impl_->callback = frameCallback_; impl_->admission = frameAdmissionCallback_;
     impl_->fps = std::clamp(fps, 1, 240); impl_->pacer.reset(impl_->fps); impl_->pacingFps = impl_->fps;
@@ -424,6 +433,15 @@ bool WindowCapture::startCapture(const std::string &id, int, int, int fps, bool 
     if (!ok) impl_->stop();
     return ok;
 }
+void WindowCapture::prepareCaptureStart() { impl_->startCancelled = false; }
+void WindowCapture::cancelCaptureStart() {
+    {
+        std::lock_guard lock(impl_->readyMutex);
+        impl_->startCancelled = true;
+    }
+    impl_->ready.notify_all();
+}
+bool WindowCapture::captureStartCancelled() const { return impl_->startCancelled.load(); }
 void WindowCapture::stopCapture() { impl_->stop(); }
 bool WindowCapture::isCapturing() const { return impl_->running; }
 void WindowCapture::setFrameRate(int fps) { impl_->fps = std::clamp(fps, 1, 240); }
