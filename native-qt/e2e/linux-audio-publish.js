@@ -21,11 +21,13 @@ const audioServerLoss = opts['audio-server-loss'] === 'true';
 const audioServerStopDown = opts['audio-server-stop-down'] === 'true';
 const audioServerQuitDown = opts['audio-server-quit-down'] === 'true';
 const audioServerStartupDown = opts['audio-server-startup-down'] === 'true';
+const captureServerLoss = opts['capture-server-loss'] === 'true';
+assert(!captureServerLoss || (audioServerLoss && wayland && !audioServerStopDown && !audioServerStartupDown), 'Capture-server loss requires Wayland server loss; capture should stop automatically, and unavailable video startup is a separate workflow');
 assert(!audioServerStopDown || audioServerLoss,'Stop during an audio outage requires the server-loss workflow');
 assert(!audioServerQuitDown || (audioServerLoss && !audioServerStopDown),'Quit during an audio outage requires server loss and excludes the separate Stop workflow');
 assert(!audioServerStartupDown || audioServerQuitDown,'Unavailable-server startup requires the Quit-during-outage workflow');
 assert(!audioServerLoss || (matrix === 'gui' && opts.case === 'mix' && audioWarnings && process.env.GC_QA_AUDIO_SOCKET), 'Audio server loss requires an owned audio fixture and GUI mix with audio warnings');
-assert(!audioServerLoss || !wayland || (process.env.GC_QA_OWNED_WAYLAND && process.env.GC_QA_AUDIO_FAULT_SCOPE === 'pulse-only'), 'Wayland audio loss requires the owned compositor with a Pulse-only fault');
+assert(!audioServerLoss || !wayland || (process.env.GC_QA_OWNED_WAYLAND && process.env.GC_QA_AUDIO_FAULT_SCOPE === (captureServerLoss ? 'pipewire' : 'pulse-only')), 'Wayland service loss requires the matching owned compositor fault scope');
 assert(!audioServerLoss || (process.env.GC_QA_RECEIVER_PULSE_SERVER && process.env.GC_QA_RECEIVER_PULSE_SERVER !== process.env.PULSE_SERVER), 'Audio server loss requires an independent receiver audio clock/server');
 const continuousApps=opts['continuous-app-audio']==='true';
 assert(!continuousApps||(matrix==='apps'&&!wayland),'Continuous app diagnostic currently requires explicit X11 CLI apps');
@@ -76,7 +78,7 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
-if(audioServerLoss)result.audioServerFault={requested:true,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
+if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
 if(resumeReference)result.sourceReferenceHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-audio-reference-report.py'].map(n=>[n,sha(path.join(report,n))]));
@@ -314,6 +316,8 @@ function barriers() {
           const warning = (await api('/diagnostics')).audio.capture_warning;
           assert.equal(typeof warning, 'string', 'Missing structured audio warning');
           const visible = JSON.parse(ui('dump')).filter(row => row.role === 'label' && row.states.includes('visible') && row.name.startsWith('Audio: '));
+          entry.audioWarningObservations ||= {};
+          entry.audioWarningObservations[label] = {structured:warning,visible:visible.map(row=>row.name)};
           return pattern ? pattern.test(warning) && visible.some(row => pattern.test(row.name)) : warning === '' && visible.length === 0;
         }, 6000, 'Audio warning state/visible notice differs: ' + label);
         entry[label] = true;
@@ -555,16 +559,33 @@ function barriers() {
           return idle;
         };
         const nodesBeforeFault = wayland ? captureNodes() : null;
-        if(wayland)assert.equal(nodesBeforeFault.length,1,'Missing portal video stream before audio-only fault');
+        if(wayland)assert.equal(nodesBeforeFault.length,1,'Missing portal video stream before service fault');
+        const faultStarted = Date.now();
         entry.serverLoss = {nodesBeforeFault,stop:command('stop')}; modules.length=0; save();
         for(const source of [systemTone,inputTone]){
           clearInterval(source.timer); source.retired=true;
           await waitFor(()=>source.child.exitCode!==null,6000,'Owned tone did not disconnect with the audio server');
         }
         await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.primary_audio_capturing&&!d.app.microphone_capturing&&d.audio.active_microphone_source==='none';},10000,'Audio capture stayed active after server loss');
+        if(captureServerLoss){
+          await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.live&&!d.app.capturing;},15000,'PipeWire outage did not retire video capture');
+          entry.serverLoss.automaticCaptureStopMs=Date.now()-faultStarted;
+          const rows=JSON.parse(ui('dump'));
+          assert(rows.some(r=>r.role==='label'&&/window capture stopped/i.test(r.name)),'Missing capture-service loss status');
+          assert(rows.some(r=>r.name==='Go live'&&r.states.includes('sensitive')),'Capture-service loss did not enable retry');
+          const before=await api('/diagnostics');await sleep(1200);const after=await api('/diagnostics');
+          assert.equal(before.video.frames_captured,after.video.frames_captured,'Frames continue after capture-service loss');
+          assert.equal(before.metrics.audio_packets_sent,after.metrics.audio_packets_sent,'Audio packets continue after capture-service loss');
+          entry.serverLoss.automaticCaptureStop=true;entry.serverLoss.audioPacketsSettled=true;
+          fs.writeFileSync(path.join(report,'capture-service-lost-ui.json'),JSON.stringify(rows,null,2));
+          screenshot('capture-service-lost.png');
+          await checkAudioWarning(null,'captureLossClearedAudioWarnings');save();
+        }else{
         await checkAudioWarning(/Primary audio stopped[\s\S]*Microphone\/input stopped/,'serverLossWarnings');
+        }
         fs.writeFileSync(path.join(report,'server-loss-ui.json'),ui('dump'));
         screenshot('server-loss-warning.png');
+        if(!captureServerLoss){
         entry.serverLoss.video = await observe(viewer,3000); requireMoving(entry.serverLoss.video,'Video continues while the audio server is down');
         const before=await api('/diagnostics');await sleep(1200);const after=await api('/diagnostics');
         assert(after.app.live&&after.app.capturing);assert.equal(before.metrics.audio_packets_sent,after.metrics.audio_packets_sent,'Audio packets continue after both inputs stopped');
@@ -572,6 +593,7 @@ function barriers() {
         if(wayland){
           entry.serverLoss.nodesDuringOutage=captureNodes();
           assert.deepEqual(entry.serverLoss.nodesDuringOutage,nodesBeforeFault,'Audio-only outage replaced the granted video stream');
+        }
         }
         if(audioServerStopDown){
           const started=Date.now();ui('press','Stop streaming');
@@ -611,13 +633,17 @@ function barriers() {
         }
         const restored=await api('/diagnostics');assert(!restored.app.primary_audio_capturing&&!restored.app.microphone_capturing);
         assert.equal(JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid)).length,0,'Audio silently reopened after server restart');
-        await checkAudioWarning(audioServerStopDown||audioServerQuitDown?null:/Primary audio stopped[\s\S]*Microphone\/input stopped/,'serverReturnWarnings');
+        if(captureServerLoss){
+          entry.serverLoss.nodesAfterServiceReturn=captureNodes();assert.equal(entry.serverLoss.nodesAfterServiceReturn.length,0,'Video silently reopened after PipeWire restart');
+          assert(!restored.app.live&&!restored.app.capturing);entry.serverLoss.noAutomaticVideoReopen=true;
+        }
+        await checkAudioWarning(captureServerLoss||audioServerStopDown||audioServerQuitDown?null:/Primary audio stopped[\s\S]*Microphone\/input stopped/,'serverReturnWarnings');
         entry.serverLoss.noAutomaticReopen=true;save();
       }
       await late.close(); await viewer.close();
       }
       if (gui) {
-        if(!audioServerStopDown&&!audioServerQuitDown)ui('press', 'Stop streaming');
+        if(!audioServerStopDown&&!audioServerQuitDown&&!captureServerLoss)ui('press', 'Stop streaming');
         await waitFor(async () => { const state = (await api('/diagnostics')).app; return !state.live && !state.capturing; }, 10000, 'GUI stop did not finish');
         const before = await api('/diagnostics'); await sleep(500); const after = await api('/diagnostics');
         assert.equal(before.metrics.audio_packets_sent, after.metrics.audio_packets_sent); assert.equal(before.video.frames_captured, after.video.frames_captured);

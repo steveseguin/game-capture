@@ -36,7 +36,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=600)
-    parser.add_argument('--pulse-fault', action='store_true', help='Allow child to stop/start only the owned Pulse service; keep video PipeWire running')
+    faults = parser.add_mutually_exclusive_group()
+    faults.add_argument('--pulse-fault', action='store_true', help='Allow child to stop/start only the owned Pulse service; keep video PipeWire running')
+    faults.add_argument('--pipewire-fault', action='store_true', help='Allow child to stop/start owned PipeWire, Pulse and WirePlumber; keep compositor running')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -81,9 +83,9 @@ def main():
                    PIPEWIRE_RUNTIME_DIR=env['XDG_RUNTIME_DIR'],
                    PULSE_SERVER='unix:'+env['XDG_RUNTIME_DIR']+'/pulse/native',
                    GC_QA_OWNED_WAYLAND=str(report), GC_QA_KEYBOARD_SOCKET=str(root/'input.sock'))
-        if args.pulse_fault:
-            env.update(GC_QA_AUDIO_SOCKET=str(root/'audio.sock'), GC_QA_AUDIO_FAULT_SCOPE='pulse-only')
-            result['audioFault'] = {'scope':'Owned pipewire-pulse only; compositor and video PipeWire stay running', 'actions':[]}
+        if args.pulse_fault or args.pipewire_fault:
+            env.update(GC_QA_AUDIO_SOCKET=str(root/'audio.sock'), GC_QA_AUDIO_FAULT_SCOPE='pipewire' if args.pipewire_fault else 'pulse-only')
+            result['audioFault'] = {'scope':'Owned PipeWire/Pulse/WirePlumber; compositor stays running' if args.pipewire_fault else 'Owned pipewire-pulse only; compositor and video PipeWire stay running', 'actions':[]}
         config = root/'wireplumber'; shutil.copytree('/usr/share/wireplumber', config)
         main_config = config/'wireplumber.conf'
         main_config.write_text('\n'.join(line for line in main_config.read_text().splitlines()
@@ -132,17 +134,29 @@ def main():
             pactl('set-default-sink', 'gc_audio_default')
 
         def audio_action(action):
-            nonlocal pulse
+            nonlocal pulse, pipewire, wireplumber
             assert action in ['stop', 'start']
             if action == 'stop':
                 assert pulse.poll() is None, 'Owned Pulse service already stopped'
                 retire(pulse); retired_pids.add(pulse.pid)
                 state = {'retiredPid':pulse.pid, 'exitCode':pulse.returncode}
+                if args.pipewire_fault:
+                    for process in [wireplumber, pipewire]:
+                        retire(process); retired_pids.add(process.pid)
+                    state['retiredCorePids'] = [wireplumber.pid, pipewire.pid]
             else:
                 assert pulse.poll() is not None, 'Owned Pulse service already running'
+                if args.pipewire_fault:
+                    assert pipewire.poll() is not None and wireplumber.poll() is not None
+                    suffix = str(len(result['audioFault']['actions']))
+                    pipewire = launch('pipewire-'+suffix, ['pipewire'])
+                    wait_for(lambda: (root/'runtime/pipewire-0').is_socket())
+                    wireplumber = launch('wireplumber-'+suffix, ['wireplumber'])
                 pulse = launch('pulse-'+str(len(result['audioFault']['actions'])), ['pipewire-pulse'])
                 audio_ready(); state = {'startedPid':pulse.pid}
-            assert pipewire.poll() is None and shell.poll() is None, 'Audio-only fault interrupted desktop/video service'
+            assert shell.poll() is None, 'Service fault interrupted compositor'
+            if not args.pipewire_fault or action == 'start':
+                assert pipewire.poll() is None, 'PipeWire unexpectedly stopped'
             state.update(pipewirePid=pipewire.pid, shellPid=shell.pid)
             result['audioFault']['actions'].append({'action':action, **state}); save()
             return state
@@ -154,8 +168,8 @@ def main():
             assert env['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:')
             pipewire = launch('pipewire', ['pipewire'])
             wait_for(lambda: (root/'runtime/pipewire-0').is_socket())
-            launch('wireplumber', ['wireplumber']); pulse = launch('pulse', ['pipewire-pulse'])
-            if args.pulse_fault: audio_ready()
+            wireplumber = launch('wireplumber', ['wireplumber']); pulse = launch('pulse', ['pipewire-pulse'])
+            if args.pulse_fault or args.pipewire_fault: audio_ready()
             shell = launch('shell', ['gnome-shell', '--headless', '--wayland', '--no-x11', '--sm-disable',
                                      '--virtual-monitor=1440x1000', '--wayland-display=gc-qa'])
             wait_for(lambda: (root/'runtime/gc-qa').is_socket())
@@ -179,7 +193,7 @@ def main():
                 server = stack.enter_context(socket.socket(socket.AF_UNIX))
                 server.bind(env['GC_QA_KEYBOARD_SOCKET']); os.chmod(env['GC_QA_KEYBOARD_SOCKET'], 0o600); server.listen(1)
                 servers = [server]; audio_server = None
-                if args.pulse_fault:
+                if args.pulse_fault or args.pipewire_fault:
                     audio_server = stack.enter_context(socket.socket(socket.AF_UNIX))
                     audio_server.bind(env['GC_QA_AUDIO_SOCKET']); os.chmod(env['GC_QA_AUDIO_SOCKET'], 0o600); audio_server.listen(1)
                     servers.append(audio_server)

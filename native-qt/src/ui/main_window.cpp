@@ -826,6 +826,11 @@ MainWindow::MainWindow(
                     core_->stopCapture();
                 }
                 isLive_ = false;
+#ifdef __linux__
+                // Fatal cleanup clears the core's audio warnings after the
+                // status update above. Refresh before stopping the stats timer.
+                refreshAudioCaptureWarning();
+#endif
                 if (statsTimer_) {
                     statsTimer_->stop();
                 }
