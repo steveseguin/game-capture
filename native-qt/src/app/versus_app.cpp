@@ -2626,29 +2626,45 @@ bool VersusApp::writeDiagnosticsJson(const std::string &path) const {
             }
         }
 
-#ifdef _WIN32
-        QSaveFile out(QString::fromStdWString(outputPath.native()));
-#else
-        QSaveFile out(QString::fromStdString(outputPath.native()));
-#endif
-        if (!out.open(QIODevice::WriteOnly)) {
-            spdlog::warn("[Diagnostics] Failed to open diagnostics output '{}': error={} {}",
-                         path, static_cast<int>(out.error()), out.errorString().toStdString());
-            return false;
-        }
         const std::string bytes = buildDiagnosticsJson() + '\n';
-        if (out.write(bytes.data(), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size())) {
-            spdlog::warn("[Diagnostics] Failed to write diagnostics output '{}': error={} {}",
-                         path, static_cast<int>(out.error()), out.errorString().toStdString());
-            return false;
-        }
-        if (!out.commit()) {
+#ifdef _WIN32
+        // Windows replacement can reject even a delete-sharing reader while
+        // its handle is open. Retry atomic commits briefly; never fall back
+        // to truncation or remove the previous snapshot to make room.
+        const auto retryDeadline = std::chrono::steady_clock::now() +
+            std::chrono::milliseconds(500);
+#endif
+        for (;;) {
+#ifdef _WIN32
+            QSaveFile out(QString::fromStdWString(outputPath.native()));
+#else
+            QSaveFile out(QString::fromStdString(outputPath.native()));
+#endif
+            if (!out.open(QIODevice::WriteOnly)) {
+                spdlog::warn("[Diagnostics] Failed to open diagnostics output '{}': error={} {}",
+                             path, static_cast<int>(out.error()), out.errorString().toStdString());
+                return false;
+            }
+            if (out.write(bytes.data(), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size())) {
+                spdlog::warn("[Diagnostics] Failed to write diagnostics output '{}': error={} {}",
+                             path, static_cast<int>(out.error()), out.errorString().toStdString());
+                return false;
+            }
+            if (out.commit()) {
+                spdlog::info("[Diagnostics] Wrote diagnostics to {}", path);
+                return true;
+            }
+#ifdef _WIN32
+            if (out.error() == QFileDevice::RenameError &&
+                std::chrono::steady_clock::now() < retryDeadline) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+#endif
             spdlog::warn("[Diagnostics] Failed to commit diagnostics output '{}': error={} {}",
                          path, static_cast<int>(out.error()), out.errorString().toStdString());
             return false;
         }
-        spdlog::info("[Diagnostics] Wrote diagnostics to {}", path);
-        return true;
     } catch (const std::exception &e) {
         spdlog::warn("[Diagnostics] Failed to write diagnostics '{}': {}", path, e.what());
     } catch (...) {

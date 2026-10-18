@@ -30,7 +30,7 @@ for file in raw.glob('media/*/results.json'):
 for file in raw.glob('diagnostics/*/results.json'):
     r=read(file);export['diagnostics'].append({'rawResultsSha256':sha(file),'executableSha256':r['sha256'],
         'harnessSha256':r.get('harnessSha256'),'observerShareMode':r.get('observerShareMode'),
-        'results':[{**{k:c[k] for k in ['name','passed','reads','incomplete','locked','exitCode'] if k in c},
+        'results':[{**{k:c[k] for k in ['name','passed','reads','incomplete','locked','exitCode','iteration'] if k in c},
                     'error':clean(c.get('error','')),
                     'diagnosticLogLines':[clean(line) for line in c.get('diagnosticLogLines',[]) if '[Diagnostics]' in line]} for c in r['results']]})
 log=raw/'private-diagnostics.log'
