@@ -8,6 +8,9 @@ const {sleep,waitFor}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 for(const key of ['app','reports','server','ffmpeg','camera-device','camera-helper','tone-helper','microphone-device'])assert(opts[key],'Required --'+key);
 assert.equal(process.platform,'darwin');
+const defaultAac=opts['default-aac']==='true';
+if(opts['default-aac'])assert(['true','false'].includes(opts['default-aac']),'--default-aac must be true or false');
+if(defaultAac)assert(!opts.gui,'Default AAC workflow uses CLI publishing');
 if(opts.gui)assert(opts['ui-helper'],'GUI workflow requires --ui-helper');
 assert(['rtsp','rtmp'].includes(opts['receiver-protocol']||'rtsp'),'Receiver protocol must be rtsp or rtmp');
 if(opts['receiver-protocol']==='rtmp')assert.equal(opts.protocols,'rtmp','Direct RTMP reception requires --protocols=rtmp');
@@ -20,6 +23,7 @@ const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex
 const result={started:new Date().toISOString(),executableSha256:hash(exe),helperSha256:hash(helper),harnessSha256:hash(__filename),
   receiverSha256:hash(ffmpeg),serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Local packaged camera/microphone mux workflows; WAN, physical devices and release qualification excluded',cases:[],passed:false};
 result.receiverProtocol=opts['receiver-protocol']||'rtsp';
+result.audioBitratePolicy=defaultAac?'Omit CLI bitrate; require configured AAC default 128 kbps':'Existing explicit 192 kbps CLI / GUI selected value';
 result.receiverVersion=execFileSync(ffmpeg,['-version'],{encoding:'utf8'}).split('\n')[0];
 result.probeSha256=hash(ffprobe);
 if(opts.gui){
@@ -45,8 +49,15 @@ function decode(file,seconds,staticAndSilent=false){
   const video=metadata.streams.find(s=>s.codec_type==='video'),audio=metadata.streams.find(s=>s.codec_type==='audio');
   assert.equal(video?.codec_name,'h264');assert.equal(video.width,opts.gui?960:640);assert.equal(video.height,opts.gui?540:360);
   assert.equal(audio?.codec_name,'aac');assert.equal(audio.channels,2);assert.equal(Number(audio.sample_rate),48000);
-  // A late receiver must wait for an IDR (the app's two-second GOP). Retain
-  // that join in the recording, then measure the common steady interval.
+  const decoded=JSON.parse(run(ffprobe,['-v','error','-select_streams','v:0','-show_frames',
+    '-show_entries','frame=key_frame,pict_type','-of','json',file])).frames;
+  assert(decoded.length>0,'No independently decoded video frames');
+  assert(['Baseline','Constrained Baseline'].includes(video.profile),'Unexpected live H.264 profile');
+  assert(decoded.every(frame=>frame.pict_type!=='B'),'Live output contains B-frames');
+  const keys=decoded.map((frame,index)=>frame.key_frame?index:-1).filter(index=>index>=0);
+  const keyframeGaps=keys.slice(1).map((index,i)=>index-keys[i]);
+  // Retain the late join, then measure the common steady interval. The join
+  // allowance is not a claim about exact wall-clock keyframe cadence.
   const timelines=metadata.streams.map(s=>{
     const packets=metadata.packets.filter(p=>p.stream_index===s.index),allTimes=packets.map(p=>Number(p.dts_time)).filter(Number.isFinite);
     assert(packets.length>0,'Receiver recording has no '+s.codec_name+' packets');
@@ -83,7 +94,9 @@ function decode(file,seconds,staticAndSilent=false){
   });
   if(staticAndSilent)for(const level of levels)assert(level.rms<.0005,'Expected received silence');
   else for(let channel=0;channel<2;channel++){assert(levels[channel].rms>.001,'Audio silent');assert(levels[channel].tones[channel]>-65&&levels[channel].tones[channel]>levels[channel].tones[1-channel]+20,'Stereo channels crossed or mixed');}
-  return {file:path.basename(file),sha256:hash(file),frames:identities.length,distinctFrames:distinct,firstIdentity:identities[0],lastIdentity:identities.at(-1),timelines,audio:levels};
+  return {file:path.basename(file),sha256:hash(file),frames:identities.length,distinctFrames:distinct,firstIdentity:identities[0],lastIdentity:identities.at(-1),timelines,audio:levels,
+    videoProfile:video.profile,bFrames:decoded.filter(frame=>frame.pict_type==='B').length,
+    keyframes:keys.length,maxKeyframeGapFrames:keyframeGaps.length?Math.max(...keyframeGaps):null};
 }
 (async()=>{console.log('Reports: '+report);try{
   const ports={api:await port(),rtsp:await port(),rtmp:await port(),srt:await port(true),...await rtpPorts()};
@@ -104,7 +117,7 @@ function decode(file,seconds,staticAndSilent=false){
     const receiverInput=direct?['-i',protocol==='udp'?`udp://127.0.0.1:${directPort}?fifo_size=8192&overrun_nonfatal=1`:`rist://@127.0.0.1:${directPort}`]:rtmpReceiver?['-i',`rtmp://127.0.0.1:${ports.rtmp}/live/${stream}`]:['-rtsp_transport','tcp','-i',`rtsp://127.0.0.1:${ports.rtsp}/${protocol==='rtmp'?'live/':''}${stream}`];
     let sequence=0;
     // Unlike RTSP's SDP, direct TS/RTMP inputs must discover SPS/PPS in-band.
-    // Its analysis window must cover the two-second keyframe interval.
+    // Leave analysis headroom for the keyframe interval and late joining.
     // FFmpeg 7.1 RTSP AAC packets can lack the key flag. Its stream-copy
     // startup then discards every audio packet despite receiving valid AAC.
     // Copy initial AUDIO packets only; video must still wait for an IDR.
@@ -114,7 +127,7 @@ function decode(file,seconds,staticAndSilent=false){
     const discovery=path.join(report,id+'-control.json');
     const publisher=launch(exe,opts.gui?['--temporary-settings','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`]:['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,`--output=${protocol}`,`--output-url=${url}`,
       ...(protocol==='rtmp'?[`--output-key=${stream}`]:protocol==='srt'?[`--srt-stream-id=publish:${stream}`]:[]),
-      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,'--audio-channels=2','--aac-bitrate-kbps=192',
+      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,'--audio-channels=2',...(defaultAac?[]:['--aac-bitrate-kbps=192']),
       `--video-encoder=${encoder}`,'--video-codec=h264','--resolution=640x360','--fps=30','--bitrate-kbps=2000','--duration-ms=180000',
       '--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],id+'-publisher');
     await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return fs.existsSync(discovery);},10000,'No control discovery');const control=JSON.parse(fs.readFileSync(discovery));
@@ -186,6 +199,7 @@ function decode(file,seconds,staticAndSilent=false){
       await finishRecording(record(4,'reconnected'),4,'reconnected');
     }else await finishRecording(record(4,'late-receiver'),4,'late-receiver');
     const diag=await api(control,'/diagnostics');entry.output=diag.output;
+    if(defaultAac)assert.equal(diag.output.configured_aac_bitrate_kbps,128,'CLI AAC default changed');
     assert.equal(diag.video.hardware_encoder,encoder==='videotoolbox');assert.equal(diag.source.source_id,opts['camera-device']);
     if(opts.gui){assert(diag.video.ffmpeg_resolved&&diag.video.ffmpeg_is_bundled,'GUI did not probe bundled helper');assert(!diag.video.ffmpeg_is_user_override&&!diag.video.ffmpeg_gpl_enabled&&!diag.video.ffmpeg_nonfree_enabled,'Unexpected helper metadata');}
     assert(diag.audio.active_microphone_source.includes('BlackHole'));assert(diag.output.muxer_pid>1,'No mux helper');
