@@ -22,7 +22,7 @@ for(const name of ['macos-audio-input-gui.js','macos-audio-input-fixture.mm','ma
 assert(['stale','reported'].includes(result.expectedLossStatus));
 const systemAudio=opts['system-audio']==='true';result.systemAudio=systemAudio;
 assert(!systemAudio||result.expectedLossStatus==='reported','System-audio preservation requires the fixed candidate');
-const children=new Set();let browser,input,source,tone,uid,inputName,control,publisher;
+const children=new Set();let browser,input,source,tone,uid,inputName,control,publisher,publisherOwnership;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');
 function launch(program,args,name){
   const log=fs.createWriteStream(path.join(report,name+'.log'));
@@ -33,6 +33,35 @@ function launch(program,args,name){
   child.once('error',error=>child.launchError=String(error));return child;
 }
 function alive(child){assert(!child.launchError&&child.exitCode===null&&!child.signalCode,child.label+' exited');}
+function ownedPublisherPids(){
+  if(!publisherOwnership)return [];
+  const {settings,discovery}=publisherOwnership;
+  return execFileSync('/bin/ps',['-axww','-o','pid=,command='],{encoding:'utf8'}).split('\n')
+    .filter(line=>line.includes('/Game Capture.app/Contents/MacOS/game-capture')&&
+      line.includes('--settings-dir='+settings+' ')&&line.trimEnd().endsWith('--local-control-discovery='+discovery))
+    .map(line=>Number(line.trim().split(/\s+/,1)[0]));
+}
+function verifyOwnedPublisher(pid){
+  assert(ownedPublisherPids().includes(pid),'PID does not use this workflow\'s private settings and discovery');
+  const actual=execFileSync('/bin/ps',['-p',String(pid),'-o','comm='],{encoding:'utf8'}).trim();
+  assert(fs.realpathSync(actual)===fs.realpathSync(exe)||
+    (actual.includes('/AppTranslocation/')&&actual.endsWith('/Game Capture.app/Contents/MacOS/game-capture')),
+    'Unexpected Launch Services executable');
+  assert.equal(hash(actual),result.executableSha256,'Launch Services executable differs from the candidate');
+  return actual;
+}
+async function cleanupOwnedPublisher(){
+  if(!publisherOwnership)return;
+  if(control)await api('/commands',{command:'quit'}).catch(()=>{});
+  for(let attempt=0;attempt<50&&ownedPublisherPids().length;attempt++)await sleep(100);
+  for(const signal of ['SIGTERM','SIGKILL']){
+    const pids=ownedPublisherPids();if(!pids.length)break;
+    for(const pid of pids){verifyOwnedPublisher(pid);process.kill(pid,signal);
+      result.cleanup.push({scope:'Forced cleanup of verified owned application',pid,signal});result.passed=false;}
+    for(let attempt=0;attempt<50&&ownedPublisherPids().length;attempt++)await sleep(100);
+  }
+  assert.equal(ownedPublisherPids().length,0,'Owned GUI application remained after cleanup');
+}
 async function api(route,body){
   const r=await fetch(control.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},
     body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});
@@ -67,9 +96,12 @@ async function silence(page){
   assert(observation.spectra.every(s=>s.rms<.0005),'Audio remained audible after owned input loss');return observation;
 }
 async function stop(entry,discovery){
-  await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher quit timed out');
-  entry.exit=await publisher.closed;assert.equal(entry.exit.code,0);assert(!fs.existsSync(discovery),'Discovery remained after quit');
-  publisher=null;control=null;
+  await api('/commands',{command:'quit'});
+  await waitFor(()=>ownedPublisherPids().length===0&&publisher.exitCode!==null,10000,'Publisher quit timed out');
+  // open -W observes application lifetime but does not expose its exit status.
+  entry.launchServicesExit=await publisher.closed;assert.equal(entry.launchServicesExit.code,0);
+  entry.applicationExitObserved=true;assert(!fs.existsSync(discovery),'Discovery remained after quit');
+  publisher=null;control=null;publisherOwnership=null;
 }
 (async()=>{console.log('Reports: '+report);try{
   input=launch(opts['input-helper'],[],'input-fixture');
@@ -91,14 +123,22 @@ async function stop(entry,discovery){
     fs.writeFileSync(ini,`[video]\nsourceMode=syphon\ncodec=h264\nencoderMode=${encoder==='x264'?'software':encoder}\nresolution=960x540\nfps=30\nbitratePresetKbps=1200\nalphaWorkflow=false\nalphaBackgroundMode=opaque\n[audio]\nsource=none\nwindowSource=none\nincludeMicrophone=false\nmicrophoneDeviceId=none\ncodec=opus\nchannels=2\nbitrateKbps=192\nred=false\n[syphon]\nalpha=premultiplied\n`);
     const stream='macinputgui'+crypto.randomBytes(12).toString('hex'),discovery=path.join(report,encoder+'-control.json');
     const args=['--settings-dir='+settings,'--local-control','--local-control-port=0','--local-control-discovery='+discovery];
-    publisher=launch(exe,args,encoder+'-publisher');entry.publisherPid=publisher.pid;
+    publisherOwnership={settings,discovery};assert.equal(ownedPublisherPids().length,0);
+    // Launch once through Launch Services. A quarantined app may be translocated;
+    // launching its binary first and then opening the bundle can create two PIDs.
+    publisher=launch('/usr/bin/open',['-n','-W','-a',app,'--stdout',path.join(report,encoder+'-publisher.log'),
+      '--stderr',path.join(report,encoder+'-publisher-stderr.log'),'--args',...args],encoder+'-launch-services');
     await waitFor(()=>{[publisher,source,tone,input].forEach(alive);return fs.existsSync(discovery);},15000,'Control unavailable');
-    control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
-    const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value===undefined?[]:[value])],{encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
+    control=JSON.parse(fs.readFileSync(discovery));assert(Number.isInteger(control.pid)&&control.pid>1);
+    assert.deepEqual(ownedPublisherPids(),[control.pid]);const actualExecutable=verifyOwnedPublisher(control.pid);
+    execFileSync('/usr/bin/codesign',['--verify','--deep','--strict',path.dirname(path.dirname(path.dirname(actualExecutable)))],{timeout:15000,stdio:'pipe'});
+    entry.publisherPid=control.pid;entry.launch={method:'Launch Services open -n -W',waitProcessPid:publisher.pid,
+      actualExecutable,translocated:actualExecutable.includes('/AppTranslocation/'),executableSha256:hash(actualExecutable),signatureVerified:true};
+    const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(control.pid),action,...(name?[name]:[]),...(value===undefined?[]:[value])],{encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
     const rows=()=>JSON.parse(ui('dump')),find=name=>rows().find(r=>String(r.AXIdentifier||'').endsWith('.'+name));
     const audioRows=()=>rows().filter(r=>/\.(statusLabel|audioMeter|audioLevelLabel|primaryAudioMeter|primaryAudioLevelLabel|microphoneAudioMeter|microphoneAudioLevelLabel|microphoneAudioSourceLabel|microphoneDeviceSelect|goLiveButton)$/.test(r.AXIdentifier||''));
     await waitFor(()=>!!find('advancedToggle'),15000,'GUI not ready');
-    execFileSync('/usr/bin/open',['-a',app,'--args',...args],{timeout:10000,stdio:'pipe'});ui('activate');
+    ui('activate');
     await waitFor(async()=>(await api('/sources/syphon')).sources.some(s=>s.id===sourceId),15000,'Owned Syphon source missing');
     const select=async()=>{
       ui('press','refreshSourcesButton');ui('set','sourceFilterInput',title);
@@ -167,7 +207,7 @@ async function stop(entry,discovery){
   await command('retire','retired');result.passed=true;
 }catch(error){result.error=String(error.stack||error);process.exitCode=1;console.error(result.error);}
 finally{
-  if(publisher&&control)await api('/commands',{command:'quit'}).catch(()=>{});
+  try{await cleanupOwnedPublisher();}catch(error){result.cleanupError=String(error);result.passed=false;}
   if(browser)await browser.close().catch(()=>{});
   for(const child of [...children]){
     if(child!==publisher)child.stdin.write('quit\n');
