@@ -89,7 +89,13 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   const env={...process.env};for(const k of Object.keys(env))if(/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(k))delete env[k];
   for(const k of ['GH_TOKEN','GITHUB_TOKEN','ACTIONS_RUNTIME_TOKEN','ACTIONS_ID_TOKEN_REQUEST_TOKEN'])delete env[k];
   env.XDG_STATE_HOME=path.join(report,'private-state');env.XDG_DATA_HOME=path.join(report,'private-data');env.XDG_CONFIG_HOME=path.join(report,'private-config');if(opts.backend==='wayland'){env.XDG_SESSION_TYPE='wayland';env.WAYLAND_DISPLAY=process.env.WAYLAND_DISPLAY||'wayland-0';env.QT_QPA_PLATFORM='wayland';}else{env.XDG_SESSION_TYPE='x11';delete env.WAYLAND_DISPLAY;env.QT_QPA_PLATFORM='xcb';}
-  if(gui&&opts.backend==='wayland'){
+  const ownedWaylandInput=gui&&opts.backend==='wayland'&&env.GC_QA_OWNED_WAYLAND;
+  if(ownedWaylandInput){
+    assert(env.GC_QA_KEYBOARD_SOCKET&&fs.statSync(env.GC_QA_KEYBOARD_SOCKET).isSocket(),'Owned compositor input socket missing');
+    result.ownedWaylandDesktop=env.GC_QA_OWNED_WAYLAND;
+    result.scope+=' Isolated software-rendered GNOME with compositor-confined keyboard; not physical-desktop qualification.';
+  }
+  if(gui&&opts.backend==='wayland'&&!ownedWaylandInput){
     keyboardDirectory=fs.mkdtempSync(path.join(os.tmpdir(),'gc-wayland-keys-'));fs.chmodSync(keyboardDirectory,0o700);
     env.GC_QA_KEYBOARD_SOCKET=path.join(keyboardDirectory,'input.sock');
     keyboardServer=spawn('sudo',['-n','python3',path.join(__dirname,'linux-portal-select.py'),'--keyboard-server='+env.GC_QA_KEYBOARD_SOCKET],{env,stdio:['pipe','pipe','pipe']});

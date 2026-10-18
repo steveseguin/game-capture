@@ -62,13 +62,20 @@ def main():
     while time.monotonic() < deadline:
         pump()
         desktop = Atspi.get_desktop(0)
-        app = next((desktop.get_child_at_index(i) for i in range(desktop.get_child_count())
-                    if desktop.get_child_at_index(i).get_process_id() == args.pid), None)
-        if app:
+        # The GTK platform theme can register an empty GTK application root
+        # before Qt registers the actual widget tree, both with the same PID.
+        # Select the toolkit, including when its main window is hidden to tray.
+        candidates = [desktop.get_child_at_index(i) for i in range(desktop.get_child_count())]
+        candidates = [node for node in candidates if node is not None and
+                      node.get_process_id() == args.pid and node.get_toolkit_name() == "Qt"]
+        if len(candidates) > 1:
+            raise RuntimeError("Multiple Qt accessibility roots for the requested application")
+        if candidates:
+            app = candidates[0]
             break
         time.sleep(.1)
     if app is None:
-        raise RuntimeError("Application is absent from AT-SPI")
+        raise RuntimeError("Qt application is absent from AT-SPI")
     if args.command != "dump" and os.environ.get("QT_QPA_PLATFORM") == "xcb":
         focus = subprocess.run(["xdotool", "getwindowfocus", "getwindowpid"], text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3)
         # Preserve focus in owned menus/dialogs. Refocusing the main window can
