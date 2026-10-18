@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Extracted Ubuntu DEB -> X11/software H264 + Pulse input -> shared mux helper.
+// Extracted Ubuntu DEB -> X11 or native Wayland GUI/software H264 + Pulse input -> shared mux helper.
 // Independent local MediaMTX/direct receivers decode identities and stereo AAC.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),net=require('net'),dgram=require('dgram');
 const assert=require('assert/strict'),{spawn,execFileSync}=require('child_process');
@@ -9,7 +9,8 @@ const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=
 assert.equal(process.platform,'linux');
 for(const key of ['publisher','reports','server','manifest-sha256'])assert(opts[key],'Required --'+key);
 const {chromium}=require('playwright');
-const gui=opts.gui==='true';if(gui)assert(process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires linux-private-desktop.py');
+const wayland=opts.backend==='wayland';assert(!wayland||opts.gui==='true','Wayland output fixture requires actual GUI');
+const gui=opts.gui==='true';if(gui)assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires the matching owned desktop fixture');
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const manifestFile=path.join(bundle,'release-artifact-manifest.json');
@@ -20,18 +21,19 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 fs.copyFileSync(path.join(__dirname,'macos-media-receiver.js'),path.join(report,'receiver-helper.js'));
 const ffmpeg='/usr/bin/ffmpeg',ffprobe='/usr/bin/ffprobe',helper=ffmpeg;
-const result={gui,executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),
+const result={gui,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),
  requestedHelper:opts.helper||'distribution-default',requestedHelperSha256:opts.helper?hash(path.resolve(opts.helper)):null,
  receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),receiverSha256:hash(ffmpeg),probeSha256:hash(ffprobe),serverSha256:hash(path.resolve(opts.server)),
  scope:'Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Excludes GUI, Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization.',cases:[],passed:false};
-if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py','linux-private-desktop.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
+if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py',...(wayland?['linux-wayland-desktop.py','linux-portal-select.py']:['linux-private-desktop.py'])]){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
 result.receiverVersion=execFileSync(ffmpeg,['-version'],{encoding:'utf8'}).split('\n')[0];
+if(wayland)result.scope=result.scope.replace('X11','Native GNOME Wayland').replace('Excludes Wayland,','Fresh portal consent on each Go live. Excludes');
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_|FFMPEG_|GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN)/.test(k)));
-Object.assign(env,{QT_QPA_PLATFORM:'xcb',XDG_SESSION_TYPE:'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});delete env.WAYLAND_DISPLAY;
+Object.assign(env,{QT_QPA_PLATFORM:wayland?'wayland':'xcb',XDG_SESSION_TYPE:wayland?'wayland':'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});if(wayland)env.WAYLAND_DISPLAY=process.env.WAYLAND_DISPLAY||'wayland-0';else delete env.WAYLAND_DISPLAY;
 const pactl=(...args)=>execFileSync('pactl',args,{encoding:'utf8',timeout:5000}).trim();
 const stalledHelpers=new Map();
 const processStart=pid=>{try{return fs.readFileSync(`/proc/${pid}/stat`,'utf8').split(') ').pop().split(' ')[19];}catch{return null;}};
-const modules=[];let browser,source,toneTimer,toneChild,toneSilent=false;
+const modules=[];let desktop,browser,source,toneTimer,toneChild,toneSilent=false;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');
 save();
 const children=new Set();let server,currentControl,currentEntry;
@@ -124,8 +126,8 @@ function decode(file,seconds,staticAndSilent=false){
   toneChild=launch('/usr/bin/paplay',['--raw','--format=float32le','--rate=48000','--channels=2','--latency-msec=20','--device='+sink],'owned-tone');
   let frames=0,blocked=false;toneChild.stdin.on('error',()=>{});toneChild.stdin.on('drain',()=>{blocked=false;});
   toneTimer=setInterval(()=>{if(blocked||toneChild.exitCode!==null)return;const b=Buffer.alloc(960*8);for(let i=0;i<960;i++)for(let c=0;c<2;c++)b.writeFloatLE(toneSilent?0:.15*Math.sin(2*Math.PI*[440,880][c]*(frames+i)/48000),i*8+c*4);frames+=960;blocked=!toneChild.stdin.write(b);},20);
-  browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:false,env,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding']});
-  source=await browser.newPage({viewport:{width:800,height:450}});const title='Owned Linux Mux '+suffix;
+  browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:false,env,args:[...(wayland?['--ozone-platform=wayland','--window-size=720,560']:[]),'--disable-background-timer-throttling','--disable-renderer-backgrounding']});
+  source=await browser.newPage(wayland?{viewport:null}:{viewport:{width:800,height:450}});const title='Owned Linux Capture Mux '+suffix;
   await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
   const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,paused:false};
   function draw(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
@@ -133,7 +135,7 @@ function decode(file,seconds,staticAndSilent=false){
   ctx.fillStyle='cyan';ctx.fillRect(.1*w,.25*h,.05*w,.5*h);ctx.fillStyle='magenta';ctx.fillRect(.85*w,.25*h,.05*w,.5*h);
   for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
   await source.bringToFront();await sleep(1000);result.browserVersion=browser.version();
-  const desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedMuxInput'}):null;
+  desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedMuxInput'}):null;if(desktop)result.guiDesktop=desktop.evidence;
   for(const protocol of (opts.protocols||'rtmp,srt,rtsp,rtsp-udp,udp,rist').split(',')){
     assert(['rtmp','srt','rtsp','rtsp-udp','udp','rist'].includes(protocol));const encoder='software';
     const id=protocol+'-'+encoder,entry={protocol,encoder,phases:[],passed:false};result.cases.push(entry);currentEntry=entry;save();
@@ -150,9 +152,9 @@ function decode(file,seconds,staticAndSilent=false){
     // Copy initial AUDIO packets only; video must still wait for an IDR.
     // Keep packet/timestamp/stereo/silence assertions in decode() unchanged.
     function record(seconds,phase){const file=path.join(report,id+'-'+phase+'.mkv');return {file,process:launch(ffmpeg,['-hide_banner','-y','-analyzeduration',direct||rtmpReceiver?'3000000':'1000000','-probesize','1000000',...receiverInput,'-map','0','-c','copy','-copyinkf:a','-t',String(seconds+3),file],id+'-receiver-'+sequence++)};}
-    let recording=direct?record(6,'moving'):null;if(direct)await sleep(500);
+    let recording=direct&&!gui?record(6,'moving'):null;if(recording)await sleep(500);
     let discovery=path.join(report,id+'-control.json'),publisher,control,session;
-    if(gui){session=await desktop.start(protocol,url,protocol==='srt'?passphrase:protocol==='rtmp'?stream:'',protocol==='srt'?'publish:'+stream:'');({publisher,control,discovery}=session);entry.profileRestored=session.profileRestored;}else{
+    if(gui){session=await desktop.start(protocol,url,protocol==='srt'?passphrase:protocol==='rtmp'?stream:'',protocol==='srt'?'publish:'+stream:'',async()=>{if(direct){recording=record(6,'moving');await sleep(500);}});({publisher,control,discovery}=session);entry.profileRestored=session.profileRestored;}else{
     publisher=launch(exe,['--headless','--source=window','--window='+title,`--output=${protocol}`,`--output-url=${url}`,
       ...(protocol==='rtmp'?[`--output-key=${stream}`]:protocol==='srt'?[`--srt-stream-id=publish:${stream}`]:[]),
       '--audio-source=none','--include-microphone','--microphone-device=pulse:'+input,'--audio-channels=2','--aac-bitrate-kbps=192',
@@ -197,6 +199,17 @@ function decode(file,seconds,staticAndSilent=false){
       await finishRecording(record(4,'helper-stall-recovered'),4,'helper-stall-recovered');
     }
     const diag=await api(control,'/diagnostics');entry.output=diag.output;
+    if(protocol.startsWith('rtsp')){
+      const paths=await fetch(`http://127.0.0.1:${ports.api}/v3/paths/list`).then(r=>r.json());
+      const owned=paths.items.find(p=>p.name===stream);
+      const sessions=await fetch(`http://127.0.0.1:${ports.api}/v3/rtspsessions/list`).then(r=>r.json());
+      const matches=sessions.items.filter(s=>s.id===owned?.source?.id&&s.state==='publish');
+      assert.equal(matches.length,1,'No unique owned RTSP publisher session');
+      const peer=matches[0];assert.equal(peer.transport,protocol==='rtsp-udp'?'UDP':'TCP','Publisher transport differs from the chosen GUI output');
+      assert(peer.inboundBytes>0&&peer.inboundRTPPackets>0,'Server observed no publisher media');
+      entry.publisherTransport={transport:peer.transport,profile:peer.profile,inboundBytes:peer.inboundBytes,inboundRTPPackets:peer.inboundRTPPackets};
+    }
+
     assert.equal(diag.output.configured_aac_bitrate_kbps,192);assert.equal(diag.video.hardware_encoder,false);
     assert(diag.output.muxer_pid>1,'No mux helper');
     assert.equal(fs.realpathSync('/proc/'+diag.output.muxer_pid+'/exe'),opts.helper?fs.realpathSync(opts.helper):helper,'Wrong mux helper');
@@ -220,5 +233,6 @@ if(gui){
   result.passed=true;
 }catch(e){if(currentControl&&currentEntry){try{currentEntry.failureDiagnostics=await api(currentControl,'/diagnostics');}catch{}}result.error=String(e.stack||e);console.error(result.error);process.exitCode=1;}
 finally{for(const [pid,start] of stalledHelpers)if(start&&processStart(pid)===start)process.kill(pid,'SIGCONT');clearInterval(toneTimer);if(browser)await browser.close();for(const p of children)p.kill('SIGTERM');await Promise.all([...children].map(async p=>{await Promise.race([p.closed,sleep(3000)]);if(p.exitCode===null&&!p.signalCode)p.kill('SIGKILL');await p.closed;}));
+  if(desktop){try{await desktop.close();}catch(error){result.passed=false;result.cleanupError=String(error);process.exitCode=1;}}
   for(const module of modules.reverse())pactl('unload-module',module);
   fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2));console.log(JSON.stringify({report,passed:result.passed}));}})();

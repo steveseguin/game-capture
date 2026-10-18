@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Extracted Ubuntu DEB -> X11/software H264 + virtual input -> WHIP/browser.
+// Extracted Ubuntu DEB -> X11 or native Wayland GUI/software H264 + virtual input -> WHIP/browser.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),http=require('http'),https=require('https'),net=require('net'),dgram=require('dgram');
 const {spawn,execFileSync}=require('child_process'),{chromium}=require('playwright');
 const {sleep,waitFor,receiverAt,observe,requireMoving,observeAudio}=require('./macos-media-receiver');
@@ -11,7 +11,8 @@ const turnDiscovery=opts['turn-discovery']||'none',unresponsiveStun=opts['unresp
 assert(['none','options','post'].includes(turnDiscovery));assert(turnDiscovery==='none'||opts['turn-server']);
 const failure=opts.failure||'';assert(['','unauthorized','invalid-tls','cancel','cancel-gathering','malformed','oversized'].includes(failure));
 const tls=opts.tls==='true'||failure==='invalid-tls';assert(!(unresponsiveStun&&turnDiscovery!=='none'));
-const gui=opts.gui==='true';if(gui){assert(process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires linux-private-desktop.py');assert(!tls&&!failure&&!unresponsiveStun&&turnDiscovery==='none','GUI fixture currently covers authenticated HTTP publishing');}
+const wayland=opts.backend==='wayland';assert(!wayland||opts.gui==='true','Wayland output fixture requires actual GUI');
+const gui=opts.gui==='true';if(gui){assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires the matching owned desktop fixture');assert(!tls&&!failure&&!unresponsiveStun&&turnDiscovery==='none','GUI fixture currently covers authenticated HTTP publishing');}
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const manifestFile=path.join(bundle,'release-artifact-manifest.json');assert.equal(hash(manifestFile),opts['manifest-sha256']);
@@ -19,16 +20,17 @@ const manifest=JSON.parse(fs.readFileSync(manifestFile));assert.equal(hash(exe),
 for(const item of manifest.payload.files){const file=path.resolve(bundle,item.relativePath);assert(file.startsWith(bundle+path.sep));assert.equal(fs.statSync(file).size,item.size);assert.equal(hash(file),item.sha256);}
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 for(const name of ['linux-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
-const result={gui,executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
+const result={gui,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
  serverSha256:hash(path.resolve(opts.server)),turnDiscovery,tls,failure,unresponsiveStun:unresponsiveStun?{requests:0}:null,
  scope:'Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance.',cases:[],trace:[],passed:false};
-if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py','linux-private-desktop.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
+if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py',...(wayland?['linux-wayland-desktop.py','linux-portal-select.py']:['linux-private-desktop.py'])]){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
 if(turnDiscovery!=='none')result.turnServerSha256=hash(path.resolve(opts['turn-server']));
+if(wayland)result.scope=result.scope.replace('X11','Native GNOME Wayland').replace('Excludes Wayland,','Fresh portal consent on each Go live. Excludes');
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_|GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN|SSL_CERT_)/.test(k)));
-Object.assign(env,{QT_QPA_PLATFORM:'xcb',XDG_SESSION_TYPE:'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});delete env.WAYLAND_DISPLAY;
+Object.assign(env,{QT_QPA_PLATFORM:wayland?'wayland':'xcb',XDG_SESSION_TYPE:wayland?'wayland':'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});if(wayland)env.WAYLAND_DISPLAY=process.env.WAYLAND_DISPLAY||'wayland-0';else delete env.WAYLAND_DISPLAY;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');save();
 const pactl=(...args)=>execFileSync('pactl',args,{encoding:'utf8',timeout:5000}).trim();
-const modules=[];let sourceBrowser,source,toneTimer,toneChild,toneSilent=false,lastControl,trustDirectory;
+const modules=[];let desktop,sourceBrowser,source,toneTimer,toneChild,toneSilent=false,lastControl,trustDirectory;
 const hostTrustSha256=hash('/etc/ssl/certs/ca-certificates.crt');
 const scheme=tls?'https':'http';
 const children=new Set();let browser,proxy,server,stalledStun,serverRunning=false;
@@ -127,8 +129,8 @@ function audioCheck(value,silent=false){
   toneChild=launch('/usr/bin/paplay',['--raw','--format=float32le','--rate=48000','--channels=2','--latency-msec=20','--device='+sink],'owned-tone');
   let frames=0,blocked=false;toneChild.stdin.on('error',()=>{});toneChild.stdin.on('drain',()=>{blocked=false;});
   toneTimer=setInterval(()=>{if(blocked||toneChild.exitCode!==null)return;const b=Buffer.alloc(960*8);for(let i=0;i<960;i++)for(let c=0;c<2;c++)b.writeFloatLE(toneSilent?0:.15*Math.sin(2*Math.PI*[440,880][c]*(frames+i)/48000),i*8+c*4);frames+=960;blocked=!toneChild.stdin.write(b);},20);
-  sourceBrowser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:false,env,args:['--disable-background-timer-throttling','--disable-renderer-backgrounding']});
-  source=await sourceBrowser.newPage({viewport:{width:800,height:450}});const title='Owned Linux WHIP '+suffix;
+  sourceBrowser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:false,env,args:[...(wayland?['--ozone-platform=wayland','--window-size=720,560']:[]),'--disable-background-timer-throttling','--disable-renderer-backgrounding']});
+  source=await sourceBrowser.newPage(wayland?{viewport:null}:{viewport:{width:800,height:450}});const title='Owned Linux Capture WHIP '+suffix;
   await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
   const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,paused:false};
   function draw(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
@@ -137,7 +139,7 @@ function audioCheck(value,silent=false){
   for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
   await source.bringToFront();await sleep(1000);result.sourceBrowserVersion=sourceBrowser.version();
 
-  const desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedWhipInput'}):null;
+  desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedWhipInput'}):null;if(desktop)result.guiDesktop=desktop.evidence;
   browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});result.receiverBrowserVersion=browser.version();
   for(const encoder of ['software']){
     currentCase=encoder;const entry={encoder,passed:false};result.cases.push(entry);const stream='whip'+crypto.randomBytes(12).toString('hex');
@@ -212,6 +214,7 @@ function audioCheck(value,silent=false){
 finally{clearInterval(toneTimer);if(sourceBrowser)await sourceBrowser.close().catch(()=>{});if(browser)await browser.close().catch(()=>{});
   if(proxy){proxy.closeAllConnections();proxy.close();}if(stalledStun)stalledStun.close();
   for(const p of children)p.kill('SIGTERM');await Promise.all([...children].map(async p=>{await Promise.race([p.closed,sleep(3000)]);if(p.exitCode===null&&!p.signalCode)p.kill('SIGKILL');await p.closed;}));
+  if(desktop){try{await desktop.close();}catch(error){result.passed=false;result.cleanupError=String(error);process.exitCode=1;}}
   for(const module of modules.reverse())pactl('unload-module',module);
   result.hostTrustUnchanged=hash('/etc/ssl/certs/ca-certificates.crt')===hostTrustSha256;if(!result.hostTrustUnchanged){result.passed=false;process.exitCode=1;}
   save();console.log(JSON.stringify({report,passed:result.passed}));}})();
