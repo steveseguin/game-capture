@@ -19,24 +19,41 @@ private slots:
     void keyframePolicy_data() {
         QTest::addColumn<bool>("hardware");
         QTest::addColumn<bool>("lowLatency");
-        QTest::newRow("vt-low-latency") << true << true;
-        QTest::newRow("x264-low-latency") << false << true;
-        QTest::newRow("vt-explicit-long-gop") << true << false;
-        QTest::newRow("x264-explicit-long-gop") << false << false;
+        QTest::addColumn<bool>("av1");
+        QTest::newRow("vt-low-latency") << true << true << false;
+        QTest::newRow("x264-low-latency") << false << true << false;
+        QTest::newRow("vt-explicit-long-gop") << true << false << false;
+        QTest::newRow("x264-explicit-long-gop") << false << false << false;
+        QTest::newRow("av1-low-latency") << false << true << true;
+        QTest::newRow("av1-explicit-long-gop") << false << false << true;
     }
     void keyframePolicy() {
         QFETCH(bool, hardware);
         QFETCH(bool, lowLatency);
+        QFETCH(bool, av1);
         EncoderConfig config;
         config.width = 128; config.height = 72; config.frameRate = 15;
         config.gopSize = 60; config.lowLatency = lowLatency;
         config.preferredHardware = hardware ? HardwareEncoder::VideoToolbox : HardwareEncoder::None;
         config.explicitEncoderSelection = true;
+        if (av1) {
+            config.codec = VideoCodec::AV1;
+            config.ffmpegPath = qEnvironmentVariable("VERSUS_GATE_FFMPEG").toStdString();
+        }
         VideoEncoder encoder;
         QVERIFY(encoder.initialize(config));
         QTemporaryDir directory;
-        QFile stream(directory.filePath("constant.h264"));
+        QFile stream(directory.filePath(av1 ? "constant.ivf" : "constant.h264"));
         QVERIFY(stream.open(QIODevice::WriteOnly));
+        if (av1) {
+            QByteArray header(32, 0);
+            header.replace(0, 4, "DKIF"); header.replace(8, 4, "AV01");
+            auto *p = reinterpret_cast<uchar *>(header.data());
+            qToLittleEndian<quint16>(32, p + 6); qToLittleEndian<quint16>(128, p + 12);
+            qToLittleEndian<quint16>(72, p + 14); qToLittleEndian<quint32>(15, p + 16);
+            qToLittleEndian<quint32>(1, p + 20); qToLittleEndian<quint32>(76, p + 24);
+            QCOMPARE(stream.write(header), qint64(header.size()));
+        }
         CapturedFrame frame;
         frame.width = 128; frame.height = 72; frame.stride = 128 * 4;
         frame.data.assign(frame.stride * frame.height, 128);
@@ -45,6 +62,13 @@ private slots:
             EncodedPacket packet;
             QVERIFY(encoder.encode(frame, packet));
             QCOMPARE(packet.pts, packet.dts);
+            if (av1) {
+                QByteArray header(12, 0);
+                auto *p = reinterpret_cast<uchar *>(header.data());
+                qToLittleEndian<quint32>(packet.data.size(), p);
+                qToLittleEndian<quint64>(i, p + 4);
+                QCOMPARE(stream.write(header), qint64(header.size()));
+            }
             QCOMPARE(stream.write(reinterpret_cast<const char *>(packet.data.data()), packet.data.size()),
                      qint64(packet.data.size()));
         }
