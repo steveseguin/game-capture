@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [macos-windows-snapshot-diagnostics]
+    paths: [native-qt/qa/windows-atomic-replace-gate.py]
 permissions:
   contents: read
 jobs:

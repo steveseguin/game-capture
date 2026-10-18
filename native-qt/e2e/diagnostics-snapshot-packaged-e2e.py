@@ -18,7 +18,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--publisher', required=True, type=Path)
     parser.add_argument('--reports', required=True, type=Path)
+    parser.add_argument('--iterations', type=int, default=1)
     args = parser.parse_args()
+    if not 1 <= args.iterations <= 25:
+        parser.error('--iterations must be between 1 and 25')
     publisher = args.publisher.resolve()
     if not (publisher.parent / 'platforms/qwindows.dll').is_file():
         raise RuntimeError('A complete packaged application is required')
@@ -61,14 +64,14 @@ def main():
             observerShareMode='FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE',
             results=results), indent=2), encoding='utf-8')
 
-    def diagnostic_log_lines():
+    def diagnostic_log_lines(output):
         # The application logger is a file sink on Windows; GUI stdout alone
         # does not preserve the failed QSaveFile stage. This directory belongs
         # to this workflow's explicitly isolated LOCALAPPDATA.
         lines = []
         for file in (run / 'GameCapture/logs').glob('game-capture-debug*.log'):
             for line in file.read_text(encoding='utf-8', errors='replace').splitlines():
-                if '[Diagnostics]' not in line:
+                if '[Diagnostics]' not in line or str(output) not in line:
                     continue
                 line = line.replace(str(run), '<workflow>')
                 line = re.sub(r'(?i)(?:https?|wss?)://[^\s"<>]+', '<url>', line)
@@ -77,18 +80,18 @@ def main():
         return lines[-40:]
 
     def record(name, passed, **details):
-        results.append(dict(name=name, passed=passed, **details))
+        results.append(dict(name=name, passed=passed, iteration=iteration, **details))
         save()
         print(name, passed, details)
 
     save()
-    for locked in (False, True):
-        output = run / ('locked.json' if locked else 'snapshot.json')
+    for iteration, locked in ((i, locked) for i in range(args.iterations) for locked in (False, True)):
+        output = run / (('locked' if locked else 'snapshot') + f'-{iteration}.json')
         original = '{"previous":"retain this snapshot"}'
         output.write_text(original, encoding='utf-8')
-        discovery = run / ('locked-control.json' if locked else 'control.json')
+        discovery = run / (('locked-control' if locked else 'control') + f'-{iteration}.json')
         process = subprocess.Popen([str(publisher), '--local-control',
-            f'--settings-dir={run / ("settings-locked" if locked else "settings-normal")}',
+            f'--settings-dir={run / (("settings-locked" if locked else "settings-normal") + f"-{iteration}")}',
             f'--local-control-discovery={discovery}', f'--diagnostics-out={output}'],
             env=dict(os.environ, LOCALAPPDATA=str(run)), creationflags=subprocess.CREATE_NO_WINDOW)
         handle = None
@@ -136,13 +139,13 @@ def main():
             record('quit-removes-discovery', not discovery.exists(), locked=locked)
             if locked:
                 record('failed-replacement-preserves-snapshot', output.read_text(encoding='utf-8') == original,
-                       diagnosticLogLines=diagnostic_log_lines())
+                       diagnosticLogLines=diagnostic_log_lines(output))
             else:
                 record('readers-see-complete-json', bool(reads) and not invalid,
                        reads=len(reads), incomplete=len(invalid))
                 content = json.loads(output.read_text(encoding='utf-8'))
                 record('shutdown-exports-current-diagnostics', bool(content) and 'previous' not in content,
-                       diagnosticLogLines=diagnostic_log_lines())
+                       diagnosticLogLines=diagnostic_log_lines(output))
         except Exception as error:
             record('workflow-completed', False, locked=locked, error=str(error))
         finally:

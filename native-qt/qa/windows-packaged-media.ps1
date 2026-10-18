@@ -47,7 +47,7 @@ try {
     foreach ($key in @('QT_PLUGIN_PATH','QML2_IMPORT_PATH','QT_QPA_PLATFORM_PLUGIN_PATH')) { Remove-Item ('Env:' + $key) -ErrorAction SilentlyContinue }
     $result.session = @{ interactive = [Environment]::UserInteractive; processSessionId = (Get-Process -Id $PID).SessionId }
     $result.videoControllers = @(Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion)
-    & $python (Join-Path $repo 'native-qt/e2e/diagnostics-snapshot-packaged-e2e.py') --publisher $exe --reports (Join-Path $report 'diagnostics') *> (Join-Path $report 'private-diagnostics.log')
+    & $python (Join-Path $repo 'native-qt/e2e/diagnostics-snapshot-packaged-e2e.py') --publisher $exe --reports (Join-Path $report 'diagnostics') --iterations 10 *> (Join-Path $report 'private-diagnostics.log')
     $diagnosticsPassed = $LASTEXITCODE -eq 0
     $result.steps += @{ name = 'packaged-diagnostics-shutdown'; kind = 'application workflow'; passed = $diagnosticsPassed }
     & $node (Join-Path $repo 'native-qt/e2e/windows-hosted-media.js') "--publisher=$exe" "--reports=$(Join-Path $report 'media')" "--manifest-sha256=$manifestSha"
