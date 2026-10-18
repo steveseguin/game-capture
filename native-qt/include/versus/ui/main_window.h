@@ -90,7 +90,7 @@ class MainWindow : public QMainWindow {
     QPushButton *audioApplicationRefresh_ = nullptr;
 #endif
     void refreshSelectedWindowPreview();
-    void refreshPublisherCameraPreview();
+    void refreshPublisherPreview();
     bool alphaWorkflowEffectiveForSelectedCodec() const;
     void syncCodecUiState();
     void syncRoomModeLqUiState();

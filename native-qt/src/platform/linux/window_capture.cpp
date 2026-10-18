@@ -11,11 +11,14 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QImage>
+#include <QPointer>
 #include <QTimer>
 #include <QUuid>
 #include <algorithm>
 #include <charconv>
 #include <condition_variable>
+#include <chrono>
+#include <map>
 #include <cstring>
 #include <mutex>
 #include <thread>
@@ -170,6 +173,61 @@ QImage readXImage(XConnection &x, xcb_drawable_t drawable) {
     }
     std::free(reply); return image;
 }
+
+// Keep automatic redirection alive between UI thumbnail refreshes. Reading an
+// obscured window directly returns undefined/black pixels without a compositor.
+// The stream owns its own X connection and redirection independently.
+class ThumbnailCapture : public QObject {
+    using Clock = std::chrono::steady_clock;
+    XConnection x;
+    std::map<xcb_window_t, Clock::time_point> windows;
+    QTimer expiry;
+    void release(xcb_window_t window) {
+        auto *error = xcb_request_check(x.connection,
+            xcb_composite_unredirect_window_checked(x.connection, window, XCB_COMPOSITE_REDIRECT_AUTOMATIC));
+        std::free(error); // The window may already have been destroyed.
+        windows.erase(window);
+    }
+public:
+    explicit ThumbnailCapture(QObject *parent) : QObject(parent) {
+        expiry.setInterval(5000);
+        QObject::connect(&expiry, &QTimer::timeout, this, [this] {
+            const auto now = Clock::now();
+            for (auto it = windows.begin(); it != windows.end();) {
+                const auto entry = it++;
+                if (now - entry->second > std::chrono::seconds(10)) release(entry->first);
+            }
+            if (x.connection) xcb_flush(x.connection);
+        });
+        expiry.start();
+    }
+    QImage read(xcb_window_t window) {
+        if (!x.connection) return {};
+        const auto *extension = xcb_get_extension_data(x.connection, &xcb_composite_id);
+        if (!extension || !extension->present) return readXImage(x, window);
+        if (!windows.contains(window)) {
+            if (windows.size() >= 64) {
+                const auto oldest = std::min_element(windows.begin(), windows.end(),
+                    [](const auto &a, const auto &b) { return a.second < b.second; });
+                release(oldest->first);
+            }
+            auto *error = xcb_request_check(x.connection,
+                xcb_composite_redirect_window_checked(x.connection, window, XCB_COMPOSITE_REDIRECT_AUTOMATIC));
+            if (error) { std::free(error); return {}; }
+        }
+        windows[window] = Clock::now();
+        const auto pixmap = xcb_generate_id(x.connection);
+        auto *error = xcb_request_check(x.connection,
+            xcb_composite_name_window_pixmap_checked(x.connection, window, pixmap));
+        if (error) { std::free(error); release(window); return {}; }
+        auto image = readXImage(x, pixmap);
+        xcb_free_pixmap(x.connection, pixmap);
+        if (image.isNull()) release(window);
+        xcb_flush(x.connection);
+        return image;
+    }
+};
+
 }
 
 namespace versus::video {
@@ -451,8 +509,11 @@ uint64_t WindowCapture::framesSkippedBeforeReadback() const { return impl_->skip
 QPixmap WindowCapture::captureWindowThumbnail(const std::string &id, int width, int height) {
     xcb_window_t window;
     if (!xWindowId(id, window)) return {};
-    XConnection x; if (!x.connection) return {};
-    return QPixmap::fromImage(readXImage(x, window).scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    // QPixmap callers are GUI-thread UI code. Parenting to the application
+    // closes the X connection (and all its redirects) during application exit.
+    static QPointer<ThumbnailCapture> thumbnails;
+    if (!thumbnails) thumbnails = new ThumbnailCapture(QCoreApplication::instance());
+    return QPixmap::fromImage(thumbnails->read(window).scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 }
 #include "window_capture.moc"

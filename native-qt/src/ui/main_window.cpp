@@ -3740,7 +3740,7 @@ void MainWindow::onGoLiveClicked() {
 
                 self->updateStatus(self->core_->isExternalOutput() ? "Connecting to output..." : "LIVE",
                     self->core_->isExternalOutput() ? "connecting" : "live");
-                self->refreshPublisherCameraPreview();
+                self->refreshPublisherPreview();
 
                 const QString shareLink = QString::fromStdString(self->core_->getShareLink());
                 if (self->shareLabel_) {
@@ -4097,7 +4097,7 @@ void MainWindow::onStatsTimer() {
             microphoneAudioLevelLabel_,
             showAdditionalMicLevel ? core_->getAdditionalAudioLevelRms() : 0.0f,
             showAdditionalMicLevel ? core_->getAdditionalAudioPeak() : 0.0f);
-        refreshPublisherCameraPreview();
+        refreshPublisherPreview();
     } else {
         resetOperatorHealthUi();
     }
@@ -4841,6 +4841,10 @@ void MainWindow::refreshSelectedWindowPreview() {
     }
 
     const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
+#ifdef __linux__
+    if (sourceMode != "window" || selectedWindowId_ != QStringLiteral("portal:window"))
+        previewLabel_->setAccessibleDescription(QString());
+#endif
     if (selectedWindowId_.isEmpty()) {
         previewLabel_->setPixmap(QPixmap());
         previewLabel_->setText(
@@ -4854,6 +4858,20 @@ void MainWindow::refreshSelectedWindowPreview() {
                     : "Select a window to see live preview"));
         return;
     }
+
+#ifdef __linux__
+    if (sourceMode == "window" && selectedWindowId_ == QStringLiteral("portal:window")) {
+        if (isLive_) {
+            refreshPublisherPreview();
+        } else {
+            previewLabel_->setPixmap(QPixmap());
+            previewLabel_->setText("Go live and choose a window to start its preview.\nYour desktop will ask for permission.");
+            previewLabel_->setWordWrap(true);
+            previewLabel_->setAccessibleDescription(previewLabel_->text());
+        }
+        return;
+    }
+#endif
 
     if (sourceMode == "camera") {
         previewLabel_->setPixmap(QPixmap());
@@ -5002,16 +5020,29 @@ void MainWindow::refreshSelectedWindowPreview() {
         Qt::SmoothTransformation));
 }
 
-void MainWindow::refreshPublisherCameraPreview() {
-    if (!previewLabel_ || !core_ || !isLive_ || !sourceModeSelect_ ||
-        sourceModeSelect_->currentData().toString() != QStringLiteral("camera")) {
+void MainWindow::refreshPublisherPreview() {
+    if (!previewLabel_ || !core_ || !isLive_ || !sourceModeSelect_) {
+        return;
+    }
+    const auto sourceMode = sourceModeSelect_->currentData().toString();
+    const bool camera = sourceMode == QStringLiteral("camera");
+    if (!camera
+#ifdef __linux__
+        && sourceMode != QStringLiteral("window")
+#endif
+    ) {
         return;
     }
 
+    // Reuse the current capture generation; Wayland preview must not create a
+    // second portal session or retain pixels after consent/capture has ended.
+#ifdef __linux__
+    if (!camera) previewLabel_->setAccessibleDescription("Live preview of the selected window");
+#endif
     const auto frame = core_->getPublisherPreviewFrame();
     if (!frame || frame->data.empty() || frame->width <= 0 || frame->height <= 0) {
         previewLabel_->setPixmap(QPixmap());
-        previewLabel_->setText("Waiting for live camera preview...");
+        previewLabel_->setText(camera ? "Waiting for live camera preview..." : "Waiting for live window preview...");
         return;
     }
 
@@ -5042,7 +5073,8 @@ void MainWindow::refreshPublisherCameraPreview() {
 
     if (image.isNull()) {
         previewLabel_->setPixmap(QPixmap());
-        previewLabel_->setText("Live camera preview is unavailable for this pixel format");
+        previewLabel_->setText(camera ? "Live camera preview is unavailable for this pixel format"
+                                      : "Live window preview is unavailable for this pixel format");
         return;
     }
 

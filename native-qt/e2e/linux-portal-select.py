@@ -17,7 +17,7 @@ import sys
 import time
 
 
-ALLOWED_KEYS = {"HOME", "DOWN", "SPACE", "TAB", "ENTER"}
+ALLOWED_KEYS = {"HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB"}
 
 
 def emit_keys(device, keys):
@@ -25,6 +25,14 @@ def emit_keys(device, keys):
     if not isinstance(keys, list) or len(keys) > 64 or any(key not in ALLOWED_KEYS for key in keys):
         raise RuntimeError("Unexpected QA keys")
     for key in keys:
+        if key == "ALT_TAB":
+            device.write(ec.EV_KEY, ec.KEY_LEFTALT, 1)
+            device.write(ec.EV_KEY, ec.KEY_TAB, 1); device.syn()
+            time.sleep(.05)
+            device.write(ec.EV_KEY, ec.KEY_TAB, 0)
+            device.write(ec.EV_KEY, ec.KEY_LEFTALT, 0); device.syn()
+            time.sleep(.25)
+            continue
         code = getattr(ec, "KEY_" + key)
         device.write(ec.EV_KEY, code, 1); device.syn()
         time.sleep(.08)

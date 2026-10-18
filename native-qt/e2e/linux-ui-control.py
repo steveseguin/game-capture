@@ -50,7 +50,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source"])
+    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -99,6 +99,37 @@ def main():
                            "bounds": geometry(node),
                            "states": [str(state.value_nick) for state in node.get_state_set().get_states()]}
                           for node in nodes(app)], indent=2))
+    elif args.command == "activate":
+        frame = find("frame", "Game Capture - Powered by VDO.Ninja")
+        if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
+            if os.environ.get("QT_QPA_PLATFORM") != "wayland" or not os.environ.get("GC_QA_KEYBOARD_SOCKET"):
+                raise RuntimeError("Owned window did not receive focus")
+            keyboard = Path(__file__).with_name('linux-portal-select.py')
+            # The replacement source is the most recently activated window.
+            # Return once via the desktop switcher, then verify the exact PID.
+            subprocess.run([sys.executable, str(keyboard), '--keys', 'ALT_TAB'], check=True, timeout=8)
+            time.sleep(.5); pump()
+            if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
+                raise RuntimeError("Desktop switcher did not activate the owned application")
+    elif args.command == "preview":
+        for node in nodes(app):
+            if node.get_role_name() == "scroll bar":
+                rect = node.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+                if rect.height > rect.width:
+                    value = node.get_value_iface()
+                    if not value.set_current_value(value.get_minimum_value()):
+                        raise RuntimeError("Could not reveal preview")
+        time.sleep(.3); pump()
+        matches = [node for node in nodes(app) if node.get_name() == "Selected source preview"]
+        if len(matches) != 1:
+            raise RuntimeError("Selected preview is absent or ambiguous")
+        preview = matches[0]
+        frame = find("frame", "Game Capture - Powered by VDO.Ninja")
+        if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
+            raise RuntimeError("Owned application is not active")
+        interface = preview.get_text_iface()
+        print(json.dumps({"role": preview.get_role_name(), "description": preview.get_description(), "text": Atspi.Text.get_text(interface, 0, -1) if interface else "",
+                          "frame": geometry(frame)}))
     elif args.command in ["choose", "choose-prefix"]:
         combo = find("combo box", args.name)
         if os.environ.get("QT_QPA_PLATFORM") != "wayland":

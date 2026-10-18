@@ -17,13 +17,13 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor, preview remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open."
     },
     {
       "id": "x11-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Current packaged browser-window workflow covers moving/static content, resize, late viewer, source-loss exit and discovery cleanup. Physical Xorg, obscured/minimized windows, cursor, reconnect, mixed DPI/multiple displays and gameplay remain."
+      "remaining": "Current packaged browser-window workflow covers moving/static content, resize, late viewer, source-loss exit and discovery cleanup. Physical Xorg, obscured/minimized windows, cursor, reconnect, mixed DPI/multiple displays and gameplay remain. Xvfb packaged covered-window idle thumbnails and live/resized preview now passed pixel identities. Physical Xorg/compositor variations and minimized-window preview remain open."
     },
     {
       "id": "camera",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Preview, tray/reopen, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, camera preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Camera preview, tray/reopen, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, camera preview, other display scales, tray and full keyboard/accessibility remain open."
     },
     {
       "id": "profiles",
@@ -126,7 +126,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid."
     },
     {
       "id": "packaging",
@@ -8256,6 +8256,1963 @@
           "sha256": "75f5ec06a3c2abef67047d238751fe4b2aec7bb3e1ee8f334f393bebbed025f3"
         }
       ]
+    },
+    {
+      "executableSha256": "d30e1fbe61c30b043a22f0f0873c79bfe079919f15ce13332637b4bc20c365d2",
+      "manifestSha256": "1cfdc06c37da6c28169af378135912409bd01521cfbe2e7c640a38f8ade48a7a",
+      "harnessSha256": "39ef878a548573eb2e64f07469daee1bd302a8d6f9e74746ec9033c8ba10a6e6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "aa9b681f76527a9877ed233049a2b1c3138c1550581913878cd450031b56f314",
+      "previewObserverSha256": "6ab71a2f32f16eb2722c9886f2bf2777ae16211a26b2d1f2fb64ac30fb24634a",
+      "portalJournalSha256": "01600a7e046a229413dc75b22dfc3b9a9ae0fa275f0685e0087277f354f301fc",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-baseline/e2eeab18-f0fe-4cb9-a668-00c5dbb8ee80/results.json",
+      "reportSha256": "a6dc5c3c250fb89e283ba6c115d1cd6d09884ad29dde61cc82203f4ab5a8ea2a",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Previous packaged application decoded receiver video but displayed Preview unavailable for this window during Wayland capture. Actual preview screenshot had no readable source identity.",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py --pid=2672200 --output=/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-preview-baseline/e2eeab18-f0fe-4cb9-a668-00c5dbb8ee80/preview-live-13735.png --expected=13735\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py\", line 54, in <module>\n    assert len(identities) >= 12, 'No readable selected-source preview'\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: No readable selected-source preview\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at previewShot (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:123:34)\n    at checkPreview (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:130:7)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:185:3",
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 175,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-baseline/e2eeab18-f0fe-4cb9-a668-00c5dbb8ee80/preview-live-13735.png",
+          "sha256": "7147de0a31ca8a2af965d0508b28a534b0adb1b3ef29000624692bcdde75d708"
+        }
+      ]
+    },
+    {
+      "executableSha256": "f0a4c1d9b0fcd30d72286781f1ab9b27fde9f84fbe9b37e5e809a18f8b4826e3",
+      "manifestSha256": "1507f65849d190d6aa6c1f60eaff04b56e54b472bded24ebc3faf1af5f7cd2da",
+      "harnessSha256": "a57dfa558c183266b8e5e8ab55f431d8d08da6aa3f268a1abf2c07b4ba23128c",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "aa9b681f76527a9877ed233049a2b1c3138c1550581913878cd450031b56f314",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "portalJournalSha256": "07d738a5334af659857b6cd4111b0b2659eb4a24dc0cac2a6d504bada10a1f5e",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-final/93d51921-cddb-49d9-a19d-9f24f2ab422d/results.json",
+      "reportSha256": "8a85161aaa9b513bf52d29cb7c381cfb5b7a3aa2b10ea5b64ed37a3678c16294",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Observation-helper failure: Qt changes the named preview accessibility role from label to image when pixels are displayed. No completed application qualification; selector was corrected to use the unique accessible name.",
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py --pid=2673040 --output=/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-preview-final/93d51921-cddb-49d9-a19d-9f24f2ab422d/preview-live-13735.png --expected=13735\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 219, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 111, in main\n    preview = find(\"label\", \"Selected source preview\")\n              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 86, in find\n    raise RuntimeError(f\"Expected one {role} named {name!r}; found {len(matches)}\")\nRuntimeError: Expected one label named 'Selected source preview'; found 0\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py\", line 16, in <module>\n    metadata = json.loads(subprocess.check_output(['python3', str(ui), str(args.pid), 'preview'], text=True))\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 466, in check_output\n    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['python3', '/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py', '2673040', 'preview']' returned non-zero exit status 1.\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at previewShot (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:123:34)\n    at checkPreview (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:130:7)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:186:3",
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 179,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": []
+    },
+    {
+      "executableSha256": "f0a4c1d9b0fcd30d72286781f1ab9b27fde9f84fbe9b37e5e809a18f8b4826e3",
+      "manifestSha256": "1507f65849d190d6aa6c1f60eaff04b56e54b472bded24ebc3faf1af5f7cd2da",
+      "harnessSha256": "a57dfa558c183266b8e5e8ab55f431d8d08da6aa3f268a1abf2c07b4ba23128c",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "7c1648dbe03c506aa650b0cceb288634352964c384c24c1f970db3880470e54f",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "portalJournalSha256": "ee2373b4c1ae0acb24781d35c4b5e1d24abe94c6d45b12a87d6d8b536b82ce1f",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-qualified/b6b50e5c-991a-411e-b457-1c3a1dfeb1b2/results.json",
+      "reportSha256": "f38fc2768995e8dc57d703e0bc1a54d53e51877c1ef0915cf68da66cc19c3b16",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Intermediate package displayed both requested identities before/after source resize and removed pixels on Stop. Visible permission guidance was present in the screenshot, but the text-interface assertion failed. An accessible description was subsequently added and asserted.",
+      "preview": {
+        "live-13735": {
+          "role": "image",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "41c4abe8bbc2cbaa3bb577725a380d3ad9d938b52df4520c23d540eb139a6a52"
+        },
+        "live-51546": {
+          "role": "image",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "dd45383d3fdf636935ccb518bb119eb0bde60f005e8b618575473ec20d4341de"
+        },
+        "resized-13735": {
+          "role": "image",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "47492610089bb1fc63a2e77d0a198d683d6301cbbb8092662f2b1f0273c52246"
+        },
+        "resized-51546": {
+          "role": "image",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "47e5385777425229a9eb1a371cd3a7150990ade3e1ee116c9da11edc6aef14cb"
+        },
+        "stopped": {
+          "role": "label",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "b8c96e1b86e4fc11c8f173e4370a3928d1ef9e3d0d9133df29c660e8d4e8fe35"
+        }
+      },
+      "guiStopSettled": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "error": "AssertionError [ERR_ASSERTION]: Missing Wayland preview permission guidance\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:266:60\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)",
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 179,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 89,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-qualified/b6b50e5c-991a-411e-b457-1c3a1dfeb1b2/preview-live-13735.png",
+          "sha256": "41c4abe8bbc2cbaa3bb577725a380d3ad9d938b52df4520c23d540eb139a6a52"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-qualified/b6b50e5c-991a-411e-b457-1c3a1dfeb1b2/preview-live-51546.png",
+          "sha256": "dd45383d3fdf636935ccb518bb119eb0bde60f005e8b618575473ec20d4341de"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-qualified/b6b50e5c-991a-411e-b457-1c3a1dfeb1b2/preview-resized-13735.png",
+          "sha256": "47492610089bb1fc63a2e77d0a198d683d6301cbbb8092662f2b1f0273c52246"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-qualified/b6b50e5c-991a-411e-b457-1c3a1dfeb1b2/preview-resized-51546.png",
+          "sha256": "47e5385777425229a9eb1a371cd3a7150990ade3e1ee116c9da11edc6aef14cb"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-qualified/b6b50e5c-991a-411e-b457-1c3a1dfeb1b2/preview-stopped.png",
+          "sha256": "b8c96e1b86e4fc11c8f173e4370a3928d1ef9e3d0d9133df29c660e8d4e8fe35"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1997b9f7a4d3793ac8586237368d916186ff41872dc8b25b191707067f244e93",
+      "manifestSha256": "d5100069fbd77def9bf1213394af1b63240eb3f247146a42e16e1ed4eece2b5f",
+      "harnessSha256": "031048bea38a79e81f5828947687fdff0ccc919121d523509689f1c2bebb8b91",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "52d17dfb6574a572c60debcb6a1617f67108a40f37556c4a26be58b86c7c31b3",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-preview-x11",
+      "report": "native-qt/qa/reports/linux-preview-accessible/869fc756-b3e8-4a86-bba0-6efebb0cec87/results.json",
+      "reportSha256": "9810addfec1393c875b8e98925e7c589c915a633eee12a0823eb290a96c1ff6d",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Fixture setup failure before preview observation: X11 already had No microphone selected. The fixture incorrectly required the default-input combo value; corrected to accept the desired existing selection.",
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py 2674777 choose Linux default microphone/input No microphone\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 222, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 122, in main\n    combo = find(\"combo box\", args.name)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 86, in find\n    raise RuntimeError(f\"Expected one {role} named {name!r}; found {len(matches)}\")\nRuntimeError: Expected one combo box named 'Linux default microphone/input'; found 0\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at ui (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:120:29)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:141:16",
+      "videoObservations": {},
+      "screenshots": []
+    },
+    {
+      "executableSha256": "1997b9f7a4d3793ac8586237368d916186ff41872dc8b25b191707067f244e93",
+      "manifestSha256": "d5100069fbd77def9bf1213394af1b63240eb3f247146a42e16e1ed4eece2b5f",
+      "harnessSha256": "2ae832a27e146ec666708e051b0fc62bcb4c599add820813845a6ea4c013bd5a",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "52d17dfb6574a572c60debcb6a1617f67108a40f37556c4a26be58b86c7c31b3",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-preview-x11",
+      "report": "native-qt/qa/reports/linux-preview-workflows/83a54af3-8463-4ae6-b7f3-81cfda903e6e/results.json",
+      "reportSha256": "32aef64d7c567b297059da9d288cb10aaffc4ef404551d38b8969b2811ca6bed",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Packaged X11 idle preview reproduced black pixels when the source was covered. Thumbnail capture subsequently changed to bounded, expiring XComposite redirection; live capture already used independent redirection.",
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py --pid=2675078 --output=/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-preview-workflows/83a54af3-8463-4ae6-b7f3-81cfda903e6e/preview-idle-13735.png --expected=13735\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py\", line 55, in <module>\n    assert len(identities) >= 12, 'No readable selected-source preview'\n           ^^^^^^^^^^^^^^^^^^^^^\nAssertionError: No readable selected-source preview\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at previewShot (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:123:34)\n    at checkPreview (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:130:7)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:179:13",
+      "videoObservations": {},
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-workflows/83a54af3-8463-4ae6-b7f3-81cfda903e6e/preview-idle-13735.png",
+          "sha256": "2072871ffd12bfeb2a484c20045f2d3e8e3c586e2ddcd3f4a9cb3f64c84cc0c1"
+        }
+      ]
+    },
+    {
+      "executableSha256": "ef5f6c5b2e1b0768dcd5cfa3a1826c413abf1f001ff7484341c8533043ca8612",
+      "manifestSha256": "890a64112e1fd99bce7c472ad92e5824b2248b4c19d32b417a8d91e7acfbadbf",
+      "harnessSha256": "2ae832a27e146ec666708e051b0fc62bcb4c599add820813845a6ea4c013bd5a",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "52d17dfb6574a572c60debcb6a1617f67108a40f37556c4a26be58b86c7c31b3",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "portalJournalSha256": "c7b98a9b23bc81dd846ab045140d8ba407b021090ddf0cf300ac460f4fa66b27",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/results.json",
+      "reportSha256": "5010ac260806b59529ff64be0bf778ea338760bc11977bc0307aca877e926689",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": true,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Intermediate package: X11 and Wayland normal Stop/restart passed; source-loss run restored decoded publishing but preview observation stopped because the replacement Chrome window retained focus. A guarded desktop focus switch was added. This package precedes stale-description clearing on source-mode changes.",
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "a4fc37eda006720485a667df63c21ff9c9a1ef2e10a76468717637f4dd7307d3"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "b548e51524d7365ec8f4d4160cb6f76c30e50bd1b4ec001123ab818e734217f1"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "22457a2278925963bac75c6696df2b43e47e83d186320b74bac7b3a7e624344b"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "16354a85391a91d7b113294fa09347ad73d996b0bae32d9a74e40bb366410d82"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "b76878cc2a4ade6c54ab513dc12014531baadab2f2c211c7315ba803fba820b7"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "3de89506f830d215d7fe0773585bc2c555b0c946c3889fdbd7330eb49b10db0f"
+        }
+      },
+      "guiSourceLossPassed": true,
+      "guiSourceLossSettled": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py --pid=2677276 --output=/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-restarted-13735.png --expected=13735\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 222, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 117, in main\n    raise RuntimeError(\"Owned application is not active\")\nRuntimeError: Owned application is not active\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-preview-observer.py\", line 16, in <module>\n    metadata = json.loads(subprocess.check_output(['python3', str(ui), str(args.pid), 'preview'], text=True))\n                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 466, in check_output\n    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['python3', '/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py', '2677276', 'preview']' returned non-zero exit status 1.\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at previewShot (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:123:34)\n    at checkPreview (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:130:7)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:278:201",
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 180,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 89,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "restarted": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-idle.png",
+          "sha256": "a4fc37eda006720485a667df63c21ff9c9a1ef2e10a76468717637f4dd7307d3"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-live-13735.png",
+          "sha256": "b548e51524d7365ec8f4d4160cb6f76c30e50bd1b4ec001123ab818e734217f1"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-live-51546.png",
+          "sha256": "22457a2278925963bac75c6696df2b43e47e83d186320b74bac7b3a7e624344b"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-resized-13735.png",
+          "sha256": "16354a85391a91d7b113294fa09347ad73d996b0bae32d9a74e40bb366410d82"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-resized-51546.png",
+          "sha256": "b76878cc2a4ade6c54ab513dc12014531baadab2f2c211c7315ba803fba820b7"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/489ccf9b-0c64-42cc-9833-c88981217f19/preview-stopped.png",
+          "sha256": "3de89506f830d215d7fe0773585bc2c555b0c946c3889fdbd7330eb49b10db0f"
+        }
+      ]
+    },
+    {
+      "executableSha256": "ef5f6c5b2e1b0768dcd5cfa3a1826c413abf1f001ff7484341c8533043ca8612",
+      "manifestSha256": "890a64112e1fd99bce7c472ad92e5824b2248b4c19d32b417a8d91e7acfbadbf",
+      "harnessSha256": "2ae832a27e146ec666708e051b0fc62bcb4c599add820813845a6ea4c013bd5a",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "52d17dfb6574a572c60debcb6a1617f67108a40f37556c4a26be58b86c7c31b3",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "portalJournalSha256": "ad997bb370e44f0fa982a04016aad25c973170380e47ad467e5bceeec28375d9",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/results.json",
+      "reportSha256": "110c54a6e6f8a1f9d3a0e9e6f57960723f4fef8f903a976d1f13b3c86934d148",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Intermediate package: X11 and Wayland normal Stop/restart passed; source-loss run restored decoded publishing but preview observation stopped because the replacement Chrome window retained focus. A guarded desktop focus switch was added. This package precedes stale-description clearing on source-mode changes.",
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "25094ddfb2c2c9ca8a35c508c036b2a208ac75e6a6fc6bac8fde8595d044c540"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "6697cb8b109fda1df3c9d2e23b80ecefe6d8edd1c0bcf57a629898f57a321508"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "e73a5ae545218d78319479fa0d2a040b6c0ecc9d713a63de227d1f1ffee9307b"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "31975703d98079b82d631b278b956e0b48071f27cfef3ffc7636e873d5511559"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "95f25fe7640068d3491b5622a917824612dbe9bcb7132d0bc8e41489bac21da8"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "fb43e8dba04554718011ec63b2389c4403c365988ffa7c9c96dd61206efd86e6"
+        },
+        "restarted-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "31975703d98079b82d631b278b956e0b48071f27cfef3ffc7636e873d5511559"
+        },
+        "restarted-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "95f25fe7640068d3491b5622a917824612dbe9bcb7132d0bc8e41489bac21da8"
+        }
+      },
+      "guiStopSettled": true,
+      "guiRestartPassed": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 177,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 87,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "restarted": {
+          "distinctIdentities": 116,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-idle.png",
+          "sha256": "25094ddfb2c2c9ca8a35c508c036b2a208ac75e6a6fc6bac8fde8595d044c540"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-live-13735.png",
+          "sha256": "6697cb8b109fda1df3c9d2e23b80ecefe6d8edd1c0bcf57a629898f57a321508"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-live-51546.png",
+          "sha256": "e73a5ae545218d78319479fa0d2a040b6c0ecc9d713a63de227d1f1ffee9307b"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-resized-13735.png",
+          "sha256": "31975703d98079b82d631b278b956e0b48071f27cfef3ffc7636e873d5511559"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-resized-51546.png",
+          "sha256": "95f25fe7640068d3491b5622a917824612dbe9bcb7132d0bc8e41489bac21da8"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-restarted-13735.png",
+          "sha256": "31975703d98079b82d631b278b956e0b48071f27cfef3ffc7636e873d5511559"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-restarted-51546.png",
+          "sha256": "95f25fe7640068d3491b5622a917824612dbe9bcb7132d0bc8e41489bac21da8"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/7d709fce-e189-4f21-a1d2-72b1652c2d42/preview-stopped.png",
+          "sha256": "fb43e8dba04554718011ec63b2389c4403c365988ffa7c9c96dd61206efd86e6"
+        }
+      ]
+    },
+    {
+      "executableSha256": "ef5f6c5b2e1b0768dcd5cfa3a1826c413abf1f001ff7484341c8533043ca8612",
+      "manifestSha256": "890a64112e1fd99bce7c472ad92e5824b2248b4c19d32b417a8d91e7acfbadbf",
+      "harnessSha256": "2ae832a27e146ec666708e051b0fc62bcb4c599add820813845a6ea4c013bd5a",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "guiHelperSha256": "52d17dfb6574a572c60debcb6a1617f67108a40f37556c4a26be58b86c7c31b3",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-preview-x11",
+      "report": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/results.json",
+      "reportSha256": "0327ea08e78c26ee5ef7183d7b4c3a3740b757d94c20608e90da4227e0d4ea5a",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Intermediate package: X11 and Wayland normal Stop/restart passed; source-loss run restored decoded publishing but preview observation stopped because the replacement Chrome window retained focus. A guarded desktop focus switch was added. This package precedes stale-description clearing on source-mode changes.",
+      "preview": {
+        "idle-13735": {
+          "role": "image",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "a24327e093f2587885969198c5a6304979dc87b5d3c43b1b6ccd914bfdae4b9b"
+        },
+        "idle-51546": {
+          "role": "image",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "35771b6554f67e894a7f123e3341336c5f6a7471a5dddc0d10854260bf3a636e"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "05db2fece133c95f214cab156dca6e84d8b935160c0bbc9b9c859eba8abb496a"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "1a40e9c35905b520cb7148067467733a83551120174f6c3714c95e84062a5473"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "d72aa381e8658a42f249b210cca45965059e76d2ec60481a8183cac201d01d8b"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "3dd5676e1db011bc85011fca677b24a429896951a65a2f966898a9b1489f7234"
+        }
+      },
+      "guiStopSettled": true,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 177,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 88,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/preview-idle-13735.png",
+          "sha256": "a24327e093f2587885969198c5a6304979dc87b5d3c43b1b6ccd914bfdae4b9b"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/preview-idle-51546.png",
+          "sha256": "35771b6554f67e894a7f123e3341336c5f6a7471a5dddc0d10854260bf3a636e"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/preview-live-13735.png",
+          "sha256": "05db2fece133c95f214cab156dca6e84d8b935160c0bbc9b9c859eba8abb496a"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/preview-live-51546.png",
+          "sha256": "1a40e9c35905b520cb7148067467733a83551120174f6c3714c95e84062a5473"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/preview-resized-13735.png",
+          "sha256": "d72aa381e8658a42f249b210cca45965059e76d2ec60481a8183cac201d01d8b"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-complete/e38663bc-c0cf-4c3b-87fd-31df02eb3bf1/preview-resized-51546.png",
+          "sha256": "3dd5676e1db011bc85011fca677b24a429896951a65a2f966898a9b1489f7234"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "657a854f942906f91d3df5e2f4b734ee1eb8eaf34e4a29caebd53e796f03ef36",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "9c1b4d784d9e3d90f1b92f24fb0b662561da107980fd73276e283a3c3563d017",
+      "guiHelperSha256": "deb8838c7a4570584f2e28b738febe216ff37c0f49e481e932934d55bd43f426",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "backend": "linux-preview-x11",
+      "report": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/results.json",
+      "reportSha256": "5522c66ea81cef975e0a9272e6a5927fe35917a19d5db6f64715e8b9950dc376",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Final packaged workflow passed actual preview pixel identities and independent decoded H264 moving/static/resize/late-viewer reception. X11 includes covered-window idle and live previews. Wayland includes idle permission guidance without capture, live/resize previews, pixel clearing on Stop or source loss, and explicit fresh-portal restart/replacement. This is bounded qualification, not full GUI or pre-publish Wayland preview parity.",
+      "preview": {
+        "idle-13735": {
+          "role": "image",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "2ea400a14bc85e254c934fb4c59f98c2d168fafe7f8798805df339e898386b91"
+        },
+        "idle-51546": {
+          "role": "image",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "18fd0bfc197e43216d4c9ee5030a49b59ba29e6f4718f30466c1d58a00c831ff"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "5470435c0a6175f25da6a0fa80674a3562bacac13534a117383bda6562c48180"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "e4764cd8ee1f14cfbee9678c94bfb9daf8f3d33b08900d5c44d998f3dac966da"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "de050cd63b667b55521f7210cba15acc3d26f2eed66e2c26bb7d7c18c3c159ee"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            980,
+            720
+          ],
+          "imageSize": [
+            980,
+            720
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "03acdf863c4268f91d5da3a82fdfe8f81643406adb051bc553a75b47166ea3fb"
+        }
+      },
+      "guiStopSettled": true,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 176,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 89,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/preview-idle-13735.png",
+          "sha256": "2ea400a14bc85e254c934fb4c59f98c2d168fafe7f8798805df339e898386b91"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/preview-idle-51546.png",
+          "sha256": "18fd0bfc197e43216d4c9ee5030a49b59ba29e6f4718f30466c1d58a00c831ff"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/preview-live-13735.png",
+          "sha256": "5470435c0a6175f25da6a0fa80674a3562bacac13534a117383bda6562c48180"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/preview-live-51546.png",
+          "sha256": "e4764cd8ee1f14cfbee9678c94bfb9daf8f3d33b08900d5c44d998f3dac966da"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/preview-resized-13735.png",
+          "sha256": "de050cd63b667b55521f7210cba15acc3d26f2eed66e2c26bb7d7c18c3c159ee"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/2863ef35-f65a-4080-abb7-cf1ff387e5c0/preview-resized-51546.png",
+          "sha256": "03acdf863c4268f91d5da3a82fdfe8f81643406adb051bc553a75b47166ea3fb"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "657a854f942906f91d3df5e2f4b734ee1eb8eaf34e4a29caebd53e796f03ef36",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "9c1b4d784d9e3d90f1b92f24fb0b662561da107980fd73276e283a3c3563d017",
+      "guiHelperSha256": "deb8838c7a4570584f2e28b738febe216ff37c0f49e481e932934d55bd43f426",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "portalJournalSha256": "5ce49df306e15e0c73b621e9aa43b12d0f990d40f1db2b4a1d783653ef2f2e16",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/results.json",
+      "reportSha256": "67902c4b4cffc1612af54ebbf177af66f741efb05dfff5330ba2b12e420fa7b2",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": true,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Final packaged workflow passed actual preview pixel identities and independent decoded H264 moving/static/resize/late-viewer reception. X11 includes covered-window idle and live previews. Wayland includes idle permission guidance without capture, live/resize previews, pixel clearing on Stop or source loss, and explicit fresh-portal restart/replacement. This is bounded qualification, not full GUI or pre-publish Wayland preview parity.",
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "3e24489243ea6ccf0a7f21b2f1fb35157e52876d8275d89e273da53c1bca8f86"
+        },
+        "camera-mode": {
+          "role": "label",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        "window-mode-restored": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "96df2fade2c7dc53e0003e9dc6e48d2e37f583d2783aceac6d412d2c6f1dc8b4"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "a8942e68846040de6a7d1d35f93d232d650477773df1bb5a4b782460ca049390"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "422a8d65a2478a0931454e92b104634d0419e66f20b5bf7580d236271cbe7696"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "43a2abf7b346ce3ed0bdecd3716c16415c6c70c18f2f1a8feda62c3c88e64fc9"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "a4a3995d0e73e85ebff562fc0adbf68e921a29094e2654297b3b6a6eb2dcb543"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "ec0575b0aba91d9958fecd992c2ecb35901bd63918014d66fa39bafe01bf7896"
+        },
+        "restarted-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "808e056ee3a4b9275334878e130fa629963f3613ffc3e2ba63807d8595c0838b"
+        },
+        "restarted-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "6607ed8cfd0e567368877a5faaa870120d4424fcd5af02ac336cec14f53b76b1"
+        }
+      },
+      "previewModeSwitchPassed": true,
+      "guiRestartPassed": true,
+      "guiSourceLossPassed": true,
+      "guiSourceLossSettled": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 178,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 87,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "restarted": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-camera-mode.png",
+          "sha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-idle.png",
+          "sha256": "3e24489243ea6ccf0a7f21b2f1fb35157e52876d8275d89e273da53c1bca8f86"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-live-13735.png",
+          "sha256": "a8942e68846040de6a7d1d35f93d232d650477773df1bb5a4b782460ca049390"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-live-51546.png",
+          "sha256": "422a8d65a2478a0931454e92b104634d0419e66f20b5bf7580d236271cbe7696"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-resized-13735.png",
+          "sha256": "43a2abf7b346ce3ed0bdecd3716c16415c6c70c18f2f1a8feda62c3c88e64fc9"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-resized-51546.png",
+          "sha256": "a4a3995d0e73e85ebff562fc0adbf68e921a29094e2654297b3b6a6eb2dcb543"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-restarted-13735.png",
+          "sha256": "808e056ee3a4b9275334878e130fa629963f3613ffc3e2ba63807d8595c0838b"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-restarted-51546.png",
+          "sha256": "6607ed8cfd0e567368877a5faaa870120d4424fcd5af02ac336cec14f53b76b1"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-stopped.png",
+          "sha256": "ec0575b0aba91d9958fecd992c2ecb35901bd63918014d66fa39bafe01bf7896"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/a3d16c6c-3d9b-4416-9f37-bc8f3f91f6e9/preview-window-mode-restored.png",
+          "sha256": "96df2fade2c7dc53e0003e9dc6e48d2e37f583d2783aceac6d412d2c6f1dc8b4"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "657a854f942906f91d3df5e2f4b734ee1eb8eaf34e4a29caebd53e796f03ef36",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "9c1b4d784d9e3d90f1b92f24fb0b662561da107980fd73276e283a3c3563d017",
+      "guiHelperSha256": "deb8838c7a4570584f2e28b738febe216ff37c0f49e481e932934d55bd43f426",
+      "previewObserverSha256": "eedd0a5b4a5e9f813d9413820ce610b2e08a77aebb2f70ea236a99dc5e2f08c3",
+      "portalJournalSha256": "614046df207b132fad962a8743507186271900943cfd580a02ea65eae432fc97",
+      "backend": "linux-preview-wayland",
+      "report": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/results.json",
+      "reportSha256": "c2a26a84af81ac65a907e756486b293696e0d4fb4ffb1903be3b06a445dea0df",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "preview": true,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Final packaged workflow passed actual preview pixel identities and independent decoded H264 moving/static/resize/late-viewer reception. X11 includes covered-window idle and live previews. Wayland includes idle permission guidance without capture, live/resize previews, pixel clearing on Stop or source loss, and explicit fresh-portal restart/replacement. This is bounded qualification, not full GUI or pre-publish Wayland preview parity.",
+      "preview": {
+        "idle": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "d58b698b03d1d1cc6afc74d18b52bfc6ee7da59c18fa2d446c71b7c0d1e55f22"
+        },
+        "camera-mode": {
+          "role": "label",
+          "description": "",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        "window-mode-restored": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "554a5ef1674ced24d277d293e966f20f6ecd6e5b23545abf73f6a446eb5b9070"
+        },
+        "live-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "30a7aca38dce342006f5ac5b5dc3cf30d8858ca2126f45828e2a32cbbdf0cc9a"
+        },
+        "live-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 62,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "cd297152dd60357da100cd6791fdf37833538e7a6e4a0b664fd52c466fd8a432"
+        },
+        "resized-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "1afef052e764e1792e29f13612e23da07a6960245fbf74fb1b0de53fdf5dc475"
+        },
+        "resized-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "90f16c1fb62c76c082277e22e928e37f02d144e1351946b4540ab03aef3754c2"
+        },
+        "stopped": {
+          "role": "label",
+          "description": "Go live and choose a window to start its preview.\nYour desktop will ask for permission.",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 0,
+          "identities": [],
+          "expected": "none",
+          "screenshotSha256": "8319ea27e0141c2d400618883bf56aa4c52f0c81e465763d45dc9ba025b0f585"
+        },
+        "restarted-13735": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            13735
+          ],
+          "expected": "13735",
+          "screenshotSha256": "1afef052e764e1792e29f13612e23da07a6960245fbf74fb1b0de53fdf5dc475"
+        },
+        "restarted-51546": {
+          "role": "image",
+          "description": "Live preview of the selected window",
+          "text": "",
+          "frame": [
+            0,
+            0,
+            760,
+            520
+          ],
+          "imageSize": [
+            766,
+            553
+          ],
+          "decodedRows": 56,
+          "identities": [
+            51546
+          ],
+          "expected": "51546",
+          "screenshotSha256": "90f16c1fb62c76c082277e22e928e37f02d144e1351946b4540ab03aef3754c2"
+        }
+      },
+      "previewModeSwitchPassed": true,
+      "guiStopSettled": true,
+      "guiRestartPassed": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 176,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 88,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "restarted": {
+          "distinctIdentities": 116,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-camera-mode.png",
+          "sha256": "0059afd4bde906fadce503b99f3a708aac7b4a5dee03d9b841438f3e3058cd40"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-idle.png",
+          "sha256": "d58b698b03d1d1cc6afc74d18b52bfc6ee7da59c18fa2d446c71b7c0d1e55f22"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-live-13735.png",
+          "sha256": "30a7aca38dce342006f5ac5b5dc3cf30d8858ca2126f45828e2a32cbbdf0cc9a"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-live-51546.png",
+          "sha256": "cd297152dd60357da100cd6791fdf37833538e7a6e4a0b664fd52c466fd8a432"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-resized-13735.png",
+          "sha256": "1afef052e764e1792e29f13612e23da07a6960245fbf74fb1b0de53fdf5dc475"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-resized-51546.png",
+          "sha256": "90f16c1fb62c76c082277e22e928e37f02d144e1351946b4540ab03aef3754c2"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-restarted-13735.png",
+          "sha256": "1afef052e764e1792e29f13612e23da07a6960245fbf74fb1b0de53fdf5dc475"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-restarted-51546.png",
+          "sha256": "90f16c1fb62c76c082277e22e928e37f02d144e1351946b4540ab03aef3754c2"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-stopped.png",
+          "sha256": "8319ea27e0141c2d400618883bf56aa4c52f0c81e465763d45dc9ba025b0f585"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-preview-release-workflows/ab2c3546-24ce-46cb-8ffb-c64862cd5b8f/preview-window-mode-restored.png",
+          "sha256": "554a5ef1674ced24d277d293e966f20f6ecd6e5b23545abf73f6a446eb5b9070"
+        }
+      ]
     }
   ],
   "host_environment": {
@@ -8615,5 +10572,37 @@
       }
     ],
     "cross_platform": "New state and GUI behavior are Linux-conditional. Windows/macOS runtime regression remains unqualified."
+  },
+  "preview_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-1964dd34f395-898faa664d6e.deb",
+    "sha256": "cfe3285f22624115e4e00dd89d9ca61cb640d6e70c896c3f6dd9fbef979859d5",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-1964dd34f395-898faa664d6e",
+    "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+    "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+    "qualification": "Development checkpoint: final Debian payload passed X11 idle/live/resized preview, native GNOME Wayland idle guidance/live/resized preview/Stop/fresh-portal restart, and Wayland source-loss clearing/explicit replacement restart. Actual screenshot barcode identities verified preview content; independent browser verified publishing. Linux window preview reuses cached capture frames and the camera display path. X11 idle thumbnails use at most 64 redirected windows, expire after 10 seconds without requests (five-second cleanup timer), and close with the application. Non-Linux source-mode admission and camera display behavior are preserved in code but Windows/macOS regression remains unqualified.",
+    "cleanupReport": "native-qt/qa/reports/linux-preview-release-workflows/cleanup.json",
+    "cleanupReportSha256": "1ee0214b5c0ab66165b71d99d5056f0a77f622e959147382b0208c91f374c042"
+  },
+  "preview_gates": {
+    "classification": "Release build, packaging, syntax and diff checks are gates, not application testing.",
+    "passed": true,
+    "logs": [
+      {
+        "path": "native-qt/build-linux-preview-x11-final.log",
+        "sha256": "09485a24debcfff8da634471208fe86c6ad0b0f17e7f7b20692687ff057955fe"
+      },
+      {
+        "path": "native-qt/build-linux-preview-final.log",
+        "sha256": "c0f358cb967b1ad40354fc029a463fc5e63bccdb366b89f9c0c906dec70525b9"
+      },
+      {
+        "path": "native-qt/build-linux-preview-final-package.log",
+        "sha256": "87a1cff3aeb1a05ff96e03f17e6a366d1ba324cdaf8f72f03f90045217341672"
+      },
+      {
+        "path": "native-qt/build-linux-preview-gates.log",
+        "sha256": "e8c09658c81a654c2cf57ec7cf897cb9752f4fc72131bed9ad5f9ade7fdc5571"
+      }
+    ]
   }
 }
