@@ -29,3 +29,5 @@ Both earlier unsuccessful attempts remain preserved:
 Compilation, dependency inspection, package hashes and fixture checks are gates. The GUI and decoded-media workflows above are application testing. Remaining Windows coverage includes physical GPU encoders, audio/input devices, GUI publishing, external outputs/recovery, sustained workloads, installer/portable launch and representative Windows 10/11 machines.
 
 [Allowlisted observations and all attempts](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-17-apple-m1-independent/windows-measurements.json) bind the package and harnesses. Freeze `0f1759e7-253c-4fd4-ae4a-8bab3a9499f1` retains both failures and the pass, alongside the [independent Mac reception evidence](macos-independent-receiver-2026-10-17.md). No release asset was replaced.
+
+Later qualification found and fixed an intermittent atomic-snapshot replacement failure. See the [failure, native diagnosis and 70-assertion packaged follow-up](windows-atomic-snapshot-2026-10-17.md). Earlier results retain their original source and artifact bindings.

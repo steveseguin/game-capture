@@ -1,5 +1,7 @@
 # Mac viewer teardown qualification — 2026-10-17
 
+**Follow-up:** [Windows atomic snapshot fix, Mac shutdown verification and complete x264 teardown observations](windows-atomic-snapshot-2026-10-17.md). The fixed Windows package passes 70/70 assertions; the x264 counter gate remains failed.
+
 This follow-up adds failure diagnostics and exercises actual packaged-app viewer departure/rejoin. It is **not a production sign-off or an encoding-quality comparison**. The Windows production release and public Mac beta are unchanged.
 
 The local Mac qualification bundle is Developer ID signed, but this new bundle has not been notarized or released. Source: `3a0a17cd4f51da9ede378135663b49cfd072fafa`; executable SHA-256: `18b97911d53ebfda305053fa3c6fa87579dab356660ca6d403c814b6903d583e`. The earlier notarized timer candidate (`77e887a`, executable `dc4311…`) is the comparison baseline. Host: Apple M1, macOS 26.4.1, 8 GiB; same-host Chromium viewers and an owned moving-barcode/stereo-tone window. Requested output: H.264, 1920×1080, 60 fps, 8 Mbps; captured source: 1920×930 fitted into the output. These short workflows do not qualify sustained cadence or physical playback.
@@ -25,9 +27,9 @@ Two earlier VT attempts are also retained: one expected immediate logical-sessio
 
 ## Windows regression qualification
 
-[Packaged Windows run 39080791998](https://github.com/steveseguin/game-capture/actions/runs/39080791998), built from the same `3a0a17c` source, passed software H.264 window capture, static pacing, resize, late join, and source-loss exit. Its shutdown workflow passed six of seven assertions, including 72,208 reads with no incomplete JSON and preservation of a deliberately locked snapshot. It failed to replace the ordinary shutdown snapshot. Windows regression qualification is **open**; the previous passing run does not cover this failure.
+[Packaged Windows run 39080791998](https://github.com/steveseguin/game-capture/actions/runs/39080791998), built from the same `3a0a17c` source, passed software H.264 window capture, static pacing, resize, late join, and source-loss exit. Its shutdown workflow passed six of seven assertions, including 72,208 reads with no incomplete JSON and preservation of a deliberately locked snapshot. It failed to replace the ordinary shutdown snapshot. This reopened Windows regression qualification; the previous passing run did not cover the failure. The subsequent fix and focused passing workflows are linked above.
 
-A separate native Windows API probe reproduced replacement failure while a destination reader was open, including delete-sharing readers, and success after reader closure. That probe is a gate, not application testing. A bounded atomic-commit retry and repeated packaged qualification are being evaluated separately; they are not included in the Mac binary above.
+A separate native Windows API probe reproduced replacement failure while a destination reader was open, including delete-sharing readers, and success after reader closure. That probe is a gate, not application testing. The subsequent bounded atomic-commit retry and repeated packaged qualification are recorded in the follow-up; that fix is not included in the Mac binary above.
 
 ## Evidence and remaining work
 
@@ -35,6 +37,6 @@ The export includes measured picture identities, stereo observations, counter sn
 
 All 39 Mac application compilation units were rebuilt, Developer ID signatures verified, and focused native classification/concurrency gates passed. These are gates, separate from the packaged workflows above. The C++ gates verify the unchanged boolean send behavior and negotiated sends across reset/shutdown; they are not end-to-end media testing.
 
-Still open: the send/track-close exception race, appropriate abrupt-disconnect timing criteria, repeated Windows snapshot qualification, and the previously documented physical-device, minimum-OS, accessibility, external-output and endurance requirements. There is no new production-readiness claim.
+Still open: the send/track-close exception race, appropriate abrupt-disconnect timing criteria, broader Windows qualification, and the previously documented physical-device, minimum-OS, accessibility, external-output and endurance requirements. There is no new production-readiness claim.
 
 [Machine-readable measurements](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-17-apple-m1-viewer-teardown).
