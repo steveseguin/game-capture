@@ -19,6 +19,9 @@ assert(opts['combined-audio-loss'] !== 'true' || (communications && communicatio
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
 const continuousApps=opts['continuous-app-audio']==='true';
 assert(!continuousApps||(matrix==='apps'&&!wayland),'Continuous app diagnostic currently requires explicit X11 CLI apps');
+const appOutputMoves=Number(opts['app-output-moves']||1);
+assert(Number.isInteger(appOutputMoves)&&appOutputMoves>=1&&appOutputMoves<=5,'App output moves must be 1..5');
+assert(appOutputMoves===1||continuousApps,'Repeated output moves require the continuous app diagnostic');
 const continuity=continuousApps?require('./linux-app-audio-continuity'):null;
 assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
@@ -42,7 +45,7 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
-if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
+if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 const pactl = (...args) => execFileSync('pactl', args, {encoding:'utf8', timeout:5000}).trim();
 const modules = [], tones = []; let sourceBrowser, viewerBrowser, publisher, log, control, discovery, appSource, portalSelector, keyboardServer, keyboardDirectory, portalOwner;
@@ -346,10 +349,16 @@ function barriers() {
         await appSource.command({extra:false}); await sample('secondStreamRemoved', {microphoneOff:true});
         await appSource.command({primary:false}); await sample('noStreams', {silent:true});
         await appSource.command({primary:true}); await sample('streamRecreated', {microphoneOff:true});
-        const playback = JSON.parse(pactl('-f', 'json', 'list', 'sink-inputs')).filter(row => Number(row.properties['application.process.id']) === appSource.child.pid);
-        assert.equal(playback.length, 1);
-        pactl('move-sink-input', String(playback[0].index), sinkName);
-        await sample('outputMoved', {microphoneOff:true});
+        entry.outputMoves=[];
+        for(let move=0;move<appOutputMoves;move++) {
+          const playback = JSON.parse(pactl('-f', 'json', 'list', 'sink-inputs')).filter(row => Number(row.properties['application.process.id']) === appSource.child.pid);
+          assert.equal(playback.length, 1);
+          const destination=move%2===0?sinkName:defaultSink;
+          const transition={playbackIndex:playback[0].index,destination,requestedAtMs:Date.now()};
+          pactl('move-sink-input', String(playback[0].index), destination);
+          transition.completedAtMs=Date.now();entry.outputMoves.push(transition);save();
+          await sample(move===0?'outputMoved':'outputMoved'+(move+1), {microphoneOff:true});
+        }
         const late = await receiver(viewerBrowser, stream, publisher);
         entry.lateAudio = await observeAudio(late); requireAudio(entry.lateAudio, 'App late viewer', {excluded:true});
         await late.close();

@@ -34,8 +34,8 @@
     {
       "id": "application-audio",
       "required": true,
-      "status": "bounded-e2e-passed",
-      "remaining": "The readiness-driven Linux candidate passes bounded CLI and Qt GUI selected-app lifecycle, notices, stale-selection rejection and explicit reselection. All nine continuous receiver phases pass their 100 ms tone/clock checks, but native timing exposes short transition coverage gaps, including 667 uncovered tap frames (~13.9 ms) on an output move. This is not glitch-free qualification. Required: finer-grained transition PCM, fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load and physical-output conditions, calibrated A/V startup and final-package endurance. Desktop-reference startup still reaches +61.5 ms against 50 ms. See linux_app_audio_readiness_checkpoint and earlier evidence."
+      "status": "partial-e2e-passed",
+      "remaining": "Packaged CLI and GUI selection/lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Finer 10 ms receiver levels expose a delayed dip after full stream recreation; continuous qualification is incomplete. Healthy direct monitors now survive output moves, with targeted repeated-move evidence in linux_app_monitor_retention_checkpoint. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance."
     },
     {
       "id": "system-audio",
@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Readiness-driven audio passes bounded X11 cadence/PCM but desktop-reference startup still reaches +61.5 ms against 50 ms; absolute zero-offset calibration remains unresolved. Deliberate +/-150 ms stimulus-response controls do not waive absolute timing. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but initial skew reached +76 ms; it does not qualify current audio behavior. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior native Wayland pilot failed all six delivery windows at 47\u201349 fps and its source fell below 57 fps in three; isolate source/compositor/PipeWire throughput. High-motion content and higher profiles need separate evidence. See x11_damage_endurance_checkpoint, av_desktop_reference_checkpoint, av_desktop_delay_controls_checkpoint and linux_app_audio_readiness_checkpoint."
+      "remaining": "Final Linux audio behavior has changed again to retain healthy direct monitors and react to playback events. The current bounded A/V results are in linux_app_monitor_retention_checkpoint; they do not establish absolute software-reference calibration or endurance. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but failed initial A/V skew; it does not qualify current behavior. Prior native Wayland delivery was 47\u201349 fps with source cadence also below target in three windows; isolate source/compositor/PipeWire throughput. Higher profiles and high-motion content require separate evidence."
     },
     {
       "id": "arm-portability",
@@ -22532,6 +22532,756 @@
         "sha256": "dc6f5b69fa87b46a9d73d6204a3575fe4f38f777d39bca36a1c67b00aa9d59d0",
         "passed": true
       }
+    },
+    {
+      "case": "baseline",
+      "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/results.json",
+      "reportSha256": "e1b5ecf1d9051de7941e6cd1b834fccb7b808e2af00c6dbe03d9b763e2f94a2a",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "f3660d9e4c1d2e64bc9c1fd3d2fe9da295a2de2d602022455a9b27d927dd7c97",
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+      "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+      "continuousPhases": [
+        {
+          "label": "initial",
+          "passed": true,
+          "checkedShortWindows": 600,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.10503974682617775,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/initial-continuous.json.gz",
+            "sha256": "5742697c4b3786589880ccec2970fdd1a09a406cffe15c71bab97cc83b6cdd0a"
+          }
+        },
+        {
+          "label": "childJoined",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.10499253593515526,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 873,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/childJoined-continuous.json.gz",
+            "sha256": "3788e9c61a3c90254a15ed3027c23d0abfcabb455efdf351c9175290152eb46e"
+          }
+        },
+        {
+          "label": "childRemoved",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.1038497471687297,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/childRemoved-continuous.json.gz",
+            "sha256": "83c24057a877c579ad0c61966f83587df57e4bc01c55885f29fa976a7887f291"
+          }
+        },
+        {
+          "label": "secondStreamSameProcess",
+          "passed": true,
+          "checkedShortWindows": 440,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.10490744599324256,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 962,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/secondStreamSameProcess-continuous.json.gz",
+            "sha256": "972045ad9849ecac06e56e2f2cd9ebe179f3109b9452f2fa454a617dc8a1d1a5"
+          }
+        },
+        {
+          "label": "secondStreamRemoved",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.1024666711217165,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/secondStreamRemoved-continuous.json.gz",
+            "sha256": "2a1f6fe50d994e7b87319031d30048dcc6ad271a0aca7c89b2ed3f9d0f06a683"
+          }
+        },
+        {
+          "label": "noStreams",
+          "passed": true,
+          "checkedShortWindows": 400,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/noStreams-continuous.json.gz",
+            "sha256": "25c4bba5a3f5e82233202a13badd866210b1ada8d053d9b7ecf5145134832fa8"
+          }
+        },
+        {
+          "label": "streamRecreated",
+          "passed": true,
+          "checkedShortWindows": 410,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 1525,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/streamRecreated-continuous.json.gz",
+            "sha256": "144ea355de4a91fc85854f2bdf611d4cc228fcd519de813155935cbd9137dc22"
+          }
+        },
+        {
+          "label": "outputMoved",
+          "passed": true,
+          "checkedShortWindows": 430,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.03238727346357234,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 743,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/outputMoved-continuous.json.gz",
+            "sha256": "b57c398257319f9e57fd281ac0593a4d175e1a121ce8c4eff206d7c86635e263"
+          }
+        },
+        {
+          "label": "lateViewer",
+          "passed": true,
+          "checkedShortWindows": 440,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.001,
+          "minimum10msRms": 0.10495423578951926,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/lateViewer-continuous.json.gz",
+            "sha256": "2b7d93cd964e8cb1a508db3901ec435911e4044fc81b04e961fca947e78988f0"
+          }
+        }
+      ],
+      "rawPcmRowsIndependentlyRecomputed": 4,
+      "continuityPassed": true,
+      "finerLevelReanalysis": {
+        "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/finer-level-analysis/analysis.json",
+        "sha256": "986c32790cdbcc676b19b791512f97e6a2e287ad1302fb63e9ee9b3ef18a69a1",
+        "passed": false,
+        "failedPhases": [
+          "streamRecreated",
+          "outputMoved"
+        ],
+        "scope": "Original run used a 0.001 RMS silence threshold. Unchanged raw summaries subsequently fail the fixture-specific 0.05 RMS floor; original result is preserved."
+      },
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/linux-audio-timing.json",
+        "sha256": "c43bea9263d5df6ca4ce93bcd68f40db85e89846a06cc4c608254cff6d75413d",
+        "traceComplete": true,
+        "clockAnchorsIncludingInitial": 5,
+        "discardedInputBlocks": 0,
+        "uncoveredTapFramesAfter2s": 4103,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 2
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/host-cleanup.json",
+        "sha256": "f798a1134520f1ad6d1ca42c1e2960795ccca96d406d809c2f4442eef57b629e",
+        "passed": true
+      }
+    },
+    {
+      "case": "events",
+      "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/results.json",
+      "reportSha256": "5a2510bf406a9a19b5b5063fcce805ca7483177d61c20958774a913fe61236e0",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "f1290e21ad5fe43fc9b09265fd6cccd846ee2e558c8f3b126cd38c374977c552",
+      "manifestSha256": "cd2208badbc07d01888c3cc7163b12e3c5473c613d47fbb1b33eacb1910c2f91",
+      "executableSha256": "39c150b021050843df0f1d6b3bf0ab4fb23ed05c098c6ad65624e883c3aba3bd",
+      "continuousPhases": [
+        {
+          "label": "initial",
+          "passed": true,
+          "checkedShortWindows": 600,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1050495529680012,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/initial-continuous.json.gz",
+            "sha256": "e5e37e50c15b8b6bf55a975b2beac6f74728c31e3939acab34622ed1cc37ed17"
+          }
+        },
+        {
+          "label": "childJoined",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1050495529680012,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 1001,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/childJoined-continuous.json.gz",
+            "sha256": "02a1fea6ca0564d8827693d5a08363908317f7bbd15fe5c942d350cafc59ffa6"
+          }
+        },
+        {
+          "label": "childRemoved",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10442395075462375,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/childRemoved-continuous.json.gz",
+            "sha256": "0852af2d3d8577f2a65e7d72917406651efaf8f55584246e4021175adc5bdff5"
+          }
+        },
+        {
+          "label": "secondStreamSameProcess",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10499703788660004,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 669,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/secondStreamSameProcess-continuous.json.gz",
+            "sha256": "fabf88255031b35d7c928b9da8144bddf1669eb8852fc6c3b6fb19f62b9971b9"
+          }
+        },
+        {
+          "label": "secondStreamRemoved",
+          "passed": true,
+          "checkedShortWindows": 440,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10480002609531025,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/secondStreamRemoved-continuous.json.gz",
+            "sha256": "7ec22b737ce3b7650611a660142c1a7904fe04dbe5d5c7252fd5690ffb64256b"
+          }
+        },
+        {
+          "label": "noStreams",
+          "passed": true,
+          "checkedShortWindows": 400,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/noStreams-continuous.json.gz",
+            "sha256": "369ca204a347c2973ed14dff9a2e177403f7d89b3c4281300ebc05ac347577f7"
+          }
+        },
+        {
+          "label": "streamRecreated",
+          "passed": false,
+          "checkedShortWindows": 410,
+          "shortLevelFailures": 1,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 1748,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/streamRecreated-continuous.json.gz",
+            "sha256": "31f10c68f62528aa40bec6eaf5eb4e7b67df7ac9b26beda88cf7e975a2d7ff28"
+          }
+        },
+        {
+          "label": "outputMoved",
+          "passed": false,
+          "checkedShortWindows": 430,
+          "shortLevelFailures": 1,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 9.417771917176114e-05,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 917,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/outputMoved-continuous.json.gz",
+            "sha256": "fedd3a5601845374d517d56515859db59c067317f1861a4d77e4cd2f41a746ea"
+          }
+        },
+        {
+          "label": "lateViewer",
+          "passed": true,
+          "checkedShortWindows": 470,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1052502538248382,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/lateViewer-continuous.json.gz",
+            "sha256": "060b2da2bd3638b6796460ee9fc87ad04e881acc6beacdd7acb9f028261a4550"
+          }
+        }
+      ],
+      "rawPcmRowsIndependentlyRecomputed": 5,
+      "continuityPassed": false,
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/linux-audio-timing.json",
+        "sha256": "6f524e394955308324caa7603e2b85bea10a1e7a098fb07ee9e68aecc2398718",
+        "traceComplete": true,
+        "clockAnchorsIncludingInitial": 5,
+        "discardedInputBlocks": 0,
+        "uncoveredTapFramesAfter2s": 4335,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 2
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/host-cleanup.json",
+        "sha256": "58aa7e3f3aadf6aa6c41e52931546dec981889a16ef6238d6a48de1b698be82d",
+        "passed": true
+      }
+    },
+    {
+      "case": "retain",
+      "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/results.json",
+      "reportSha256": "447139abb4c2e2a4dece1477b324253dd4f1b5b2466d6ef9c29a8c6d24ac993c",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "continuousPhases": [
+        {
+          "label": "initial",
+          "passed": true,
+          "checkedShortWindows": 600,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1045814733005428,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/initial-continuous.json.gz",
+            "sha256": "950d8ee17f83bf827c06c505424a2c287fc7655e7a03e9a93a958eb6e1824d91"
+          }
+        },
+        {
+          "label": "childJoined",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1045814733005428,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 909,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/childJoined-continuous.json.gz",
+            "sha256": "684f4b53eeba642e31be5410611c2dc7a7c137097a3fc5d654464b23e008a61d"
+          }
+        },
+        {
+          "label": "childRemoved",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10416323147681492,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/childRemoved-continuous.json.gz",
+            "sha256": "0544f6b7356affaceb7576cf8480c56c51d4ce2c7fba5f2fc2624cee0ddaca6e"
+          }
+        },
+        {
+          "label": "secondStreamSameProcess",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10456748161260193,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 799,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/secondStreamSameProcess-continuous.json.gz",
+            "sha256": "eabd4e7e7360f0634b524ea798591f2220f71827afb776472601e8a88b2f9f1e"
+          }
+        },
+        {
+          "label": "secondStreamRemoved",
+          "passed": true,
+          "checkedShortWindows": 440,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10458168919815103,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/secondStreamRemoved-continuous.json.gz",
+            "sha256": "b9e42cd026c7f226af3e596bc62e4db68a978b397228e75800c9ce7e7957f0a5"
+          }
+        },
+        {
+          "label": "noStreams",
+          "passed": true,
+          "checkedShortWindows": 400,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/noStreams-continuous.json.gz",
+            "sha256": "384dbe5d0687002d1d1944104a7372e8920a6c50bff1e8f3e424bd985f684a44"
+          }
+        },
+        {
+          "label": "streamRecreated",
+          "passed": false,
+          "checkedShortWindows": 410,
+          "shortLevelFailures": 1,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 1432,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/streamRecreated-continuous.json.gz",
+            "sha256": "bc5935a7b732d199e39c5376f83b0f29a472651a837f5333446cff6a65f3f25b"
+          }
+        },
+        {
+          "label": "outputMoved",
+          "passed": true,
+          "checkedShortWindows": 430,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10478850845373743,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/outputMoved-continuous.json.gz",
+            "sha256": "f064ca1c42e208de42f59c0187feb4d4c041a4f3f760d3b63d4001d041a67169"
+          }
+        },
+        {
+          "label": "lateViewer",
+          "passed": true,
+          "checkedShortWindows": 470,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10478850845373743,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/lateViewer-continuous.json.gz",
+            "sha256": "1e72719ab81dfc454fc8dc0559400e3e67d9572fe46eb7de15a7f27b71b6a8e5"
+          }
+        }
+      ],
+      "rawPcmRowsIndependentlyRecomputed": 4,
+      "continuityPassed": false,
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/linux-audio-timing.json",
+        "sha256": "6ea51c1f9f32b31aef4e32d903d3a9ea99867d9787f204cc79636d59a5d0454f",
+        "traceComplete": true,
+        "clockAnchorsIncludingInitial": 4,
+        "discardedInputBlocks": 0,
+        "uncoveredTapFramesAfter2s": 3140,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 2
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/host-cleanup.json",
+        "sha256": "b591264708db65f9432b2a5b131e2ccc956b0f38cbf724498d25d5f52fd0e9c6",
+        "passed": true
+      }
+    },
+    {
+      "case": "gui",
+      "report": "native-qt/qa/reports/linux-audio-retain-apps-gui/952659ef-7ed6-4019-bf7c-0c0fb680b072/results.json",
+      "reportSha256": "a214ce0c25f7a483cd9ae75142aae3830ccae286fb83fb7ce1d8df760bbc9493",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "caseStages": [
+        "video",
+        "audio",
+        "healthyAudioHasNoWarning",
+        "childJoined",
+        "childRemoved",
+        "secondStreamSameProcess",
+        "secondStreamRemoved",
+        "noStreams",
+        "streamRecreated",
+        "outputMoved",
+        "lateAudio",
+        "noAudioAfterAppExit",
+        "appLossWarningVisible",
+        "videoAfterAppExit",
+        "guiStopSettled",
+        "audioWarningClearedOnStop",
+        "videoWithStaleApp",
+        "staleAppNotReplaced",
+        "staleAppWarningVisible",
+        "afterExplicitReselection",
+        "audioWarningClearedOnExplicitRestart"
+      ],
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-retain-apps-gui/952659ef-7ed6-4019-bf7c-0c0fb680b072/host-cleanup.json",
+        "sha256": "1036840f6809711a0040e24d6ad8fda1138d5487e6f271ffe40a7971190b7d0b",
+        "passed": true
+      }
+    },
+    {
+      "case": "moves",
+      "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/results.json",
+      "reportSha256": "52352ead605fb4b33e4ec7abde6e9615a28e731363ccba51f52be7a188880b5f",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "continuousPhases": [
+        {
+          "label": "initial",
+          "passed": true,
+          "checkedShortWindows": 600,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10474230281311893,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/initial-continuous.json.gz",
+            "sha256": "e76b99aa7baab4bd63a471a896216c609bc0bb1f00163fa91058510c7237cf4d"
+          }
+        },
+        {
+          "label": "childJoined",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10474230281311893,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 943,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/childJoined-continuous.json.gz",
+            "sha256": "6e456c187a1640b4bcb79e47b3f1a296535ec2febeed3c8a8a5f9b8ccbe04ffd"
+          }
+        },
+        {
+          "label": "childRemoved",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10383419024700366,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/childRemoved-continuous.json.gz",
+            "sha256": "be3a1f5d8d910c07399cdb9910130c80386324bdf79506228bee2cec367b094a"
+          }
+        },
+        {
+          "label": "secondStreamSameProcess",
+          "passed": true,
+          "checkedShortWindows": 440,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10474230281311893,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 764,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/secondStreamSameProcess-continuous.json.gz",
+            "sha256": "22058a879b2af35b2688c98f2ae403360af497002cd479381093f144c558b868"
+          }
+        },
+        {
+          "label": "secondStreamRemoved",
+          "passed": true,
+          "checkedShortWindows": 450,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.10368797925370601,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/secondStreamRemoved-continuous.json.gz",
+            "sha256": "473da5a4d3955974ea45c8ae664866640ac79ba5d5d6e0b1183eb3afa85d987d"
+          }
+        },
+        {
+          "label": "noStreams",
+          "passed": true,
+          "checkedShortWindows": 400,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/noStreams-continuous.json.gz",
+            "sha256": "8357d807c97b0950f7ce80a3eb4a91532bfecb75b16b6c47ab56641023812068"
+          }
+        },
+        {
+          "label": "streamRecreated",
+          "passed": false,
+          "checkedShortWindows": 410,
+          "shortLevelFailures": 1,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0,
+          "nativeClockAnchors": 1,
+          "nativeUncoveredTapFrames": 1759,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/streamRecreated-continuous.json.gz",
+            "sha256": "315ba1a3399674501329fd9c24d60bca8516112ad0d369c9f546a0eface4c793"
+          }
+        },
+        {
+          "label": "outputMoved",
+          "passed": true,
+          "checkedShortWindows": 430,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1048387393453089,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/outputMoved-continuous.json.gz",
+            "sha256": "aa1b12b3ba83c42af0e60308cea9dff7c743666a08afeff24ee51739daeaca66"
+          }
+        },
+        {
+          "label": "outputMoved2",
+          "passed": true,
+          "checkedShortWindows": 430,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1048387393453089,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/outputMoved2-continuous.json.gz",
+            "sha256": "ec1995a0d5dea73a4d07bdff1b61c5dc453499ac162bcaa25e75333799bf3773"
+          }
+        },
+        {
+          "label": "outputMoved3",
+          "passed": true,
+          "checkedShortWindows": 430,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1048387393453089,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/outputMoved3-continuous.json.gz",
+            "sha256": "52393a64d62c3ea3e1ac1d2310a7255ae9cbf2f0fee761016be18ddb3d7cd9d0"
+          }
+        },
+        {
+          "label": "lateViewer",
+          "passed": true,
+          "checkedShortWindows": 460,
+          "shortLevelFailures": 0,
+          "shortWindowRmsFloor": 0.05,
+          "minimum10msRms": 0.1048387393453089,
+          "nativeClockAnchors": 0,
+          "nativeUncoveredTapFrames": 0,
+          "raw": {
+            "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/lateViewer-continuous.json.gz",
+            "sha256": "15ef4cd80484062a034efcc7d7d462e6c2da5a792bf735ae890c3c5ea7b578dd"
+          }
+        }
+      ],
+      "rawPcmRowsIndependentlyRecomputed": 4,
+      "continuityPassed": false,
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/linux-audio-timing.json",
+        "sha256": "f25205ee51ce1363420594bf87515f7e30a4d9290e81d6ace307e4e912fcd99d",
+        "traceComplete": true,
+        "clockAnchorsIncludingInitial": 4,
+        "discardedInputBlocks": 0,
+        "uncoveredTapFramesAfter2s": 3466,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 2
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/host-cleanup.json",
+        "sha256": "b39c832756806c5d1d85d8ac9fad704566e2bc59225b26178e9b5d5c41a00be4",
+        "passed": true
+      }
+    },
+    {
+      "case": "av",
+      "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/results.json",
+      "reportSha256": "f7dadf350930068f70bfbdc27a29430ef81bb56f3ce04eb293e8a28f8694fc10",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "packageSha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c",
+      "executableSha256": "0e6f9771336c029456426c89478b81dbbd4a222e671aeadb8edccd74552cc422",
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "defaultObserverHasNoShortWindowFields": true,
+      "analysis": {
+        "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/av-analysis.json",
+        "sha256": "1b750d73ce5e4cd3ad7d60e4a03cdd4be33c5171a779a40dcc2d9d410967dc90",
+        "passed": false
+      },
+      "referenceComparison": {
+        "summary": {
+          "referenceDifferenceMs": {
+            "median": 42.50000000000398,
+            "minimum": 37.50000000000009,
+            "maximum": 46.500000000005315
+          },
+          "receiverMinusBrowserMs": {
+            "median": -18.000000000000682,
+            "minimum": -21.000000000000796,
+            "maximum": 22.999999999999687
+          },
+          "receiverMinusDesktopMs": {
+            "median": 27.50000000000341,
+            "minimum": 19.50000000000074,
+            "maximum": 60.49999999999978
+          }
+        },
+        "calibrated": false,
+        "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/reference-comparison.json",
+        "sha256": "57abc7a94570bc278d0eecb633c5b48f19f12e5ebd887c4b803ae6ae582bdca0"
+      },
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/linux-audio-timing.json",
+        "sha256": "89d6a9b393b188dbc84ad0f04212fc4775031e11399c431fac33c34e888c2c7e",
+        "traceComplete": true,
+        "clockAnchorsIncludingInitial": 1,
+        "discardedInputBlocks": 0,
+        "uncoveredTapFramesAfter2s": 0,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 1
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/host-cleanup.json",
+        "sha256": "afc7b15b2ef32a05da655ca3d360f27330e08651bff0dcc6ed7b94b741cc328f",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -22601,7 +23351,8 @@
     "linux-av-sync.js --source-reference=desktop is an opt-in X11 diagnostic limited to <=60 seconds without hold. It records the owned X11 drawable and dedicated Pulse sink monitor with lossless H264/PCM using one common wall-clock offset, plus simultaneous canvas/WebAudio and receiver recordings. reference-comparison.json compares matching pulses and browser output-clock estimates. This mode deliberately keeps passed=false until independently calibrated; inspect recordingWorkflowPassed, diagnosticPassed, comparison and cleanup separately.",
     "For real stimulus-delay response calibration, run three separate linux-av-sync.js --source-reference=desktop --seconds=30 workflows: zero, --fixture-output-audio-delay-ms=150, and --fixture-video-delay-ms=150. Only the desktop audio branch is delayed in the audio case. Analyze the completed report directories with linux-av-calibrate-desktop.py --baseline=... --audio-delay=... --video-delay=... --reports=... . delayResponsePassed is narrower than absolute timing or application qualification; deliberate controls are prohibited outside diagnostic mode.",
     "linux-av-sync.js --source-reference=desktop --trace-audio=true opts into bounded Linux selected-app input/output timing metadata, writes linux-audio-timing.csv, and verifies its complete footer/hash through linux-audio-timing-report.py. Positive input age means assigned sample time precedes arrival. Trace is disabled in ordinary runs and is not endurance qualification; no PCM content is logged.",
-    "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true records continuous received PCM summaries across app-stream transitions plus opt-in native timing metadata. All clock/integrity windows are checked; only intentional full-source pause/resume has 500 ms content settling. 100 ms tone-window success does not exclude sub-window glitches. Original raw batches and helper hashes are retained."
+    "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true records continuous received PCM summaries across app-stream transitions plus opt-in native timing metadata. All clock/integrity windows are checked; only intentional full-source pause/resume has 500 ms content settling. 100 ms tone-window success does not exclude sub-window glitches. Original raw batches and helper hashes are retained.",
+    "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true --app-output-moves=3 alternates the selected owned app between its original output and the owned fixture output. Each transition retains continuous 10 ms RMS and 100 ms tone evidence, native timing, and request/completion timestamps. Range 1..5; repeats require the continuous diagnostic. Only full-source pause/resume has 500 ms content settling."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -26925,5 +27676,240 @@
     "interpretation": "The bounded single-app trace emitted chunks at 14.274 ms median age, compared with 37.62245 ms in the preceding fixed-hold run. It emitted 3642 chunks younger than 29 ms with no incomplete early coverage, discarded blocks or uncovered active-tap frames after 2 s. All six cadence/PCM intervals pass, but desktop-reference skew still reaches 61.5 ms against the unchanged 50 ms limit; median 25.5 ms, minimum 17.5 ms. Browser-reference differences (-28..+17 ms) and the reference-path difference (median 43.5 ms) do not establish absolute calibration. The multi-stream CLI lifecycle passes all nine continuous receiver phases, but 100 ms tone windows conceal short coverage gaps: trace records 4,089 uncovered tap frames during joins/recreation/output move, including 667 frames (~13.9 ms) over two output-move chunks. There are zero incomplete early chunks in either native trace. Retain this as an open continuity issue, not glitch-free qualification.",
     "ownedProcessesRemaining": [],
     "remaining": "Investigate short monitor coverage gaps and transition discovery, using finer-grained PCM evidence and baseline comparisons. Startup A/V skew still fails; do not shift sample timestamps or relax limits. Final-package >=30-minute X11 and native Wayland runs, absolute software-reference calibration, mixed microphone/CPU-load/device-fault workflows, physical outputs/devices, and Windows/macOS runtime regression remain required."
+  },
+  "linux_app_monitor_retention_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-0e6f9771336c-4a81123096f5.deb",
+      "sha256": "fe395447927afa621d88817e66b01196e209df108a6101f154868598f3428e78",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-0e6f9771336c-4a81123096f5",
+      "manifestSha256": "685b799527205894da206d524d4d6fe5afb4f9c13f50fa6ee2d713ff4aba1d5c"
+    },
+    "baselinePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-4992dba41abb-d44378285c95.deb",
+      "sha256": "f3660d9e4c1d2e64bc9c1fd3d2fe9da295a2de2d602022455a9b27d927dd7c97",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-4992dba41abb-d44378285c95",
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d"
+    },
+    "eventOnlyPackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-39c150b02105-16feaddc900d.deb",
+      "sha256": "f1290e21ad5fe43fc9b09265fd6cccd846ee2e558c8f3b126cd38c374977c552",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-39c150b02105-16feaddc900d",
+      "manifestSha256": "cd2208badbc07d01888c3cc7163b12e3c5473c613d47fbb1b33eacb1910c2f91"
+    },
+    "evidence": [
+      {
+        "case": "baseline",
+        "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/results.json",
+        "sha256": "e1b5ecf1d9051de7941e6cd1b834fccb7b808e2af00c6dbe03d9b763e2f94a2a",
+        "passed": true
+      },
+      {
+        "case": "events",
+        "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/results.json",
+        "sha256": "5a2510bf406a9a19b5b5063fcce805ca7483177d61c20958774a913fe61236e0",
+        "passed": false
+      },
+      {
+        "case": "retain",
+        "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/results.json",
+        "sha256": "447139abb4c2e2a4dece1477b324253dd4f1b5b2466d6ef9c29a8c6d24ac993c",
+        "passed": false
+      },
+      {
+        "case": "gui",
+        "report": "native-qt/qa/reports/linux-audio-retain-apps-gui/952659ef-7ed6-4019-bf7c-0c0fb680b072/results.json",
+        "sha256": "a214ce0c25f7a483cd9ae75142aae3830ccae286fb83fb7ce1d8df760bbc9493",
+        "passed": true
+      },
+      {
+        "case": "moves",
+        "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/results.json",
+        "sha256": "52352ead605fb4b33e4ec7abde6e9615a28e731363ccba51f52be7a188880b5f",
+        "passed": false
+      },
+      {
+        "case": "av",
+        "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/results.json",
+        "sha256": "f7dadf350930068f70bfbdc27a29430ef81bb56f3ce04eb293e8a28f8694fc10",
+        "passed": false
+      }
+    ],
+    "productionChange": "Linux selected-app capture subscribes to playback/output changes, coalesces updates while one asynchronous catalog query is active, and retains periodic identity checks. Healthy direct monitors survive output moves instead of being destroyed. Terminated monitors are recreated for the same verified playback/process identity; replacement attempts preserve their original recovery deadline. Sample timestamps and the existing output coverage/deadline policy are unchanged.",
+    "observerChange": "The shared QA observer optionally records every 10 ms RMS window; default behavior and result shape remain unchanged. Linux owned 0.15-peak fixture checks use a 0.05 RMS floor to detect substantial level dips, retaining existing tone/isolation checks and only the existing 500 ms full-source pause/resume allowance. Raw PCM retained for bad windows is independently recomputed. This is stronger bounded evidence, not proof against shorter glitches or concealed packet loss.",
+    "sourceReferences": [
+      {
+        "url": "https://raw.githubusercontent.com/pipewire/pipewire/1.0.5/src/modules/module-protocol-pulse/pulse-server.c",
+        "finding": "do_create_record_stream uses direct_on_input_idx as target.object."
+      },
+      {
+        "url": "https://raw.githubusercontent.com/pulseaudio/pulseaudio/v17.0/src/pulsecore/sink-input.c",
+        "finding": "pa_sink_input_start_move kills directly connected outputs; retained-monitor fallback requires runtime PulseAudio qualification."
+      }
+    ],
+    "interpretation": "The baseline raw 10 ms measurements expose level dips after stream recreation and output movement, despite its original silence-only check passing. Event notifications alone do not fix those dips. Retaining the healthy direct monitor removes the output-move gap in the first candidate run: minimum receiver RMS 0.1047885, zero uncovered native tap frames and zero clock resets during the move. The separate post-recreation dip persists and is not waived by successful later tone snapshots or GUI workflows. Repeated-move and A/V results are recorded as separate evidence below. All three output-move phases in the follow-up run pass the 0.05 RMS floor with zero native uncovered tap frames and zero clock resets. The tracing-disabled GUI workflow passes. The final bounded A/V run passes all six cadence/PCM intervals but still reaches +60.5 ms against the desktop reference (limit 50 ms); absolute timing remains unqualified.",
+    "repeatedMovePhases": [
+      {
+        "label": "outputMoved",
+        "passed": true,
+        "checkedShortWindows": 430,
+        "shortLevelFailures": 0,
+        "shortWindowRmsFloor": 0.05,
+        "minimum10msRms": 0.1048387393453089,
+        "nativeClockAnchors": 0,
+        "nativeUncoveredTapFrames": 0,
+        "raw": {
+          "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/outputMoved-continuous.json.gz",
+          "sha256": "aa1b12b3ba83c42af0e60308cea9dff7c743666a08afeff24ee51739daeaca66"
+        }
+      },
+      {
+        "label": "outputMoved2",
+        "passed": true,
+        "checkedShortWindows": 430,
+        "shortLevelFailures": 0,
+        "shortWindowRmsFloor": 0.05,
+        "minimum10msRms": 0.1048387393453089,
+        "nativeClockAnchors": 0,
+        "nativeUncoveredTapFrames": 0,
+        "raw": {
+          "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/outputMoved2-continuous.json.gz",
+          "sha256": "ec1995a0d5dea73a4d07bdff1b61c5dc453499ac162bcaa25e75333799bf3773"
+        }
+      },
+      {
+        "label": "outputMoved3",
+        "passed": true,
+        "checkedShortWindows": 430,
+        "shortLevelFailures": 0,
+        "shortWindowRmsFloor": 0.05,
+        "minimum10msRms": 0.1048387393453089,
+        "nativeClockAnchors": 0,
+        "nativeUncoveredTapFrames": 0,
+        "raw": {
+          "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/outputMoved3-continuous.json.gz",
+          "sha256": "52393a64d62c3ea3e1ac1d2310a7255ae9cbf2f0fee761016be18ddb3d7cd9d0"
+        }
+      }
+    ],
+    "avReferenceComparison": {
+      "summary": {
+        "referenceDifferenceMs": {
+          "median": 42.50000000000398,
+          "minimum": 37.50000000000009,
+          "maximum": 46.500000000005315
+        },
+        "receiverMinusBrowserMs": {
+          "median": -18.000000000000682,
+          "minimum": -21.000000000000796,
+          "maximum": 22.999999999999687
+        },
+        "receiverMinusDesktopMs": {
+          "median": 27.50000000000341,
+          "minimum": 19.50000000000074,
+          "maximum": 60.49999999999978
+        }
+      },
+      "calibrated": false,
+      "report": "native-qt/qa/reports/linux-audio-retain-trace/0fc5f1d8-e78c-47e3-88e6-3d07e308f56d/reference-comparison.json",
+      "sha256": "57abc7a94570bc278d0eecb633c5b48f19f12e5ebd887c4b803ae6ae582bdca0"
+    },
+    "gates": {
+      "report": "native-qt/build-linux/linux-audio-retain-gates.json",
+      "sha256": "fb902422abec5cd6209bb376036a15491910d4efd58a13ee7bf4ae8fba22286a",
+      "classification": "Build and source/package-integrity gates only; not application testing. Only Linux production audio code changed; shared/Windows/macOS runtime remains unqualified."
+    },
+    "ownedProcessesRemaining": [],
+    "remaining": "Investigate the delayed received level dip after full stream recreation with sender PCM and receiver timing evidence. Qualify PulseAudio monitor termination/recovery deadlines and event churn under CPU load. Final-package Wayland regression, mixed microphone and real devices, calibrated A/V startup, >=30-minute X11/Wayland endurance, and all other parity rows remain open.",
+    "resumeDipTimingReview": {
+      "scope": "Read-only comparison of retained workflow evidence. Phase offsets are relative to first returned PCM row, not precise command or AudioContext start times.",
+      "observations": [
+        {
+          "case": "baseline",
+          "report": "native-qt/qa/reports/linux-audio-fine-apps-baseline/5e5f96ae-df70-4fc1-97c3-cffc40e47556/results.json",
+          "reportSha256": "e1b5ecf1d9051de7941e6cd1b834fccb7b808e2af00c6dbe03d9b763e2f94a2a",
+          "levelDips": [
+            {
+              "phaseRelativeOffsetMs": 1130.0,
+              "rms": [
+                0.04064155087633791,
+                0.038588725030013794
+              ]
+            }
+          ],
+          "receiverCounterDeltas": {
+            "packetsLost": 0,
+            "concealedSamples": 0,
+            "concealmentEvents": 0,
+            "insertedSamplesForDeceleration": 0,
+            "removedSamplesForAcceleration": 654
+          }
+        },
+        {
+          "case": "events",
+          "report": "native-qt/qa/reports/linux-audio-events-apps/9578e8b3-0868-4537-993e-9c2eccea9692/results.json",
+          "reportSha256": "5a2510bf406a9a19b5b5063fcce805ca7483177d61c20958774a913fe61236e0",
+          "levelDips": [
+            {
+              "phaseRelativeOffsetMs": 1190.0,
+              "rms": [
+                0.04107659566998885,
+                0.03688265139558787
+              ]
+            }
+          ],
+          "receiverCounterDeltas": {
+            "packetsLost": 0,
+            "concealedSamples": 0,
+            "concealmentEvents": 0,
+            "insertedSamplesForDeceleration": 0,
+            "removedSamplesForAcceleration": 0
+          }
+        },
+        {
+          "case": "retain",
+          "report": "native-qt/qa/reports/linux-audio-retain-apps/1af00a4a-ae10-48bc-a7c2-a2c94dcc3ef9/results.json",
+          "reportSha256": "447139abb4c2e2a4dece1477b324253dd4f1b5b2466d6ef9c29a8c6d24ac993c",
+          "levelDips": [
+            {
+              "phaseRelativeOffsetMs": 1130.0,
+              "rms": [
+                0.03630057652589527,
+                0.03776560293011798
+              ]
+            }
+          ],
+          "receiverCounterDeltas": {
+            "packetsLost": 0,
+            "concealedSamples": 0,
+            "concealmentEvents": 0,
+            "insertedSamplesForDeceleration": 0,
+            "removedSamplesForAcceleration": 0
+          }
+        },
+        {
+          "case": "moves",
+          "report": "native-qt/qa/reports/linux-audio-retain-moves/82b7af18-5bef-40e2-9b98-3ed15ec4bb45/results.json",
+          "reportSha256": "52352ead605fb4b33e4ec7abde6e9615a28e731363ccba51f52be7a188880b5f",
+          "levelDips": [
+            {
+              "phaseRelativeOffsetMs": 1130.0,
+              "rms": [
+                0.02354840136997449,
+                0.026467000413109225
+              ]
+            }
+          ],
+          "receiverCounterDeltas": {
+            "packetsLost": 0,
+            "concealedSamples": 0,
+            "concealmentEvents": 0,
+            "insertedSamplesForDeceleration": 0,
+            "removedSamplesForAcceleration": 0
+          }
+        }
+      ],
+      "hypothesis": "The level dip occurs about 1.13\u20131.19 s into the recreation phase, near the harness sleep(1200) followed by observeAudio opening another AudioContext. Three candidate runs have no new loss, concealment, insertion or removal counter increments across this phase. This suggests a possible measurement or source-graph disturbance but does not establish causation.",
+      "nextExperiment": "Keep continuous PCM active, compare the additional snapshot observer with a persistent/omitted snapshot control, and obtain independent source/sender evidence. Do not waive the dip or mark continuity qualified based on this correlation."
+    }
   }
 }

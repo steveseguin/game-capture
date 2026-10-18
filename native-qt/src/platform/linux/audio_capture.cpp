@@ -180,6 +180,28 @@ struct Playback {
     std::string name, executable;
     bool active = false;
 };
+// Wake catalog reconciliation for stream/output changes while retaining periodic
+// process-identity checks. Callbacks run on the capture thread's Pulse mainloop.
+struct PlaybackChanges {
+    pa_context *context;
+    bool dirty = true;
+    explicit PlaybackChanges(Server &server, const std::atomic<bool> &running) : context(server.context) {
+        pa_context_set_subscribe_callback(context, [](pa_context *, pa_subscription_event_type_t event, uint32_t, void *data) {
+            const auto facility = event & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
+            if (facility == PA_SUBSCRIPTION_EVENT_SINK_INPUT || facility == PA_SUBSCRIPTION_EVENT_SINK)
+                static_cast<PlaybackChanges *>(data)->dirty = true;
+        }, this);
+        bool subscribed = false;
+        const bool completed = server.finish(pa_context_subscribe(context,
+            pa_subscription_mask_t(PA_SUBSCRIPTION_MASK_SINK_INPUT | PA_SUBSCRIPTION_MASK_SINK),
+            [](pa_context *, int success, void *data) { *static_cast<bool *>(data) = success != 0; }, &subscribed), running);
+        if (!completed || !subscribed)
+            spdlog::warn("[LinuxAudio] Playback change notifications unavailable; retaining periodic discovery");
+    }
+    ~PlaybackChanges() { pa_context_set_subscribe_callback(context, nullptr, nullptr); }
+    PlaybackChanges(const PlaybackChanges &) = delete;
+    PlaybackChanges &operator=(const PlaybackChanges &) = delete;
+};
 // Asynchronous catalog refresh keeps audio draining while the server replies.
 struct PlaybackQuery {
     std::vector<Playback> streams;
@@ -268,6 +290,7 @@ struct WindowAudioCaptureCore::LinuxImpl {
         if (pa_context_is_local(server.context) != 1) {
             fail("Application audio requires the local desktop audio service; remote process IDs cannot identify local apps."); return;
         }
+        PlaybackChanges changes(server, running);
         std::map<uint32_t, std::unique_ptr<MonitorTap>> taps;
         std::unique_ptr<PlaybackQuery> query;
         auto refresh = Clock::now();
@@ -280,9 +303,12 @@ struct WindowAudioCaptureCore::LinuxImpl {
         constexpr int64_t maximumWait100ns = 200000;
         spdlog::info("[LinuxAudio] Capturing app PID {} generation {} and its children", root.pid, root.birth);
         while (running && server.connected()) {
-            if (!query && Clock::now() >= refresh) {
+            if (!query && (changes.dirty || Clock::now() >= refresh)) {
                 const auto current = processIdentity(root.pid);
                 if (!current || current.birth != root.birth) { fail("Selected audio app closed. Audio from this app is off; select an app and restart streaming."); return; }
+                // Clear only when starting a query: notifications received
+                // during it must trigger another refresh, never get lost.
+                changes.dirty = false;
                 query = std::make_unique<PlaybackQuery>(server);
             }
             if (!server.pump()) break;
@@ -299,18 +325,37 @@ struct WindowAudioCaptureCore::LinuxImpl {
                     if (stream.active && belongsTo(identity, root)) wanted.emplace(stream.index, std::make_pair(stream, identity));
                 }
                 if (wanted.size() > 64) { fail("Selected app has too many playback streams (limit 64)."); return; }
+                std::map<uint32_t, Clock::time_point> recoveryDeadlines;
                 for (auto it = taps.begin(); it != taps.end();) {
                     const auto match = wanted.find(it->first);
-                    if (match == wanted.end() || match->second.first.sink != it->second->sink ||
+                    const auto state = pa_stream_get_state(it->second->stream);
+                    if (match != wanted.end() && !PA_STREAM_IS_GOOD(state) &&
+                        match->second.second.pid == it->second->pid && match->second.second.birth == it->second->birth) {
+                        // Replacement attempts share the old recovery deadline;
+                        // a permanently broken monitor must not retry forever.
+                        if (Clock::now() >= it->second->deadline) {
+                            fail("An application audio monitor could not start or recover. Stop and start streaming again."); return;
+                        }
+                        recoveryDeadlines.emplace(it->first, it->second->deadline);
+                    }
+                    if (match == wanted.end() || !PA_STREAM_IS_GOOD(state) ||
                         match->second.second.pid != it->second->pid || match->second.second.birth != it->second->birth)
                         it = taps.erase(it);
-                    else ++it;
+                    else {
+                        // The monitor is filtered to this exact playback stream.
+                        // Keep a healthy direct monitor across output moves;
+                        // servers that terminate it are reconciled above.
+                        it->second->sink = match->second.first.sink;
+                        ++it;
+                    }
                 }
                 for (const auto &[index, entry] : wanted) {
                     if (taps.contains(index)) continue;
                     const auto monitor = query->monitors.find(entry.first.sink);
                     if (monitor == query->monitors.end()) continue; // Removed output; next catalog reconciles it.
                     auto tap = std::make_unique<MonitorTap>();
+                    if (const auto deadline = recoveryDeadlines.find(index); deadline != recoveryDeadlines.end())
+                        tap->deadline = deadline->second;
                     tap->sink = entry.first.sink; tap->pid = entry.second.pid; tap->birth = entry.second.birth;
                     pa_channel_map channels; pa_channel_map_init_stereo(&channels);
                     tap->stream = pa_stream_new(server.context, "Game Capture selected app", &sampleSpec, &channels);

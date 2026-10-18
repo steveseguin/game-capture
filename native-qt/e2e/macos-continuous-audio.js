@@ -6,8 +6,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-async function start(page) {
-  return page.evaluate(async () => {
+async function start(page, {shortWindowRmsFloor=null} = {}) {
+  assert(shortWindowRmsFloor===null || (Number.isFinite(shortWindowRmsFloor) && shortWindowRmsFloor>=0 && shortWindowRmsFloor<=1));
+  const inspectShortWindows=shortWindowRmsFloor!==null;
+  return page.evaluate(async ({inspectShortWindows,shortWindowRmsFloor}) => {
     if (window.macContinuousAudio) throw Error('Continuous audio observer already installed');
     const track = window.reviewPCs.filter(p => p.connectionState === 'connected')
       .flatMap(p => p.getReceivers()).map(r => r.track).find(t => t?.kind === 'audio' && t.readyState === 'live');
@@ -16,6 +18,9 @@ async function start(page) {
     const code = `class Continuity extends AudioWorkletProcessor {
       constructor() {
         super(); this.n = Math.round(sampleRate / 10); this.pos = 0; this.active = false; this.budget = 2;
+        this.inspectShortWindows = ${!!inspectShortWindows};
+        this.shortFloor = ${shortWindowRmsFloor};
+        this.shortN = Math.round(sampleRate / 100);
         this.pcm = new Float32Array(this.n*2);
         this.coefficients = [440,880,2000].map(hz => 2*Math.cos(2*Math.PI*hz/sampleRate));
         this.reset();
@@ -26,6 +31,7 @@ async function start(page) {
       reset() {
         this.energy = [0,0]; this.q1 = [[0,0,0],[0,0,0]]; this.q2 = [[0,0,0],[0,0,0]];
         this.clipped = 0; this.missing = 0; this.invalid = 0;
+        if(this.inspectShortWindows) {this.shortEnergy=[0,0];this.shortRms=[];}
       }
       process(inputs, outputs) {
         if(!this.active) return true;
@@ -38,20 +44,28 @@ async function start(page) {
             if(!Number.isFinite(v)) {this.invalid++;v=0;}
             this.pcm[this.pos*2+ch]=v;
             this.energy[ch] += v*v;
+            if(this.inspectShortWindows) this.shortEnergy[ch] += v*v;
             if(Math.abs(v)>=.999) this.clipped++;
             for(let f=0;f<3;f++) {
               const q = v+this.coefficients[f]*this.q1[ch][f]-this.q2[ch][f];
               this.q2[ch][f]=this.q1[ch][f];this.q1[ch][f]=q;
             }
           }
-          if(++this.pos === this.n) {
+          ++this.pos;
+          if(this.inspectShortWindows && this.pos % this.shortN === 0) {
+            this.shortRms.push(this.shortEnergy.map(v=>Math.sqrt(v/this.shortN)));
+            this.shortEnergy=[0,0];
+          }
+          if(this.pos === this.n) {
             const amplitude=this.q1.map((ch,c)=>ch.map((q,f)=>2*Math.sqrt(Math.max(0,
               q*q+this.q2[c][f]**2-this.coefficients[f]*q*this.q2[c][f]))/this.n));
             const rms=this.energy.map(v=>Math.sqrt(v/this.n));
             const bad=rms.some(v=>v<.001)||amplitude.some((ch,i)=>ch[i]<.005||ch[i]<10*ch[1-i]||ch[2]>ch[i]/Math.pow(10,25/20))||this.clipped||this.missing||this.invalid;
             const row={frame:this.firstFrame,frames:this.n,rms,amplitude,
               clipped:this.clipped,missing:this.missing,invalid:this.invalid};
-            if(bad&&this.budget>0) {row.pcm=Array.from(this.pcm);this.budget--;}
+            if(this.inspectShortWindows) {row.shortWindowFrames=this.shortN;row.shortRms=this.shortRms;}
+            const shortBad=this.inspectShortWindows && this.shortRms.some(ch=>ch.some(v=>v<this.shortFloor));
+            if((bad||shortBad)&&this.budget>0) {row.pcm=Array.from(this.pcm);this.budget--;}
             this.port.postMessage(row);
             this.pos=0;this.reset();
           }
@@ -96,11 +110,12 @@ async function start(page) {
         async close() {input.disconnect();node.disconnect();node.port.close();await context.close();delete window.macContinuousAudio;}
       };
       return {sampleRate:context.sampleRate,windowFrames:4800,startupSettlingMs:500,
+        ...(inspectShortWindows?{shortWindowFrames:480,shortWindowRmsFloor,shortWindowScope:'10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss'}:{}),
         scope:'Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization'};
     } catch(error) {
       input?.disconnect();node?.disconnect();node?.port.close();await context.close();throw error;
     } finally {URL.revokeObjectURL(url);}
-  });
+  }, {inspectShortWindows,shortWindowRmsFloor});
 }
 
 async function drain(page) {return page.evaluate(()=>window.macContinuousAudio.drain());}
