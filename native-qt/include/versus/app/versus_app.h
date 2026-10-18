@@ -208,6 +208,8 @@ class VersusApp {
 #ifdef __linux__
     void setAudioProcess(uint32_t processId, uint64_t processStartTime = 0);
     void setCommunicationsOutputDeviceId(const std::string &deviceId);
+    std::string audioCaptureWarning() const;
+    bool microphoneIsPrimary() const;
     std::vector<versus::audio::AudioDeviceInfo> listAudioOutputDevices();
 #endif
     void setIncludeMicrophone(bool enabled);
@@ -912,6 +914,11 @@ class VersusApp {
     bool includeMicrophone_ = false;
     std::string microphoneDeviceId_;
 #ifdef __linux__
+    // Protected by lifecycleStateMutex_; retain each failed input independently
+    // until its capture generation stops or a new one starts.
+    std::string primaryAudioWarning_, microphoneAudioWarning_;
+    bool microphoneIsPrimary_ = false;
+    void setAudioCaptureWarning(const std::string &message, bool microphone);
     std::string communicationsOutputDeviceId_;
     uint32_t audioProcessId_ = 0;
     uint64_t audioProcessStartTime_ = 0;

@@ -2415,6 +2415,16 @@ void MainWindow::setupUI() {
     statusLabel_->setWordWrap(true);
     statusLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_TEXT_DIM));
     layout->addWidget(statusLabel_);
+#ifdef __linux__
+    audioCaptureWarningLabel_ = new QLabel(this);
+    audioCaptureWarningLabel_->setObjectName("audioCaptureWarningLabel");
+    audioCaptureWarningLabel_->setTextFormat(Qt::PlainText);
+    audioCaptureWarningLabel_->setWordWrap(true);
+    audioCaptureWarningLabel_->setAlignment(Qt::AlignCenter);
+    audioCaptureWarningLabel_->setStyleSheet(QString("color: %1; padding: 6px;").arg(COLOR_YELLOW));
+    audioCaptureWarningLabel_->hide();
+
+#endif
 
     // Operator-facing connection health
     auto *healthLayout = new QGridLayout();
@@ -2639,7 +2649,18 @@ void MainWindow::setupUI() {
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setWidget(content);
+#ifdef __linux__
+    // Keep audio failures visible even while the operator scrolls settings or
+    // connection status changes independently of capture health.
+    auto *central = new QWidget(this);
+    auto *centralLayout = new QVBoxLayout(central);
+    centralLayout->setContentsMargins(0, 0, 0, 0);
+    centralLayout->addWidget(audioCaptureWarningLabel_);
+    centralLayout->addWidget(scrollArea, 1);
+    setCentralWidget(central);
+#else
     setCentralWidget(scrollArea);
+#endif
     resize(980, 720);
     setMinimumSize(760, 520);
 
@@ -3912,7 +3933,29 @@ void MainWindow::updateGoLiveButton() {
     }
 }
 
+#ifdef __linux__
+void MainWindow::refreshAudioCaptureWarning() {
+    if (!audioCaptureWarningLabel_) return;
+    const auto warning = core_ ? QString::fromStdString(core_->audioCaptureWarning()) : QString();
+    const auto text = warning.isEmpty() ? QString() : "Audio: " + warning;
+    if (audioCaptureWarningLabel_->text() == text) return;
+    audioCaptureWarningLabel_->setText(text);
+    audioCaptureWarningLabel_->setVisible(!text.isEmpty());
+    if (!text.isEmpty()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        QAccessibleAnnouncementEvent event(audioCaptureWarningLabel_, text);
+#else
+        QAccessibleEvent event(audioCaptureWarningLabel_, QAccessible::NameChanged);
+#endif
+        QAccessible::updateAccessibility(&event);
+    }
+}
+#endif
+
 void MainWindow::updateStatus(const QString &text, const QString &statusClass) {
+#ifdef __linux__
+    refreshAudioCaptureWarning();
+#endif
     if (!statusLabel_) {
         return;
     }
@@ -3968,6 +4011,9 @@ void MainWindow::onTrayIconActivated(QSystemTrayIcon::ActivationReason reason) {
 }
 
 void MainWindow::onStatsTimer() {
+#ifdef __linux__
+    refreshAudioCaptureWarning();
+#endif
     if (core_ && isLive_ && !stopInProgress_) {
         StreamStats stats;
         const auto metrics = core_->getStreamMetrics();
@@ -4480,15 +4526,23 @@ QString MainWindow::audioSourceSummaryText() const {
         return QStringLiteral("Primary: -");
     }
     const QString text = audioSourceSelect_->currentText().trimmed();
-    if (audioSourceSelect_->currentData().toString() == "none") return QStringLiteral("Primary: No audio");
     const int gain = primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100;
+#ifdef __linux__
+    if (isLive_ && core_ && core_->microphoneIsPrimary())
+        return QStringLiteral("Primary: Selected microphone/input (%1%)").arg(gain);
+#endif
+    if (audioSourceSelect_->currentData().toString() == "none") return QStringLiteral("Primary: No audio");
     return QStringLiteral("Primary: %1 (%2%)").arg(text.isEmpty() ? QStringLiteral("-") : text).arg(gain);
 }
 
 QString MainWindow::microphoneSourceSummaryText() const {
     if (microphoneMuteButton_ && microphoneMuteButton_->isEnabled() && microphoneMuteButton_->isChecked()) return "Mic/input: Muted";
     const QString primarySource = audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString();
-    if (primarySource == QStringLiteral("default-microphone")) {
+    if (primarySource == QStringLiteral("default-microphone")
+#ifdef __linux__
+        || (isLive_ && core_ && core_->microphoneIsPrimary())
+#endif
+    ) {
         return QStringLiteral("Mic/input: Primary source");
     }
     if (!includeMicrophoneCheck_ || !includeMicrophoneCheck_->isChecked()) {

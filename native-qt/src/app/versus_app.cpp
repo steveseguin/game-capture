@@ -1248,6 +1248,9 @@ void VersusApp::stopCapture() {
     {
         std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
         activeMicrophoneSourceName_ = "none";
+#ifdef __linux__
+        primaryAudioWarning_.clear(); microphoneAudioWarning_.clear(); microphoneIsPrimary_ = false;
+#endif
     }
     primaryAudioResampler_ = {};
     additionalAudioResampler_ = {};
@@ -1329,6 +1332,23 @@ void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
 }
 
 #ifdef __linux__
+bool VersusApp::microphoneIsPrimary() const {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+    return microphoneIsPrimary_;
+}
+std::string VersusApp::audioCaptureWarning() const {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+    if (primaryAudioWarning_.empty()) return microphoneAudioWarning_;
+    if (microphoneAudioWarning_.empty() || microphoneAudioWarning_ == primaryAudioWarning_) return primaryAudioWarning_;
+    return primaryAudioWarning_ + "\n" + microphoneAudioWarning_;
+}
+void VersusApp::setAudioCaptureWarning(const std::string &message, bool microphone) {
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        (microphone ? microphoneAudioWarning_ : primaryAudioWarning_) = message;
+    }
+    emitRuntimeEvent(message, false);
+}
 std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioOutputDevices() {
     audio::WindowAudioCaptureCore capture;
     return capture.GetOutputDevices();
@@ -2380,6 +2400,8 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"source_mode", audioSourceModeName(diagnosticsAudioSourceMode)},
 #ifdef __linux__
         {"communications_output_device", lifecycleStateSnapshot().communicationsOutputDeviceId},
+        {"capture_warning", audioCaptureWarning()},
+        {"microphone_is_primary", microphoneIsPrimary()},
 #endif
         {"include_microphone", diagnosticsIncludeMicrophone},
         {"microphone_muted", microphoneMuted_.load(std::memory_order_relaxed)},
@@ -2772,6 +2794,12 @@ int VersusApp::refreshPeerTransportsForLocalControl() {
 }
 
 void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
+#ifdef __linux__
+    {
+        std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+        primaryAudioWarning_.clear(); microphoneAudioWarning_.clear(); microphoneIsPrimary_ = false;
+    }
+#endif
     const LifecycleStateSnapshot lifecycleState = lifecycleStateSnapshot();
     const AudioSourceMode audioSourceMode = lifecycleState.audioSourceMode;
 #ifdef __linux__
@@ -2876,14 +2904,23 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         spdlog::warn("[Audio] {} microphone capture failed: {}",
                      role,
                      micResult.error.empty() ? "unknown error" : micResult.error);
-#if defined(__APPLE__) || defined(__linux__)
+#ifdef __linux__
+        setAudioCaptureWarning(micResult.error.empty() ? "Microphone capture failed." : micResult.error, true);
+#elif defined(__APPLE__)
         emitRuntimeEvent(micResult.error.empty() ? "Microphone capture failed." : micResult.error, false);
 #endif
         setActiveMicrophoneSource("none");
         return false;
     };
     const auto startMicrophoneAsPrimary = [&]() {
-        return startMicrophone(primaryCallback, "Primary");
+        const bool started = startMicrophone(primaryCallback, "Primary");
+#ifdef __linux__
+        if (started) {
+            std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+            microphoneIsPrimary_ = true;
+        }
+#endif
+        return started;
     };
 
     audio::CaptureResult result;
@@ -2915,7 +2952,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
             if (selectedWindowProcessId == 0) {
                 spdlog::warn("[Audio] Selected-window audio requested but no process id was available");
 #ifdef __linux__
-                emitRuntimeEvent("Choose an Audio app for selected-app audio. Wayland window selection does not identify the audio process.", false);
+                setAudioCaptureWarning("Choose an Audio app for selected-app audio. Wayland window selection does not identify the audio process.", false);
 #endif
                 if (includeMicrophone) {
                     spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
@@ -2944,7 +2981,7 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                      audioSourceModeName(audioSourceMode),
                      result.error.empty() ? "unknown error" : result.error);
 #ifdef __linux__
-        emitRuntimeEvent(result.error.empty() ? "Audio capture failed. Select an available audio source." : result.error, false);
+        setAudioCaptureWarning(result.error.empty() ? "Audio capture failed. Select an available audio source." : result.error, false);
 #endif
         if (includeMicrophone && audioSourceMode != AudioSourceMode::DefaultMicrophone) {
             spdlog::warn("[Audio] Falling back to default microphone/input as primary audio source");
@@ -7725,7 +7762,7 @@ void VersusApp::startVideoMaintenanceThread() {
                     audioLevelRms_.store(0.0f, std::memory_order_relaxed);
                     audioPeak_.store(0.0f, std::memory_order_relaxed);
                 }
-                emitRuntimeEvent("Primary audio stopped. Video continues. Check the selected audio app/output and audio service, then stop and start streaming again.", false);
+                setAudioCaptureWarning("Primary audio stopped. Video continues. Check the selected audio app/output and audio service, then stop and start streaming again.", false);
             }
 #endif
 #if defined(__APPLE__) || defined(__linux__)
@@ -7761,7 +7798,11 @@ void VersusApp::startVideoMaintenanceThread() {
                 const std::string message =
                     "Microphone/input stopped. Audio from this input is off. Reconnect or select an input, then stop and start streaming again.";
                 spdlog::warn("[Audio] {}", message);
+#ifdef __linux__
+                setAudioCaptureWarning(message, true);
+#else
                 emitRuntimeEvent(message, false);
+#endif
             }
 #endif
 #ifdef __APPLE__

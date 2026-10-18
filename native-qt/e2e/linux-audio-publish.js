@@ -14,6 +14,8 @@ const matrix = opts.matrix || 'routes';
 const wayland = opts.backend === 'wayland', automaticApp = matrix === 'apps-auto';
 const communications = matrix === 'communications-gui' || matrix === 'communications-cli';
 const communicationsMix = opts['communications-mix'] === 'true';
+const audioWarnings = opts['audio-warnings'] === 'true';
+assert(opts['combined-audio-loss'] !== 'true' || (communications && communicationsMix), 'Combined loss requires communications mixing');
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
 assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
@@ -151,10 +153,10 @@ function barriers() {
       const id = pactl('load-module', 'module-null-sink', 'sink_name=' + communicationsSink, 'sink_properties=device.description=GameCaptureOwnedQACommunications', 'rate=48000', 'channels=2');
       modules.push(id); return id;
     };
-    let communicationsModule, communicationsTone;
+    let communicationsModule, communicationsTone, lostMicrophoneDuringOutputLoss = false;
     if (communications) { communicationsModule = createCommunicationsOutput(); communicationsTone = tone(communicationsSink, 'owned communications'); }
     const requireCommunicationsLoss = observation => {
-      if (!communicationsMix) requireAudio(observation, 'Removed communications output', {silent:true});
+      if (!communicationsMix || lostMicrophoneDuringOutputLoss) requireAudio(observation, 'Removed communications output', {silent:true});
       else assert(observation.spectra.filter(sample => sample.microphone1200 > -55 && sample.tone440 < sample.microphone1200 - 25 && sample.tone880 < sample.microphone1200 - 25 && sample.excluded2000 < sample.microphone1200 - 25).length >= 25, 'Output loss did not leave only the selected microphone');
     };
     const systemTone = tone(defaultSink, 'owned system'), inputTone = tone(sinkName, 'owned microphone');
@@ -231,6 +233,16 @@ function barriers() {
       control = JSON.parse(fs.readFileSync(discovery)); assert.equal(control.pid, publisher.pid);
       if (wayland && !gui) await waitFor(() => { assert.equal(publisher.exitCode, null); return fs.readFileSync(path.join(report, fixture.name + '-private-publisher.log'), 'utf8').includes('[Headless] Going live'); }, 75000, 'Portal selection/startup did not finish');
       const ui = (...arguments_) => execFileSync('python3', [path.join(__dirname, 'linux-ui-control.py'), String(publisher.pid), ...arguments_], {env, encoding:'utf8', timeout:wayland ? 60000 : 10000, stdio:['ignore', 'pipe', 'pipe']});
+      const checkAudioWarning = async (pattern, label) => {
+        if (!audioWarnings) return;
+        await waitFor(async () => {
+          const warning = (await api('/diagnostics')).audio.capture_warning;
+          assert.equal(typeof warning, 'string', 'Missing structured audio warning');
+          const visible = JSON.parse(ui('dump')).filter(row => row.role === 'label' && row.states.includes('visible') && row.name.startsWith('Audio: '));
+          return pattern ? pattern.test(warning) && visible.some(row => pattern.test(row.name)) : warning === '' && visible.length === 0;
+        }, 6000, 'Audio warning state/visible notice differs: ' + label);
+        entry[label] = true;
+      };
       const goLive = async () => {
         if (wayland) selectPortal();
         ui('press', 'Go live');
@@ -295,6 +307,7 @@ function barriers() {
       const diagnostics = await api('/diagnostics'); entry.audioDiagnostics = diagnostics.audio;
       assert.equal(diagnostics.audio.source_mode, fixture.mode);
       if (communications) assert.equal(diagnostics.audio.communications_output_device, 'pulse-output:' + communicationsSink);
+      if (gui) await checkAudioWarning(null, 'healthyAudioHasNoWarning');
       assert.equal(diagnostics.audio.configured_opus_bitrate_kbps, 128);
       if (fixture.input) assert(diagnostics.audio.active_microphone_source.includes('GameCaptureOwnedQAInput'));
       if (apps) {
@@ -329,6 +342,7 @@ function barriers() {
         const beforeLoss = await api('/diagnostics'); await sleep(800); const afterLoss = await api('/diagnostics');
         assert.equal(beforeLoss.metrics.audio_packets_sent, afterLoss.metrics.audio_packets_sent, 'Closed app continued sending audio');
         entry.noAudioAfterAppExit = true;
+        if (gui) await checkAudioWarning(/Primary audio stopped/, 'appLossWarningVisible');
         entry.videoAfterAppExit = await observe(viewer, 3000); requireMoving(entry.videoAfterAppExit, 'Video continues after app exit');
         }
         await viewer.close();
@@ -359,6 +373,15 @@ function barriers() {
         pactl('unload-module', communicationsModule); modules.splice(modules.indexOf(communicationsModule), 1);
         await sleep(2000);
         entry.afterOutputLoss = await observeAudio(viewer); requireCommunicationsLoss(entry.afterOutputLoss);
+        await checkAudioWarning(/Primary audio stopped/, 'outputLossWarningVisible');
+        if (opts['combined-audio-loss'] === 'true') {
+          pactl('unload-module', inputModule); modules.splice(modules.indexOf(inputModule), 1);
+          await waitFor(async () => (await api('/diagnostics')).audio.active_microphone_source === 'none', 6000, 'Second lost input stayed active');
+          lostMicrophoneDuringOutputLoss = true; await sleep(1200);
+          entry.afterBothInputsLost = await observeAudio(viewer); requireCommunicationsLoss(entry.afterBothInputsLost);
+          await checkAudioWarning(/Primary audio stopped[\s\S]*Microphone\/input stopped/, 'bothAudioWarningsVisible');
+          inputModule = createInput();
+        }
         entry.videoAfterOutputLoss = await observe(viewer, 3000); requireMoving(entry.videoAfterOutputLoss, 'Video continues after communications output loss');
         communicationsModule = createCommunicationsOutput(); communicationsTone = tone(communicationsSink, 'owned replacement communications');
         await sleep(1500);
@@ -369,6 +392,7 @@ function barriers() {
         pactl('unload-module', inputModule); modules.splice(modules.indexOf(inputModule), 1);
         await waitFor(async () => (await api('/diagnostics')).audio.active_microphone_source === 'none', 6000, 'Removed microphone stayed active');
         await sleep(1200);
+        if (gui) await checkAudioWarning(/Microphone\/input stopped/, 'microphoneLossWarningVisible');
         entry.afterInputLoss = await observeAudio(viewer); requireAudio(entry.afterInputLoss, 'Removed input does not capture default/system audio', {silent:true});
         entry.videoAfterInputLoss = await observe(viewer, 3000); requireMoving(entry.videoAfterInputLoss, 'Video after microphone removal');
         inputModule = createInput(); await sleep(1000);
@@ -383,15 +407,18 @@ function barriers() {
         assert.equal(before.metrics.audio_packets_sent, after.metrics.audio_packets_sent); assert.equal(before.video.frames_captured, after.video.frames_captured);
         assert.equal(after.audio.active_microphone_source, 'none');
         entry.guiStopSettled = true;
+        await checkAudioWarning(null, 'audioWarningClearedOnStop');
         fs.writeFileSync(path.join(report, fixture.name + '-ui-stopped.json'), ui('dump'));
         if (wayland) execFileSync('gnome-screenshot', ['-f', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
         else execFileSync('python3', ['-c', 'from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
       }
       if (gui && communications) {
+        lostMicrophoneDuringOutputLoss = false;
         ui('press', 'Refresh outputs');
         await goLive();
         const restarted = await receiver(viewerBrowser, stream, publisher);
         entry.afterExplicitOutputRestart = await observeAudio(restarted); requireAudio(entry.afterExplicitOutputRestart, 'Explicit communications output restart', {microphone:fixture.mix, excluded:true});
+        await checkAudioWarning(null, 'audioWarningClearedOnExplicitRestart');
         await restarted.close(); ui('press', 'Stop streaming');
         await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Communications restart stop did not finish');
       }
@@ -406,12 +433,14 @@ function barriers() {
         const before = await api('/diagnostics'); await sleep(1000); const after = await api('/diagnostics');
         assert.equal(before.metrics.audio_packets_sent, after.metrics.audio_packets_sent, 'Replacement app was captured without selection');
         entry.staleAppNotReplaced = true;
+        await checkAudioWarning(/Selected audio app is unavailable/, 'staleAppWarningVisible');
         await staleViewer.close(); ui('press', 'Stop streaming');
         await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Stale-app stop did not finish');
         ui('choose', stale.name, 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
         await goLive();
         const restarted = await receiver(viewerBrowser, stream, publisher);
         entry.afterExplicitReselection = await observeAudio(restarted); requireAudio(entry.afterExplicitReselection, 'Explicit app reselection', {excluded:true});
+        await checkAudioWarning(null, 'audioWarningClearedOnExplicitRestart');
         await restarted.close(); ui('press', 'Stop streaming');
         await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Reselected-app stop did not finish');
         await appSource.stop(); appSource = null;
@@ -433,6 +462,59 @@ function barriers() {
         assert.equal(idle.audio.active_microphone_source, 'none'); assert.equal(idle.metrics.audio_packets_sent, 0);
         fs.writeFileSync(path.join(report, 'mix-ui-restored.json'), JSON.stringify(restored, null, 2));
         entry.settingsRestoredWithoutCapture = true; await quit();
+      }
+      if (communications && gui && opts['missing-output-relaunch'] === 'true') {
+        clearInterval(communicationsTone.timer); communicationsTone.retired = true;
+        communicationsTone.child.stdin.destroy(); communicationsTone.child.kill(); await communicationsTone.child.closed;
+        pactl('unload-module', communicationsModule); modules.splice(modules.indexOf(communicationsModule), 1);
+        log = fs.createWriteStream(path.join(report, 'missing-output-private-publisher.log'));
+        publisher = spawn(exe, args, {cwd:bundle, env, stdio:['ignore', 'pipe', 'pipe']});
+        publisher.stdout.pipe(log, {end:false}); publisher.stderr.pipe(log, {end:false});
+        publisher.closed = new Promise(resolve => publisher.once('close', resolve));
+        await waitFor(() => { assert.equal(publisher.exitCode, null); return fs.existsSync(discovery); }, 10000, 'Missing-output relaunch did not publish discovery');
+        control = JSON.parse(fs.readFileSync(discovery)); assert.equal(control.pid, publisher.pid);
+        const missingRows = JSON.parse(ui('dump'));
+        assert(missingRows.some(row => row.role === 'combo box' && row.name === 'Selected output unavailable; choose again'));
+        assert(!(await api('/diagnostics')).app.capturing);
+        entry.unavailableOutputRestored = true;
+        ui('source', wayland ? 'Choose a window' : title);
+        await goLive();
+        const missingViewer = await receiver(viewerBrowser, stream, publisher);
+        entry.missingOutputVideo = await observe(missingViewer, 3000); requireMoving(entry.missingOutputVideo, 'Missing communications output preserves video');
+        if (fixture.mix) { entry.missingOutputAudio = await observeAudio(missingViewer); requireCommunicationsLoss(entry.missingOutputAudio); }
+        else {
+          const before = await api('/diagnostics'); await sleep(1500); const after = await api('/diagnostics');
+          assert.equal(before.metrics.audio_packets_sent, 0); assert.equal(after.metrics.audio_packets_sent, 0);
+          const incoming = await missingViewer.evaluate(async () => { const rows = []; for (const pc of reviewPCs) for (const item of (await pc.getStats()).values()) if (item.type === 'inbound-rtp' && item.kind === 'audio') rows.push(item.packetsReceived || 0); return rows; });
+          assert(incoming.every(count => count === 0)); entry.noFallbackAudioWithMissingOutput = true;
+        }
+        await sleep(5000);
+        const warningRows = ui('dump'); fs.writeFileSync(path.join(report, 'missing-output-ui.json'), warningRows);
+        entry.missingOutputWarningVisible = JSON.parse(warningRows).some(row => row.role === 'label' && row.states.includes('visible') && /Selected communications output is unavailable/.test(row.name));save();
+        if (wayland) execFileSync('gnome-screenshot', ['-f', path.join(report, 'missing-output-warning.png')], {env, timeout:10000});
+        else execFileSync('python3', ['-c', 'from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])', path.join(report, 'missing-output-warning.png')], {env, timeout:10000});
+        assert(entry.missingOutputWarningVisible, 'Audio startup warning was lost while video was live');
+        await checkAudioWarning(/Selected communications output is unavailable/, 'missingOutputWarningRetained');
+        if (fixture.mix && opts['fallback-meter-label'] === 'true') {
+          assert.equal((await api('/diagnostics')).audio.microphone_is_primary, true);
+          const meterRows = JSON.parse(ui('dump'));
+          assert(meterRows.some(row => row.role === 'label' && row.name === 'Primary: Selected microphone/input (50%)'));
+          assert(meterRows.some(row => row.role === 'label' && row.name === 'Mic/input: Primary source'));
+          entry.fallbackMeterIdentifiesMicrophone = true;
+        }
+        await missingViewer.close(); ui('press', 'Stop streaming');
+        await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Missing-output Stop failed');
+        communicationsModule = createCommunicationsOutput(); communicationsTone = tone(communicationsSink, 'owned restored communications');
+        ui('press', 'Refresh outputs'); await goLive();
+        const recovered = await receiver(viewerBrowser, stream, publisher);
+        entry.afterMissingOutputRecovery = await observeAudio(recovered); requireAudio(entry.afterMissingOutputRecovery, 'Restart after missing output', {microphone:fixture.mix, excluded:true});
+        assert(!JSON.parse(ui('dump')).some(row => row.role === 'label' && row.states.includes('visible') && /Selected communications output is unavailable/.test(row.name)), 'Resolved audio warning survived restart');
+        await checkAudioWarning(null, 'missingOutputNoticeClearedOnRecovery');
+        if (opts['fallback-meter-label'] === 'true') assert.equal((await api('/diagnostics')).audio.microphone_is_primary, false);
+        entry.audioWarningClearedOnRecovery = true;
+        await recovered.close();ui('press', 'Stop streaming');
+        await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Recovered-output Stop failed');
+        await quit();
       }
       entry.passed = true; save();
     }

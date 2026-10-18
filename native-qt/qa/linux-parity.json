@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged automatic X11 window/process selection including Chrome child audio and suspend/resume, explicit Wayland CLI selection with real portal capture, and X11 GUI app selection passed. Dynamic child/same-process streams, stream removal/recreation, output moves, late viewer, app exit, stale-selection rejection and explicit reselection passed. Native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed microphone continuity on app loss, A/V drift/endurance remain. Root-process exit intentionally stops its app capture; no automatic replacement by name. Native Wayland GUI explicit app selection, child/same-process streams, output moves, app loss, stale selection and explicit reselection with fresh portal restart now passed. Wayland placeholder correctly requests explicit app selection."
+      "remaining": "Packaged automatic X11 window/process selection including Chrome child audio and suspend/resume, explicit Wayland CLI selection with real portal capture, and X11 GUI app selection passed. Dynamic child/same-process streams, stream removal/recreation, output moves, late viewer, app exit, stale-selection rejection and explicit reselection passed. Native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed microphone continuity on app loss, A/V drift/endurance remain. Root-process exit intentionally stops its app capture; no automatic replacement by name. Native Wayland GUI explicit app selection, child/same-process streams, output moves, app loss, stale selection and explicit reselection with fresh portal restart now passed. Wayland placeholder correctly requests explicit app selection. X11 packaged app-loss and stale-startup audio notices now remain visible while publishing and clear after Stop/explicit reselection; decoded recovery passed."
     },
     {
       "id": "system-audio",
@@ -48,13 +48,13 @@
       "required": true,
       "status": "bounded-e2e-passed",
       "platform_behavior": "Linux reuses the shared CommunicationsOutput source mode and mixer/publisher with an explicitly selected playback output, configured to match the voice-chat app. All playback on that output is captured, as with Windows endpoint loopback. The chosen device persists; Linux does not invent an OS-wide communications default.",
-      "remaining": "Virtual-output isolation, X11 microphone mixing/mute/continuity on output loss, Wayland pure-output loss/silence, late receiver, explicit restart and saved-choice relaunch passed from exact packages. Real voice-chat applications and physical output separation, Wayland communications/microphone combination, persisted unavailable output at launch, duplicate device labels, device/server loss and UI error reporting across more cases, endpoint/default changes, long-run A/V drift and Windows/macOS regression remain unqualified. This is not full audio parity or an accepted exception."
+      "remaining": "Final packaged X11 mixed and native Wayland pure workflows now also passed a persisted unavailable output at launch, visible retained failure notice while video continues, and explicit restored-output restart. X11 combined output/input loss retains both notices; missing-output microphone fallback is labeled correctly. Real voice-chat applications and physical output separation, Wayland communications/microphone combination, duplicate device labels, audio-server loss, endpoint/default changes, long-run A/V drift and Windows/macOS regression remain unqualified. This is not full audio parity or an accepted exception."
     },
     {
       "id": "microphone",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, long-run clock drift remain. Native Wayland GUI explicit owned input selection, mute/unmute, input removal, video continuity, no silent reopen, mixing and persisted settings passed. This remains virtual-device routing evidence, not physical microphone qualification."
+      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, long-run clock drift remain. Native Wayland GUI explicit owned input selection, mute/unmute, input removal, video continuity, no silent reopen, mixing and persisted settings passed. This remains virtual-device routing evidence, not physical microphone qualification. X11 packaged input-removal notice now stays visible while video continues and clears on Stop; this adds no physical microphone qualification."
     },
     {
       "id": "audio-codecs",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Preview, tray/reopen, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Preview, tray/reopen, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open."
     },
     {
       "id": "profiles",
@@ -126,7 +126,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open."
     },
     {
       "id": "packaging",
@@ -7669,6 +7669,593 @@
         }
       ],
       "finding": "Wrong-kind and empty communications device IDs were rejected by the packaged CLI with exit code 2 and a specific diagnostic. This does not qualify media capture."
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via explicit communications output and owned virtual microphone; communications-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "7438825cde80c7aa31d5f8f48444d318f6752fcda4f4dc57e854213ff84a2d96",
+      "manifestSha256": "b0def094e933d9c172afbf38a23c0148e954f6a0ce28ea734685c60e6d222091",
+      "harnessSha256": "06f5ce6b7ca94b4f53bcdd14483f8b2249be354dde52105ee43da9e632ff5ce1",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "communications-gui",
+      "requestedCase": "all",
+      "passed": false,
+      "backend": "linux-audio-warning-baseline-reproduction-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning/b6f363aa-c649-4024-9ca1-34f91bd6d02b/results.json",
+      "reportSha256": "3799632a6158398d376776f4e2c2dbb86205fe079e16e9f747ab53915911698f",
+      "phase": "baseline-reproduction",
+      "cases": [
+        {
+          "name": "communications",
+          "passed": false,
+          "missingOutputBlockedBeforeCapture": true,
+          "noSilentOutputReplacement": true,
+          "guiStopSettled": true,
+          "settingsRestoredWithoutCapture": true,
+          "unavailableOutputRestored": true,
+          "noFallbackAudioWithMissingOutput": true,
+          "missingOutputWarningVisible": false,
+          "audioObservations": {
+            "audio": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterOutputLoss": 30,
+            "afterOutputRecreation": 30,
+            "afterExplicitOutputRestart": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "videoAfterOutputLoss": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "missingOutputVideo": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Previous package reproduced a lost audio startup warning after publishing succeeded with a persisted unavailable communications output. Video continued and no output fallback occurred; visible warning assertion failed.",
+      "error": "AssertionError [ERR_ASSERTION]: Audio startup warning was lost while video was live\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:465:9"
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "60776e5d5530cc0624b175984f38e42b8382c1a6891f829f80bf35a968d1c2cc",
+      "manifestSha256": "14584bcef32134f75945ffd2b9343f7d41edd6c8eaad7dbf703958c262159ce2",
+      "harnessSha256": "c27d92819730159c9b7e0eea57fdc4560662bb0af57604b0f070ee33fa25150b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "apps-gui",
+      "requestedCase": "all",
+      "passed": true,
+      "backend": "linux-audio-warning-intermediate-before-meter-correction-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning-final/01393ff1-14e8-494e-adc1-483b3eb20b81/results.json",
+      "reportSha256": "0699b4263fb0c048328ae550ab4c676460408c56f3b16a8247d588dccf188f12",
+      "phase": "intermediate-before-meter-correction",
+      "cases": [
+        {
+          "name": "selected-app",
+          "passed": true,
+          "healthyAudioHasNoWarning": true,
+          "noAudioAfterAppExit": true,
+          "appLossWarningVisible": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "staleAppNotReplaced": true,
+          "staleAppWarningVisible": true,
+          "audioWarningClearedOnExplicitRestart": true,
+          "audioObservations": {
+            "audio": 30,
+            "childJoined": 30,
+            "childRemoved": 30,
+            "secondStreamSameProcess": 30,
+            "secondStreamRemoved": 30,
+            "noStreams": 30,
+            "streamRecreated": 30,
+            "outputMoved": 30,
+            "lateAudio": 30,
+            "afterExplicitReselection": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 88,
+              "identityReadFailures": 0
+            },
+            "videoAfterAppExit": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "videoWithStaleApp": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Persistent audio notices passed packaged workflows. Screenshot review found the fallback microphone meter still named the unavailable output; this intermediate artifact is superseded by the final package."
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "60776e5d5530cc0624b175984f38e42b8382c1a6891f829f80bf35a968d1c2cc",
+      "manifestSha256": "14584bcef32134f75945ffd2b9343f7d41edd6c8eaad7dbf703958c262159ce2",
+      "harnessSha256": "c27d92819730159c9b7e0eea57fdc4560662bb0af57604b0f070ee33fa25150b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "gui",
+      "requestedCase": "microphone",
+      "passed": true,
+      "backend": "linux-audio-warning-intermediate-before-meter-correction-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning-final/6cdeba59-117d-49ec-a5e5-c57f7ae5a83f/results.json",
+      "reportSha256": "fa9c167e03e0cf3692b62c1455ca9c01cba3758d1f8ba32ea5f37778daa649ee",
+      "phase": "intermediate-before-meter-correction",
+      "cases": [
+        {
+          "name": "microphone",
+          "passed": true,
+          "healthyAudioHasNoWarning": true,
+          "microphoneLossWarningVisible": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterInputLoss": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "videoAfterInputLoss": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Persistent audio notices passed packaged workflows. Screenshot review found the fallback microphone meter still named the unavailable output; this intermediate artifact is superseded by the final package."
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded Wayland portal H264 and audio via explicit communications output and owned virtual microphone; communications-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "60776e5d5530cc0624b175984f38e42b8382c1a6891f829f80bf35a968d1c2cc",
+      "manifestSha256": "14584bcef32134f75945ffd2b9343f7d41edd6c8eaad7dbf703958c262159ce2",
+      "harnessSha256": "05850debdb6e2787ad0bf06584d578f43e4d06c32fd5abbcedd96e4b3a36f217",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "communications-gui",
+      "requestedCase": "all",
+      "passed": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "portalJournalSha256": "64c17477dfab858bbb313e897c978469f417d12dbcaf984e58547d6d4d8ba856",
+      "backend": "linux-audio-warning-intermediate-before-meter-correction-wayland",
+      "captureBackend": "wayland",
+      "report": "native-qt/qa/reports/linux-audio-warning-final/704ecbee-5862-4d4f-9200-c81ef36881b4/results.json",
+      "reportSha256": "1528a5284f353c98a9a680ac52ca57f3708580157425af796d76e9cb7ac29913",
+      "phase": "intermediate-before-meter-correction",
+      "cases": [
+        {
+          "name": "communications",
+          "passed": true,
+          "missingOutputBlockedBeforeCapture": true,
+          "healthyAudioHasNoWarning": true,
+          "outputLossWarningVisible": true,
+          "noSilentOutputReplacement": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "audioWarningClearedOnExplicitRestart": true,
+          "settingsRestoredWithoutCapture": true,
+          "unavailableOutputRestored": true,
+          "noFallbackAudioWithMissingOutput": true,
+          "missingOutputWarningVisible": true,
+          "missingOutputWarningRetained": true,
+          "missingOutputNoticeClearedOnRecovery": true,
+          "audioWarningClearedOnRecovery": true,
+          "audioObservations": {
+            "audio": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterOutputLoss": 30,
+            "afterOutputRecreation": 30,
+            "afterExplicitOutputRestart": 30,
+            "afterMissingOutputRecovery": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 85,
+              "identityReadFailures": 0
+            },
+            "videoAfterOutputLoss": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "missingOutputVideo": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Persistent audio notices passed packaged workflows. Screenshot review found the fallback microphone meter still named the unavailable output; this intermediate artifact is superseded by the final package.",
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-audio-warning-final/704ecbee-5862-4d4f-9200-c81ef36881b4/missing-output-warning.png",
+          "sha256": "01debb785681e34bf4efd528bda76d08a5d666d453078a2e52aec708e2792a89"
+        }
+      ]
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via explicit communications output and owned virtual microphone; communications-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "60776e5d5530cc0624b175984f38e42b8382c1a6891f829f80bf35a968d1c2cc",
+      "manifestSha256": "14584bcef32134f75945ffd2b9343f7d41edd6c8eaad7dbf703958c262159ce2",
+      "harnessSha256": "05850debdb6e2787ad0bf06584d578f43e4d06c32fd5abbcedd96e4b3a36f217",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "communications-gui",
+      "requestedCase": "all",
+      "passed": true,
+      "backend": "linux-audio-warning-intermediate-before-meter-correction-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning-final/f30c44f1-2ded-46ca-9692-a7dcc8080b45/results.json",
+      "reportSha256": "807de27cfa0441b0dd367fb49fb31137fe7f90643fe11ea892b365abc5b293ce",
+      "phase": "intermediate-before-meter-correction",
+      "cases": [
+        {
+          "name": "communications",
+          "passed": true,
+          "missingOutputBlockedBeforeCapture": true,
+          "healthyAudioHasNoWarning": true,
+          "mixedRmsAtHalfGain": 0.06490727580165134,
+          "outputLossWarningVisible": true,
+          "bothAudioWarningsVisible": true,
+          "noSilentOutputReplacement": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "audioWarningClearedOnExplicitRestart": true,
+          "settingsRestoredWithoutCapture": true,
+          "unavailableOutputRestored": true,
+          "missingOutputWarningVisible": true,
+          "missingOutputWarningRetained": true,
+          "missingOutputNoticeClearedOnRecovery": true,
+          "audioWarningClearedOnRecovery": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterOutputLoss": 30,
+            "afterBothInputsLost": 30,
+            "afterOutputRecreation": 30,
+            "afterExplicitOutputRestart": 30,
+            "missingOutputAudio": 30,
+            "afterMissingOutputRecovery": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 85,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "videoAfterOutputLoss": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            },
+            "missingOutputVideo": {
+              "distinctIdentities": 88,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Persistent audio notices passed packaged workflows. Screenshot review found the fallback microphone meter still named the unavailable output; this intermediate artifact is superseded by the final package.",
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-audio-warning-final/f30c44f1-2ded-46ca-9692-a7dcc8080b45/missing-output-warning.png",
+          "sha256": "8075b19d18a8be04cdbc71f3ac98920c819ab0997f76dbc9715282de5b16b852"
+        }
+      ]
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via default system output and owned virtual microphone; gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "d30e1fbe61c30b043a22f0f0873c79bfe079919f15ce13332637b4bc20c365d2",
+      "manifestSha256": "1cfdc06c37da6c28169af378135912409bd01521cfbe2e7c640a38f8ade48a7a",
+      "harnessSha256": "c27d92819730159c9b7e0eea57fdc4560662bb0af57604b0f070ee33fa25150b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "gui",
+      "requestedCase": "microphone",
+      "passed": true,
+      "backend": "linux-audio-warning-final-package-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning-meter-final/23246d71-7327-4f88-a970-1a9cb852af2a/results.json",
+      "reportSha256": "bd55c87cbf03e57acf8e3d30a0ff054be9047ca77e7c5e7643b160f0c08ea55a",
+      "phase": "final-package",
+      "cases": [
+        {
+          "name": "microphone",
+          "passed": true,
+          "healthyAudioHasNoWarning": true,
+          "microphoneLossWarningVisible": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterInputLoss": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 88,
+              "identityReadFailures": 0
+            },
+            "videoAfterInputLoss": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Final packaged GUI workflow passed decoded media and audio warning retention/clearing. X11 mixed communications additionally passed independent simultaneous device-loss notices and correct fallback microphone meter identity; Wayland communications uses no microphone. Physical input and broader recovery remain unqualified."
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "d30e1fbe61c30b043a22f0f0873c79bfe079919f15ce13332637b4bc20c365d2",
+      "manifestSha256": "1cfdc06c37da6c28169af378135912409bd01521cfbe2e7c640a38f8ade48a7a",
+      "harnessSha256": "c27d92819730159c9b7e0eea57fdc4560662bb0af57604b0f070ee33fa25150b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "apps-gui",
+      "requestedCase": "all",
+      "passed": true,
+      "backend": "linux-audio-warning-final-package-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning-meter-final/b5a5a3c1-f0bb-44de-85f4-46b82c6bf658/results.json",
+      "reportSha256": "7683108454ddeb1c8d1af096f0c681818bb7dcc665aac86e4ef74350b0b771dd",
+      "phase": "final-package",
+      "cases": [
+        {
+          "name": "selected-app",
+          "passed": true,
+          "healthyAudioHasNoWarning": true,
+          "noAudioAfterAppExit": true,
+          "appLossWarningVisible": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "staleAppNotReplaced": true,
+          "staleAppWarningVisible": true,
+          "audioWarningClearedOnExplicitRestart": true,
+          "audioObservations": {
+            "audio": 30,
+            "childJoined": 30,
+            "childRemoved": 30,
+            "secondStreamSameProcess": 30,
+            "secondStreamRemoved": 30,
+            "noStreams": 30,
+            "streamRecreated": 30,
+            "outputMoved": 30,
+            "lateAudio": 30,
+            "afterExplicitReselection": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 82,
+              "identityReadFailures": 0
+            },
+            "videoAfterAppExit": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            },
+            "videoWithStaleApp": {
+              "distinctIdentities": 88,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Final packaged GUI workflow passed decoded media and audio warning retention/clearing. X11 mixed communications additionally passed independent simultaneous device-loss notices and correct fallback microphone meter identity; Wayland communications uses no microphone. Physical input and broader recovery remain unqualified."
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via explicit communications output and owned virtual microphone; communications-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "d30e1fbe61c30b043a22f0f0873c79bfe079919f15ce13332637b4bc20c365d2",
+      "manifestSha256": "1cfdc06c37da6c28169af378135912409bd01521cfbe2e7c640a38f8ade48a7a",
+      "harnessSha256": "c27d92819730159c9b7e0eea57fdc4560662bb0af57604b0f070ee33fa25150b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "communications-gui",
+      "requestedCase": "all",
+      "passed": true,
+      "backend": "linux-audio-warning-final-package-x11",
+      "captureBackend": "x11",
+      "report": "native-qt/qa/reports/linux-audio-warning-meter-final/ced01476-f61b-49ae-a68d-e42f7af678c1/results.json",
+      "reportSha256": "65d89a49662f228b191c598081ff22512de544c72d5fa67fc1309341267fab72",
+      "phase": "final-package",
+      "cases": [
+        {
+          "name": "communications",
+          "passed": true,
+          "missingOutputBlockedBeforeCapture": true,
+          "healthyAudioHasNoWarning": true,
+          "mixedRmsAtHalfGain": 0.0648812400295786,
+          "outputLossWarningVisible": true,
+          "bothAudioWarningsVisible": true,
+          "noSilentOutputReplacement": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "audioWarningClearedOnExplicitRestart": true,
+          "settingsRestoredWithoutCapture": true,
+          "unavailableOutputRestored": true,
+          "missingOutputWarningVisible": true,
+          "missingOutputWarningRetained": true,
+          "fallbackMeterIdentifiesMicrophone": true,
+          "missingOutputNoticeClearedOnRecovery": true,
+          "audioWarningClearedOnRecovery": true,
+          "audioObservations": {
+            "audio": 30,
+            "muted": 30,
+            "unmuted": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterOutputLoss": 30,
+            "afterBothInputsLost": 30,
+            "afterOutputRecreation": 30,
+            "afterExplicitOutputRestart": 30,
+            "missingOutputAudio": 30,
+            "afterMissingOutputRecovery": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 90,
+              "identityReadFailures": 0
+            },
+            "videoWhileMuted": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            },
+            "videoAfterOutputLoss": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "missingOutputVideo": {
+              "distinctIdentities": 87,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Final packaged GUI workflow passed decoded media and audio warning retention/clearing. X11 mixed communications additionally passed independent simultaneous device-loss notices and correct fallback microphone meter identity; Wayland communications uses no microphone. Physical input and broader recovery remain unqualified.",
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-audio-warning-meter-final/ced01476-f61b-49ae-a68d-e42f7af678c1/missing-output-warning.png",
+          "sha256": "1ed67fcb2aeac43fdb26ad5a015478f8fbf474f1cf0d970cfc7b43c62bd60b9f"
+        }
+      ]
+    },
+    {
+      "scope": "Extracted Ubuntu DEB; bounded Wayland portal H264 and audio via explicit communications output and owned virtual microphone; communications-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "executableSha256": "d30e1fbe61c30b043a22f0f0873c79bfe079919f15ce13332637b4bc20c365d2",
+      "manifestSha256": "1cfdc06c37da6c28169af378135912409bd01521cfbe2e7c640a38f8ade48a7a",
+      "harnessSha256": "c27d92819730159c9b7e0eea57fdc4560662bb0af57604b0f070ee33fa25150b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "codecReceiverSha256": "04325eefcdd0b1d54dad51bbfc25ea32c3bd64176c066fc384b4caf9d8684168",
+      "guiHelperSha256": "934fa508124f33750ac9bf641795fa4986aaf087bc202507ee893c31ea747631",
+      "portalHelperSha256": "83d8c71ebcbaa4f5d9e206f29188952ec1032791afe2e68366149b514e654842",
+      "appFixtureSha256": "c8bb35afa41e203e44eca79f7fa4d47a102d91499c3817b5161a973042d6084d",
+      "matrix": "communications-gui",
+      "requestedCase": "all",
+      "passed": true,
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "portalJournalSha256": "1bc6b06dccd111a3d32f86711e9cc31e0df5489c3d581924fce5f3bc291c38a8",
+      "backend": "linux-audio-warning-final-package-wayland",
+      "captureBackend": "wayland",
+      "report": "native-qt/qa/reports/linux-audio-warning-meter-final/f58cd2a3-ad11-4e42-909d-b03f07359616/results.json",
+      "reportSha256": "1dd7765cee66c055fc726626961280ae3494dcb395eb02fc6d2504a3856ca03c",
+      "phase": "final-package",
+      "cases": [
+        {
+          "name": "communications",
+          "passed": true,
+          "missingOutputBlockedBeforeCapture": true,
+          "healthyAudioHasNoWarning": true,
+          "outputLossWarningVisible": true,
+          "noSilentOutputReplacement": true,
+          "guiStopSettled": true,
+          "audioWarningClearedOnStop": true,
+          "audioWarningClearedOnExplicitRestart": true,
+          "settingsRestoredWithoutCapture": true,
+          "unavailableOutputRestored": true,
+          "noFallbackAudioWithMissingOutput": true,
+          "missingOutputWarningVisible": true,
+          "missingOutputWarningRetained": true,
+          "missingOutputNoticeClearedOnRecovery": true,
+          "audioWarningClearedOnRecovery": true,
+          "audioObservations": {
+            "audio": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "afterOutputLoss": 30,
+            "afterOutputRecreation": 30,
+            "afterExplicitOutputRestart": 30,
+            "afterMissingOutputRecovery": 30
+          },
+          "videoObservations": {
+            "video": {
+              "distinctIdentities": 88,
+              "identityReadFailures": 0
+            },
+            "videoAfterOutputLoss": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            },
+            "missingOutputVideo": {
+              "distinctIdentities": 89,
+              "identityReadFailures": 0
+            }
+          }
+        }
+      ],
+      "finding": "Final packaged GUI workflow passed decoded media and audio warning retention/clearing. X11 mixed communications additionally passed independent simultaneous device-loss notices and correct fallback microphone meter identity; Wayland communications uses no microphone. Physical input and broader recovery remain unqualified.",
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-audio-warning-meter-final/f58cd2a3-ad11-4e42-909d-b03f07359616/missing-output-warning.png",
+          "sha256": "75f5ec06a3c2abef67047d238751fe4b2aec7bb3e1ee8f334f393bebbed025f3"
+        }
+      ]
     }
   ],
   "host_environment": {
@@ -7993,5 +8580,40 @@
     "buildLogSha256": "ee059b49f033de329bfe956d926417ad9b3b222ad55de44adfaa06c51d3483c6",
     "gateLog": "native-qt/build-linux-communications-final-gates.log",
     "gateLogSha256": "e192bb73d0a0e06250db08733b74a092a88b1c7e5012b95678636a22b81cb075"
+  },
+  "audio_warning_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-d30e1fbe61c3-98570af1d9da.deb",
+    "sha256": "3edfa686df26253a02a92f23aab35822b167ce4dce3a71618ed00ae8db19f9c3",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-d30e1fbe61c3-98570af1d9da",
+    "manifestSha256": "1cfdc06c37da6c28169af378135912409bd01521cfbe2e7c640a38f8ade48a7a",
+    "executableSha256": "d30e1fbe61c30b043a22f0f0873c79bfe079919f15ce13332637b4bc20c365d2",
+    "qualification": "Development checkpoint: exact Debian payload passed X11 mixed communications with combined output/input loss and missing saved output, native Wayland pure communications with missing saved output, X11 selected-app loss/stale selection/reselection, and X11 microphone removal. Persistent notices remain visible independently of publishing status and scrolling; explicit restart clears resolved notices. Fallback microphone meter identifies the actual source. Full Linux parity and Windows/macOS regression remain incomplete.",
+    "cleanupReport": "native-qt/qa/reports/linux-audio-warning-meter-final/cleanup.json",
+    "cleanupReportSha256": "7c5de44b3785e4ace4cab2d18081c4eb230edf16613d463051bcf813c07d117b"
+  },
+  "audio_warning_gates": {
+    "classification": "Release build, packaging, syntax and CTest checks are gates, not application testing.",
+    "passed": true,
+    "checks": [
+      "Release build and Debian package creation",
+      "PlatformCapabilitiesGate",
+      "Node syntax",
+      "git diff --check"
+    ],
+    "logs": [
+      {
+        "path": "native-qt/build-linux-audio-warning-meter-final.log",
+        "sha256": "71910e0308e86a3a18fb64c527c662fc8df0d2fd835e91019f1015e0a30b9f05"
+      },
+      {
+        "path": "native-qt/build-linux-audio-warning-meter-package.log",
+        "sha256": "fda8b6d1371e5fac2ad0daa1ed4239ea25ed1b3eff5624c2ef0b61dbb15fb27f"
+      },
+      {
+        "path": "native-qt/build-linux-audio-warning-meter-gates.log",
+        "sha256": "e192bb73d0a0e06250db08733b74a092a88b1c7e5012b95678636a22b81cb075"
+      }
+    ],
+    "cross_platform": "New state and GUI behavior are Linux-conditional. Windows/macOS runtime regression remains unqualified."
   }
 }

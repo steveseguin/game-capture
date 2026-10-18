@@ -208,6 +208,10 @@ class MainWindow : public QMainWindow {
     QLineEdit *ffmpegPathInput_ = nullptr;
     QLineEdit *ffmpegOptionsInput_ = nullptr;
     QLabel *statusLabel_ = nullptr;
+#ifdef __linux__
+    QLabel *audioCaptureWarningLabel_ = nullptr;
+    void refreshAudioCaptureWarning();
+#endif
     QLabel *shareLabel_ = nullptr;
     QPushButton *copyShareLinkButton_ = nullptr;
     QPushButton *openShareLinkButton_ = nullptr;
