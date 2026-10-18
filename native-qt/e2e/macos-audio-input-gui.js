@@ -250,6 +250,8 @@ async function stop(entry,discovery){
         const status=find('statusLabel');item.status=status?.AXValue||status?.AXTitle||'';
         if(result.expectInputWarning){
           item.inputWarning=find('microphoneWarningLabel')?.AXValue||'';
+          item.inputWarningBounds=JSON.parse(ui('bounds','microphoneWarningLabel'));
+          item.streamStatusBounds=JSON.parse(ui('bounds','statusLabel'));
           assert(item.inputWarning.startsWith('Microphone audio is off.')&&item.inputWarning.includes('stop and start streaming again'));
           assert.equal(item.after.platform_permissions.microphone,'granted','Input-loss workflow requires preexisting microphone permission');
         }
