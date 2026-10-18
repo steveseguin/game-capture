@@ -205,6 +205,35 @@ Diagnostics never launch FFmpeg or wait for a running probe. If no completed
 result is available, `ffmpeg_probe_error` says so; capability flags in that
 state are unknown rather than evidence that an encoder is missing.
 
+## Video send diagnostics
+
+`video.send_failures` retains its existing meaning: an attempted video send
+returned false, including when its viewer closed during encoding. It includes
+both peer sends and external-output failures; it is not a packet-loss count.
+
+`video.peer_send_failure_reasons` breaks down failed primary-video peer sends:
+
+| Reason | Meaning at the send attempt |
+| --- | --- |
+| `transport_unavailable` | The transport was absent or retired. |
+| `empty_packet` | The encoded packet contained no payload. |
+| `track_unavailable` | The video track was absent or no longer open. |
+| `packetizer_unavailable` | The configured RTP packetizer was absent. |
+| `pacer_failed` | The outbound video pacer had failed. |
+| `send_failed` | RTP sending failed or raised an exception. |
+
+These counters add detail without changing send admission or excluding failures
+from the aggregate. Transport/track unavailability can occur after a viewer
+leaves; it does not by itself prove healthy delivery. Correlate it with receiver
+playback, connection state and cleanup. Exceptions remain send failures even if
+a track closes at the same time. Alpha-track and audio failures keep their
+separate existing counters.
+
+Counters reset with the existing capture/live-session counters. Diagnostics read
+individual atomics, so totals can briefly differ while sends are in progress;
+compare a settled snapshot when reconciling them. An external-output failure
+contributes to the aggregate but not the peer breakdown.
+
 ## Commands
 
 Stop capture and streaming without closing the app:
