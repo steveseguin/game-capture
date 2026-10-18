@@ -1680,6 +1680,12 @@ bool VersusApp::isHardwareVideoEncoder() const {
     return videoStateSnapshot().hardwareEncoder;
 }
 
+#ifdef __APPLE__
+bool VersusApp::isMicrophoneCaptureActive() const {
+    return microphoneAudioCapture_.IsCapturing();
+}
+#endif
+
 float VersusApp::getAudioLevelRms() const {
     return currentAudioMeter(audioLevelRms_, lastMixedAudioChunkMs_);
 }

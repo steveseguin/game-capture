@@ -7,6 +7,7 @@
 #include "versus/platform/macos_capture.h"
 #include "versus/platform/macos_output_profiles.h"
 #include "versus/platform/macos_audio_choices.h"
+#include "versus/platform/macos_audio_input.h"
 #include <QStandardItemModel>
 #endif
 
@@ -1751,6 +1752,15 @@ void MainWindow::setupUI() {
         savePersistedSettings();
     });
     layout->addLayout(microphoneLayout);
+#ifdef __APPLE__
+    microphoneWarningLabel_ = new QLabel(this);
+    microphoneWarningLabel_->setObjectName("microphoneWarningLabel");
+    microphoneWarningLabel_->setTextFormat(Qt::PlainText);
+    microphoneWarningLabel_->setWordWrap(true);
+    microphoneWarningLabel_->setStyleSheet(QString("color: %1;").arg(COLOR_YELLOW));
+    microphoneWarningLabel_->hide();
+    layout->addWidget(microphoneWarningLabel_);
+#endif
 
     auto *captureSplitter = new QSplitter(Qt::Horizontal, this);
     captureSplitter->setChildrenCollapsible(false);
@@ -3620,6 +3630,9 @@ void MainWindow::onGoLiveClicked() {
 }
 
 void MainWindow::updateGoLiveButton() {
+#ifdef __APPLE__
+    refreshMicrophoneWarning();
+#endif
     if (!goLiveButton_) {
         return;
     }
@@ -3771,6 +3784,9 @@ void MainWindow::onTrayIconActivated(QSystemTrayIcon::ActivationReason reason) {
 }
 
 void MainWindow::onStatsTimer() {
+#ifdef __APPLE__
+    refreshMicrophoneWarning();
+#endif
     if (core_ && isLive_ && !stopInProgress_) {
         StreamStats stats;
         const auto metrics = core_->getStreamMetrics();
@@ -4267,6 +4283,39 @@ QString MainWindow::audioSourceSummaryText() const {
     const int gain = primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100;
     return QStringLiteral("Primary: %1 (%2%)").arg(text.isEmpty() ? QStringLiteral("-") : text).arg(gain);
 }
+
+#ifdef __APPLE__
+void MainWindow::refreshMicrophoneWarning() {
+    if (!microphoneWarningLabel_) return;
+    const bool requested = (includeMicrophoneCheck_ && includeMicrophoneCheck_->isChecked()) ||
+        (audioSourceSelect_ && audioSourceSelect_->currentData().toString() == "default-microphone");
+    QString message;
+    // Capture state, rather than signal level or permission alone, distinguishes
+    // an unavailable input from intentional mute/silence. Granting permission
+    // after startup does not start capture until the operator restarts streaming.
+    if (core_ && isLive_ && !stopInProgress_ && requested && !core_->isMicrophoneCaptureActive()) {
+        const auto permission = platform::microphonePermissionStatus();
+        if (permission == "not_determined") {
+            message = tr("Microphone audio is off. Allow Game Capture in the macOS microphone prompt, then stop and start streaming again.");
+        } else if (permission == "denied" || permission == "restricted") {
+            message = tr("Microphone audio is off. Allow Game Capture in System Settings > Privacy & Security > Microphone, then stop and start streaming again.");
+        } else {
+            message = tr("Microphone audio is off. Reconnect or select an input, then stop and start streaming again.");
+        }
+    }
+    const bool changed = microphoneWarningLabel_->text() != message;
+    microphoneWarningLabel_->setText(message);
+    microphoneWarningLabel_->setVisible(!message.isEmpty());
+    if (changed && microphoneWarningLabel_->isVisible()) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+        QAccessibleAnnouncementEvent event(microphoneWarningLabel_, message);
+#else
+        QAccessibleEvent event(microphoneWarningLabel_, QAccessible::NameChanged);
+#endif
+        QAccessible::updateAccessibility(&event);
+    }
+}
+#endif
 
 QString MainWindow::microphoneSourceSummaryText() const {
     if (microphoneMuteButton_ && microphoneMuteButton_->isEnabled() && microphoneMuteButton_->isChecked()) return "Mic/input: Muted";
