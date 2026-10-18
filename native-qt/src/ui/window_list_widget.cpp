@@ -10,6 +10,9 @@
 #include <QStyle>
 
 #include "versus/video/window_capture.h"
+#ifdef __APPLE__
+#include "versus/platform/macos_source_list.h"
+#endif
 
 namespace versus::ui {
 
@@ -32,8 +35,22 @@ WindowListWidget::WindowListWidget(QWidget *parent)
     headerLayout->addWidget(refreshButton_);
     layout->addLayout(headerLayout);
 
+#ifdef __APPLE__
+    sourceFilter_ = new QLineEdit(this);
+    sourceFilter_->setObjectName("sourceFilterInput");
+    sourceFilter_->setAccessibleName("Filter capture sources");
+    sourceFilter_->setPlaceholderText("Filter by source or app name");
+    sourceFilter_->setClearButtonEnabled(true);
+    layout->addWidget(sourceFilter_);
+    connect(sourceFilter_, &QLineEdit::textChanged, this, &WindowListWidget::applySourceFilter);
+#endif
+
     // Window list
+#ifdef __APPLE__
+    listWidget_ = platform::createMacSourceList(this);
+#else
     listWidget_ = new QListWidget(this);
+#endif
     listWidget_->setObjectName("sourceList");
     listWidget_->setAccessibleName("Available capture sources");
     listWidget_->setAccessibleDescription(
@@ -63,7 +80,11 @@ void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel,
     }
 
     const QString windowId = QString::fromStdString(window.id);
-    if (spoutModeEnabled_ || cameraModeEnabled_) {
+    if (spoutModeEnabled_ || cameraModeEnabled_
+#ifdef __APPLE__
+        || syphonModeEnabled_
+#endif
+    ) {
         QPixmap fallback(thumbnailLabel->size());
         fallback.fill(Qt::transparent);
         QPainter painter(&fallback);
@@ -86,7 +107,11 @@ void WindowListWidget::applyThumbnail(QLabel *thumbnailLabel,
         painter.drawText(
             fallback.rect(),
             Qt::AlignCenter,
-            cameraModeEnabled_ ? QStringLiteral("Camera") : QStringLiteral("Spout2"));
+            cameraModeEnabled_ ? QStringLiteral("Camera") :
+#ifdef __APPLE__
+            syphonModeEnabled_ ? QStringLiteral("Syphon") :
+#endif
+            QStringLiteral("Spout2"));
 
         thumbnailLabel->setPixmap(fallback);
         thumbnailLabel->setText(QString());
@@ -161,7 +186,12 @@ QString WindowListWidget::secondaryTextFor(const versus::video::WindowInfo &wind
 }
 
 QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &window) {
+#ifdef __APPLE__
+    auto *widget = new platform::MacSourceRow(listWidget_, QString::fromStdString(window.id));
+    widget->setAccessibleName(QString::fromStdString(window.name) + " - " + secondaryTextFor(window));
+#else
     auto *widget = new QWidget();
+#endif
     widget->setObjectName("itemWidget");
     auto *itemLayout = new QHBoxLayout(widget);
     itemLayout->setContentsMargins(4, 4, 4, 4);
@@ -205,6 +235,9 @@ QWidget* WindowListWidget::createItemWidget(const versus::video::WindowInfo &win
 void WindowListWidget::updateItemWidget(QWidget *widget,
                                         const versus::video::WindowInfo &window,
                                         bool forceThumbnailRefresh) {
+#ifdef __APPLE__
+    widget->setAccessibleName(QString::fromStdString(window.name) + " - " + secondaryTextFor(window));
+#endif
     if (auto *titleLabel = widget->findChild<QLabel*>("title")) {
         titleLabel->setText(QString::fromStdString(window.name));
     }
@@ -339,8 +372,26 @@ void WindowListWidget::setWindowList(const std::vector<versus::video::WindowInfo
     if (!selectedWindowId_.isEmpty() && windowItems_.contains(selectedWindowId_)) {
         listWidget_->setCurrentItem(windowItems_[selectedWindowId_]);
     }
+#ifdef __APPLE__
+    applySourceFilter();
+#endif
     updateSelectionVisuals();
 }
+
+#ifdef __APPLE__
+void WindowListWidget::applySourceFilter() {
+    if (!listWidget_ || !sourceFilter_) return;
+    const QString query = sourceFilter_->text().trimmed();
+    bool selectionHidden = false;
+    for (auto it = windowItems_.cbegin(); it != windowItems_.cend(); ++it) {
+        const bool hidden = !it.value()->data(Qt::AccessibleTextRole).toString()
+            .contains(query, Qt::CaseInsensitive);
+        it.value()->setHidden(hidden);
+        selectionHidden |= hidden && it.key() == selectedWindowId_;
+    }
+    if (selectionHidden) clearSelection();
+}
+#endif
 
 QString WindowListWidget::selectedWindowId() const {
     return selectedWindowId_;
@@ -397,6 +448,20 @@ void WindowListWidget::setEmptyText(const QString &text) {
     }
 }
 
+#ifdef __APPLE__
+void WindowListWidget::setSyphonModeEnabled(bool enabled) {
+    if (syphonModeEnabled_ == enabled) return;
+    syphonModeEnabled_ = enabled;
+    if (enabled) {
+        spoutModeEnabled_ = false;
+        cameraModeEnabled_ = false;
+    }
+    if (sourceFilter_) sourceFilter_->clear();
+    thumbnailCache_.clear();
+    requestThumbnailRefresh();
+}
+#endif
+
 void WindowListWidget::setSpoutModeEnabled(bool enabled) {
     if (spoutModeEnabled_ == enabled && (!enabled || !cameraModeEnabled_)) {
         return;
@@ -414,6 +479,9 @@ void WindowListWidget::setCameraModeEnabled(bool enabled) {
         return;
     }
     cameraModeEnabled_ = enabled;
+#ifdef __APPLE__
+    if (sourceFilter_) sourceFilter_->clear();
+#endif
     if (enabled) {
         spoutModeEnabled_ = false;
     }
@@ -440,7 +508,13 @@ void WindowListWidget::updateSelectionVisuals() {
         if (!widget) {
             continue;
         }
+#ifdef __APPLE__
+        const bool wasSelected = widget->property("selectedSource").toBool();
+#endif
         widget->setProperty("selectedSource", it.key() == selectedWindowId_);
+#ifdef __APPLE__
+        if (wasSelected != (it.key() == selectedWindowId_)) platform::notifyMacSourceSelection(widget);
+#endif
         widget->style()->unpolish(widget);
         widget->style()->polish(widget);
         widget->update();

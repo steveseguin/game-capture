@@ -27,7 +27,8 @@ enum class HardwareEncoder {
     None,
     NVENC,
     QuickSync,
-    AMF
+    AMF,
+    VideoToolbox
 };
 
 enum class AlphaBackgroundMode {
@@ -44,12 +45,19 @@ enum class EncodeFailureKind {
     ProcessExited,
     IoFailure,
     InvalidInput,
-    Unsupported
+    Unsupported,
+    // Input was accepted, but the bounded pipeline needs its next input before
+    // returning a packet. This is neither a timeout nor an encode failure.
+    OutputPending
 };
 
 struct EncoderConfig {
     VideoCodec codec = VideoCodec::H264;
+#ifdef __APPLE__
+    HardwareEncoder preferredHardware = HardwareEncoder::VideoToolbox;
+#else
     HardwareEncoder preferredHardware = HardwareEncoder::NVENC;
+#endif
     // Auto is vendor-neutral and may fall back to software. When this is true,
     // preferredHardware is a strict user selection and may not change category.
     bool explicitEncoderSelection = false;
@@ -95,6 +103,9 @@ struct FfmpegProbeInfo {
     bool bundled = false;
     bool userOverride = false;
     bool hasLibvpxVp9 = false;
+#ifdef __APPLE__
+    bool hasLibaomAv1 = false;
+#endif
     bool gplEnabled = false;
     bool nonfreeEnabled = false;
     std::string path;
@@ -194,12 +205,22 @@ class VideoEncoder {
     void swapPipeline(VideoEncoder &other);
     uint64_t configurationRevision() const { return configurationRevision_; }
 
+    // True returns a packet. False with OutputPending means input was accepted
+    // and another input is needed; callers must not count that as a failure.
     bool encode(const CapturedFrame &frame, EncodedPacket &packet);
     // Encodes using the frame's normal timing while attaching an explicit,
     // caller-owned source identity to the eventual delayed output packet.
     bool encodeWithSourceTimestamp(const CapturedFrame &frame,
                                    EncodedPacket &packet,
                                    int64_t sourceTimestamp);
+    // A live output can repeat one captured image at several presentation
+    // times. Supply that output clock separately from the opaque source token
+    // and the capture timestamp. Mac x264 requires nonnegative, increasing
+    // presentation times in 100 ns units. Backends with private CFR clocks retain them.
+    bool encodeWithSourceTimestamp(const CapturedFrame &frame,
+                                   EncodedPacket &packet,
+                                   int64_t sourceTimestamp,
+                                   int64_t presentationTimestamp);
     void setBitrate(int kbps);
     void requestKeyframe();
     bool guaranteesEveryFrameKeyframe() const;

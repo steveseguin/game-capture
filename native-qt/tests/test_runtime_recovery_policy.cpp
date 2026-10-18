@@ -28,6 +28,9 @@ void TestRuntimeRecoveryPolicy::testTemporarySoftwareEncoderPressureRemainsRetry
     QCOMPARE(
         classifySoftwareEncoderFailure(EncodeFailureKind::Backpressure),
         SoftwareEncoderFailureDisposition::Transient);
+    QCOMPARE(
+        classifySoftwareEncoderFailure(EncodeFailureKind::OutputPending),
+        SoftwareEncoderFailureDisposition::Transient);
 }
 
 void TestRuntimeRecoveryPolicy::testBoundedOutputStallFallsBackImmediately() {

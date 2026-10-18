@@ -20,6 +20,7 @@
 #include "../src/webrtc/capture_sr_reporter.h"
 #include "../src/webrtc/video_recovery.h"
 #include "../src/webrtc/video_pacer.h"
+#include "../src/webrtc/video_send_failure.h"
 #include <set>
 #include <rtc/h264rtppacketizer.hpp>
 #include "versus/app/versus_app.h"
@@ -916,6 +917,9 @@ class TestWebRtcClient : public QObject {
     Q_OBJECT
 
   private slots:
+    void testVideoSendFailureClassification();
+    void testVideoSendAcrossRemoteClose_data();
+    void testVideoSendAcrossRemoteClose();
     void testTurnModesInitializeWithoutRegistryBinding();
     void testTurnModesConsumeExactRegistryBindingAcrossReset();
     void testRelayModeRequiresTurnServer();
@@ -1110,6 +1114,102 @@ class BoundedTask {
 };
 
 }  // namespace
+
+void TestWebRtcClient::testVideoSendFailureClassification() {
+    using namespace versus::webrtc;
+    QCOMPARE(classifyVideoSendException("Track is not open", false), VideoSendFailure::TrackClosedDuringSend);
+    QCOMPARE(classifyVideoSendException("Track is closed", false), VideoSendFailure::TrackClosedDuringSend);
+    QCOMPARE(classifyVideoSendException("Track is not open", true), VideoSendFailure::SendFailed);
+    QCOMPARE(classifyVideoSendException("Track is closed", true), VideoSendFailure::SendFailed);
+    QCOMPARE(classifyVideoSendException("SRTP transport error", false), VideoSendFailure::SendFailed);
+    QCOMPARE(classifyVideoSendException("Track is not open: unknown cause", false), VideoSendFailure::SendFailed);
+    WebRtcClient client;
+    EncodedVideoPacket packet{{0x00, 0x00, 0x00, 0x01, 0x65}, 1000, true};
+    VideoSendFailure reason = VideoSendFailure::SendFailed;
+    QVERIFY(!client.sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::TransportUnavailable);
+    PeerConfig config;
+    config.enableDataChannel = false;
+    config.initialVideo = true;
+    QVERIFY(client.initialize(config));
+    QVERIFY(!client.sendVideo(EncodedVideoPacket{}, &reason));
+    QCOMPARE(reason, VideoSendFailure::EmptyPacket);
+    QVERIFY(!client.sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::TrackUnavailable);
+    QVERIFY(!client.sendVideo(packet)); // Legacy callers still see false.
+    client.shutdown();
+    QVERIFY(!client.sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::TransportUnavailable);
+}
+
+void TestWebRtcClient::testVideoSendAcrossRemoteClose_data() {
+    QTest::addColumn<bool>("vp9");
+    QTest::newRow("H264") << false;
+    QTest::newRow("VP9") << true;
+}
+
+void TestWebRtcClient::testVideoSendAcrossRemoteClose() {
+    using namespace versus::webrtc;
+    QFETCH(bool, vp9);
+    auto sender = std::make_shared<WebRtcClient>();
+    auto receiver = std::make_shared<WebRtcClient>();
+    std::weak_ptr<WebRtcClient> weakSender = sender, weakReceiver = receiver;
+    sender->setIceCandidateCallback([weakReceiver](const std::string &candidate,
+        const std::string &mid, int index, uint64_t) {
+        if (auto peer = weakReceiver.lock()) peer->addRemoteCandidate(candidate, mid, index);
+    });
+    receiver->setIceCandidateCallback([weakSender](const std::string &candidate,
+        const std::string &mid, int index, uint64_t) {
+        if (auto peer = weakSender.lock()) peer->addRemoteCandidate(candidate, mid, index);
+    });
+    PeerConfig config;
+    config.iceMode = IceMode::HostOnly;
+    config.enableDataChannel = false;
+    config.initialVideo = true;
+    config.videoCodec = vp9 ? PeerConfig::VideoCodec::VP9 : PeerConfig::VideoCodec::H264;
+    QVERIFY(sender->initialize(config));
+    config.initialVideo = false;
+    QVERIFY(receiver->initialize(config));
+    const auto offer = sender->createOffer();
+    QVERIFY(!offer.empty());
+    const auto answer = receiver->createAnswer(offer);
+    QVERIFY(!answer.empty());
+    QVERIFY(sender->setRemoteDescription(answer, "answer"));
+    QVERIFY(waitUntil([&] { return sender->hasActiveVideoTrack() &&
+        sender->connectionState() == ConnectionState::Connected; }, std::chrono::seconds(8)));
+    EncodedVideoPacket packet{vp9 ? std::vector<uint8_t>{0x82, 0x49, 0x83, 0x42}
+        : std::vector<uint8_t>{0, 0, 0, 1, 0x65, 0x88, 0x84}, 1000, true};
+    auto reason = VideoSendFailure::SendFailed;
+    QVERIFY(sender->sendVideo(packet, &reason));
+    QCOMPARE(reason, VideoSendFailure::None);
+
+    bool admitted = false, remoteCloseObserved = false;
+    WebRtcClientTestAccess::setConcurrencyHooks(*sender, [&](uint64_t) {
+        // This existing hook runs after successful admission, before sending.
+        // Close a real negotiated endpoint; no synthetic exception is thrown.
+        admitted = true;
+        receiver->shutdown();
+        remoteCloseObserved = waitUntil([&] {
+            return sender->connectionState() != ConnectionState::Connected;
+        // Local loopback teardown has been observed at the 30-second ICE
+        // boundary. Leave scheduling margin; this is fixture setup, not a
+        // user-visible disconnect latency assertion.
+        }, std::chrono::seconds(45));
+        // State callbacks can precede the final DTLS transport destruction.
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }, {}, {});
+    packet.pts += 1000;
+    const bool sent = sender->sendVideo(packet, &reason);
+    WebRtcClientTestAccess::clearConcurrencyHooks(*sender);
+    const bool stillActive = sender->hasActiveVideoTrack();
+    sender->shutdown();
+    receiver->shutdown();
+    QVERIFY(admitted);
+    QVERIFY(remoteCloseObserved);
+    QVERIFY(!stillActive);
+    QVERIFY(!sent); // A disconnect must never turn a failed send into success.
+    QCOMPARE(reason, VideoSendFailure::TrackClosedDuringSend);
+}
 
 void TestWebRtcClient::testTurnModesInitializeWithoutRegistryBinding() {
     // A failed or absent TURN registry fetch must not block connectivity:
@@ -5352,7 +5452,8 @@ void TestWebRtcClient::testConcurrentSendResetAndShutdownCompletes() {
 
     versus::webrtc::EncodedVideoPacket video{{0x82, 0x49, 0x83, 0x42}, 1000, true};
     versus::webrtc::EncodedAudioPacket audio{{0xF8, 0xFF, 0xFE}, 1000, 48000, 2};
-    const bool preRetirementVideo = negotiated && loopback->offerer->sendVideo(video);
+    auto preRetirementReason = versus::webrtc::VideoSendFailure::SendFailed;
+    const bool preRetirementVideo = negotiated && loopback->offerer->sendVideo(video, &preRetirementReason);
     const bool preRetirementAlpha = negotiated && loopback->offerer->sendAlphaVideo(video);
     const bool preRetirementAudio = negotiated && loopback->offerer->sendAudio(audio);
     const bool preRetirementData = negotiated && loopback->offerer->sendDataMessage("loopback-ready");
@@ -5660,6 +5761,7 @@ void TestWebRtcClient::testConcurrentSendResetAndShutdownCompletes() {
     offererCleanup.finishWithoutBlocking();
     answererCleanup.finishWithoutBlocking();
 
+    QCOMPARE(preRetirementReason, versus::webrtc::VideoSendFailure::None);
     QVERIFY2(sendEnteredResetBarrier,
              "The negotiated video send did not enter the deterministic reset barrier");
     QVERIFY2(resetCompletedWhileSendParked,

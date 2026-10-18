@@ -2,6 +2,10 @@
 #include "versus/video/h264_color_metadata.h"
 #include "versus/video/aspect_fit.h"
 #include "versus/video/window_capture.h"
+#ifdef __APPLE__
+#include "versus/platform/macos_ffmpeg.h"
+#include "versus/platform/macos_encoder.h"
+#endif
 
 #include <spdlog/spdlog.h>
 
@@ -530,6 +534,8 @@ const char *requestedEncoderModeName(const EncoderConfig &config) {
             return "Intel";
         case HardwareEncoder::AMF:
             return "AMD";
+        case HardwareEncoder::VideoToolbox:
+            return "Apple VideoToolbox";
         case HardwareEncoder::None:
         default:
             return "Software";
@@ -562,6 +568,8 @@ bool encoderMatchesExplicitSelection(const EncoderConfig &config,
             return lower.find("amd") != std::string::npos ||
                    lower.find("radeon") != std::string::npos ||
                    lower.find("amf") != std::string::npos;
+        case HardwareEncoder::VideoToolbox:
+            return lower.find("videotoolbox") != std::string::npos;
         case HardwareEncoder::None:
         default:
             return false;
@@ -591,6 +599,7 @@ std::string encoderCategoryName(const std::string &encoderName, bool hardware) {
         lower.find("amf") != std::string::npos) {
         return "AMD";
     }
+    if (lower.find("videotoolbox") != std::string::npos) return "Apple";
     return "Hardware";
 }
 
@@ -699,6 +708,9 @@ bool envFlagEnabled(const char *name) {
 }
 
 std::filesystem::path resolveFfmpegPathImpl(const std::string &configuredPath) {
+#ifdef __APPLE__
+    return platform::resolveMacFfmpeg(configuredPath);
+#else
     const std::string configured = trimCopyForPath(configuredPath);
     if (!configured.empty()) {
         return firstExistingFfmpegPath({configured});
@@ -747,9 +759,13 @@ std::filesystem::path resolveFfmpegPathImpl(const std::string &configuredPath) {
     }
 #endif
     return {};
+#endif
 }
 
 bool isBundledFfmpegPath(const std::filesystem::path &path) {
+#ifdef __APPLE__
+    return platform::isBundledMacFfmpeg(path);
+#else
     if (path.empty()) {
         return false;
     }
@@ -757,6 +773,7 @@ bool isBundledFfmpegPath(const std::filesystem::path &path) {
     const std::string normalized = toLowerCopy(path.lexically_normal().string());
     return normalized == toLowerCopy((moduleDir / "ffmpeg" / "bin" / "ffmpeg.exe").lexically_normal().string()) ||
            normalized == toLowerCopy((moduleDir / "ffmpeg.exe").lexically_normal().string());
+#endif
 }
 
 #ifdef _WIN32
@@ -937,8 +954,13 @@ struct CommandCaptureResult {
     int exitCode = -1;
 };
 
-CommandCaptureResult runCommandCapture(const std::filesystem::path &, const std::vector<std::string> &) {
+CommandCaptureResult runCommandCapture(const std::filesystem::path &exe, const std::vector<std::string> &args) {
+#ifdef __APPLE__
+    const auto result = platform::runMacFfmpegProbe(exe, args);
+    return {result.output, result.started, result.timedOut, result.exitCode};
+#else
     return {};
+#endif
 }
 #endif
 
@@ -961,6 +983,9 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     FfmpegProbeInfo info;
     const std::filesystem::path resolved = resolveFfmpegPathImpl(configuredPath);
     info.userOverride = !trimCopyForPath(configuredPath).empty();
+#ifdef __APPLE__
+    info.userOverride = platform::isMacFfmpegOverride(configuredPath, resolved);
+#endif
     if (resolved.empty()) {
         info.error = info.userOverride
             ? "Configured FFmpeg path was not found"
@@ -984,7 +1009,12 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     std::error_code modifiedError;
     const auto modified = std::filesystem::last_write_time(resolved, modifiedError);
     const std::string cacheKey =
-        (info.userOverride ? "user:" : "auto:") + toLowerCopy(resolved.lexically_normal().string());
+        (info.userOverride ? "user:" : "auto:") +
+#ifdef __APPLE__
+        resolved.lexically_normal().string(); // APFS can be case sensitive.
+#else
+        toLowerCopy(resolved.lexically_normal().string());
+#endif
     const auto probeNow = std::chrono::steady_clock::now();
     std::lock_guard<std::mutex> cacheLock(probeCacheMutex);
     if (probeCache.valid &&
@@ -1051,6 +1081,9 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     }
 
     info.hasLibvpxVp9 = textContainsInsensitive(encoderProbe.output, "libvpx-vp9");
+#ifdef __APPLE__
+    info.hasLibaomAv1 = textContainsInsensitive(encoderProbe.output, "libaom-av1");
+#endif
     info.gplEnabled = textContainsInsensitive(info.configuration, "--enable-gpl");
     info.nonfreeEnabled = textContainsInsensitive(info.configuration, "--enable-nonfree");
     return cacheAndReturn(info);
@@ -4991,6 +5024,8 @@ class VideoEncoder::Impl {
     std::atomic<VideoCodec> activeCodec_{VideoCodec::H264};
 };
 
+#elif defined(__APPLE__)
+class VideoEncoder::Impl : public versus::platform::MacVideoEncoder {};
 #else
 // Non-Windows stub
 class VideoEncoder::Impl {
@@ -5054,11 +5089,16 @@ bool VideoEncoder::initialize(const EncoderConfig &config, const CapturedFrame *
 
     if (!config_.explicitEncoderSelection && config_.codec != VideoCodec::H264) {
         const EncoderConfig requested = config_;
+#ifdef __APPLE__
+        const std::array<HardwareEncoder, 2> candidates = {
+            HardwareEncoder::VideoToolbox, HardwareEncoder::None};
+#else
         const std::array<HardwareEncoder, 4> candidates = {
             HardwareEncoder::NVENC,
             HardwareEncoder::QuickSync,
             HardwareEncoder::AMF,
             HardwareEncoder::None};
+#endif
         initialized_ = false;
         for (const HardwareEncoder candidateMode : candidates) {
             if (requested.codec == VideoCodec::VP9 && candidateMode != HardwareEncoder::None) {
@@ -5164,13 +5204,25 @@ bool VideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet) {
 bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
                                              EncodedPacket &packet,
                                              int64_t sourceTimestamp) {
+    return encodeWithSourceTimestamp(frame, packet, sourceTimestamp, frame.timestamp);
+}
+
+bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
+                                             EncodedPacket &packet,
+                                             int64_t sourceTimestamp,
+                                             int64_t presentationTimestamp) {
     if (!initialized_) {
         return false;
     }
     if (sourceTimestamp == std::numeric_limits<int64_t>::min()) {
         return false;
     }
+#ifdef __APPLE__
+    bool ok = impl_->encode(frame, packet, sourceTimestamp, presentationTimestamp);
+#else
+    (void)presentationTimestamp;
     bool ok = impl_->encode(frame, packet, sourceTimestamp);
+#endif
     if (ok && config_.requireEveryFrameKeyframe) {
         protectedPacketContractHealthy_.store(
             packet.codec == VideoCodec::VP9 && packet.isKeyframe,

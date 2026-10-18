@@ -1,0 +1,34 @@
+name: Mac Native Timer Diagnostic
+on:
+  push:
+    branches: [macos-timer-diagnostic]
+    paths:
+      - .github/workflows/macos-timer-diagnostic.yml
+      - native-qt/qa/macos-frame-wait-probe.mm
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  timer:
+    runs-on: macos-14
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Run the native timer gate
+        run: |
+          mkdir -p "$RUNNER_TEMP/timer-evidence"
+          sw_vers > "$RUNNER_TEMP/timer-evidence/host.txt"
+          sysctl -n machdep.cpu.brand_string >> "$RUNNER_TEMP/timer-evidence/host.txt"
+          cp native-qt/qa/macos-frame-wait-probe.mm "$RUNNER_TEMP/timer-evidence/"
+          xcrun clang++ -std=c++17 -fobjc-arc native-qt/qa/macos-frame-wait-probe.mm \
+            -framework Foundation -o "$RUNNER_TEMP/timer-probe"
+          "$RUNNER_TEMP/timer-probe" > "$RUNNER_TEMP/timer-evidence/results.json" \
+            2> "$RUNNER_TEMP/timer-evidence/progress.log"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: native-mac-timer-${{ github.sha }}
+          path: ${{ runner.temp }}/timer-evidence/
+          retention-days: 7

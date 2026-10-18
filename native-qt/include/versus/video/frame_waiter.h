@@ -4,12 +4,14 @@
 #include <thread>
 #ifdef _WIN32
 #include <Windows.h>
+#elif defined(__APPLE__)
+#include "versus/platform/macos_media_activity.h"
 #endif
 
 namespace versus::video::detail {
 
-// One timer owned by the capture thread. Ordinary Windows sleeps can round a
-// 16.67 ms deadline to scheduler ticks, producing alternating repeats/skips.
+// One timer owned by the media worker. Windows uses its high-resolution
+// waitable timer; macOS uses strict dispatch deadlines to bound coalescing.
 class FrameWaiter {
   public:
     FrameWaiter() {
@@ -37,12 +39,17 @@ class FrameWaiter {
                 WaitForSingleObject(timer_, INFINITE) == WAIT_OBJECT_0) return;
         }
 #endif
+#ifdef __APPLE__
+        if (macTimer_.waitUntil(deadline)) return;
+#endif
         std::this_thread::sleep_until(deadline);
     }
 
   private:
 #ifdef _WIN32
     HANDLE timer_ = nullptr;
+#elif defined(__APPLE__)
+    platform::MacFrameWaiter macTimer_;
 #endif
 };
 } // namespace versus::video::detail

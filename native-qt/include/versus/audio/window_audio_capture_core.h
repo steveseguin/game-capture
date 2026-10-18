@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <thread>
@@ -50,7 +51,8 @@ struct StreamChunk {
     std::vector<float> samples;
     uint32_t sampleRate = 48000;
     uint32_t channels = 2;
-    // QPC time of the first sample, in 100-ns units; zero if unavailable.
+    // Shared media-clock time of the first sample, in 100-ns units; zero if unavailable.
+    // Windows uses QPC; Mac maps the CoreMedia host clock onto the shared clock.
     int64_t captureTime100ns = 0;
 };
 
@@ -83,6 +85,10 @@ class WindowAudioCaptureCore {
     bool IsCapturing() const;
 
   private:
+#ifdef __APPLE__
+    struct MacImpl;
+    std::unique_ptr<MacImpl> mac_;
+#endif
     CaptureResult StartProcessLoopback(uint32_t processId);
     CaptureResult StartDefaultEndpoint(DefaultAudioEndpoint endpoint);
     CaptureResult StartInputDevice(const std::string &deviceId);

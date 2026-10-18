@@ -4,8 +4,11 @@
 const fs=require('fs'),path=require('path'),http=require('http'),https=require('https'),crypto=require('crypto');
 const {spawn,execFileSync}=require('child_process'),{chromium}=require('playwright'),assert=require('assert/strict');
 const opts=Object.fromEntries(process.argv.slice(2).map(x=>{const i=x.indexOf('=');return[x.slice(2,i),x.slice(i+1)];}));
+const mac=process.platform==='darwin';
+if(mac&&!opts.mediamtx&&!opts.server)throw Error('Mac HTTP workflow requires an explicit --mediamtx (or --server) executable');
+const chromeOptions={...(mac?{}:{channel:'chrome'})};
 const out=path.resolve(opts.output),exe=path.resolve(opts.publisher),native=path.resolve(__dirname,'..'),token=crypto.randomBytes(24).toString('hex');
-const sleep=ms=>new Promise(r=>setTimeout(r,ms)),children=[],logs=[],trace=[];let mode,proxy1,proxy2,stun,trustedTls;const stunRequests=[];
+const sleep=ms=>new Promise(r=>setTimeout(r,ms)),children=[],logs=[],trace=[],tlsEvents=[];let mode,proxy1,proxy2,stun,trustedTls;const stunRequests=[];
 fs.mkdirSync(out,{recursive:true});
 function launch(program,args,name,env={}){const log=fs.createWriteStream(path.join(out,name+'.log'));logs.push(log);const p=spawn(program,args,{windowsHide:true,cwd:path.dirname(path.resolve(program)),env:{...process.env,...env},stdio:['ignore','pipe','pipe']});p.stdout.pipe(log,{end:false});p.stderr.pipe(log,{end:false});p.closed=new Promise(r=>p.once('close',r));children.push(p);return p;}
 async function until(fn,label,ms=30000){const end=Date.now()+ms;while(Date.now()<end){if(await fn())return;await sleep(100);}throw Error('Timed out: '+label);}
@@ -45,7 +48,10 @@ function handler(origin){return(req,res)=>{
 };}
 async function main(){
   const config=path.join(out,'mediamtx.yml');fs.writeFileSync(config,'api: true\napiAddress: 127.0.0.1:18990\nrtsp: false\nrtmp: false\nsrt: false\nhls: false\nmoq: false\nwebrtcAddress: 127.0.0.1:18889\nwebrtcLocalUDPAddress: 127.0.0.1:18189\nwebrtcIPsFromInterfaces: false\nwebrtcAdditionalHosts: [127.0.0.1]\npaths:\n  all_others:\n');
-  launch(opts.mediamtx ? path.resolve(opts.mediamtx) : path.join(native,'.cache/mediamtx-1.21.2/mediamtx.exe'),[config],'server');
+  if(mac)for(const port of [18889,18990]){const socket=require('net').createServer();await new Promise((resolve,reject)=>{socket.once('error',reject);socket.listen(port,'127.0.0.1',()=>socket.close(resolve));});}
+  const serverPath=opts.mediamtx||opts.server;
+  const server=launch(serverPath?path.resolve(serverPath):path.join(native,'.cache/mediamtx-1.21.2/mediamtx.exe'),[config],'server');
+  if(mac)await until(async()=>{assert(server.exitCode===null,'MediaMTX exited');return fetch('http://127.0.0.1:18990/v3/paths/list').then(r=>r.ok).catch(()=>false);},'MediaMTX startup',10000);
   proxy1=http.createServer(handler(1));proxy2=http.createServer(handler(2));await listen(proxy1);await listen(proxy2);
   stun=require('dgram').createSocket('udp4');
   stun.on('message',(request,remote)=>{
@@ -58,13 +64,15 @@ async function main(){
   });
   await new Promise(resolve=>stun.bind(0,'127.0.0.1',resolve));
   const key=path.join(out,'localhost.key'),cert=path.join(out,'localhost.crt');
-  execFileSync('C:/Program Files/Git/usr/bin/openssl.exe',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost','-keyout',key,'-out',cert],{windowsHide:true,stdio:'ignore'});
+  execFileSync(mac?'/usr/bin/openssl':'C:/Program Files/Git/usr/bin/openssl.exe',['req','-x509','-newkey','rsa:2048','-nodes','-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost','-keyout',key,'-out',cert],{windowsHide:true,stdio:'ignore'});
   const tls=https.createServer({key:fs.readFileSync(key),cert:fs.readFileSync(cert)},handler(1));await listen(tls);
+  tls.on('secureConnection',()=>tlsEvents.push({mode,event:'accepted'}));
+  tls.on('tlsClientError',error=>tlsEvents.push({mode,event:'rejected',code:error.code,message:error.message}));
   if(opts['tls-dir']){const dir=path.resolve(opts['tls-dir']);trustedTls=https.createServer({
     key:fs.readFileSync(path.join(dir,'localhost.direct.OPEN.key')),cert:fs.readFileSync(path.join(dir,'localhost.direct.OPEN.crt'))},handler(1));await listen(trustedTls);}
   const fixture=http.createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end(fs.readFileSync(path.join(__dirname,'quality-source.html')));});await listen(fixture);
-  const browser=await chromium.launch({channel:'chrome',headless:false,args:['--autoplay-policy=no-user-gesture-required','--disable-backgrounding-occluded-windows']});
-  const report={sha256:crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),cases:[]};
+  const browser=await chromium.launch({...chromeOptions,headless:false,args:['--autoplay-policy=no-user-gesture-required','--disable-backgrounding-occluded-windows']});
+  const report={sha256:crypto.createHash('sha256').update(fs.readFileSync(exe)).digest('hex'),platform:process.platform,harnessSha256:crypto.createHash('sha256').update(fs.readFileSync(__filename)).digest('hex'),cases:[]};
   try{
     const source=await browser.newPage({viewport:null});await source.goto('http://127.0.0.1:'+fixture.address().port);await source.getByRole('button').click();await source.waitForFunction(()=>quality.ready);
     const sourceTitle=await source.title();
@@ -85,11 +93,13 @@ async function main(){
           if(mode==='relay-no-turn')assert(trace.some(t=>t.mode===mode&&t.method==='DELETE'),'Discovery session was not deleted');
         }else{
           await until(()=>fs.existsSync(discovery),'control server');
-          if(rtmps){await until(async()=>{const d=await api(discovery,'/diagnostics');result.diagnostics=d;return d.output?.reconnects>0;},'TLS rejection');assert(!trace.some(t=>t.mode===mode),'Untrusted TLS delivered application data');}
+          if(rtmps){await until(async()=>{const d=await api(discovery,'/diagnostics');result.diagnostics=d;return d.output?.reconnects>0;},'TLS rejection');assert(!trace.some(t=>t.mode===mode),'Untrusted TLS delivered application data');
+            await until(()=>tlsEvents.some(t=>t.mode===mode&&t.event==='rejected'),'TLS peer rejection');
+            assert(!tlsEvents.some(t=>t.mode===mode&&t.event==='accepted'),'Untrusted TLS handshake was accepted');}
           else if(mode==='cancel')await until(()=>trace.some(t=>t.mode===mode&&t.method==='POST'),'pending POST');
           else{
             await until(async()=>{assert(publisher.exitCode===null);return (await api(discovery,'/diagnostics')).output?.state===2;},'publishing');
-            receiver=await chromium.launch({channel:'chrome',headless:true,args:['--autoplay-policy=no-user-gesture-required']});
+            receiver=await chromium.launch({...chromeOptions,headless:true,args:['--autoplay-policy=no-user-gesture-required']});
             const page=await receiver.newPage();await page.goto('http://127.0.0.1:18889/'+mode+'/');await page.waitForFunction(()=>document.querySelector('video')?.currentTime>2,{},{timeout:20000});
             await page.screenshot({path:path.join(dir,'receiver.png')});
             const diagnostics=await api(discovery,'/diagnostics');assert(!JSON.stringify(diagnostics).includes(token),'Token leaked into diagnostics');result.diagnostics=diagnostics;
@@ -103,7 +113,7 @@ async function main(){
         const log=path.join(dir,'GameCapture/logs/game-capture-debug.log');if(fs.existsSync(log))assert(!fs.readFileSync(log,'utf8').includes(token),'Token leaked into application log');
         result.passed=true;
       }catch(e){result.error=String(e);console.error(mode,e);}
-      finally{if(receiver)await receiver.close();if(publisher.exitCode===null){publisher.kill();await publisher.closed;}fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({...report,trace},null,2));}
+      finally{if(receiver)await receiver.close();if(publisher.exitCode===null){publisher.kill();await publisher.closed;}fs.writeFileSync(path.join(out,'results.json'),JSON.stringify({...report,trace,tlsEvents},null,2));}
     }
     assert(trace.filter(t=>t.mode==='redirect'&&t.origin===2).every(t=>t.credential==='none'),'Credential crossed origins');
   }finally{
