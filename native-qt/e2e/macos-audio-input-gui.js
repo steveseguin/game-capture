@@ -84,8 +84,9 @@ async function video(page){
   assert.equal(observation.width,960);assert.equal(observation.height,540);assert(fps>=28.5,'Video below 95% of requested cadence');
   return {observation,distinct,fps};
 }
-async function sound(page){
+async function sound(page,record,key='audio'){
   const observation=await observeAudio(page);
+  if(record){record[key]=observation;save();}
   assert(observation.tracks.some(t=>t.packetsReceived>20),'No received audio packets');
   assert(observation.spectra.filter(s=>s.rms>.001&&s.tone440>-65&&s.tone880>-65&&
     s.channels[0].tone440>s.channels[0].tone880+20&&s.channels[1].tone880>s.channels[1].tone440+20).length>=25,
@@ -173,7 +174,8 @@ async function stop(entry,discovery){
       ui('press','goLiveButton');
       await waitFor(async()=>{alive(publisher);return (await api('/diagnostics')).app.live;},20000,'Go Live did not start');
       const page=await receiver(browser,stream,publisher);
-      item.video=await video(page);item.audio=await sound(page);item.before=await api('/diagnostics');item.beforeUi=audioRows();
+      item.before=await api('/diagnostics');item.beforeUi=audioRows();save();
+      item.video=await video(page);item.audio=await sound(page,item);
       assert.equal(item.before.audio.active_microphone_source,inputName);assert.equal(item.before.audio.source_mode,systemAudio?'default-output':'none');
       assert(item.before.audio.include_microphone);assert.equal(item.before.video.hardware_encoder,encoder==='videotoolbox');
       if(phase==='initial-loss'){
@@ -214,7 +216,13 @@ async function stop(entry,discovery){
     await stop(entry,discovery);entry.passed=true;
   }
   await command('retire','retired');result.passed=true;
-}catch(error){result.error=String(error.stack||error);process.exitCode=1;console.error(result.error);}
+}catch(error){result.error=String(error.stack||error);process.exitCode=1;console.error(result.error);
+  if(control){
+    try{result.failureDiagnostics=await api('/diagnostics');}catch(diagnosticError){result.failureDiagnosticsError=String(diagnosticError);}
+    try{fs.writeFileSync(path.join(report,'failure-ui.json'),execFileSync(path.resolve(opts['ui-helper']),[String(control.pid),'dump'],{timeout:10000,stdio:['ignore','pipe','pipe']}));}
+    catch(uiError){result.failureUiError=String(uiError);}
+  }
+}
 finally{
   try{await cleanupOwnedPublisher();}catch(error){result.cleanupError=String(error);result.passed=false;}
   if(browser)await browser.close().catch(()=>{});
