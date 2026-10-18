@@ -2314,3 +2314,31 @@ Runtime `d5f5fbba8d499ecdab16e9911cde6fd51eec3ee5` separates presentation time f
 Both signed packaged VT/x264 three-cycle load/recovery workflows pass with zero unreadable identities and row disagreements; all retained 4K portions independently decode with complete frame counts. Rooms with eight seeded transitions per encoder, guest refresh/churn, malformed local controls, local WHIP, UDP/default-AAC, and three x264 Hang Up/rejoin cycles pass. Windows run `39093957678` passes actual packaged software capture/media and shutdown/snapshot workflows on the exact source. All 18 native encoder rows pass as supporting gates, including idle restart at 1/2/60 fps.
 
 [Report](macos-x264-vfr-2026-10-18.md) and [measurements](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-x264-vfr) preserve the prior idle-gate failure and controlled CFR/VFR picture comparison. The native experiment uses x264 reconstruction metrics and independent identities, not matched OBS/gameplay quality scores. VFR adds one input interval of buffering; current-artifact latency, endurance and distribution remain unqualified. The corrected candidate is signed but not notarized or released. Evidence manifest: `4341082c22f83b4f2552b449b06ce9bcb6355b202f5607dbd6e0901ab1845603` (97 bound files).
+
+
+## Released Beta 2 WHIP recovery and GUI profiles — October 18, 2026
+
+The unchanged public-downloaded Beta 2 executable
+`2a6354f12b92ac1d8ef2a415c76316ea8452b040503087c1b8ec716be69ad1b0`
+passes three CLI receiver-server interruption/recovery cycles per encoder and
+one further GUI cycle per encoder: eight actual recoveries with received H.264
+identities and stereo Opus. Silence/resume, held pictures, late viewing and
+acknowledged HTTP 200 session deletion pass. GUI save/quit/relaunch reuses the
+same Keychain profile without credential re-entry; receiver-side cleanup and
+removal of only the two synthetic profile items pass.
+
+QA-only `--restart-cycles=1..5` applies repeated recovery to both encoders;
+`--browser-executable` permits the explicitly bound installed Chrome. The
+original flag-free restart selection remains unchanged. The harness now checks
+final DELETE acknowledgement and the existing MediaMTX path inventory after Quit.
+No application runtime or VDO.Ninja signaling API changes were required.
+
+[Artifact-bound raw observations and independent numeric audits](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip)
+retain all four workflows and controls rejecting corrupted observations.
+CLI receives 640×360/2 Mbps and GUI receives 1920×1080/4 Mbps, both requesting
+30 fps. Initial presentation sampling observes 26.16–29.48 distinct images/s;
+this is not a sustained camera-cadence pass. Independent decoded-track
+observation remains necessary to separate browser presentation from delivery.
+These same-host virtual-device/loopback workflows do not qualify physical
+hardware, WAN/TURN interruption, calibrated timing or matched picture quality.
+Public app binaries and Windows production remain unchanged.
