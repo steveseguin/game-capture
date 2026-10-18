@@ -67,10 +67,11 @@ let browser,server;
     result.originalQuarantine=execFileSync('/usr/bin/xattr',['-p','com.apple.quarantine',temporary],{encoding:'utf8'}).trim();
     if(!result.originalQuarantine)throw Error('Browser did not attach quarantine metadata');
     const output=path.join(report,filename);
-    // ditto's --qtn can reserialize the quarantine agent (spaces become
-    // literal \\x20 escapes). Preserve the downloaded file's metadata with
-    // the platform copy operation and still require byte-for-byte equality.
-    execFileSync('/bin/cp',['-p',temporary,output],{timeout:30000});
+    // Both ditto and cp can reserialize the quarantine agent. This completed
+    // download and its destination are owned by this workflow, on the same
+    // filesystem. Rename the original file without rewriting its metadata;
+    // retain the strict quarantine equality check below.
+    fs.renameSync(temporary,output);
     result.sha256=crypto.createHash('sha256').update(fs.readFileSync(output)).digest('hex');
     if(result.sha256!==expected)throw Error('Downloaded archive differs from the signed beta');
     result.preservedQuarantine=execFileSync('/usr/bin/xattr',['-p','com.apple.quarantine',output],{encoding:'utf8'}).trim();
