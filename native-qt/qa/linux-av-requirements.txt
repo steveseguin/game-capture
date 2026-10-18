@@ -1,0 +1,2 @@
+# Isolated offline A/V measurement environment; not an application dependency.
+numpy==2.2.6

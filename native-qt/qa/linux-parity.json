@@ -66,7 +66,7 @@
       "id": "software-encoding",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified. Linux helper resolution now prefers /usr/bin/ffmpeg after explicit overrides; default-helper VP9/AV1 regression qualification remains open."
+      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified. Linux helper resolution now prefers /usr/bin/ffmpeg after explicit overrides; default-helper VP9/AV1 regression qualification remains open. Bounded default 1280x720/60 software H264 at 4000 kbps now passes decoded pulse identities, >=95% delivery and cadence thresholds for 36 five-second intervals with continuous selected-app PCM. This is controlled low-detail X11 content; long-run/high-motion and native Wayland profile qualification remain open, and paired A/V timing is unresolved as recorded in av_timing_baseline_checkpoint."
     },
     {
       "id": "hardware-encoding",
@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "missing",
-      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence"
+      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed."
     },
     {
       "id": "arm-portability",
@@ -20961,6 +20961,78 @@
           "ino": 92415417
         }
       }
+    },
+    {
+      "report": "native-qt/qa/reports/linux-av-x11/a504946e-7151-4c28-9e67-db569406122c/results.json",
+      "reportSha256": "fe4db3b52d67210ec177c5a10092f1b8e135c4dea05e0b7245172705c8f9c50d",
+      "wrapperReport": "native-qt/qa/reports/linux-av-x11-desktop/e3aa3ad6-75ab-46e9-af91-840303d17e43/results.json",
+      "wrapperSha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone, Wayland and OBS.",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0",
+      "executableSha256": "36d1122a5d171a6f0770e54d8faf6794eeb29bb7cd37fee4314c6fa7c35be558",
+      "harnesses": {
+        "linux-av-sync.js": "f78211e59fe50f15afa2ae7bdcf9e42640c5f226c9469d71be50c41659bd730b",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432"
+      },
+      "boundedMedia": {
+        "decodedObservationSeconds": 180.05999853515624,
+        "observationGapTotalMs": 2018.201416015625,
+        "maximumObservationGapMs": 131.89990234375,
+        "intervals": 36,
+        "allCadenceAndPcmIntervalsPassed": true,
+        "receivedFpsRange": [
+          58.99645963628453,
+          60.11944053678462
+        ],
+        "sourceFpsRange": [
+          59.79641455092439,
+          60.19759268415975
+        ],
+        "minimumDeliveryRatio": 0.9833333333333333,
+        "maximumP95MediaGapMs": 17.00000010896474,
+        "continuousPcmSeconds": 182.1,
+        "continuousPcmWindows": 1821,
+        "publisherRssKiBRange": [
+          125240,
+          132384
+        ]
+      },
+      "timing": {
+        "passed": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "matchedPulses": 28,
+            "medianAdditionalOffsetMs": -54.49999999999733,
+            "minimumAdditionalOffsetMs": -69.00000000000972,
+            "maximumAdditionalOffsetMs": 43.00000000000015,
+            "sourceMaximumAudioPtsDiscontinuityMs": 8.000000000000396,
+            "receiverMaximumAudioPtsDiscontinuityMs": 8.000000000000396
+          },
+          {
+            "name": "final",
+            "passed": false,
+            "matchedPulses": 29,
+            "medianAdditionalOffsetMs": -61.99999999999761,
+            "minimumAdditionalOffsetMs": -71.00000000000506,
+            "maximumAdditionalOffsetMs": -55.999999999997385,
+            "sourceMaximumAudioPtsDiscontinuityMs": 9.000000000001618,
+            "receiverMaximumAudioPtsDiscontinuityMs": 8.999999999998066
+          }
+        ],
+        "medianDriftMs": -7.500000000000284,
+        "longRunDriftQualified": false,
+        "report": "native-qt/qa/reports/linux-av-x11/a504946e-7151-4c28-9e67-db569406122c/av-analysis.json",
+        "sha256": "003fb60ae1c5de4ea420660c68051595f9eff726e0ccbb84f949ce428e9c94ec"
+      },
+      "interpretation": "Packaged application completed all capture/recording/shutdown steps and all 36 decoded cadence/PCM intervals. Overall workflow fails the existing 50 ms absolute added-skew criterion. This is not 30-minute endurance or calibrated timing qualification."
     }
   ],
   "host_environment": {
@@ -21020,7 +21092,10 @@
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-start-cancel.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (owned Xvfb for X11; publisher-only TLS gate requires sudo/cgroup-v2/iptables/IPv4; authenticated local-control Stop and actual File-menu Quit)",
     "python3 native-qt/e2e/linux-wayland-desktop.py --reports=<desktop-reports> -- node native-qt/e2e/linux-camera-publish.js --gui=true --backend=wayland --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<v4l2:stable-by-id-path> --camera-label=<exact-label> --hdmi-loopback=true --source-wayland-socket=/run/user/1000/wayland-0 (GNOME 46, one original 800x600 HDMI source display, PipeWire/GStreamer and owned uinput keyboard required; temporary 1280x900 virtual monitor is removed on EOF)",
     "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-busy-retry=true --backend=x11|wayland and the existing exact-package/physical-HDMI options. Runs both busy-owner rejection/release/retry and full preview/publication/Stop/restart/relaunch workflows; X11 and Wayland must run sequentially on the physical camera.",
-    "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-permission-retry=true --backend=x11|wayland and existing exact-package/physical-HDMI options. Requires bubblewrap and sudo mknod for an owned private device alias. Restricts only the publisher namespace, restores permissions and removes the alias on cleanup; host device mode/identity/ACL must remain unchanged. Run sequentially on the physical camera."
+    "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-permission-retry=true --backend=x11|wayland and existing exact-package/physical-HDMI options. Requires bubblewrap and sudo mknod for an owned private device alias. Restricts only the publisher namespace, restores permissions and removes the alias on cleanup; host device mode/identity/ACL must remain unchanged. Run sequentially on the physical camera.",
+    "python3 -m venv native-qt/build-linux/qa-av-venv && native-qt/build-linux/qa-av-venv/bin/pip install -r native-qt/qa/linux-av-requirements.txt (isolated offline measurement dependencies only)",
+    "Use linux-private-desktop.py with a 1440x1000 Xvfb display and linux-av-sync.js --publisher=<exact extracted package executable> --manifest-sha256=<sha> --reports=<private directory> --analysis-python=<absolute venv/bin/python without symlink resolution> --seconds=60 --hold-seconds=1740. This keeps one publisher live for initial/final recordings and >=30 minutes between phase starts; overall pass also requires all cadence/PCM intervals and existing A/V thresholds.",
+    "Use linux-av-reference.js under a separate owned X11 desktop with --source-fixture=<saved linux-av-source.html> --analysis-python=<venv Python> --seconds=60 --hold-seconds=60 for the browser-only clock/recording control. This is not packaged application testing."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -23700,5 +23775,121 @@
       "passed": true
     },
     "remaining": "Other camera permission mechanisms and permission denial at initial launch, disconnect/hotplug UX, other devices/formats/MJPEG and multi-plane support, physical microphone/audio, high-motion fidelity and calibrated A/V/endurance, other display scales/compositors and Windows/macOS runtime regression. Stock GNOME pending screen-permission cancellation/fix delivery remains separate and open."
+  },
+  "av_timing_baseline_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc.deb",
+      "sha256": "89a0e8a4c3d3ea40f40949a002fab71472e54c166b10fe9c23e2c65b2cf4dea1",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0"
+    },
+    "applicationEvidence": {
+      "report": "native-qt/qa/reports/linux-av-x11/a504946e-7151-4c28-9e67-db569406122c/results.json",
+      "sha256": "fe4db3b52d67210ec177c5a10092f1b8e135c4dea05e0b7245172705c8f9c50d"
+    },
+    "productionChange": "None. Reused the unchanged Mac clocked A/V source, continuous PCM observer, paired recorder and PTS-preserving analyzer. Added Linux packaging/process-audio setup and decoded pulse/inverse-barcode cadence observations. Shared Windows/macOS production and QA helpers are unchanged.",
+    "browserReferenceControl": {
+      "report": "native-qt/qa/reports/linux-av-reference/d4c070df-fb51-453d-8d2b-754f96a9564f/results.json",
+      "sha256": "d033f3288ede335c53df4e56058cc00a44efe014311d6f8099bf234bccabbce9",
+      "wrapperReport": "native-qt/qa/reports/linux-av-reference-desktop/2c85469a-df6b-4943-862f-18fd1e709ace/results.json",
+      "harnessSha256": "9d76ad9683eca92ce91373ebeda9799f4be89f16c4b1f6fe72c770ad8f77b66b",
+      "fixtureDifference": "Only the unique window title differs from the packaged three-minute pilot; generated source code and geometry are otherwise byte-identical.",
+      "timing": {
+        "passed": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "matchedPulses": 28,
+            "medianAdditionalOffsetMs": -37.99999999999493,
+            "minimumAdditionalOffsetMs": -51.9999999999996,
+            "maximumAdditionalOffsetMs": 24.000000000000014,
+            "sourceMaximumAudioPtsDiscontinuityMs": 9.000000000005171,
+            "receiverMaximumAudioPtsDiscontinuityMs": 7.000000000002727
+          },
+          {
+            "name": "final",
+            "passed": true,
+            "matchedPulses": 28,
+            "medianAdditionalOffsetMs": -47.00000000000415,
+            "minimumAdditionalOffsetMs": -49.00000000000304,
+            "maximumAdditionalOffsetMs": -35.99999999999959,
+            "sourceMaximumAudioPtsDiscontinuityMs": 9.000000000001618,
+            "receiverMaximumAudioPtsDiscontinuityMs": 7.000000000002727
+          }
+        ],
+        "medianDriftMs": -9.000000000009223,
+        "longRunDriftQualified": false,
+        "report": "native-qt/qa/reports/linux-av-reference/d4c070df-fb51-453d-8d2b-754f96a9564f/av-analysis.json",
+        "sha256": "bc7df0db97da66c080d1b555e68328512ed8ae309d7ba226d4fc57163864cbe3"
+      },
+      "classification": "Measurement control only, not application testing. Same generated source crosses a local Chrome H264/Opus connection without Game Capture. This excludes desktop/process capture and hosted signaling and cannot identify the exact cause of their timing difference."
+    },
+    "analyzerArithmeticControls": {
+      "report": "native-qt/qa/reports/linux-av-calibration/09eb7682-19eb-4d99-a58a-b459b933e4da/calibration.json",
+      "sha256": "b7ea28d9d3f35a989e659f6507f0087ebe7c6380b23275002403366fa124cefa",
+      "passed": true,
+      "cases": [
+        {
+          "injectedAudioDelayMs": 0,
+          "minimumMeasuredMs": 0.0,
+          "maximumMeasuredMs": 0.0,
+          "matchedPulses": 13,
+          "expectedAcceptance": true,
+          "actualAcceptance": true,
+          "passed": true
+        },
+        {
+          "injectedAudioDelayMs": 150,
+          "minimumMeasuredMs": 149.99999999999858,
+          "maximumMeasuredMs": 150.00000000000213,
+          "matchedPulses": 13,
+          "expectedAcceptance": false,
+          "actualAcceptance": false,
+          "passed": true
+        },
+        {
+          "injectedAudioDelayMs": -150,
+          "minimumMeasuredMs": -150.00000000000213,
+          "maximumMeasuredMs": -149.99999999999858,
+          "matchedPulses": 13,
+          "expectedAcceptance": false,
+          "actualAcceptance": false,
+          "passed": true
+        },
+        {
+          "kind": "paired-phase drift",
+          "injectedDriftMs": 40,
+          "measuredDriftMs": 39.99999999999915,
+          "individualPhasesPassedSkew": true,
+          "expectedAcceptance": false,
+          "actualAcceptance": false,
+          "passed": true
+        },
+        {
+          "kind": "paired-phase drift",
+          "injectedDriftMs": -40,
+          "measuredDriftMs": -39.99999999999915,
+          "individualPhasesPassedSkew": true,
+          "expectedAcceptance": false,
+          "actualAcceptance": false,
+          "passed": true
+        }
+      ],
+      "classification": "Offline controls, not application testing. Exact injected 0/+150/-150 ms delays and +/-40 ms inter-phase drift demonstrate numerical measurement and rejection; they do not establish absolute end-to-end clock calibration."
+    },
+    "interpretation": "Both the packaged pilot and matched-duration browser-only control fail the existing absolute-skew criterion. Final medians are approximately -62 ms and -47 ms respectively, so the whole measured discrepancy must not be assigned to Linux capture. The reference/recording contribution and actual desktop/process-audio timing need independent calibration. No compensating production offset or relaxed threshold was introduced.",
+    "measurementSetup": "NumPy 2.2.6 is installed only in native-qt/build-linux/qa-av-venv. The first 30-second pilot completed capture but its analyzer could not import NumPy; its existing recordings were analyzed after installing the dependency. A subsequent preflight rejected a resolved system-Python symlink before capture. Use the absolute venv path without resolving its Python symlink and prepend its bin directory to PATH for the unchanged calibration script, which launches python3 internally.",
+    "gates": {
+      "report": "native-qt/build-linux/av-baseline-gates.json",
+      "sha256": "92bffb3594cf4dbf17a1357adb43a4c76dafb9f4d61733644d0719c10b4a80ef",
+      "classification": "Syntax and package/source integrity gates only; not application testing. No production changes or rebuild."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-av-x11/a504946e-7151-4c28-9e67-db569406122c/host-cleanup.json",
+      "sha256": "15b0f0684ae1527d02407a5a1be183c928996726f77b1b2362dbf4602169f995",
+      "passed": true
+    },
+    "remaining": "Separate >=30-minute default 720p60 X11 and native Wayland A/V runs, independent absolute skew and drift calibration, receiver/OBS presentation, physical inputs, higher-detail/high-motion content and higher output profiles. The current controlled-source cadence result is bounded to about three minutes."
   }
 }
