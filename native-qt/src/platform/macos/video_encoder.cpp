@@ -293,6 +293,21 @@ bool MacVideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet,
         if (!toI420(frame, config.width, config.height, state_->i420)) {
             state_->failure = EncodeFailureKind::InvalidInput; return false;
         }
+        // The worker stops feeding frames while no video tracks are active.
+        // Retire the pre-idle tail instead of sending an old image to a new
+        // viewer. Preserve ordinary low-FPS cadence and brief load jitter.
+        const int64_t maximumGap = std::max<int64_t>(10000000, 30000000 / config.frameRate);
+        if (state_->softwareLastPresentation >= 0 &&
+            presentationTimestamp - state_->softwareLastPresentation > maximumGap) {
+            x264_encoder_close(state_->software); state_->software = nullptr;
+            state_->softwareInputs.clear();
+            state_->softwareClockOrigin = state_->softwareLastPresentation = -1;
+            state_->forceKeyframe = true;
+            if (!state_->startSoftware()) {
+                state_->initialized = false;
+                state_->failure = EncodeFailureKind::IoFailure; return false;
+            }
+        }
         if (state_->softwareClockOrigin < 0) state_->softwareClockOrigin = presentationTimestamp;
         x264_picture_t input, output;
         x264_picture_init(&input); x264_picture_init(&output);
@@ -400,7 +415,10 @@ void MacVideoEncoder::setBitrate(int kbps) {
         param.rc.i_vbv_buffer_size = std::max(1, kbps / 2);
         ok = x264_encoder_reconfig(state_->software, &param) == 0;
     }
-    if (ok) state_->config.bitrate = kbps;
+    if (ok) {
+        state_->config.bitrate = kbps;
+        if (state_->software) state_->config.maxBitrate = kbps;
+    }
     else spdlog::warn("[MacEncoder] Bitrate update to {} kbps failed", kbps);
 }
 void MacVideoEncoder::requestKeyframe() {

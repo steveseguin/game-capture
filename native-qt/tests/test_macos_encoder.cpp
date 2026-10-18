@@ -366,6 +366,33 @@ private slots:
         encoder.shutdown();
     }
 
+    void softwarePauseDoesNotReleaseOldFrame() {
+        for (const int fps : {1,2,60}) {
+            EncoderConfig config;
+            config.width=128;config.height=72;config.frameRate=fps;
+            config.preferredHardware=HardwareEncoder::None;config.explicitEncoderSelection=true;
+            VideoEncoder encoder;QVERIFY(encoder.initialize(config));
+            CapturedFrame frame;frame.width=128;frame.height=72;frame.stride=512;frame.timestamp=123;
+            frame.data.assign(frame.stride*frame.height,128);
+            EncodedPacket packet;
+            QVERIFY(!encoder.encodeWithSourceTimestamp(frame,packet,1001,0));
+            QCOMPARE(encoder.lastEncodeFailureKind(),EncodeFailureKind::OutputPending);
+            // Ordinary cadence, including one FPS, must not trigger an idle reset.
+            QVERIFY(encoder.encodeWithSourceTimestamp(frame,packet,1002,10000000/fps));
+            QCOMPARE(packet.sourceTimestamp,int64_t(1001));
+            encoder.setBitrate(600);
+            // No viewers means the live worker stops submitting frames. A later
+            // viewer must not receive the pending picture from before that gap.
+            encoder.requestKeyframe();
+            QVERIFY(!encoder.encodeWithSourceTimestamp(frame,packet,2001,100000000));
+            QVERIFY(packet.data.empty());
+            QCOMPARE(encoder.lastEncodeFailureKind(),EncodeFailureKind::OutputPending);
+            QVERIFY(encoder.encodeWithSourceTimestamp(frame,packet,2002,100000000+10000000/fps));
+            QCOMPARE(packet.sourceTimestamp,int64_t(2001));
+            QVERIFY(packet.isKeyframe);
+        }
+    }
+
     void strictSelectionAndInvalidInput() {
         VideoEncoder encoder;
         EncoderConfig config;

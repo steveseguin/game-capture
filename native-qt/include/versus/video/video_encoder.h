@@ -205,6 +205,8 @@ class VideoEncoder {
     void swapPipeline(VideoEncoder &other);
     uint64_t configurationRevision() const { return configurationRevision_; }
 
+    // True returns a packet. False with OutputPending means input was accepted
+    // and another input is needed; callers must not count that as a failure.
     bool encode(const CapturedFrame &frame, EncodedPacket &packet);
     // Encodes using the frame's normal timing while attaching an explicit,
     // caller-owned source identity to the eventual delayed output packet.
@@ -213,7 +215,8 @@ class VideoEncoder {
                                    int64_t sourceTimestamp);
     // A live output can repeat one captured image at several presentation
     // times. Supply that output clock separately from the opaque source token
-    // and the capture timestamp. Backends with private CFR clocks retain them.
+    // and the capture timestamp. Mac x264 requires nonnegative, increasing
+    // presentation times in 100 ns units. Backends with private CFR clocks retain them.
     bool encodeWithSourceTimestamp(const CapturedFrame &frame,
                                    EncodedPacket &packet,
                                    int64_t sourceTimestamp,

@@ -6911,8 +6911,14 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 softwareExternalFailWindowStartMs_ = 0;
             }
 
+            bool requestAppliesToReturnedPacket = requestKeyframe;
+#ifdef __APPLE__
+            // x264 accepts this request on the current input while returning
+            // the preceding input. An older delta is not a rejected request.
+            requestAppliesToReturnedPacket &= hqPacket.sourceTimestamp == encoderSourceTimestamp;
+#endif
             if (keyframe_policy::shouldRearmAfterPacket(
-                    requestKeyframe,
+                    requestAppliesToReturnedPacket,
                     hqPacket.isKeyframe,
                     externalFfmpegEncoder)) {
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
@@ -7011,6 +7017,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                             missingLqSourceTimestampCount);
                     }
                 } else if (requestKeyframe && !lqPacket.isKeyframe) {
+#ifdef __APPLE__
+                    if (lqPacket.sourceTimestamp == frameOutputTimestamp)
+#endif
                     pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
                 }
             } else {
