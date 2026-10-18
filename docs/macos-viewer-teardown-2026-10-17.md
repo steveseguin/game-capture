@@ -40,3 +40,5 @@ All 39 Mac application compilation units were rebuilt, Developer ID signatures v
 Still open: the send/track-close exception race, appropriate abrupt-disconnect timing criteria, broader Windows qualification, and the previously documented physical-device, minimum-OS, accessibility, external-output and endurance requirements. There is no new production-readiness claim.
 
 [Machine-readable measurements](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-17-apple-m1-viewer-teardown).
+
+Follow-up: [precise track-close classification and current packaged VT/x264/Windows results](macos-track-close-2026-10-17.md). Earlier failures above remain unchanged.
