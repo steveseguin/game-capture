@@ -29,6 +29,7 @@ enum class VideoSendFailure {
     PacketizerUnavailable,
     PacerFailed,
     SendFailed,
+    TrackClosedDuringSend,
     Count
 };
 

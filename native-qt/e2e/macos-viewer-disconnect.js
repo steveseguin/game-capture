@@ -93,6 +93,13 @@ async function picture(page,label){
     const survivor=await openViewer(),leaver=await openViewer();
     await waitFor(async()=>{const d=await diagnostics();return d.metrics.active_video_peers===2;},15000,'Both viewer tracks did not open');
     entry.beforeClose=snapshot(await diagnostics());entry.leavingPicture=await picture(leaver,'Leaving viewer '+index);save();
+    entry.beforeHangup=snapshot(await diagnostics());
+    // No viewer is leaving during this interval. Even a known closure reason
+    // here is a failure; the lifecycle classification is not a blanket waiver.
+    if(entry.beforeHangup.sendFailures!==entry.beforeClose.sendFailures){
+      result.counterGateFailures.push({label:'cycle-'+index,reason:'send_failure_without_viewer_close',
+        before:entry.beforeClose.sendFailures,after:entry.beforeHangup.sendFailures});save();
+    }
     await leave(leaver);
     entry.survivingPicture=await picture(survivor,'Surviving viewer '+index);
     const audio=await observeAudio(survivor);entry.survivingAudioSpectra=audio.spectra;
@@ -124,6 +131,7 @@ async function picture(page,label){
   assert.equal(local.executableSha256,result.expectedExecutableSha256);assert.equal(local.sessionBindingSha256,result.sessionBindingSha256);
   result.publisherExitCode=local.exitCode;result.publisherDiscoveryRemoved=!fs.existsSync(path.join(senderReport,'private-control.json'));
   assert(result.publisherDiscoveryRemoved);result.observedUnavailableSends=diagnosticSchema==='classified'?result.final.reasons.track_unavailable+result.final.reasons.transport_unavailable:null;
+  result.observedTrackClosedDuringSend=diagnosticSchema==='classified'?(result.final.reasons.track_closed_during_send||0):null;
   result.completed=true;
   result.counterGatePassed=diagnosticSchema==='classified'?result.counterGateFailures.length===0:null;
   result.timingGatePassed=result.trackCloseObservations.every(o=>o.within15Seconds);

@@ -220,13 +220,17 @@ both peer sends and external-output failures; it is not a packet-loss count.
 | `track_unavailable` | The video track was absent or no longer open. |
 | `packetizer_unavailable` | The configured RTP packetizer was absent. |
 | `pacer_failed` | The outbound video pacer had failed. |
-| `send_failed` | RTP sending failed or raised an exception. |
+| `send_failed` | RTP sending failed or raised an unexplained exception. |
+| `track_closed_during_send` | The track passed admission, then sending raised libdatachannel's exact `Track is not open` or `Track is closed` error and the track was no longer open. |
 
 These counters add detail without changing send admission or excluding failures
 from the aggregate. Transport/track unavailability can occur after a viewer
 leaves; it does not by itself prove healthy delivery. Correlate it with receiver
-playback, connection state and cleanup. Exceptions remain send failures even if
-a track closes at the same time. Alpha-track and audio failures keep their
+playback, connection state and cleanup. A track closing during a send still
+returns false, logs the exception and increments `video.send_failures`. An
+unrelated exception remains `send_failed` even if a track closes at the same
+time; changed or unknown library error text also remains `send_failed`.
+Alpha-track and audio failures keep their
 separate existing counters.
 
 Counters reset with the existing capture/live-session counters. Diagnostics read
