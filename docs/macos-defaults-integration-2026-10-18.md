@@ -1,6 +1,6 @@
 # Apple M1 streaming-defaults integration — 2026-10-18 UTC
 
-The experimental Mac port now incorporates the current Windows/shared streaming defaults. Packaged GUI migration, VT/x264 live streams, AV1 playback, local WHIP and UDP/AAC output workflows passed on the signed candidate below. The same source passed the hosted Windows packaged workflows. **This candidate is not notarized or released; production qualification remains open.** Public Mac Beta 2 and Windows stable are unchanged.
+The experimental Mac port now incorporates the current Windows/shared streaming defaults. Packaged GUI migration, VT/x264 live streams, AV1 playback, local WHIP and UDP/AAC output workflows passed on the signed candidate below. The same source passed the hosted Windows packaged workflows. At this measurement checkpoint the candidate was not yet notarized. The [delivery follow-up](macos-defaults-delivery-2026-10-18.md) now records notarization and fresh-host workflows; production qualification remains open. Public Mac Beta 2 and Windows stable are unchanged.
 
 ## Candidate and behavior
 
