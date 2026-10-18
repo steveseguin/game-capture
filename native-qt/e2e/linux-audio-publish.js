@@ -15,6 +15,8 @@ const wayland = opts.backend === 'wayland', automaticApp = matrix === 'apps-auto
 const communications = matrix === 'communications-gui' || matrix === 'communications-cli';
 const communicationsMix = opts['communications-mix'] === 'true';
 const audioWarnings = opts['audio-warnings'] === 'true';
+const previewBeforeLive = opts['preview-before-live'] === 'true';
+assert(!previewBeforeLive || (wayland && matrix === 'gui' && opts.case === 'mix'), 'Audio preview promotion requires Wayland GUI mixed audio');
 assert(opts['combined-audio-loss'] !== 'true' || (communications && communicationsMix), 'Combined loss requires communications mixing');
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
 const audioServerLoss = opts['audio-server-loss'] === 'true';
@@ -66,6 +68,7 @@ for (const item of manifest.payload.files) {
 const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(report, {recursive:true});
 for (const name of ['linux-audio-publish.js', 'macos-media-receiver.js', 'audio-settings-packaged-e2e.js', 'linux-ui-control.py', 'linux-app-audio-source.py', 'linux-portal-select.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
 if(audioServerLoss)fs.copyFileSync(path.join(__dirname,'linux-private-audio.py'),path.join(report,'linux-private-audio.py'));
+if(previewBeforeLive)fs.copyFileSync(path.join(__dirname,'linux-preview-observer.py'),path.join(report,'linux-preview-observer.py'));
 if(continuousApps)for(const name of ['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 if(resumeReference)for(const name of ['linux-app-audio-reference.js','linux-audio-reference-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 if(resumeRecording)fs.copyFileSync(path.join(__dirname,'linux-received-audio-report.py'),path.join(report,'linux-received-audio-report.py'));
@@ -79,6 +82,7 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
 if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
+if(previewBeforeLive)result.previewBeforeLive={requested:true,observerSha256:sha(path.join(report,'linux-preview-observer.py'))};
 if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.appOutputMoves=appOutputMoves;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs:resumeSnapshotDelayMs,scope:'Observer-lifecycle diagnostic; all tone/isolation and continuous level checks retained. No timing/continuity threshold is relaxed.'};
 if(resumeReference)result.sourceReferenceHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-audio-reference-report.py'].map(n=>[n,sha(path.join(report,n))]));
@@ -224,8 +228,8 @@ function barriers() {
     sourceBrowser = await chromium.launch({executablePath:browser, headless:false, env, args:[...(wayland ? ['--ozone-platform=wayland', '--window-position=10,10', '--window-size=720,560'] : []), '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding']});
     const source = await sourceBrowser.newPage(wayland ? {viewport:null} : {viewport:{width:800, height:450}}), title = 'Owned Linux Capture ' + suffix;
     await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
-      const canvas=document.querySelector('canvas'),c=canvas.getContext('2d');let id=0;
-      function draw(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;id=(id+1)%65536;c.fillStyle='#183042';c.fillRect(0,0,w,h);c.fillStyle='cyan';c.fillRect(.1*w,.25*h,.05*w,.5*h);c.fillStyle='magenta';c.fillRect(.85*w,.25*h,.05*w,.5*h);
+      const canvas=document.querySelector('canvas'),c=canvas.getContext('2d');let id=0;window.fixture={staticId:null};
+      function draw(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;id=fixture.staticId??((id+1)%65536);c.fillStyle='#183042';c.fillRect(0,0,w,h);c.fillStyle='cyan';c.fillRect(.1*w,.25*h,.05*w,.5*h);c.fillStyle='magenta';c.fillRect(.85*w,.25*h,.05*w,.5*h);
       for(let i=0;i<16;i++){c.fillStyle=(id>>i)&1?'white':'black';c.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
     await source.bringToFront();
     if (automaticApp) await source.evaluate(async () => {
@@ -291,8 +295,8 @@ function barriers() {
         portalSelector.output = output;
         portalSelector.stdout.pipe(log, {end:false}); portalSelector.stderr.pipe(log, {end:false});
       };
-      const selectedPortal = async () => {
-        await waitFor(() => portalSelector.exitCode !== null, 10000, 'Portal selection did not finish');
+      const selectedPortal = async (timeout=10000) => {
+        await waitFor(() => portalSelector.exitCode !== null, timeout, 'Portal selection did not finish');
         assert.equal(portalSelector.exitCode, 0); assert(JSON.parse(fs.readFileSync(portalSelector.output)).passed); checkPortalOwner();
       };
       if (wayland && !gui) selectPortal();
@@ -322,11 +326,11 @@ function barriers() {
         }, 6000, 'Audio warning state/visible notice differs: ' + label);
         entry[label] = true;
       };
-      const goLive = async () => {
-        if (wayland) selectPortal();
+      const goLive = async (promotePreview=false) => {
+        if (wayland && !promotePreview) selectPortal();
         ui('press', 'Go live');
         await waitFor(async () => (await api('/diagnostics')).app.live, wayland ? 30000 : 15000, 'GUI did not go live');
-        if (wayland) await selectedPortal();
+        if (wayland && !promotePreview) await selectedPortal();
       };
       if (gui) {
         ui('press', 'Show advanced settings');
@@ -355,7 +359,49 @@ function barriers() {
         const communicationsLabel = JSON.parse(beforeLive).find(row => row.role === 'label' && row.name === 'Communications device' && row.states.includes('visible'));
         assert.equal(!!communicationsLabel, communications, 'Communications device row visibility differs from the selected audio mode');
         fs.writeFileSync(path.join(report, fixture.name + '-ui-before-live.json'), beforeLive);
-        await goLive();
+        if(previewBeforeLive){
+          entry.localPreview={};
+          const localOnly=async(active)=>{
+            const d=await api('/diagnostics');
+            assert.equal(d.app.window_preview_active,active);
+            assert(!d.app.live&&!d.app.capturing&&!d.app.primary_audio_capturing&&!d.app.microphone_capturing,'Preview started publishing or audio capture');
+            assert.equal(d.video.frames_sent,0);assert.equal(d.video.frames_captured,0);assert.equal(d.metrics.audio_packets_sent,0);
+            const audio=JSON.parse(pactl('--format=json','list','source-outputs')).filter(s=>String(s.properties?.['application.process.id'])===String(publisher.pid));
+            assert.equal(audio.length,0,'Preview opened a recording stream with mixed audio configured');
+            const nodes=captureNodes();assert.equal(nodes.length,active?1:0);
+            return {app:d.app,source:d.source,videoFramesSent:d.video.frames_sent,audioPacketsSent:d.metrics.audio_packets_sent,audioCaptureStreams:audio.length,nodes};
+          };
+          const previewShot=async(label,identity)=>{
+            if(identity!=='none'){await source.evaluate(id=>{fixture.staticId=id;},identity);await sleep(800);}
+            const output=path.join(report,'preview-'+label+'.png');
+            const shot=JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-preview-observer.py'),'--pid='+publisher.pid,'--output='+output,'--expected='+identity],{env,encoding:'utf8',timeout:20000}));
+            return {...shot,screenshotSha256:sha(output)};
+          };
+          const beginPreview=async()=>{
+            selectPortal();ui('press','Preview window');await selectedPortal(30000);
+            await waitFor(async()=>(await api('/diagnostics')).app.window_preview_active,10000,'Configured-audio local preview did not start');
+            return localOnly(true);
+          };
+          entry.localPreview.idle=await localOnly(false);
+          entry.localPreview.initial=await beginPreview();save();
+          entry.localPreview.firstPixels=await previewShot('mixed-first',13735);
+          entry.localPreview.changedPixels=await previewShot('mixed-changed',51546);
+          entry.localPreview.afterPixels=await localOnly(true);save();
+          ui('press','Stop preview');
+          await waitFor(async()=>!(await api('/diagnostics')).app.window_preview,10000,'Configured-audio preview did not stop');
+          entry.localPreview.stopped=await localOnly(false);
+          entry.localPreview.clearedPixels=await previewShot('mixed-stopped','none');
+          entry.localPreview.beforePromotion=await beginPreview();
+          entry.localPreview.restartedPixels=await previewShot('mixed-restarted',24681);
+          entry.localPreview.beforePromotion=await localOnly(true);save();
+          await source.evaluate(()=>{fixture.staticId=null;});
+          await goLive(true);
+          const promoted=await api('/diagnostics');
+          assert(!promoted.app.window_preview&&promoted.app.capturing&&promoted.app.primary_audio_capturing&&promoted.app.microphone_capturing);
+          entry.localPreview.promotedNodes=captureNodes();
+          assert.deepEqual(entry.localPreview.promotedNodes,entry.localPreview.beforePromotion.nodes,'Go live replaced the granted preview stream');
+          entry.localPreview.promotedSameSession=true;save();
+        }else await goLive();
       }
       if (wayland && !gui) await selectedPortal();
       if (matrix === 'codecs') {
