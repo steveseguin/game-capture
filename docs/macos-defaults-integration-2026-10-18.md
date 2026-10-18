@@ -2,6 +2,8 @@
 
 The experimental Mac port now incorporates the current Windows/shared streaming defaults. Packaged GUI migration, VT/x264 live streams, AV1 playback, local WHIP and UDP/AAC output workflows passed on the signed candidate below. The same source passed the hosted Windows packaged workflows. At this measurement checkpoint the candidate was not yet notarized. The [delivery follow-up](macos-defaults-delivery-2026-10-18.md) now records notarization and fresh-host workflows; production qualification remains open. Public Mac Beta 2 and Windows stable are unchanged.
 
+The [load/recovery follow-up](macos-load-recovery-2026-10-18.md) records a 4K low-bitrate x264 picture failure and a corrected observation gap. Earlier passes below retain their original scope.
+
 ## Candidate and behavior
 
 Runtime source: `c459d7ada325c02945e460378d4f4acab8f1b755`. Developer ID executable SHA-256: `ca2ecda2b36551dcb0eee8bd86c5dc8860782b9c6c04d6813438a18885ee68de`. All 39 application units were rebuilt. Later commits change QA/documentation only. The previous lifecycle candidate's notarization and thirty-minute results for earlier binaries do not qualify these new bytes.
