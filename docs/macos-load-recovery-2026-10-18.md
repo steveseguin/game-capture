@@ -1,5 +1,7 @@
 # Apple M1 load/recovery investigation — 2026-10-18 UTC
 
+Follow-up: [direct NV12 conversion, sequential previous-build controls and the retained x264 failure](macos-nv12-conversion-2026-10-18.md).
+
 **Keep the Mac version experimental.** Packaged VT/x264 streams recovered after repeated 4K load, but x264 at 4 Mbps produced severe visible distortion. An independent FFmpeg decoder reproduced it from the received H.264 stream. A passing frame-rate check does not qualify picture quality.
 
 Most runs used the notarized [defaults candidate](macos-defaults-delivery-2026-10-18.md): runtime `c459d7ada325c02945e460378d4f4acab8f1b755`, executable `ca2ecda2b36551dcb0eee8bd86c5dc8860782b9c6c04d6813438a18885ee68de`. Public Mac Beta 2 and Windows stable remain unchanged.
