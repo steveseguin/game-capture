@@ -50,7 +50,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "close-window", "paste", "copy"])
+    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -236,6 +236,27 @@ def main():
                 raise RuntimeError('Owned menu does not hold focus')
             subprocess.run(['xdotool', 'mousemove', str(bounds.x + bounds.width//2), str(bounds.y + bounds.height//2), 'click', '1'], check=True, timeout=3)
             time.sleep(.2)
+    elif args.command == "key-press":
+        button = find("push button", args.name)
+        frame = find("frame", "Game Capture - Powered by VDO.Ninja")
+        def send(key):
+            assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), 'Owned application is not active'
+            if os.environ.get('QT_QPA_PLATFORM') == 'wayland':
+                assert os.environ.get('GC_QA_KEYBOARD_SOCKET'), 'Owned keyboard is required'
+                subprocess.run([sys.executable, str(Path(__file__).with_name('linux-portal-select.py')), '--keys', key], check=True, timeout=8)
+            else:
+                subprocess.run(['xdotool', 'key', '--clearmodifiers', {'TAB':'Tab','SPACE':'space'}[key]], check=True, timeout=3)
+            pump()
+        # Normal keyboard activation supplies the compositor's input serial;
+        # an AT-SPI do_action alone does not generate a Wayland input event.
+        for _ in range(80):
+            if button.get_state_set().contains(Atspi.StateType.FOCUSED):
+                break
+            send('TAB')
+        else:
+            raise RuntimeError('Could not focus the owned button with Tab')
+        assert button.get_state_set().contains(Atspi.StateType.SENSITIVE), 'Owned button is disabled'
+        send('SPACE')
     elif args.command == "value":
         field = find("spin button", args.name)
         value = float(args.value)

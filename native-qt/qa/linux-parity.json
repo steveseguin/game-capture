@@ -84,7 +84,7 @@
       "id": "vdo-rooms",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged X11 CLI protected rooms and signaling recovery passed previously. Exact packaged X11 and native GNOME Wayland Qt GUI now passed room/password/input/software-encoder configuration, enabled and disabled director controls, bounded wrong-password rejection, authorized/unauthorized requests, HQ/LQ media and GUI Stop/fresh-consent restart. Enabled runs passed real guest lifecycle, director resolution/bitrate/mute/keyframe controls and late scene; disabled runs passed the shared Windows UI contract. Packaged X11 and native Wayland GUI now also passed HQ-only 1280x720 routing for director/scene/guest, LQ re-enablement, and two clean relaunches restoring room credentials, quality preference, encoder/resolution/fps/input while idle before explicit source reselection/Go live. Each phase verified decoded moving video and stereo audio; four fresh Wayland portal selections passed. Generated protected room/share links and Open Share Link, GUI signaling-proxy recovery, TURN/WAN/packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
+      "remaining": "Packaged X11 CLI protected rooms and signaling recovery passed previously. Exact packaged X11 and native GNOME Wayland Qt GUI now passed room/password/input/software-encoder configuration, enabled and disabled director controls, bounded wrong-password rejection, authorized/unauthorized requests, HQ/LQ media and GUI Stop/fresh-consent restart. Enabled runs passed real guest lifecycle, director resolution/bitrate/mute/keyframe controls and late scene; disabled runs passed the shared Windows UI contract. Packaged X11 and native Wayland GUI now also passed HQ-only 1280x720 routing for director/scene/guest, LQ re-enablement, and two clean relaunches restoring room credentials, quality preference, encoder/resolution/fps/input while idle before explicit source reselection/Go live. Each phase verified decoded moving video and stereo audio; four fresh Wayland portal selections passed. Generated protected standalone/room links, focused keyboard Copy Link and GUI Open Link through the system launcher to real Chrome now passed on both desktops, with encoded-password round trip, exact clipboard/opened URL equality and decoded HQ/stereo; room+solo naturally joins scene/HQ as in Windows. Direct AT-SPI Copy after Wayland portal restart without fresh input, other browser and tray/menu Open variants, GUI signaling-proxy recovery, TURN/WAN/packet-loss variants, guest refresh/fuzz/abrupt loss variants, default 720p60, long-run A/V/endurance and Windows/macOS integrated regression remain open."
     },
     {
       "id": "whip",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, native Wayland camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Native Wayland camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, native Wayland camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Live Wayland camera preview and disconnect/permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch remain open. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived."
     },
     {
       "id": "profiles",
@@ -18407,6 +18407,221 @@
           "sha256": "dcbda7af1a085007e4d2cc5532a0c3a318f784fcee82454908155c1bf1d2a34f"
         }
       ]
+    },
+    {
+      "backend": "x11",
+      "report": "native-qt/qa/reports/linux-share-link-x11-enabled/e4ed073c-b564-4fad-865d-08e2f8db1405/results.json",
+      "reportSha256": "d24880ebb810ea61cc1ec08d28c295873611cb3f6e086fb1dcace5ce36e1f841",
+      "wrapperReport": "native-qt/qa/reports/linux-share-link-x11-desktop/536e0b43-382a-49b2-851b-8301ffceb250/results.json",
+      "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "desktop": {
+        "backend": "x11",
+        "gui": true,
+        "portalSelections": [],
+        "configuredThroughGui": true,
+        "controlTokenAccessible": true,
+        "remoteControlEnabled": true
+      },
+      "browser": {
+        "desktopId": "game-capture-owned-0b18c44eb50e3abd.desktop",
+        "privateMimeAssociation": true,
+        "systemLaunchersUnmodified": true,
+        "nativeBrowserLaunch": true
+      },
+      "cases": [
+        {
+          "name": "protected-stream",
+          "urlShape": {
+            "viewMatches": true,
+            "passwordRoundTrips": true,
+            "roomMatches": true,
+            "solo": false,
+            "stereo": "1",
+            "remoteTokenAbsent": true
+          },
+          "copyActivation": "Keyboard Space on focused Copy Link",
+          "clipboardMatches": true,
+          "openedExactGeneratedUrl": true,
+          "width": 1280,
+          "height": 720,
+          "distinctFrames": 120,
+          "roles": [
+            {
+              "assigned_tier": "hq",
+              "init_deadline_steady_ms": 0,
+              "init_received": true,
+              "role": "viewer",
+              "role_valid": true,
+              "room_mode": false
+            }
+          ],
+          "disabledAfterStop": true,
+          "passed": true
+        },
+        {
+          "name": "protected-room",
+          "urlShape": {
+            "viewMatches": true,
+            "passwordRoundTrips": true,
+            "roomMatches": true,
+            "solo": true,
+            "stereo": "1",
+            "remoteTokenAbsent": true
+          },
+          "copyActivation": "Keyboard Space on focused Copy Link",
+          "clipboardMatches": true,
+          "openedExactGeneratedUrl": true,
+          "width": 1280,
+          "height": 720,
+          "distinctFrames": 119,
+          "roles": [
+            {
+              "assigned_tier": "hq",
+              "init_deadline_steady_ms": 0,
+              "init_received": true,
+              "role": "scene",
+              "role_valid": true,
+              "room_mode": true
+            }
+          ],
+          "disabledAfterStop": true,
+          "passed": true
+        }
+      ],
+      "scope": "Native packaged DEB on owned X11/native Wayland desktop; protected standalone and room viewer URLs generated by the GUI, Copy Link clipboard and Open Link through unchanged system desktop launchers to a private real Chrome association; owned window and virtual stereo input.",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387",
+      "harnesses": {
+        "linux-share-link.js": "e4b4a637ac00f1d9d704a9c87126a68bc415b625a43d13d4d72647244b1b02ef",
+        "linux-owned-browser.js": "feb358b7fd0633e8cb32d69829a7c7b4fe21784af6a01ecaa0624d6fa14800b9",
+        "linux-room-fixture.js": "8ba9690531100ed5b22049fd944c51b7c03ae559312a02eeddd8369ad91714f5",
+        "linux-ui-control.py": "4d73797440c73bd98395934f48c0dd9df7ff9215adfdc6ad24c594bf34d5f465",
+        "linux-portal-select.py": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78"
+      },
+      "credentialLogsChecked": [
+        {
+          "file": "publisher.log",
+          "sha256": "accdd402e48c5a49285f275947f512778179fa505cad0cf682663206314083c4"
+        },
+        {
+          "file": "private-state/GameCapture/logs/game-capture-debug.log",
+          "sha256": "138dea6db24ff0859f535a4429f798bf6d733681d72ef08c4e8c39f0205492c1"
+        }
+      ]
+    },
+    {
+      "backend": "wayland",
+      "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/590000d0-223f-4d8a-8b7e-a7be222dc77a/results.json",
+      "reportSha256": "c991510de99f41cf6237d211aa0238f777d8da52f53941cff1a87f6d8269d97b",
+      "wrapperReport": "native-qt/qa/reports/linux-share-link-wayland-desktop/126a1530-c8b9-476f-8dbf-087eeb8a2d17/results.json",
+      "wrapperSha256": "86f073984b1a6c6d86bc13926095ef43378949714243f1bfffde6f0cde9a2893",
+      "passed": true,
+      "desktop": {
+        "backend": "wayland",
+        "gui": true,
+        "portalSelections": [
+          {
+            "file": "room-portal-1.json",
+            "sha256": "a921d5c91dedb673c4235d5bc532f0bb95bbc287405b617b01b21725849b6702"
+          },
+          {
+            "file": "room-portal-2.json",
+            "sha256": "1095791c6ea9b76506e168dc43309f1107c01ed016cb9e6f39d23c94caf17164"
+          }
+        ],
+        "portalOwner": "(':1.4241',)",
+        "configuredThroughGui": true,
+        "controlTokenAccessible": true,
+        "remoteControlEnabled": true,
+        "portalSurvived": true
+      },
+      "browser": {
+        "desktopId": "game-capture-owned-d8ed404b87b6f478.desktop",
+        "privateMimeAssociation": true,
+        "systemLaunchersUnmodified": true,
+        "nativeBrowserLaunch": true
+      },
+      "cases": [
+        {
+          "name": "protected-stream",
+          "urlShape": {
+            "viewMatches": true,
+            "passwordRoundTrips": true,
+            "roomMatches": true,
+            "solo": false,
+            "stereo": "1",
+            "remoteTokenAbsent": true
+          },
+          "copyActivation": "Keyboard Space on focused Copy Link",
+          "clipboardMatches": true,
+          "openedExactGeneratedUrl": true,
+          "width": 1280,
+          "height": 720,
+          "distinctFrames": 72,
+          "roles": [
+            {
+              "assigned_tier": "hq",
+              "init_deadline_steady_ms": 0,
+              "init_received": true,
+              "role": "viewer",
+              "role_valid": true,
+              "room_mode": false
+            }
+          ],
+          "disabledAfterStop": true,
+          "passed": true
+        },
+        {
+          "name": "protected-room",
+          "urlShape": {
+            "viewMatches": true,
+            "passwordRoundTrips": true,
+            "roomMatches": true,
+            "solo": true,
+            "stereo": "1",
+            "remoteTokenAbsent": true
+          },
+          "copyActivation": "Keyboard Space on focused Copy Link",
+          "clipboardMatches": true,
+          "openedExactGeneratedUrl": true,
+          "width": 1280,
+          "height": 720,
+          "distinctFrames": 43,
+          "roles": [
+            {
+              "assigned_tier": "hq",
+              "init_deadline_steady_ms": 0,
+              "init_received": true,
+              "role": "scene",
+              "role_valid": true,
+              "room_mode": true
+            }
+          ],
+          "disabledAfterStop": true,
+          "passed": true
+        }
+      ],
+      "scope": "Native packaged DEB on owned X11/native Wayland desktop; protected standalone and room viewer URLs generated by the GUI, Copy Link clipboard and Open Link through unchanged system desktop launchers to a private real Chrome association; owned window and virtual stereo input.",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387",
+      "harnesses": {
+        "linux-share-link.js": "e4b4a637ac00f1d9d704a9c87126a68bc415b625a43d13d4d72647244b1b02ef",
+        "linux-owned-browser.js": "feb358b7fd0633e8cb32d69829a7c7b4fe21784af6a01ecaa0624d6fa14800b9",
+        "linux-room-fixture.js": "8ba9690531100ed5b22049fd944c51b7c03ae559312a02eeddd8369ad91714f5",
+        "linux-ui-control.py": "4d73797440c73bd98395934f48c0dd9df7ff9215adfdc6ad24c594bf34d5f465",
+        "linux-portal-select.py": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78"
+      },
+      "credentialLogsChecked": [
+        {
+          "file": "publisher.log",
+          "sha256": "9d7965c4f8709b58f64f893c49f79cc3b2b75e189d6e57132b5fc7c34277231a"
+        },
+        {
+          "file": "private-state/GameCapture/logs/game-capture-debug.log",
+          "sha256": "184ee5b80ac717850f1645904b7b21b20c2c1fcdb4c5ba119309e04b1d423e28"
+        }
+      ]
     }
   ],
   "host_environment": {
@@ -18458,7 +18673,8 @@
     "xvfb-run -a -s \"-screen 0 1600x1000x24\" python3 native-qt/e2e/linux-private-desktop.py --reports=<desktop-reports> --window-manager -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --password-protected=true --signaling-recovery=true (shared room assertions, Linux adapter; --remote-control=disabled selects disabled UI contract instead)",
     "node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --preview=true --system-resources=true (appropriate isolated X11/native Wayland desktop wrapper required)",
     "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/macos-room-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true --password-protected=true --remote-control=<enabled|disabled> (X11 wrapper requires an owned Xvfb DISPLAY; native Wayland uses owned keyboard and explicit portal consent)",
-    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-settings.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (X11 requires an owned Xvfb DISPLAY; verifies HQ-only, LQ enablement and two clean relaunches with explicit source reselection)"
+    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-room-settings.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (X11 requires an owned Xvfb DISPLAY; verifies HQ-only, LQ enablement and two clean relaunches with explicit source reselection)",
+    "python3 native-qt/e2e/linux-<private|wayland>-desktop.py --reports=<desktop-reports> [--window-manager on private X11] -- node native-qt/e2e/linux-share-link.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --backend=<x11|wayland> --gui=true (X11 requires owned Xvfb DISPLAY; private browser MIME association and owned local-password-store Chrome are cleaned up)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -19743,5 +19959,240 @@
       "passed": true
     },
     "remaining": "Generated protected room/share links and Open Share Link; GUI signaling outage; TURN/WAN and packet-loss variants; guest refresh/fuzz/abrupt-loss variants; default 720p60 and calibrated long-run A/V/endurance; Windows/macOS integrated regression. Physical microphones remain unqualified. Granted portal capture/restart does not resolve stock GNOME pending-request cancellation crash or its maintained delivery requirement."
+  },
+  "share_link_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-c243429eb61a-cfe2e5874341.deb",
+      "sha256": "770a0f98ae487e3d462834a15db7a06b690d6f1bc0da8da36656fd28b83aa400",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-c243429eb61a-cfe2e5874341",
+      "manifestSha256": "0fd3498ca10c38ffb513048abb4c0e908f8153b8efbcd7fecfd3cf1922acd387"
+    },
+    "qualification": "Packaged X11 and native GNOME Wayland protected standalone/room sharing through the actual Qt GUI. Generated, copied and system-launched browser URLs match, including percent-encoded + & = / password characters; no control token is shared. Each opened unmodified URL decodes moving 1280x720 software H264 and stereo audio. The room+solo URL uses scene/HQ, matching unchanged Windows baseline generation. Copy uses normal Tab/Space on the focused button; Open uses its ordinary accessible action and unchanged QDesktopServices/xdg-open with a private MIME-selected real Chrome browser. Actions disabled before publishing and after Stop; clean Quit and credential log checks passed.",
+    "productionChange": "None. Shared URL generation and application behavior preserved; reusable owned browser fixture, keyboard activation helper and packaged workflow added.",
+    "reports": [
+      {
+        "backend": "x11",
+        "report": "native-qt/qa/reports/linux-share-link-x11-enabled/e4ed073c-b564-4fad-865d-08e2f8db1405/results.json",
+        "reportSha256": "d24880ebb810ea61cc1ec08d28c295873611cb3f6e086fb1dcace5ce36e1f841",
+        "wrapperReport": "native-qt/qa/reports/linux-share-link-x11-desktop/536e0b43-382a-49b2-851b-8301ffceb250/results.json",
+        "wrapperSha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true,
+        "desktop": {
+          "backend": "x11",
+          "gui": true,
+          "portalSelections": [],
+          "configuredThroughGui": true,
+          "controlTokenAccessible": true,
+          "remoteControlEnabled": true
+        },
+        "browser": {
+          "desktopId": "game-capture-owned-0b18c44eb50e3abd.desktop",
+          "privateMimeAssociation": true,
+          "systemLaunchersUnmodified": true,
+          "nativeBrowserLaunch": true
+        },
+        "cases": [
+          {
+            "name": "protected-stream",
+            "urlShape": {
+              "viewMatches": true,
+              "passwordRoundTrips": true,
+              "roomMatches": true,
+              "solo": false,
+              "stereo": "1",
+              "remoteTokenAbsent": true
+            },
+            "copyActivation": "Keyboard Space on focused Copy Link",
+            "clipboardMatches": true,
+            "openedExactGeneratedUrl": true,
+            "width": 1280,
+            "height": 720,
+            "distinctFrames": 120,
+            "roles": [
+              {
+                "assigned_tier": "hq",
+                "init_deadline_steady_ms": 0,
+                "init_received": true,
+                "role": "viewer",
+                "role_valid": true,
+                "room_mode": false
+              }
+            ],
+            "disabledAfterStop": true,
+            "passed": true
+          },
+          {
+            "name": "protected-room",
+            "urlShape": {
+              "viewMatches": true,
+              "passwordRoundTrips": true,
+              "roomMatches": true,
+              "solo": true,
+              "stereo": "1",
+              "remoteTokenAbsent": true
+            },
+            "copyActivation": "Keyboard Space on focused Copy Link",
+            "clipboardMatches": true,
+            "openedExactGeneratedUrl": true,
+            "width": 1280,
+            "height": 720,
+            "distinctFrames": 119,
+            "roles": [
+              {
+                "assigned_tier": "hq",
+                "init_deadline_steady_ms": 0,
+                "init_received": true,
+                "role": "scene",
+                "role_valid": true,
+                "room_mode": true
+              }
+            ],
+            "disabledAfterStop": true,
+            "passed": true
+          }
+        ]
+      },
+      {
+        "backend": "wayland",
+        "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/590000d0-223f-4d8a-8b7e-a7be222dc77a/results.json",
+        "reportSha256": "c991510de99f41cf6237d211aa0238f777d8da52f53941cff1a87f6d8269d97b",
+        "wrapperReport": "native-qt/qa/reports/linux-share-link-wayland-desktop/126a1530-c8b9-476f-8dbf-087eeb8a2d17/results.json",
+        "wrapperSha256": "86f073984b1a6c6d86bc13926095ef43378949714243f1bfffde6f0cde9a2893",
+        "passed": true,
+        "desktop": {
+          "backend": "wayland",
+          "gui": true,
+          "portalSelections": [
+            {
+              "file": "room-portal-1.json",
+              "sha256": "a921d5c91dedb673c4235d5bc532f0bb95bbc287405b617b01b21725849b6702"
+            },
+            {
+              "file": "room-portal-2.json",
+              "sha256": "1095791c6ea9b76506e168dc43309f1107c01ed016cb9e6f39d23c94caf17164"
+            }
+          ],
+          "portalOwner": "(':1.4241',)",
+          "configuredThroughGui": true,
+          "controlTokenAccessible": true,
+          "remoteControlEnabled": true,
+          "portalSurvived": true
+        },
+        "browser": {
+          "desktopId": "game-capture-owned-d8ed404b87b6f478.desktop",
+          "privateMimeAssociation": true,
+          "systemLaunchersUnmodified": true,
+          "nativeBrowserLaunch": true
+        },
+        "cases": [
+          {
+            "name": "protected-stream",
+            "urlShape": {
+              "viewMatches": true,
+              "passwordRoundTrips": true,
+              "roomMatches": true,
+              "solo": false,
+              "stereo": "1",
+              "remoteTokenAbsent": true
+            },
+            "copyActivation": "Keyboard Space on focused Copy Link",
+            "clipboardMatches": true,
+            "openedExactGeneratedUrl": true,
+            "width": 1280,
+            "height": 720,
+            "distinctFrames": 72,
+            "roles": [
+              {
+                "assigned_tier": "hq",
+                "init_deadline_steady_ms": 0,
+                "init_received": true,
+                "role": "viewer",
+                "role_valid": true,
+                "room_mode": false
+              }
+            ],
+            "disabledAfterStop": true,
+            "passed": true
+          },
+          {
+            "name": "protected-room",
+            "urlShape": {
+              "viewMatches": true,
+              "passwordRoundTrips": true,
+              "roomMatches": true,
+              "solo": true,
+              "stereo": "1",
+              "remoteTokenAbsent": true
+            },
+            "copyActivation": "Keyboard Space on focused Copy Link",
+            "clipboardMatches": true,
+            "openedExactGeneratedUrl": true,
+            "width": 1280,
+            "height": 720,
+            "distinctFrames": 43,
+            "roles": [
+              {
+                "assigned_tier": "hq",
+                "init_deadline_steady_ms": 0,
+                "init_received": true,
+                "role": "scene",
+                "role_valid": true,
+                "room_mode": true
+              }
+            ],
+            "disabledAfterStop": true,
+            "passed": true
+          }
+        ]
+      }
+    ],
+    "diagnostics": [
+      {
+        "report": "native-qt/qa/reports/linux-share-link-x11-enabled/79a74a76-6585-4f5c-a646-e1286c3002c8/results.json",
+        "reportSha256": "6a9b83144e5f8dea244fb9430aa3dbc2f0f15f916a3dfcfdae496a4bfbde9861",
+        "explanation": "QA desktop Exec quoting failed in xdg-open generic fallback; corrected the fixture entry."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-share-link-x11-enabled/a01afc66-8583-4fa1-a316-02f5766f2644/results.json",
+        "reportSha256": "c4b11da055b12e5215fda11c9732339e962abe359541c65c06ebc02fa3159db9",
+        "explanation": "Playwright-launched Chrome rejected the native second-process handoff. Replaced it with normal Chrome launch plus observation after URL handoff."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-share-link-x11-enabled/4c117ced-0880-46ea-b798-9eff8833abd5/results.json",
+        "reportSha256": "9afb8944e0a614b877ac7553834a49c37faa050dc4da772a217e678d663f37c3",
+        "explanation": "Incorrect observer expectation: generated room+solo URL naturally joins as scene/HQ. Confirmed unchanged Windows baseline generation, then corrected expected role/dimensions."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/03016933-5263-4aae-a0f6-964fc194f805/results.json",
+        "reportSha256": "1201ae1f92e6b4f97e836850e0560e3bd6865c1a34f17f32909e939976d77c14",
+        "explanation": "QA browser triggered login-keyring prompt; focus precondition failed."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/aad4ddb0-014c-46d4-935b-1fd6eea59aa0/results.json",
+        "reportSha256": "93b9fd55dff1094f4a60a91ea714dc9012d659c62828ca4259f5659dbc707d22",
+        "explanation": "Same pending login-keyring prompt blocked GUI setup after moving browser launch."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/0ff8a81f-2392-428c-be6e-5ecd685fe8c0/results.json",
+        "reportSha256": "4684a5c22b317d4b8288cb3b3a9f5031dbf1c47220b41d27cee3f629da85dc95",
+        "explanation": "Same prompt blocked explicit application activation. Cancelled the owned-browser-triggered prompt without unlocking, then used basic password store for the disposable native browser."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/20f1ab54-a9c1-45f7-a53d-e669864297f7/results.json",
+        "reportSha256": "984669cd94f02dd061b9626516a6d952e42a29c38595933bf9a71f6b7d92eceb",
+        "explanation": "Standalone Copy/Open passed; after room reconfiguration the direct AT-SPI Copy action left the previous clipboard URL while Open Link received the new URL. Final workflow uses actual focused keyboard Space; direct accessibility invocation without fresh compositor input remains a follow-up, not a waived pass."
+      }
+    ],
+    "gates": {
+      "report": "native-qt/build-linux/share-link-gates.json",
+      "reportSha256": "2a059f12585947ad5af109bb3c95a491792b93277c1867c21c72b0f72a8de5ac",
+      "classification": "Syntax and source-provenance gates only; not application testing."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-share-link-wayland-enabled/590000d0-223f-4d8a-8b7e-a7be222dc77a/host-cleanup.json",
+      "reportSha256": "d36fbff23f670ff1c0432f577d9fcf0fb430fe3906b846d7c0acdc1479f7b890",
+      "passed": true
+    },
+    "remaining": "Direct AT-SPI Copy invocation after Wayland portal restart without a fresh input event; tray/menu/hyperlink Open variants and other default browsers; sandbox portal browser dispatch. Wider GUI signaling/transport and endurance requirements remain. No physical microphone or Windows/macOS runtime qualification. Stock GNOME pending-request cancellation crash and maintained fix delivery remain open."
   }
 }
