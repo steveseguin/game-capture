@@ -524,8 +524,19 @@ function saveReport() {
       await sleep(800);
       entry.resized = await observe(page, 4000);
       requireMoving(entry.resized, 'Resized ' + encoder);
-      const lateViewer = await receiver(viewerBrowser, stream, child);
-      entry.lateViewer = await observe(lateViewer, 3000);
+      // Retain source progress and publisher counters even when late-viewer
+      // motion fails. Decoded frame rate alone cannot distinguish repeated
+      // source content from capture or encoder stalls on a loaded host.
+      entry.lateBeforeDiagnostics = await api(control,'/diagnostics');
+      await source.evaluate(()=>{fixture.trace=[];fixture.record=true;});
+      let lateViewer;
+      try {
+        lateViewer = await receiver(viewerBrowser, stream, child);
+        entry.lateViewer = await observe(lateViewer, 3000);
+      } finally {
+        entry.lateSourceTrace = await source.evaluate(()=>{fixture.record=false;return fixture.trace;});
+        entry.lateAfterDiagnostics = await api(control,'/diagnostics');
+      }
       requireMoving(entry.lateViewer, 'Late viewer ' + encoder);
       if (audioMode !== 'none' || usesMic) { entry.lateAudio = await observeAudio(lateViewer); requireAudio(entry.lateAudio); }
       await page.screenshot({path:path.join(report,encoder + '-receiver.png')});
