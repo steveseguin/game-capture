@@ -2632,13 +2632,19 @@ bool VersusApp::writeDiagnosticsJson(const std::string &path) const {
         QSaveFile out(QString::fromStdString(outputPath.native()));
 #endif
         if (!out.open(QIODevice::WriteOnly)) {
-            spdlog::warn("[Diagnostics] Failed to open diagnostics output '{}'", path);
+            spdlog::warn("[Diagnostics] Failed to open diagnostics output '{}': error={} {}",
+                         path, static_cast<int>(out.error()), out.errorString().toStdString());
             return false;
         }
         const std::string bytes = buildDiagnosticsJson() + '\n';
-        if (out.write(bytes.data(), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size()) ||
-            !out.commit()) {
-            spdlog::warn("[Diagnostics] Failed while writing diagnostics output '{}'", path);
+        if (out.write(bytes.data(), static_cast<qint64>(bytes.size())) != static_cast<qint64>(bytes.size())) {
+            spdlog::warn("[Diagnostics] Failed to write diagnostics output '{}': error={} {}",
+                         path, static_cast<int>(out.error()), out.errorString().toStdString());
+            return false;
+        }
+        if (!out.commit()) {
+            spdlog::warn("[Diagnostics] Failed to commit diagnostics output '{}': error={} {}",
+                         path, static_cast<int>(out.error()), out.errorString().toStdString());
             return false;
         }
         spdlog::info("[Diagnostics] Wrote diagnostics to {}", path);

@@ -5,6 +5,7 @@ from ctypes import wintypes
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import threading
@@ -59,6 +60,21 @@ def main():
             harnessSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             observerShareMode='FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE',
             results=results), indent=2), encoding='utf-8')
+
+    def diagnostic_log_lines():
+        # The application logger is a file sink on Windows; GUI stdout alone
+        # does not preserve the failed QSaveFile stage. This directory belongs
+        # to this workflow's explicitly isolated LOCALAPPDATA.
+        lines = []
+        for file in (run / 'GameCapture/logs').glob('game-capture-debug*.log'):
+            for line in file.read_text(encoding='utf-8', errors='replace').splitlines():
+                if '[Diagnostics]' not in line:
+                    continue
+                line = line.replace(str(run), '<workflow>')
+                line = re.sub(r'(?i)(?:https?|wss?)://[^\s"<>]+', '<url>', line)
+                line = re.sub(r'(?i)bearer\s+\S+', 'Bearer <redacted>', line)
+                lines.append(line[:2000])
+        return lines[-40:]
 
     def record(name, passed, **details):
         results.append(dict(name=name, passed=passed, **details))
@@ -119,12 +135,14 @@ def main():
             record('quit-exits-cleanly', process.returncode == 0, locked=locked, exitCode=process.returncode)
             record('quit-removes-discovery', not discovery.exists(), locked=locked)
             if locked:
-                record('failed-replacement-preserves-snapshot', output.read_text(encoding='utf-8') == original)
+                record('failed-replacement-preserves-snapshot', output.read_text(encoding='utf-8') == original,
+                       diagnosticLogLines=diagnostic_log_lines())
             else:
                 record('readers-see-complete-json', bool(reads) and not invalid,
                        reads=len(reads), incomplete=len(invalid))
                 content = json.loads(output.read_text(encoding='utf-8'))
-                record('shutdown-exports-current-diagnostics', bool(content) and 'previous' not in content)
+                record('shutdown-exports-current-diagnostics', bool(content) and 'previous' not in content,
+                       diagnosticLogLines=diagnostic_log_lines())
         except Exception as error:
             record('workflow-completed', False, locked=locked, error=str(error))
         finally:
