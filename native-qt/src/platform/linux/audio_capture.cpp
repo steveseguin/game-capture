@@ -6,7 +6,11 @@
 #include <chrono>
 #include <cmath>
 #include <condition_variable>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
+#include <initializer_list>
 #include <utility>
 #include <charconv>
 #include <deque>
@@ -23,6 +27,46 @@ namespace {
 using Clock = std::chrono::steady_clock;
 constexpr pa_sample_spec sampleSpec{PA_SAMPLE_FLOAT32NE, 48000, 2};
 constexpr size_t maximumChunkBytes = 48000 * 2 * sizeof(float) / 4;
+
+// Opt-in, bounded timing metadata for packaged Linux A/V diagnostics. No PCM
+// content is recorded. Ordinary capture does not open a file or collect rows.
+class ProcessTimingTrace {
+  public:
+    ProcessTimingTrace(const ProcessTimingTrace &) = delete;
+    ProcessTimingTrace &operator=(const ProcessTimingTrace &) = delete;
+    ProcessTimingTrace() {
+        const auto *path = std::getenv("VERSUS_LINUX_AUDIO_TRACE");
+        if (!path || !*path) return;
+        const int fd = ::open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
+        if (fd < 0) { spdlog::warn("[LinuxAudio] Could not create timing trace"); return; }
+        file_ = ::fdopen(fd, "w");
+        if (!file_) { ::close(fd); spdlog::warn("[LinuxAudio] Could not open timing trace"); return; }
+        std::fputs("stage,now100ns,wallMs,estimated100ns,assigned100ns,frames,stream,latencyUs,negative,timed,reset,kept,coveredFrames,outputFrame,activeTaps\n", file_);
+    }
+    ~ProcessTimingTrace() {
+        if (!file_) return;
+        std::fprintf(file_, "# end rows=%u truncated=%d write_error=%d\n", rows_, truncated_, bool(std::ferror(file_)));
+        const bool flushFailed = std::fflush(file_) != 0;
+        const bool closeFailed = std::fclose(file_) != 0;
+        if (flushFailed || closeFailed) spdlog::warn("[LinuxAudio] Timing trace write failed");
+    }
+    bool enabled() const { return file_ != nullptr; }
+    void record(const char *stage, int64_t now, std::initializer_list<int64_t> values) {
+        if (!file_) return;
+        if (rows_ >= 100000) { truncated_ = true; return; }
+        ++rows_;
+        const auto wall = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        std::fprintf(file_, "%s,%lld,%lld", stage, static_cast<long long>(now), static_cast<long long>(wall));
+        for (const auto value : values) std::fprintf(file_, ",%lld", static_cast<long long>(value));
+        std::fputc('\n', file_);
+    }
+  private:
+    FILE *file_ = nullptr;
+    unsigned rows_ = 0;
+    bool truncated_ = false;
+};
+
 struct Server {
     pa_mainloop *loop = pa_mainloop_new();
     pa_context *context = nullptr;
@@ -227,9 +271,13 @@ struct WindowAudioCaptureCore::LinuxImpl {
         std::map<uint32_t, std::unique_ptr<MonitorTap>> taps;
         std::unique_ptr<PlaybackQuery> query;
         auto refresh = Clock::now();
+        ProcessTimingTrace timingTrace;
         const int64_t epoch = webrtc::mediaTime100ns();
         int64_t outputFrame = 0;
-        constexpr int64_t delay100ns = 1200000; // Allow independent monitors to arrive before mixing.
+        // Allow two requested 10 ms monitor fragments of arrival margin. Keep
+        // original capture timestamps; a large hold delays audio transmission
+        // and makes receivers accumulate extra video buffering during startup.
+        constexpr int64_t delay100ns = 200000;
         spdlog::info("[LinuxAudio] Capturing app PID {} generation {} and its children", root.pid, root.birth);
         while (running && server.connected()) {
             if (!query && Clock::now() >= refresh) {
@@ -316,13 +364,19 @@ struct WindowAudioCaptureCore::LinuxImpl {
                     if (tap.next >= 0 && std::abs(estimatedFrame - tap.next) > 2400)
                         spdlog::debug("[LinuxAudio] App playback {} clock discontinuity: deltaFrames={} latencyUs={} negative={} outputOffset={} blockFrames={}",
                             index, estimatedFrame - tap.next, latency, negative, estimatedFrame - outputFrame, frames);
-                    if (tap.next < 0 || std::abs(estimatedFrame - tap.next) > 2400) {
+                    const bool clockReset = tap.next < 0 || std::abs(estimatedFrame - tap.next) > 2400;
+                    if (clockReset) {
                         tap.blocks.clear(); // Never mix overlapping generations after a clock discontinuity.
                         tap.next = estimatedFrame;
                     }
                     block.first = tap.next; tap.next += frames;
                     if (pa_stream_drop(tap.stream) < 0) { fail(server.failure("Could not release app samples")); return; }
-                    if (block.first + frames > outputFrame && block.first < outputFrame + 48000) {
+                    const bool kept = block.first + frames > outputFrame && block.first < outputFrame + 48000;
+                    if (timingTrace.enabled()) timingTrace.record("input", now, {
+                        estimatedTime, epoch + block.first * 10000000 / 48000, frames, index,
+                        static_cast<int64_t>(latency), negative, timed, clockReset, kept, 0,
+                        outputFrame, static_cast<int64_t>(taps.size())});
+                    if (kept) {
                         if (tap.blocks.size() >= 128) { fail("Application audio backlog exceeded its bound."); return; }
                         tap.blocks.push_back(std::move(block));
                     }
@@ -333,10 +387,12 @@ struct WindowAudioCaptureCore::LinuxImpl {
             while (running && outputFrame + 480 <= dueFrame) {
                 StreamChunk chunk; chunk.samples.resize(960, 0.0f);
                 chunk.captureTime100ns = epoch + outputFrame * 10000000 / 48000;
+                int64_t coveredFrames = 0;
                 for (auto &[index, tap] : taps) {
                     for (const auto &block : tap->blocks) {
                         const auto first = std::max(outputFrame, block.first);
                         const auto end = std::min(outputFrame + 480, block.first + int64_t(block.samples.size() / 2));
+                        if (timingTrace.enabled()) coveredFrames += std::max(int64_t(0), end - first);
                         for (int64_t frame = first; frame < end; ++frame)
                             for (int channel = 0; channel < 2; ++channel)
                                 chunk.samples[(frame - outputFrame) * 2 + channel] += block.samples[(frame - block.first) * 2 + channel];
@@ -344,6 +400,9 @@ struct WindowAudioCaptureCore::LinuxImpl {
                     while (!tap->blocks.empty() && tap->blocks.front().first + int64_t(tap->blocks.front().samples.size() / 2) <= outputFrame + 480)
                         tap->blocks.pop_front();
                 }
+                if (timingTrace.enabled()) timingTrace.record("output", webrtc::mediaTime100ns(), {
+                    0, chunk.captureTime100ns, 480, 0, 0, 0, 0, 0, 0, coveredFrames,
+                    outputFrame, static_cast<int64_t>(taps.size())});
                 deliver(std::move(chunk), callback); outputFrame += 480;
             }
         }

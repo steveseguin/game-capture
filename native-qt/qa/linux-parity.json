@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged automatic X11 window/process selection including Chrome child audio and suspend/resume, explicit Wayland CLI selection with real portal capture, and X11 GUI app selection passed. Dynamic child/same-process streams, stream removal/recreation, output moves, late viewer, app exit, stale-selection rejection and explicit reselection passed. Native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed microphone continuity on app loss, A/V drift/endurance remain. Root-process exit intentionally stops its app capture; no automatic replacement by name. Native Wayland GUI explicit app selection, child/same-process streams, output moves, app loss, stale selection and explicit reselection with fresh portal restart now passed. Wayland placeholder correctly requests explicit app selection. X11 packaged app-loss and stale-startup audio notices now remain visible while publishing and clear after Stop/explicit reselection; decoded recovery passed."
+      "remaining": "Bounded packaged CLI and Qt GUI selection, child/same-process stream joins and removals, recreation, output moves, late viewers, app exit, retained notices, stale-selection rejection and explicit reselection pass, including the current 20 ms hold candidate on X11. Root exit stops its audio; no silent replacement by name. Prior native Wayland GUI routing/lifecycle evidence exists, but the changed audio behavior needs a fresh Wayland regression. Still required: native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed-microphone continuity on app loss, continuous multi-stream/mixed-input timing under CPU load and physical-output conditions, calibrated A/V startup and endurance. The current desktop-reference pilot still reaches +54 ms against the unchanged 50 ms limit. See linux_app_audio_latency_checkpoint and the earlier application-audio evidence."
     },
     {
       "id": "system-audio",
@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation. A six-minute native trace now reproduces the large dip and locates repeated picture identities in capture callbacks before the shared output worker, with no cached-capture reuse. The new DAMAGE-driven X11 package passes bounded functional workflows and a six-interval default 720p60 cadence/PCM pilot. Its >=30-minute rerun is still required, and the pilot still fails absolute A/V skew (+66 ms maximum). All 372 five-second cadence/PCM intervals pass in one 31-minute exact-package X11 run with tracing disabled. This covers the recurrence periods that failed on the previous polling implementation. Paired browser-reference A/V analysis still fails its numerical limits. Independent absolute timing calibration remains unresolved; native Wayland, high-motion/higher profiles, physical Xorg and Windows/macOS integrated runtime regression remain unqualified. See x11_damage_endurance_checkpoint for all interval decisions, timing phases, resource range and cleanup. The three-way X11 reference diagnostic now confirms reference-path differences and receiver startup skew under both references; see av_desktop_reference_checkpoint. Absolute calibration and startup synchronization remain open. Desktop/Pulse and browser references now pass deliberate +/-150 ms stimulus-response controls; this does not establish the absolute zero offset or resolve receiver startup skew. See av_desktop_delay_controls_checkpoint."
+      "remaining": "The current 20 ms audio-hold candidate passes bounded X11 default 1280x720/60 cadence/PCM and browser-reference timing, but desktop-reference startup skew still reaches +54 ms and absolute zero-offset calibration remains unresolved. Deliberate +/-150 ms stimulus-response controls pass; those controls do not waive absolute timing. The prior 120 ms audio/DAMAGE package passed all 372 cadence/PCM intervals in one 31-minute X11 run, but initial A/V skew reached +76 ms; that run does not qualify the changed audio behavior. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resource observations and cleanup. The prior native Wayland pilot failed all six delivery windows at about 47\u201349 fps and its source fell below 57 fps in three windows; isolate source/compositor/PipeWire throughput before attributing the full shortfall. High-motion content and higher profiles need separate evidence. See x11_damage_endurance_checkpoint, av_desktop_reference_checkpoint, av_desktop_delay_controls_checkpoint and linux_app_audio_latency_checkpoint."
     },
     {
       "id": "arm-portability",
@@ -21744,6 +21744,296 @@
         "sha256": "bbe2e6bea89ccdcb66dcf68f08c1b910d301b6b7478cb355023a21847e62b795",
         "passed": true
       }
+    },
+    {
+      "case": "baseline-120ms",
+      "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/results.json",
+      "reportSha256": "142d453ca817779339171d6130366aa32f9b6dfb0482f41423d9af972609acb3",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "manifestSha256": "05261e58224424d9254cc3cdb4123151ed57055a047fcc6882f53e316e44895c",
+      "executableSha256": "5fc53d545d4c7ff51cfb09afd313e0ca2e9bf28bb1fd8adeed25ece96d647de0",
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/host-cleanup.json",
+        "sha256": "dd3d8b6cbb991438ab368749e3e6a460594f4b1ca32fbae2505675d4beda33dc",
+        "passed": true
+      },
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "sourceReference": "desktop",
+      "analysis": {
+        "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/av-analysis.json",
+        "sha256": "52f5df587b08e093a8579523a6143eaa2bd84c9127deba7da95443349784d75e",
+        "passed": false
+      },
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/linux-audio-timing.json",
+        "sha256": "3155ae04e381110a32e9dd4714caee8da2c983aed0fb9bb477a8c016f8449be9",
+        "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+        "traceComplete": true,
+        "traceSha256": "d7626b04ad5d9da3b688a91702a3a6eb570fc3f622039f43cf01d042a9a953c9",
+        "rows": 7247,
+        "inputBlocks": 3629,
+        "outputBlocks": 3618,
+        "observedSeconds": 36.2826388,
+        "inputArrivalAgeMs": {
+          "count": 3629,
+          "minimum": 6.8231,
+          "median": 9.7115,
+          "p95": 11.8294,
+          "p99": 12.1035,
+          "maximum": 15.727
+        },
+        "inputArrivalAgeAfter2sMs": {
+          "count": 3429,
+          "minimum": 6.8302,
+          "median": 9.7235,
+          "p95": 11.8335,
+          "p99": 12.1189,
+          "maximum": 15.727
+        },
+        "inputEstimatedAgeMs": {
+          "count": 3629,
+          "minimum": 0.051,
+          "median": 9.684,
+          "p95": 12.908,
+          "p99": 13.579,
+          "maximum": 16.236
+        },
+        "outputAgeMs": {
+          "count": 3618,
+          "minimum": 130.005,
+          "median": 132.55145,
+          "p95": 139.9564,
+          "p99": 140.1281,
+          "maximum": 142.2661
+        },
+        "outputAgeAfter2sMs": {
+          "count": 3429,
+          "minimum": 130.005,
+          "median": 132.5505,
+          "p95": 139.9557,
+          "p99": 140.0865,
+          "maximum": 142.2661
+        },
+        "clockAnchorsIncludingInitial": 1,
+        "untimedInputBlocks": 0,
+        "discardedInputBlocks": 0,
+        "discardedInputBlocksAfter2s": 0,
+        "uncoveredTapFramesAfter2s": 0,
+        "maximumActiveTaps": 1
+      },
+      "referenceComparison": {
+        "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/reference-comparison.json",
+        "sha256": "6b34188b5aac108687d675c3fb328a247db5ac19c8fd3efa83c7b4ed243e5f14",
+        "summary": {
+          "referenceDifferenceMs": {
+            "median": 36.50000000000375,
+            "minimum": 16.50000000000018,
+            "maximum": 41.50000000000276
+          },
+          "receiverMinusBrowserMs": {
+            "median": -7.0000000000014495,
+            "minimum": -28.000000000005798,
+            "maximum": 92.00000000000007
+          },
+          "receiverMinusDesktopMs": {
+            "median": 27.49999999999808,
+            "minimum": 8.499999999997954,
+            "maximum": 108.50000000000026
+          }
+        },
+        "calibrated": false
+      }
+    },
+    {
+      "case": "trace",
+      "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/results.json",
+      "reportSha256": "699739829b5098764ed6c934a2653437ce473f06c1c23e313312d4903d559473",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+      "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/host-cleanup.json",
+        "sha256": "dd3d8b6cbb991438ab368749e3e6a460594f4b1ca32fbae2505675d4beda33dc",
+        "passed": true
+      },
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "sourceReference": "desktop",
+      "analysis": {
+        "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/av-analysis.json",
+        "sha256": "40f4b0961381cfa1da47ea36a019333fab2a3845f11a0203a415ad09d6b5b469",
+        "passed": false
+      },
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/linux-audio-timing.json",
+        "sha256": "c990741573fdfbac9574050b973f37a33cd3abae39dd75e17b914cac778197ed",
+        "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+        "traceComplete": true,
+        "traceSha256": "5c4e628350332a4969c179f345a482d296d2085ac566fffef9af45d37e2d44cc",
+        "rows": 7245,
+        "inputBlocks": 3623,
+        "outputBlocks": 3622,
+        "observedSeconds": 36.2240592,
+        "inputArrivalAgeMs": {
+          "count": 3623,
+          "minimum": 8.5098,
+          "median": 11.3352,
+          "p95": 13.6216,
+          "p99": 13.7944,
+          "maximum": 17.3189
+        },
+        "inputArrivalAgeAfter2sMs": {
+          "count": 3423,
+          "minimum": 8.5098,
+          "median": 11.371,
+          "p95": 13.6287,
+          "p99": 13.8257,
+          "maximum": 17.3189
+        },
+        "inputEstimatedAgeMs": {
+          "count": 3623,
+          "minimum": 1.365,
+          "median": 9.348,
+          "p95": 12.664,
+          "p99": 13.526,
+          "maximum": 15.426
+        },
+        "outputAgeMs": {
+          "count": 3622,
+          "minimum": 30.0027,
+          "median": 37.62245,
+          "p95": 40.2594,
+          "p99": 40.3375,
+          "maximum": 44.0477
+        },
+        "outputAgeAfter2sMs": {
+          "count": 3423,
+          "minimum": 30.0027,
+          "median": 37.6235,
+          "p95": 40.2612,
+          "p99": 40.3383,
+          "maximum": 44.0477
+        },
+        "clockAnchorsIncludingInitial": 1,
+        "untimedInputBlocks": 0,
+        "discardedInputBlocks": 0,
+        "discardedInputBlocksAfter2s": 0,
+        "uncoveredTapFramesAfter2s": 0,
+        "maximumActiveTaps": 1
+      },
+      "referenceComparison": {
+        "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/reference-comparison.json",
+        "sha256": "2d06b5b6ea3f76f7b59e61a044daa6dead40ac75ae10905fe059ec5c9a65ae19",
+        "summary": {
+          "referenceDifferenceMs": {
+            "median": 35.00000000000014,
+            "minimum": 29.999999999997584,
+            "maximum": 38.000000000000256
+          },
+          "receiverMinusBrowserMs": {
+            "median": -16.000000000000014,
+            "minimum": -38.000000000000256,
+            "maximum": 19.000000000001016
+          },
+          "receiverMinusDesktopMs": {
+            "median": 19.000000000000128,
+            "minimum": -3.552713678800501e-12,
+            "maximum": 53.99999999999983
+          }
+        },
+        "calibrated": false
+      }
+    },
+    {
+      "case": "disabled",
+      "report": "native-qt/qa/reports/linux-audio-latency-disabled/522fe806-fee7-42cd-aa43-f64ae53f83b9/results.json",
+      "reportSha256": "21926523bf91825f6de35d08cec31ffe924e0a910e98aaea13c98c0bf814c672",
+      "passed": true,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+      "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-latency-disabled/522fe806-fee7-42cd-aa43-f64ae53f83b9/host-cleanup.json",
+        "sha256": "ecc416b8e1a59a6883ad51e59a600d53488f4e16693e55532365ec9d8b875ecd",
+        "passed": true
+      },
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "sourceReference": "canvas",
+      "analysis": {
+        "report": "native-qt/qa/reports/linux-audio-latency-disabled/522fe806-fee7-42cd-aa43-f64ae53f83b9/av-analysis.json",
+        "sha256": "1733c76dfab408de32c989ca2d183aba672c48a3f9a2b21231b09cf1b2af0595",
+        "passed": true
+      }
+    },
+    {
+      "case": "apps",
+      "report": "native-qt/qa/reports/linux-audio-latency-apps/3f17df9e-dba7-4d2a-a765-bf2cdde858bf/results.json",
+      "reportSha256": "607ede88e21983029fecb8980a72506fb49bb8d89628dfd80500d46beb726158",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+      "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-latency-apps/3f17df9e-dba7-4d2a-a765-bf2cdde858bf/host-cleanup.json",
+        "sha256": "d52d623f849eb60bc0dec0b0433701a6e2afd123412e5999187a05e6ebbd4252",
+        "passed": true
+      },
+      "caseStages": {
+        "selected-app": [
+          "video",
+          "audio",
+          "childJoined",
+          "childRemoved",
+          "secondStreamSameProcess",
+          "secondStreamRemoved",
+          "noStreams",
+          "streamRecreated",
+          "outputMoved",
+          "lateAudio",
+          "noAudioAfterAppExit",
+          "videoAfterAppExit"
+        ]
+      }
+    },
+    {
+      "case": "apps-gui",
+      "report": "native-qt/qa/reports/linux-audio-latency-apps-gui/4a250c2e-5e9f-4d1f-be46-15674900c50b/results.json",
+      "reportSha256": "42d85f14bd5819d4d9034c028e1060dbe44a3158c58b3ec9b7ae49c6c725cf37",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+      "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-latency-apps-gui/4a250c2e-5e9f-4d1f-be46-15674900c50b/host-cleanup.json",
+        "sha256": "abfa82e679df60670a9a4b37a8fe71df193a879dfd7943066d21231aa36e46ad",
+        "passed": true
+      },
+      "caseStages": {
+        "selected-app": [
+          "video",
+          "audio",
+          "healthyAudioHasNoWarning",
+          "childJoined",
+          "childRemoved",
+          "secondStreamSameProcess",
+          "secondStreamRemoved",
+          "noStreams",
+          "streamRecreated",
+          "outputMoved",
+          "lateAudio",
+          "noAudioAfterAppExit",
+          "appLossWarningVisible",
+          "videoAfterAppExit",
+          "guiStopSettled",
+          "audioWarningClearedOnStop",
+          "videoWithStaleApp",
+          "staleAppNotReplaced",
+          "staleAppWarningVisible",
+          "afterExplicitReselection",
+          "audioWarningClearedOnExplicitRestart"
+        ]
+      }
     }
   ],
   "host_environment": {
@@ -21811,7 +22101,8 @@
     "Run linux-av-sync.js --backend=wayland under linux-wayland-desktop.py. It owns a temporary 1440x1000 monitor, verifies a fully visible native 1280x720 source from monitor pixels, uses real portal consent, and restores the original layout. This requires the existing authorized keyboard fixture, GNOME Mutter ScreenCast, GStreamer and Pillow.",
     "For X11 DAMAGE regression use linux-window-publish.js --backend=x11 --idle-source=true under the private X11 wrapper; --gui=true --preview=true adds Qt/preview coverage. The source sends one final identity then stops drawing, while decoded output must remain paced and capture readbacks must stop. Separately run the ordinary CLI workflow on Xvfb with -extension DAMAGE to exercise timed fallback. Native trace diagnostics now allow up to 360 requested seconds at the fixed one-receiver 60fps profile; actual 100,000-row truncation is still rejected.",
     "linux-av-sync.js --source-reference=desktop is an opt-in X11 diagnostic limited to <=60 seconds without hold. It records the owned X11 drawable and dedicated Pulse sink monitor with lossless H264/PCM using one common wall-clock offset, plus simultaneous canvas/WebAudio and receiver recordings. reference-comparison.json compares matching pulses and browser output-clock estimates. This mode deliberately keeps passed=false until independently calibrated; inspect recordingWorkflowPassed, diagnosticPassed, comparison and cleanup separately.",
-    "For real stimulus-delay response calibration, run three separate linux-av-sync.js --source-reference=desktop --seconds=30 workflows: zero, --fixture-output-audio-delay-ms=150, and --fixture-video-delay-ms=150. Only the desktop audio branch is delayed in the audio case. Analyze the completed report directories with linux-av-calibrate-desktop.py --baseline=... --audio-delay=... --video-delay=... --reports=... . delayResponsePassed is narrower than absolute timing or application qualification; deliberate controls are prohibited outside diagnostic mode."
+    "For real stimulus-delay response calibration, run three separate linux-av-sync.js --source-reference=desktop --seconds=30 workflows: zero, --fixture-output-audio-delay-ms=150, and --fixture-video-delay-ms=150. Only the desktop audio branch is delayed in the audio case. Analyze the completed report directories with linux-av-calibrate-desktop.py --baseline=... --audio-delay=... --video-delay=... --reports=... . delayResponsePassed is narrower than absolute timing or application qualification; deliberate controls are prohibited outside diagnostic mode.",
+    "linux-av-sync.js --source-reference=desktop --trace-audio=true opts into bounded Linux selected-app input/output timing metadata, writes linux-audio-timing.csv, and verifies its complete footer/hash through linux-audio-timing-report.py. Positive input age means assigned sample time precedes arrival. Trace is disabled in ordinary runs and is not endurance qualification; no PCM content is logged."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -25284,5 +25575,333 @@
     "interpretation": "Three separate packaged 30-second X11 workflows completed with all 18 cadence/PCM intervals passing and clean shutdown. A deliberate 150 ms delay in the desktop audio branch produced a +147 ms median desktop-reference change while the internal browser control changed -2 ms. A deliberate 150 ms video delay produced -163 ms in the desktop reference and -150 ms in the browser reference. All four response errors fit the prespecified 30 ms tolerance (one 60 Hz image period plus 10 ms phase quantization). Application skew limits were unchanged. These controls validate response direction/sensitivity, not the absolute zero offset or receiver startup synchronization.",
     "ownedProcessesRemaining": [],
     "remaining": "Measure Linux app-audio monitor arrival age and emitted chunk age before changing the 120 ms mixing hold. Correlate receiver startup buffering and qualify any fix with multi-stream/mixed-input/recovery workflows, calibrated software-input timing, native Wayland and the complete parity ledger."
+  },
+  "linux_app_audio_latency_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-429f416f5fda-044050c55437.deb",
+      "sha256": "c4018feea30c0377d3f6d86bc799569f7dfc118a9f5430099a9c285c5823731c",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-429f416f5fda-044050c55437",
+      "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969"
+    },
+    "diagnosticBaselinePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-5fc53d545d4c-c8f7cae2fb57.deb",
+      "sha256": "b94665a062522722dd5aaef1ecdb89a83594444cf5ec98ba59c7781ea1a614cc",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-5fc53d545d4c-c8f7cae2fb57",
+      "manifestSha256": "05261e58224424d9254cc3cdb4123151ed57055a047fcc6882f53e316e44895c"
+    },
+    "preTracePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-a2e29d461624-6a8cf029bf69.deb",
+      "sha256": "648e9da8cb96aa642650703de3223a6d3758246fcc3855c74be62604dbbf36a8",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-a2e29d461624-6a8cf029bf69",
+      "manifestSha256": "8a01f7562f346cc059bedad3dff47d62bf5250d2e73cc2309a52c9e76a59cadd"
+    },
+    "evidence": [
+      {
+        "case": "baseline-120ms",
+        "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/results.json",
+        "reportSha256": "142d453ca817779339171d6130366aa32f9b6dfb0482f41423d9af972609acb3",
+        "passed": false,
+        "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+        "manifestSha256": "05261e58224424d9254cc3cdb4123151ed57055a047fcc6882f53e316e44895c",
+        "executableSha256": "5fc53d545d4c7ff51cfb09afd313e0ca2e9bf28bb1fd8adeed25ece96d647de0",
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/host-cleanup.json",
+          "sha256": "dd3d8b6cbb991438ab368749e3e6a460594f4b1ca32fbae2505675d4beda33dc",
+          "passed": true
+        },
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "sourceReference": "desktop",
+        "analysis": {
+          "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/av-analysis.json",
+          "sha256": "52f5df587b08e093a8579523a6143eaa2bd84c9127deba7da95443349784d75e",
+          "passed": false
+        },
+        "nativeTiming": {
+          "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/linux-audio-timing.json",
+          "sha256": "3155ae04e381110a32e9dd4714caee8da2c983aed0fb9bb477a8c016f8449be9",
+          "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+          "traceComplete": true,
+          "traceSha256": "d7626b04ad5d9da3b688a91702a3a6eb570fc3f622039f43cf01d042a9a953c9",
+          "rows": 7247,
+          "inputBlocks": 3629,
+          "outputBlocks": 3618,
+          "observedSeconds": 36.2826388,
+          "inputArrivalAgeMs": {
+            "count": 3629,
+            "minimum": 6.8231,
+            "median": 9.7115,
+            "p95": 11.8294,
+            "p99": 12.1035,
+            "maximum": 15.727
+          },
+          "inputArrivalAgeAfter2sMs": {
+            "count": 3429,
+            "minimum": 6.8302,
+            "median": 9.7235,
+            "p95": 11.8335,
+            "p99": 12.1189,
+            "maximum": 15.727
+          },
+          "inputEstimatedAgeMs": {
+            "count": 3629,
+            "minimum": 0.051,
+            "median": 9.684,
+            "p95": 12.908,
+            "p99": 13.579,
+            "maximum": 16.236
+          },
+          "outputAgeMs": {
+            "count": 3618,
+            "minimum": 130.005,
+            "median": 132.55145,
+            "p95": 139.9564,
+            "p99": 140.1281,
+            "maximum": 142.2661
+          },
+          "outputAgeAfter2sMs": {
+            "count": 3429,
+            "minimum": 130.005,
+            "median": 132.5505,
+            "p95": 139.9557,
+            "p99": 140.0865,
+            "maximum": 142.2661
+          },
+          "clockAnchorsIncludingInitial": 1,
+          "untimedInputBlocks": 0,
+          "discardedInputBlocks": 0,
+          "discardedInputBlocksAfter2s": 0,
+          "uncoveredTapFramesAfter2s": 0,
+          "maximumActiveTaps": 1
+        },
+        "referenceComparison": {
+          "report": "native-qt/qa/reports/linux-audio-timing-trace/a61e6419-a8dc-4f85-885f-73b1e15256c8/reference-comparison.json",
+          "sha256": "6b34188b5aac108687d675c3fb328a247db5ac19c8fd3efa83c7b4ed243e5f14",
+          "summary": {
+            "referenceDifferenceMs": {
+              "median": 36.50000000000375,
+              "minimum": 16.50000000000018,
+              "maximum": 41.50000000000276
+            },
+            "receiverMinusBrowserMs": {
+              "median": -7.0000000000014495,
+              "minimum": -28.000000000005798,
+              "maximum": 92.00000000000007
+            },
+            "receiverMinusDesktopMs": {
+              "median": 27.49999999999808,
+              "minimum": 8.499999999997954,
+              "maximum": 108.50000000000026
+            }
+          },
+          "calibrated": false
+        }
+      },
+      {
+        "case": "trace",
+        "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/results.json",
+        "reportSha256": "699739829b5098764ed6c934a2653437ce473f06c1c23e313312d4903d559473",
+        "passed": false,
+        "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+        "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+        "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/host-cleanup.json",
+          "sha256": "dd3d8b6cbb991438ab368749e3e6a460594f4b1ca32fbae2505675d4beda33dc",
+          "passed": true
+        },
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "sourceReference": "desktop",
+        "analysis": {
+          "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/av-analysis.json",
+          "sha256": "40f4b0961381cfa1da47ea36a019333fab2a3845f11a0203a415ad09d6b5b469",
+          "passed": false
+        },
+        "nativeTiming": {
+          "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/linux-audio-timing.json",
+          "sha256": "c990741573fdfbac9574050b973f37a33cd3abae39dd75e17b914cac778197ed",
+          "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+          "traceComplete": true,
+          "traceSha256": "5c4e628350332a4969c179f345a482d296d2085ac566fffef9af45d37e2d44cc",
+          "rows": 7245,
+          "inputBlocks": 3623,
+          "outputBlocks": 3622,
+          "observedSeconds": 36.2240592,
+          "inputArrivalAgeMs": {
+            "count": 3623,
+            "minimum": 8.5098,
+            "median": 11.3352,
+            "p95": 13.6216,
+            "p99": 13.7944,
+            "maximum": 17.3189
+          },
+          "inputArrivalAgeAfter2sMs": {
+            "count": 3423,
+            "minimum": 8.5098,
+            "median": 11.371,
+            "p95": 13.6287,
+            "p99": 13.8257,
+            "maximum": 17.3189
+          },
+          "inputEstimatedAgeMs": {
+            "count": 3623,
+            "minimum": 1.365,
+            "median": 9.348,
+            "p95": 12.664,
+            "p99": 13.526,
+            "maximum": 15.426
+          },
+          "outputAgeMs": {
+            "count": 3622,
+            "minimum": 30.0027,
+            "median": 37.62245,
+            "p95": 40.2594,
+            "p99": 40.3375,
+            "maximum": 44.0477
+          },
+          "outputAgeAfter2sMs": {
+            "count": 3423,
+            "minimum": 30.0027,
+            "median": 37.6235,
+            "p95": 40.2612,
+            "p99": 40.3383,
+            "maximum": 44.0477
+          },
+          "clockAnchorsIncludingInitial": 1,
+          "untimedInputBlocks": 0,
+          "discardedInputBlocks": 0,
+          "discardedInputBlocksAfter2s": 0,
+          "uncoveredTapFramesAfter2s": 0,
+          "maximumActiveTaps": 1
+        },
+        "referenceComparison": {
+          "report": "native-qt/qa/reports/linux-audio-latency-trace/1ddbdd13-77c1-4593-9136-65e4a3784c4e/reference-comparison.json",
+          "sha256": "2d06b5b6ea3f76f7b59e61a044daa6dead40ac75ae10905fe059ec5c9a65ae19",
+          "summary": {
+            "referenceDifferenceMs": {
+              "median": 35.00000000000014,
+              "minimum": 29.999999999997584,
+              "maximum": 38.000000000000256
+            },
+            "receiverMinusBrowserMs": {
+              "median": -16.000000000000014,
+              "minimum": -38.000000000000256,
+              "maximum": 19.000000000001016
+            },
+            "receiverMinusDesktopMs": {
+              "median": 19.000000000000128,
+              "minimum": -3.552713678800501e-12,
+              "maximum": 53.99999999999983
+            }
+          },
+          "calibrated": false
+        }
+      },
+      {
+        "case": "disabled",
+        "report": "native-qt/qa/reports/linux-audio-latency-disabled/522fe806-fee7-42cd-aa43-f64ae53f83b9/results.json",
+        "reportSha256": "21926523bf91825f6de35d08cec31ffe924e0a910e98aaea13c98c0bf814c672",
+        "passed": true,
+        "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+        "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+        "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-latency-disabled/522fe806-fee7-42cd-aa43-f64ae53f83b9/host-cleanup.json",
+          "sha256": "ecc416b8e1a59a6883ad51e59a600d53488f4e16693e55532365ec9d8b875ecd",
+          "passed": true
+        },
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "sourceReference": "canvas",
+        "analysis": {
+          "report": "native-qt/qa/reports/linux-audio-latency-disabled/522fe806-fee7-42cd-aa43-f64ae53f83b9/av-analysis.json",
+          "sha256": "1733c76dfab408de32c989ca2d183aba672c48a3f9a2b21231b09cf1b2af0595",
+          "passed": true
+        }
+      },
+      {
+        "case": "apps",
+        "report": "native-qt/qa/reports/linux-audio-latency-apps/3f17df9e-dba7-4d2a-a765-bf2cdde858bf/results.json",
+        "reportSha256": "607ede88e21983029fecb8980a72506fb49bb8d89628dfd80500d46beb726158",
+        "passed": true,
+        "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+        "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+        "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-latency-apps/3f17df9e-dba7-4d2a-a765-bf2cdde858bf/host-cleanup.json",
+          "sha256": "d52d623f849eb60bc0dec0b0433701a6e2afd123412e5999187a05e6ebbd4252",
+          "passed": true
+        },
+        "caseStages": {
+          "selected-app": [
+            "video",
+            "audio",
+            "childJoined",
+            "childRemoved",
+            "secondStreamSameProcess",
+            "secondStreamRemoved",
+            "noStreams",
+            "streamRecreated",
+            "outputMoved",
+            "lateAudio",
+            "noAudioAfterAppExit",
+            "videoAfterAppExit"
+          ]
+        }
+      },
+      {
+        "case": "apps-gui",
+        "report": "native-qt/qa/reports/linux-audio-latency-apps-gui/4a250c2e-5e9f-4d1f-be46-15674900c50b/results.json",
+        "reportSha256": "42d85f14bd5819d4d9034c028e1060dbe44a3158c58b3ec9b7ae49c6c725cf37",
+        "passed": true,
+        "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+        "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969",
+        "executableSha256": "429f416f5fda832e19157d42246d3e84d0c8ab332f7eb4adbe70156bfd1e87a0",
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-latency-apps-gui/4a250c2e-5e9f-4d1f-be46-15674900c50b/host-cleanup.json",
+          "sha256": "abfa82e679df60670a9a4b37a8fe71df193a879dfd7943066d21231aa36e46ad",
+          "passed": true
+        },
+        "caseStages": {
+          "selected-app": [
+            "video",
+            "audio",
+            "healthyAudioHasNoWarning",
+            "childJoined",
+            "childRemoved",
+            "secondStreamSameProcess",
+            "secondStreamRemoved",
+            "noStreams",
+            "streamRecreated",
+            "outputMoved",
+            "lateAudio",
+            "noAudioAfterAppExit",
+            "appLossWarningVisible",
+            "videoAfterAppExit",
+            "guiStopSettled",
+            "audioWarningClearedOnStop",
+            "videoWithStaleApp",
+            "staleAppNotReplaced",
+            "staleAppWarningVisible",
+            "afterExplicitReselection",
+            "audioWarningClearedOnExplicitRestart"
+          ]
+        }
+      }
+    ],
+    "productionChange": "Linux audio_capture.cpp adds opt-in exclusive-file, buffered, <=100000-row timing metadata without PCM, and reduces selected-app mixing hold from120ms to20ms. Shared/Windows/macOS production inputs and dependencies remain byte-identical; runtime regression on those platforms remains unqualified.",
+    "interpretation": "The 120 ms selected-app mixing hold delayed emitted chunks to 130\u2013142 ms old although measured monitor blocks arrived about 7\u201316 ms after their assigned sample times. The Linux-only hold is now 20 ms (two requested 10 ms monitor fragments), with unchanged capture timestamps. On the candidate, input age was about 9\u201317 ms and emitted age 30\u201344 ms; neither traced run discarded blocks or had uncovered active-tap frames after startup. This reduced measured startup skew substantially, but the desktop-reference pilot still reaches +54 ms (also +52 ms), exceeding the unchanged 50 ms limit. Its ordinary tracing-disabled browser-reference workflow passes all six cadence/PCM intervals and timing (-37..+18 ms); the known reference-path difference prevents treating that as calibrated absolute qualification. CLI and Qt GUI selected-app workflows pass child and same-process stream changes, recreation, output moves, late viewers and app exit; GUI additionally passes retained notices, stale-selection rejection and explicit reselection. All cleanup checks pass.",
+    "gates": [
+      {
+        "report": "native-qt/build-linux/linux-audio-timing-gates.json",
+        "sha256": "078009069f597f1cd6c0b37e102f082f727f8363955b93289f2e6612908193c6",
+        "classification": "Build, syntax and source/package-integrity gates only; not application testing. Windows/macOS runtime remains unqualified."
+      },
+      {
+        "report": "native-qt/build-linux/linux-audio-latency-gates.json",
+        "sha256": "195c62c5a878862981a8e030a843c81f0fdaeb1fc55f7a72557d4cd7a3eb3959",
+        "classification": "Build and source/package-integrity gates only; not application testing. Windows/macOS runtime remains unqualified."
+      }
+    ],
+    "ownedProcessesRemaining": [],
+    "remaining": "Startup remains above50ms against the desktop reference. Investigate releasing fully covered chunks promptly while retaining a bounded wait for incomplete tap coverage; do not blindly reduce the hold or shift timestamps to pass. Measure continuous multi-stream/mixed-microphone timing, CPU load, physical outputs/devices, audio-server loss and Wayland. Rerun >=30-minute cadence/A/V on the final production behavior; the earlier DAMAGE endurance belongs to the 120ms audio package. Absolute reference calibration and all other parity rows remain open."
   }
 }

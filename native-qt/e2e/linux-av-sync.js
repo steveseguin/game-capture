@@ -20,6 +20,7 @@ if(Object.values(fixtureTimingControl).some(Boolean))assert(desktopReference,'St
 // 60fps profile. Six minutes leaves room for startup below the 100,000-row
 // limit; the offline analyzer also rejects an actually truncated trace.
 const traceCapture=opts['trace-capture']==='true';if(traceCapture)assert(seconds*(hold?2:1)+hold<=360,'Keep the opt-in native trace below its 100,000-row bound');
+const traceAudio=opts['trace-audio']==='true';if(traceAudio)assert(desktopReference,'Native audio timing traces require the bounded desktop diagnostic');
 assert(Number.isInteger(seconds)&&seconds>=30&&seconds<=120&&Number.isInteger(hold)&&hold>=0&&hold<=7200);
 const sha=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..'),manifestFile=path.join(bundle,'release-artifact-manifest.json');
@@ -30,7 +31,8 @@ const harnesses={};for(const name of ['linux-av-sync.js','linux-av-probe.js','ma
 if(wayland)for(const name of ['linux-av-wayland.js','linux-source-monitor.py','linux-virtual-monitor.py','linux-portal-select.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(traceCapture){const name='linux-av-trace-report.js';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(desktopReference)for(const name of ['linux-av-desktop-reference.js','linux-av-compare-references.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
-const result={backend,traceCapture,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
+if(traceAudio){const name='linux-audio-timing-report.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
+const result={backend,traceCapture,traceAudio,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
   sourceReference,diagnosticOnly:desktopReference,fixtureTimingControl,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
@@ -48,6 +50,7 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     Object.assign(env,{QT_QPA_PLATFORM:wayland?'wayland':'xcb',XDG_SESSION_TYPE:backend,XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});if(wayland)env.WAYLAND_DISPLAY=process.env.WAYLAND_DISPLAY||'wayland-0';else delete env.WAYLAND_DISPLAY;
     if(wayland){waylandFixture=await require('./linux-av-wayland').create(env,report);result.waylandFixture=waylandFixture.evidence;}
     if(traceCapture){env.VERSUS_FRAME_TRACE=path.join(report,'capture-frame-trace.csv');result.frameTrace={path:'capture-frame-trace.csv',scope:'Opt-in native capture/submit identity trace, bounded diagnostic only; disabled for endurance qualification.'};}
+    if(traceAudio){env.VERSUS_LINUX_AUDIO_TRACE=path.join(report,'linux-audio-timing.csv');result.audioTrace={path:'linux-audio-timing.csv',scope:'Opt-in Linux selected-app input/output timing metadata, no PCM; one bounded capture, not endurance qualification.'};}
     const suffix=crypto.randomBytes(8).toString('hex'),sink='gc_av_'+suffix,title='Owned Linux Capture AV '+suffix;
     modules.push(pactl('load-module','module-null-sink','sink_name='+sink,'rate=48000','channels=2'));
     // Generate a larger Linux source from the unchanged shared clocked fixture.
@@ -162,6 +165,10 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
       const f=path.join(report,'capture-frame-trace.csv');result.frameTrace.sha256=sha(f);result.frameTrace.bytes=fs.statSync(f).size;save();
       try{execFileSync(process.execPath,[path.join(report,'linux-av-trace-report.js'),report],{encoding:'utf8',timeout:30000});const analysis=path.join(report,'frame-trace-analysis.json');result.frameTrace.analysisSha256=sha(analysis);assert(JSON.parse(fs.readFileSync(analysis)).traceComplete,'Native identity trace is incomplete');}catch(e){errors.push(String(e));}
     }else if(traceCapture&&child)errors.push('Requested native identity trace is missing');
+    if(traceAudio&&fs.existsSync(path.join(report,'linux-audio-timing.csv'))){
+      const f=path.join(report,'linux-audio-timing.csv');result.audioTrace.sha256=sha(f);result.audioTrace.bytes=fs.statSync(f).size;save();
+      try{execFileSync(analysisPython,[path.join(report,'linux-audio-timing-report.py'),report],{encoding:'utf8',timeout:30000});const analysis=path.join(report,'linux-audio-timing.json');result.audioTrace.analysisSha256=sha(analysis);result.audioTrace.analysis=JSON.parse(fs.readFileSync(analysis));assert(result.audioTrace.analysis.traceComplete);}catch(e){errors.push(String(e));}
+    }else if(traceAudio&&child)errors.push('Requested native audio timing trace is missing');
     if(waylandFixture)try{await waylandFixture.close();}catch(e){errors.push(String(e));}
     if(errors.length){result.cleanupErrors=errors;result.passed=false;}save();process.exitCode=result.passed?0:1;console.log(JSON.stringify({report,passed:result.passed,error:result.error}));
   }
