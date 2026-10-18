@@ -82,8 +82,8 @@
     {
       "id": "whip",
       "required": true,
-      "status": "shared-unqualified",
-      "remaining": "Authenticated endpoints, HTTPS, ICE/TURN, redirects, media and interruption/recovery"
+      "status": "bounded-e2e-passed",
+      "remaining": "Packaged 640x360/30 software H264/stereo Opus passed authenticated HTTP/HTTPS, moving/static content, silence, late viewer, server restart and session deletion. Local UDP TURN advertised through OPTIONS and POST passed with relay-only offers and relayed recovery. Silent advertised STUN now succeeds with 30-second Linux gathering allowance; pending ICE cancellation took 410 ms. Unauthorized endpoints, untrusted TLS, malformed/oversized answers and pending POST cancellation passed. HTTPS trust root was isolated in a publisher mount namespace; host trust unchanged. GUI, Wayland, redirects and origin credential rules, public CA/WAN/TURN TCP/TLS, no-audio/mono, packet loss, default 720p60 and endurance remain."
     },
     {
       "id": "mux-outputs",
@@ -119,7 +119,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; GUI and wider networking failures remain."
     },
     {
       "id": "packaging",
@@ -3326,6 +3326,904 @@
       ],
       "finding": "All six protocols passed actual packaged CLI publishing and independent media decoding: H264 identities/orientation, AAC stereo, static video/silence, monotonically increasing packet DTS, bounded A/V durations, and clean shutdown. RTMP, encrypted SRT and RTSP TCP/UDP recovered after local server restart. UDP/RIST accepted late receivers. RTMP recovered after owned helper SIGSTOP and retired the stopped process. SRT special-character URL passphrase and colon-containing stream ID survived literal Linux AVOptions. Default helper was verified as /usr/bin/ffmpeg.",
       "limits": "Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Excludes GUI, Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization. RTMPS, authenticated RTMP/RTSP, no-audio/mono/default AAC variants, packet loss, GUI publishing and clean-install qualification remain open."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/11cc28bd-a226-4039-9ccd-4c70322f4555/results.json",
+      "reportSha256": "d09f2cde609960a2ca877bf4e48188f3bb8328207ba8a114ee1b006cf8e15462",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "cancel",
+      "finding": "Packaged shutdown during a pending WHIP POST passed.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/1d233004-dacf-463e-bfc1-e327a6571b93/results.json",
+      "reportSha256": "764a5e03e4696ffac0a269ac9dc9cc0217860aa3667122892f0e924d7477405c",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "b609d4cf85b4e87d059bfa21ed067ab0d1908daa58c9d75de6f5a95c25e0f2e6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": false,
+      "turnDiscovery": "options",
+      "tls": false,
+      "failure": "",
+      "finding": "Final package delivered TURN-relayed media and recovered after server restart. Harness incorrectly rejected the intentional outage POST; new trace records outage boundaries and requires any tolerated failure to be the fixture 502 within that interval.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/2cce09d7-732b-4ed7-818c-fa58db19a46a/results.json",
+      "reportSha256": "482fdaa21108518e3a5f9dbd23c813ab0c28634e299f944218b99f57023750fd",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": true,
+      "failure": "invalid-tls",
+      "finding": "Packaged untrusted TLS rejection passed without delivering HTTP credentials.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/404b1e7c-9030-4523-8466-0166201511dd/results.json",
+      "reportSha256": "8d088be8891a63f8cc6997c37351a4502f68c974615afc6b0e63bdbc7d908349",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": false,
+      "turnDiscovery": "post",
+      "tls": false,
+      "failure": "",
+      "finding": "Same coturn fixture configuration rejection, before publisher launch.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/5b1c2222-b609-4185-9d1b-dc978782df96/results.json",
+      "reportSha256": "0fd6aaca103986c55ea1f5373b8aba129617158d2a24a1873c9f3a89b114ac37",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "",
+      "finding": "Initial direct authenticated WHIP passed moving/static H264, stereo Opus/silence, late viewer, server restart and session deletion.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/6d7388ae-cf6e-4517-a88d-dfdaf31fd748/results.json",
+      "reportSha256": "9706f289f3d806a031b509096af075e68a7fba5a73094dba619292819bead7eb",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": false,
+      "turnDiscovery": "none",
+      "tls": true,
+      "failure": "",
+      "finding": "HTTPS fixture assumed SSL_CERT_FILE was used by Qt 6.4 root loading. App correctly rejected its untrusted certificate. Fixture now mounts the private CA into an isolated publisher namespace.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/8fb1758b-ff7f-4851-9e02-750da782c8a5/results.json",
+      "reportSha256": "5b627ace691ac109168d5d71f69e659df1c27dca1e8ff666914edc7ea39924b5",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "oversized",
+      "finding": "Packaged oversized answer rejected and allocated resource deleted.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/92f8db53-7f8b-4128-8666-d3c407df27fe/results.json",
+      "reportSha256": "503db6244092744e3f99f44aa4b262879725d102997b41c4edb5b52989de9b34",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": false,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "",
+      "finding": "Real application failure: silent advertised STUN caused repeated 10-second ICE gathering timeouts, never reaching a POST despite usable local candidates. Linux now uses the existing macOS 30-second allowance for libjuice 23.5-second server retries.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/ac181321-76f5-4e8f-aca6-62dc8114df20/results.json",
+      "reportSha256": "aaafc67aace5d7d74765e7cec840c383cd5039d9372c664a0d472e169e6c66f5",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "malformed",
+      "finding": "Packaged malformed SDP answer rejected and allocated resource deleted.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/d53f078d-ef2f-4cf2-8f2a-f4af2c5c8928/results.json",
+      "reportSha256": "19f1fbbb8fc3a4bdf938bad85bd9e7df23369be9c2dffafb5602a6b60b13a8f7",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": false,
+      "turnDiscovery": "options",
+      "tls": false,
+      "failure": "",
+      "finding": "Private coturn refused loopback peers with its unused CLI enabled and no CLI password. Fixture now disables the CLI entirely.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-initial-investigation",
+      "report": "native-qt/qa/reports/linux-whip/dcf0c2e5-aed2-4daf-bda4-6d651d532694/results.json",
+      "reportSha256": "0e8c3ef58bbd6a3329a5cbde2d5570b967f7a04585786c1c3634298a278275eb",
+      "executableSha256": "a0bf8a8e2cb8eda0f69fe36338d0f01fc94a800a07ab9d7ad99de4da0d61fd03",
+      "manifestSha256": "6108757d7b9777d6ea24b78d17b27ac05c9dd2c4324a789bda74ec8acc2e2e61",
+      "harnessSha256": "606f8914145edb92c625c16f0d2644691a604cfac462c5d389b57905d02f8781",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "unauthorized",
+      "finding": "Packaged unauthorized endpoint rejection passed with permanent exit and discovery cleanup.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated process trust root when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-turn-post",
+      "report": "native-qt/qa/reports/linux-whip/20887e26-9298-48a2-b1fe-5efd15e4ecf3/results.json",
+      "reportSha256": "0c43c1567f010e7a96f64c717828575227ba3f06f36c690c5378d1ad4c0a5eee",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "b609d4cf85b4e87d059bfa21ed067ab0d1908daa58c9d75de6f5a95c25e0f2e6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "turnServerSha256": "487085a85d74e66064a4cd73f357f1e87710875d73fe8eaaa47583909cdc33ec",
+      "passed": true,
+      "turnDiscovery": "post",
+      "tls": false,
+      "failure": "",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "distinctFrames": 174,
+          "turn": {
+            "discovery": "post",
+            "relayedOffers": 2,
+            "discoveryDeletedBeforeRetry": true,
+            "allPublishingCandidatesRelay": true
+          },
+          "output": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 395840,
+            "audio_packets": 2474,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:33781",
+            "ice_path": "TURN/RELAY",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:33781",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 231,
+            "receiver_report_timeout_ms": 15000,
+            "receiver_reports": 48,
+            "reconnects": 1,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 333983,
+            "video_nack": true,
+            "video_packets": 742,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "recoveryOutput": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 550400,
+            "audio_packets": 3440,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:33781",
+            "ice_path": "TURN/RELAY",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:33781",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 567,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 18,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 475662,
+            "video_nack": true,
+            "video_packets": 1032,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "moving": {
+            "width": 640,
+            "height": 360,
+            "observations": 174,
+            "distinctIdentities": 174,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "static": {
+            "width": 640,
+            "height": 360,
+            "observations": 75,
+            "distinctIdentities": 1,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "late": {
+            "width": 640,
+            "height": 360,
+            "observations": 85,
+            "distinctIdentities": 85,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "reconnected": {
+            "width": 640,
+            "height": 360,
+            "observations": 146,
+            "distinctIdentities": 146,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "audio": {
+            "samples": 30,
+            "minRms": 0.04627623258802255,
+            "maxRms": 0.07520095268849224,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "silence": {
+            "samples": 30,
+            "minRms": 0,
+            "maxRms": 0,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "lateAudio": {
+            "samples": 30,
+            "minRms": 0.05264907229844686,
+            "maxRms": 0.0753310617575273,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "reconnectedAudio": {
+            "samples": 30,
+            "minRms": 0.046691730266228804,
+            "maxRms": 0.07516001856169317,
+            "codecs": [
+              "audio/opus"
+            ]
+          }
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-silent-stun",
+      "report": "native-qt/qa/reports/linux-whip/365ec222-7b8a-4c29-867a-cbcccedb0e6c/results.json",
+      "reportSha256": "7447e1d4d0b744b5ae9c0f2b837e31f2c9c20c4dacb4544ec50e6501e7c4f2d0",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": {
+        "requests": 12
+      },
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "distinctFrames": 171,
+          "output": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 411840,
+            "audio_packets": 2574,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:45935",
+            "ice_path": "STUN",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:45935",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 213,
+            "receiver_report_timeout_ms": 15000,
+            "receiver_reports": 50,
+            "reconnects": 0,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 381922,
+            "video_nack": true,
+            "video_packets": 772,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "recoveryOutput": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 568160,
+            "audio_packets": 3551,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:45935",
+            "ice_path": "STUN",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:45935",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 568,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 18,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 525443,
+            "video_nack": true,
+            "video_packets": 1065,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "moving": {
+            "width": 640,
+            "height": 360,
+            "observations": 171,
+            "distinctIdentities": 171,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "static": {
+            "width": 640,
+            "height": 360,
+            "observations": 75,
+            "distinctIdentities": 1,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "late": {
+            "width": 640,
+            "height": 360,
+            "observations": 86,
+            "distinctIdentities": 86,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "reconnected": {
+            "width": 640,
+            "height": 360,
+            "observations": 143,
+            "distinctIdentities": 143,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "audio": {
+            "samples": 30,
+            "minRms": 0.0504791951893797,
+            "maxRms": 0.07532951488830901,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "silence": {
+            "samples": 30,
+            "minRms": 0,
+            "maxRms": 0,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "lateAudio": {
+            "samples": 30,
+            "minRms": 0.046752956924151726,
+            "maxRms": 0.07521313604037544,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "reconnectedAudio": {
+            "samples": 30,
+            "minRms": 0.05041271403436314,
+            "maxRms": 0.07516257593145845,
+            "codecs": [
+              "audio/opus"
+            ]
+          }
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-https",
+      "report": "native-qt/qa/reports/linux-whip/4070b71d-c759-485d-914c-d899a7b02d01/results.json",
+      "reportSha256": "89224214458c7ffbd3382cedeb2c7dbfced65670b8ab5a1a8620b7c6f6b0508d",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "b609d4cf85b4e87d059bfa21ed067ab0d1908daa58c9d75de6f5a95c25e0f2e6",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": true,
+      "failure": "",
+      "hostTrustUnchanged": true,
+      "trustScope": "Owned CA mounted read-only at /etc/ssl/certs only in publisher user/mount namespace; host trust unchanged",
+      "trustRootSha256": "8961f7063505997d266e1ba24f6614d64527084215bed6e630a375374b416245",
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "distinctFrames": 174,
+          "output": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 412160,
+            "audio_packets": 2576,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:38611",
+            "ice_path": "STUN",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:38611",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 245,
+            "receiver_report_timeout_ms": 15000,
+            "receiver_reports": 50,
+            "reconnects": 0,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 350893,
+            "video_nack": true,
+            "video_packets": 773,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "recoveryOutput": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 567040,
+            "audio_packets": 3544,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:38611",
+            "ice_path": "STUN",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:38611",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 579,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 18,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 491911,
+            "video_nack": true,
+            "video_packets": 1063,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "moving": {
+            "width": 640,
+            "height": 360,
+            "observations": 174,
+            "distinctIdentities": 174,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "static": {
+            "width": 640,
+            "height": 360,
+            "observations": 75,
+            "distinctIdentities": 1,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "late": {
+            "width": 640,
+            "height": 360,
+            "observations": 84,
+            "distinctIdentities": 84,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "reconnected": {
+            "width": 640,
+            "height": 360,
+            "observations": 148,
+            "distinctIdentities": 148,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "audio": {
+            "samples": 30,
+            "minRms": 0.049163593299782794,
+            "maxRms": 0.07534000126473223,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "silence": {
+            "samples": 30,
+            "minRms": 0,
+            "maxRms": 0,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "lateAudio": {
+            "samples": 30,
+            "minRms": 0.05016851571278622,
+            "maxRms": 0.07511626580972551,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "reconnectedAudio": {
+            "samples": 30,
+            "minRms": 0.04652778683372847,
+            "maxRms": 0.07523014676850588,
+            "codecs": [
+              "audio/opus"
+            ]
+          }
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-invalid-tls",
+      "report": "native-qt/qa/reports/linux-whip/43221637-c6fd-481e-acf8-f56808e9eb31/results.json",
+      "reportSha256": "ffbe00ebe6948c77afa1f1becf479fe78cb26dfb7ef56e6110fae8393984f5d4",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": true,
+      "failure": "invalid-tls",
+      "hostTrustUnchanged": true,
+      "trustScope": "No private trust root provided",
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-oversized",
+      "report": "native-qt/qa/reports/linux-whip/464a9d47-3d42-40de-9399-0323b9ab2659/results.json",
+      "reportSha256": "6d025692d82807fa83d00fe39708636bd63c1ad1a8154a3a4f110cbfd627551e",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "oversized",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-malformed",
+      "report": "native-qt/qa/reports/linux-whip/5aef1eae-b68c-4a3c-8c47-62e054d83f7f/results.json",
+      "reportSha256": "d1f990047e3ed374c2ba48d1ca4b988535d90b8b042a34e6a191de93fca08f0e",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "malformed",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-unauthorized",
+      "report": "native-qt/qa/reports/linux-whip/681cc043-6963-440d-8026-6b9d73511662/results.json",
+      "reportSha256": "a5a44fd2cecc3998178ed54e01e75cc1dd50b714f6d4e201e34d760c399959f2",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "unauthorized",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-cancel",
+      "report": "native-qt/qa/reports/linux-whip/6a378c8f-8175-4615-9f3c-0960b95fda42/results.json",
+      "reportSha256": "2e212757222e0ca365381b2756f259defbfd059bd791971bad19199f03a74167",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "cancel",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": null,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "shutdownMs": 407
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-cancel-gathering",
+      "report": "native-qt/qa/reports/linux-whip/7a7c8f5d-b3c3-4b93-9a87-f20aaa0a3ec0/results.json",
+      "reportSha256": "5a58c60475fa7e4be61fdff040a09bb94dfac328e343877714fabc7801f76947",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "passed": true,
+      "turnDiscovery": "none",
+      "tls": false,
+      "failure": "cancel-gathering",
+      "hostTrustUnchanged": true,
+      "unresponsiveStun": {
+        "requests": 1
+      },
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "shutdownMs": 410
+        }
+      ],
+      "finding": "Packaged workflow assertions passed. Positive modes independently decode H264 and stereo Opus, silence/static content, late viewers and server restart recovery; negative modes verify bounded rejection or cancellation and resource/discovery cleanup. Report scope and named mode define coverage.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
+    },
+    {
+      "backend": "linux-whip-turn-options",
+      "report": "native-qt/qa/reports/linux-whip/d4d56164-6cf6-40ad-af8e-2ceb03628b62/results.json",
+      "reportSha256": "f47b5815c3ae5e813f5852dc31db247d55f03acab8ef46668e80944bbdbc2632",
+      "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+      "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+      "harnessSha256": "0ffe127fb7a4589a58e379fa49840aeb921539480d89bcc75d8003d19e5194d5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "serverSha256": "0ffb7f18210d08ee38cb16668c4f3a2c96622e69d401119c0026d078a2b89523",
+      "turnServerSha256": "487085a85d74e66064a4cd73f357f1e87710875d73fe8eaaa47583909cdc33ec",
+      "passed": true,
+      "turnDiscovery": "options",
+      "tls": false,
+      "failure": "",
+      "hostTrustUnchanged": true,
+      "cases": [
+        {
+          "encoder": "software",
+          "passed": true,
+          "distinctFrames": 177,
+          "turn": {
+            "discovery": "options",
+            "relayedOffers": 2,
+            "discoveryDeletedBeforeRetry": false,
+            "allPublishingCandidatesRelay": true
+          },
+          "output": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 412160,
+            "audio_packets": 2576,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:46059",
+            "ice_path": "TURN/RELAY",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:46059",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 704,
+            "receiver_report_timeout_ms": 15000,
+            "receiver_reports": 50,
+            "reconnects": 0,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 346680,
+            "video_nack": true,
+            "video_packets": 772,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "recoveryOutput": {
+            "audio_codec": "Opus",
+            "audio_input_bytes": 566720,
+            "audio_packets": 3542,
+            "configured_aac_bitrate_kbps": 128,
+            "destination": "WHIP \u00b7 127.0.0.1:46059",
+            "ice_path": "TURN/RELAY",
+            "message": "Publishing to WHIP \u00b7 127.0.0.1:46059",
+            "muxer_pid": 0,
+            "protocol": "WHIP",
+            "queued_bytes": 0,
+            "receiver_report_age_ms": 93,
+            "receiver_report_timeout_ms": 0,
+            "receiver_reports": 18,
+            "reconnects": 2,
+            "repair_cache_misses": 0,
+            "retransmitted_packets": 0,
+            "state": 2,
+            "video_input_bytes": 487609,
+            "video_nack": true,
+            "video_packets": 1062,
+            "video_playout_ms": 0,
+            "video_pli": true,
+            "video_rtx": true
+          },
+          "moving": {
+            "width": 640,
+            "height": 360,
+            "observations": 177,
+            "distinctIdentities": 177,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "static": {
+            "width": 640,
+            "height": 360,
+            "observations": 75,
+            "distinctIdentities": 1,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "late": {
+            "width": 640,
+            "height": 360,
+            "observations": 83,
+            "distinctIdentities": 83,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "reconnected": {
+            "width": 640,
+            "height": 360,
+            "observations": 149,
+            "distinctIdentities": 149,
+            "identityReadFailures": 0,
+            "rowDisagreements": 0
+          },
+          "audio": {
+            "samples": 30,
+            "minRms": 0.05020033023283225,
+            "maxRms": 0.07517316848722362,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "silence": {
+            "samples": 30,
+            "minRms": 0,
+            "maxRms": 0,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "lateAudio": {
+            "samples": 30,
+            "minRms": 0.049222253521159706,
+            "maxRms": 0.07520522560500194,
+            "codecs": [
+              "audio/opus"
+            ]
+          },
+          "reconnectedAudio": {
+            "samples": 30,
+            "minRms": 0.046453310052761036,
+            "maxRms": 0.0751806003317942,
+            "codecs": [
+              "audio/opus"
+            ]
+          }
+        }
+      ],
+      "finding": "Packaged H264/stereo Opus, silence, static pacing, late viewer and server restart recovery passed with OPTIONS-advertised TURN. All successful publishing offers had relay-only candidates and connected path diagnostics confirmed TURN/RELAY. Trace permits only the fixture 502 during its deliberate outage; no arbitrary negotiation failures are waived. Session deletion and process cleanup passed.",
+      "limits": "Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance."
     }
   ],
   "host_environment": {
@@ -3479,5 +4377,30 @@
         "sha256": "3eba7171bc93bcb332356ce03fcb6ce6c65c52d11e4b2f69f0b2227dc777a0f0"
       }
     ]
+  },
+  "whip_regression_gates": {
+    "classification": "Gates only; not application testing.",
+    "passed": [
+      "PlatformCapabilitiesGate",
+      "VdoSignalingLifecycleGate",
+      "IceConfigTest"
+    ],
+    "log": "native-qt/build-linux-whip-gates.log",
+    "logSha256": "b7dc5c29217167c6db4760c634fac054eba6efa161ab41421a5a9a83e7ca0135",
+    "cross_platform": "Linux shares the existing macOS 30-second WHIP ICE gathering limit. Windows remains at 10 seconds. Windows/macOS runtime regression remains open."
+  },
+  "whip_turn_fixture": {
+    "provenance": "native-qt/qa/reports/linux-whip/qa-tools/coturn/provenance.json",
+    "provenanceSha256": "243a5c86fbef0b4e20917c44543ba4a1752c3e574a75ba42d52cf4e5d2cf7264",
+    "scope": "Private extracted Ubuntu coturn 4.6.1 and dependencies, loopback listeners and relay, no CLI listener, no system install/service changes. Local UDP relay qualification only."
+  },
+  "whip_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-373b48d50364-0865b0d04db6.deb",
+    "sha256": "f6e9760311b2f7974d86b6ee0baca78c44139793e2aec68c6784cd320e9b2826",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-373b48d50364-0865b0d04db6",
+    "manifestSha256": "d90669254ebca24ff00c1c8780a2fae68b657e8188444ace2ceccc4f350ed378",
+    "executableSha256": "373b48d50364e417b265e16b011074369e9b5ccbe62633ae3f6dc1fd7875a755",
+    "passingWorkflows": 10,
+    "qualification": "Development checkpoint only: extracted Ubuntu DEB, X11/Xvfb, software H264 640x360/30 and virtual stereo microphone. Positive media modes: private-CA HTTPS, TURN OPTIONS, TURN POST and silent STUN. Error/cancellation modes: unauthorized, untrusted TLS, malformed/oversized answer, pending POST and pending ICE. No GUI/Wayland, public WAN, default 720p60, endurance, clean-install or Windows/macOS regression qualification."
   }
 }

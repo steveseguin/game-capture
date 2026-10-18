@@ -233,12 +233,12 @@ struct Session::Impl {
             client.setKeyframeRequestCallback([this](uint64_t) { if (!stopping.load()) requestKeyframe(); });
             if (!client.initialize(peer) || client.createOffer().empty()) throw OutputError("WHIP could not create a WebRTC offer.");
             const auto gatheringStart = Clock::now();
-#ifdef __APPLE__
-            // The bundled Mac ICE agent can spend 23.5 seconds retrying an
-            // unavailable advertised server before completing usable candidates.
+#if defined(__APPLE__) || defined(__linux__)
+            // The POSIX ICE agent can spend 23.5 seconds retrying an unavailable
+            // advertised server before completing usable local candidates.
             constexpr auto gatheringTimeout = std::chrono::seconds(30);
 #else
-            // Preserve the existing Windows timeout during Mac integration.
+            // Preserve the existing Windows timeout.
             constexpr auto gatheringTimeout = std::chrono::seconds(10);
 #endif
             while (!stopping.load() && !client.iceGatheringComplete()) {
