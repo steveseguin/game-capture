@@ -48,8 +48,41 @@ No application runtime or VDO.Ninja API changed.
 [Artifact-bound report and raw numeric evidence](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-control-pressure)
 require access to the private benchmark repository.
 
+## Released Beta 2 thirty-minute endurance
+
+The same public-downloaded Beta 2 executable passes separate **30-minute VT and
+x264 workflows at 1280×720, 60 fps and a 4 Mbps target**, with selected-application
+stereo. Each passes all 180 ten-second intervals, then live frame-rate changes,
+audio silence/resume, static picture, resizing, late viewing and expected
+shutdown/source-loss behavior.
+
+| Encoder | Distinct received images/s, interval range | Decoded frames | Continuous PCM seconds | Publisher RSS, first → last MiB | Peak RSS MiB |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Apple VideoToolbox | 59.80–60.10 | 107,998 | 1823.8 | 118.2 → 108.3 | 119.3 |
+| x264 | 59.79–60.10 | 108,001 | 1824.6 | 134.7 → 101.1 | 134.7 |
+
+Observed source capture dimensions: Apple VideoToolbox: 1154×720; x264: 1154×720. The generated source
+is fitted into the requested output; this is not a native-resolution gameplay
+measurement.
+
+[VT evidence](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-18-apple-m1-0265-beta2/endurance/videotoolbox.json), [x264 evidence](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-18-apple-m1-0265-beta2/endurance/x264.json) and 360 compressed numeric
+interval files retain frame identities, source/receiver clocks, continuous
+48 kHz stereo summaries and resource samples. The [portable export audit](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-18-apple-m1-0265-beta2/endurance-export-verification.json)
+recomputes cadence, PCM continuity, tone separation/application isolation and
+zero sustained encode/send failures. Existing auditor controls were reused after
+confirming identical auditor source; these audits are gates, not additional
+application testing.
+
+Both encoders ran sequentially on one M1 with a same-host browser receiver.
+Builds, other media workloads and large transfers stayed separate; lightweight
+source review continued. Whole-host CPU is not encoder CPU. RSS samples do not
+prove absence of a leak. These runs do not establish physical A/V latency,
+thermal/gameplay behavior, physical-device coverage or matched OBS/FFmpeg/WHIP
+picture quality. Independently re-encoded audio recordings remain in retained
+local evidence. **Mac remains experimental.**
+
 ## Remaining qualification
 
-Keep Mac experimental. Physical minimum-OS/privacy/device/VoiceOver, sleep/wake, display/audio-route changes, broader Windows hardware/audio/installer coverage and matched OBS/FFmpeg/WHIP/gameplay quality remain open. Earlier unexplained VFR alpha pixels, hosted-motion, recorder-clock and abrupt-viewer-close findings remain recorded. The [released Beta 1 thirty-minute endurance](https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md) belongs to its earlier executable and is not claimed for Beta 2.
+Keep Mac experimental. Physical minimum-OS/privacy/device/VoiceOver, sleep/wake, display/audio-route changes, broader Windows hardware/audio/installer coverage and matched OBS/FFmpeg/WHIP/gameplay quality remain open. Earlier unexplained VFR alpha pixels, hosted-motion, recorder-clock and abrupt-viewer-close findings remain recorded. The [released Beta 1 thirty-minute endurance](https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md) belongs to its earlier executable; the new results above separately qualify this Beta 2 workflow.
 
 [Evidence manifest](https://github.com/steveseguin/video-encoder-testing/blob/main/knowledge/2026-10-18-apple-m1-0265-beta2/evidence-manifest.json). Detailed numeric artifacts are in the private benchmark repository and require access.
