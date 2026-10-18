@@ -1018,7 +1018,7 @@ void MainWindow::loadPersistedSettings() {
         advancedToggle_->setChecked(settings.value("ui/advancedVisible", false).toBool());
     }
     if (customBitrateSpin_) {
-        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", 4000).toInt());
+        customBitrateSpin_->setValue(settings.value("video/customBitrateKbps", versus::defaults::VideoBitrateKbps).toInt());
     }
     if (viewerLimitSpin_) {
         viewerLimitSpin_->setValue(settings.value("stream/maxViewers", 10).toInt());
@@ -1048,8 +1048,8 @@ void MainWindow::loadPersistedSettings() {
     }
     if (audioBitrateSpin_) {
         bool valid = false;
-        const int bitrate = settings.value("audio/bitrateKbps", 192).toInt(&valid);
-        audioBitrateSpin_->setValue(valid && bitrate >= 6 && bitrate <= 510 ? bitrate : 192);
+        const int bitrate = settings.value("audio/bitrateKbps", versus::defaults::AudioBitrateKbps).toInt(&valid);
+        audioBitrateSpin_->setValue(valid && bitrate >= 6 && bitrate <= 510 ? bitrate : versus::defaults::AudioBitrateKbps);
     }
     restoreComboByData(audioChannelsSelect_, settings.value("audio/channels", 2));
     restoreComboByData(audioCodecSelect_, settings.value("audio/codec", "opus"));
@@ -1061,12 +1061,12 @@ void MainWindow::loadPersistedSettings() {
     restoreComboByData(resolutionSelect_, savedResolution.isEmpty() ? QString("1280x720") : savedResolution);
     if (resolutionSelect_)
         resolutionSelect_->setEditText(savedResolution.isEmpty() ? QString("1280x720") : savedResolution);
-    restoreComboByData(fpsSelect_, settings.value("video/fps", 60));
+    restoreComboByData(fpsSelect_, settings.value("video/fps", versus::defaults::VideoFps));
     restoreComboByData(
         cameraResolutionSelect_,
         settings.value("camera/resolution", "1920x1080"));
     restoreComboByData(cameraFpsSelect_, settings.value("camera/fps", 30));
-    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", 4000));
+    restoreComboByData(bitrateSelect_, settings.value("video/bitratePresetKbps", versus::defaults::VideoBitrateKbps));
     const bool hasStoredIceMode = settings.contains("network/iceMode");
     const QString storedIceMode = settings.value("network/iceMode", "all").toString();
     restoreComboByData(iceModeSelect_, storedIceMode);
@@ -1158,7 +1158,7 @@ void MainWindow::loadPersistedSettings() {
         config.streamId = stored.value("streamId").toString().toStdString();
         config.passphrase = stored.value("passphrase").toString().toStdString();
         config.latencyMs = stored.value("latencyMs").toInt(200);
-        config.aacBitrateKbps = stored.value("aacBitrateKbps").toInt(192);
+        config.aacBitrateKbps = stored.value("aacBitrateKbps").toInt(versus::defaults::AudioBitrateKbps);
         outputProfiles_.insert(name, config);
     }
     previousOutput_ = "vdo";
@@ -1187,11 +1187,11 @@ void MainWindow::savePersistedSettings() {
     const auto resolution = canonicalResolution(resolutionSelect_ ? resolutionSelect_->currentText() : QString("1280x720"));
     // Do not replace the last valid setting while a custom value is incomplete.
     if (!resolution.isEmpty()) settings.setValue("video/resolution", resolution);
-    settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : 60);
+    settings.setValue("video/fps", fpsSelect_ ? fpsSelect_->currentData().toInt() : versus::defaults::VideoFps);
     settings.setValue("camera/resolution", cameraResolutionSelect_ ? cameraResolutionSelect_->currentData().toString() : QString("1920x1080"));
     settings.setValue("camera/fps", cameraFpsSelect_ ? cameraFpsSelect_->currentData().toInt() : 30);
-    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : 4000);
-    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : 4000);
+    settings.setValue("video/bitratePresetKbps", bitrateSelect_ ? bitrateSelect_->currentData().toInt() : versus::defaults::VideoBitrateKbps);
+    settings.setValue("video/customBitrateKbps", customBitrateSpin_ ? customBitrateSpin_->value() : versus::defaults::VideoBitrateKbps);
     settings.setValue("video/sourceMode", sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window"));
 #ifdef __APPLE__
     settings.setValue("syphon/alpha", syphonAlphaSelect_->currentData().toString());
@@ -1212,7 +1212,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("audio/primaryGainPercent", primaryAudioGainSpin_ ? primaryAudioGainSpin_->value() : 100);
     settings.setValue("audio/microphoneGainPercent", microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100);
     settings.setValue("audio/limiterEnabled", audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true);
-    settings.setValue("audio/bitrateKbps", audioBitrateSpin_ ? audioBitrateSpin_->value() : 192);
+    settings.setValue("audio/bitrateKbps", audioBitrateSpin_ ? audioBitrateSpin_->value() : versus::defaults::AudioBitrateKbps);
     settings.setValue("audio/channels", audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2);
     settings.setValue("audio/codec", audioCodecSelect_ ? audioCodecSelect_->currentData().toString() : "opus");
     settings.setValue("audio/red", audioRedCheck_ && audioRedCheck_->isChecked());
@@ -1943,6 +1943,7 @@ void MainWindow::setupUI() {
     fpsSelect_->setObjectName("fpsSelect");
     fpsSelect_->addItem("60", QVariant(60));
     fpsSelect_->addItem("30", QVariant(30));
+    fpsSelect_->setCurrentIndex(fpsSelect_->findData(versus::defaults::VideoFps));
     installComboWheelGuard(fpsSelect_);
     advancedForm->addRow("FPS", fpsSelect_);
 
@@ -1955,7 +1956,7 @@ void MainWindow::setupUI() {
     bitrateSelect_->addItem("Low (3000 kbps)", QVariant(3000));
     bitrateSelect_->addItem("Economy (2500 kbps)", QVariant(2500));
     bitrateSelect_->addItem("Custom", QVariant(-1));
-    bitrateSelect_->setCurrentIndex(bitrateSelect_->findData(4000));
+    bitrateSelect_->setCurrentIndex(bitrateSelect_->findData(versus::defaults::VideoBitrateKbps));
     installComboWheelGuard(bitrateSelect_);
     connect(bitrateSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBitratePresetChanged);
@@ -1964,7 +1965,7 @@ void MainWindow::setupUI() {
     customBitrateSpin_ = new QSpinBox(this);
     customBitrateSpin_->setObjectName("customBitrateSpin");
     customBitrateSpin_->setRange(500, 50000);
-    customBitrateSpin_->setValue(4000);
+    customBitrateSpin_->setValue(versus::defaults::VideoBitrateKbps);
     customBitrateSpin_->setSuffix(" kbps");
     customBitrateSpin_->setEnabled(false);
     installSpinWheelGuard(customBitrateSpin_);
@@ -2062,7 +2063,7 @@ void MainWindow::setupUI() {
     audioBitrateSpin_ = new QSpinBox(this);
     audioBitrateSpin_->setObjectName("audioBitrateSpin");
     audioBitrateSpin_->setRange(6, 510);
-    audioBitrateSpin_->setValue(192);
+    audioBitrateSpin_->setValue(versus::defaults::AudioBitrateKbps);
     audioBitrateSpin_->setSuffix(" kbps");
     audioBitrateSpin_->setToolTip(
         "Total Opus bitrate for all channels, excluding network overhead. Lower values save bandwidth; "
@@ -2071,7 +2072,7 @@ void MainWindow::setupUI() {
     audioEncodingForm->addRow("Opus bitrate", audioBitrateSpin_);
     aacBitrateSpin_ = new QSpinBox(this);
     aacBitrateSpin_->setObjectName("aacBitrateSpin");
-    aacBitrateSpin_->setRange(32, 320); aacBitrateSpin_->setValue(192); aacBitrateSpin_->setSuffix(" kbps");
+    aacBitrateSpin_->setRange(32, 320); aacBitrateSpin_->setValue(versus::defaults::AudioBitrateKbps); aacBitrateSpin_->setSuffix(" kbps");
     installSpinWheelGuard(aacBitrateSpin_);
     audioEncodingForm->addRow("AAC bitrate", aacBitrateSpin_);
     audioEncodingForm->setRowVisible(aacBitrateSpin_, false);
@@ -3047,10 +3048,11 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     config.enableAlpha = alphaWorkflowEffectiveForSelectedCodec();
     config.width = width;
     config.height = height;
-    config.frameRate = fps > 0 ? fps : 60;
-    config.bitrate = bitrate > 0 ? bitrate : 4000;
+    config.frameRate = fps > 0 ? fps : versus::defaults::VideoFps;
+    config.bitrate = bitrate > 0 ? bitrate : versus::defaults::VideoBitrateKbps;
     config.minBitrate = std::max(500, config.bitrate / 2);
     config.maxBitrate = config.bitrate;
+    config.gopSize = config.frameRate;
     config.ffmpegPath = ffmpegPathInput_
         ? ffmpegPathInput_->text().trimmed().toStdString()
         : std::string();
@@ -3311,7 +3313,7 @@ void MainWindow::onGoLiveClicked() {
         const float microphoneAudioGain =
             static_cast<float>(microphoneAudioGainSpin_ ? microphoneAudioGainSpin_->value() : 100) / 100.0f;
         const bool audioLimiterEnabled = audioLimiterCheck_ ? audioLimiterCheck_->isChecked() : true;
-        const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : 192;
+        const int audioBitrateKbps = audioBitrateSpin_ ? audioBitrateSpin_->value() : versus::defaults::AudioBitrateKbps;
         const int audioChannels = audioChannelsSelect_ ? audioChannelsSelect_->currentData().toInt() : 2;
         const bool externalOutput = outputSelect_->currentData().toString() != "vdo";
 #ifdef __APPLE__
@@ -3974,13 +3976,13 @@ void MainWindow::updateAudioEncodingControls() {
     audioBitrateSpin_->setEnabled(enabled && !pcm);
     audioRedCheck_->setEnabled(enabled && !pcm);
     const bool mono = audioChannelsSelect_->currentData().toInt() == 1;
-    audioEncodingNote_->setText(aac ? QString("48 kHz AAC. Default: 192 kbps stereo. Changes apply on the next stream.") : pcm
+    audioEncodingNote_->setText(aac ? QString("48 kHz AAC. Default: 128 kbps stereo. Changes apply on the next stream.") : pcm
         ? (mono ? "16-bit PCM: 48 kHz mono, 768 kbps before network overhead. "
                 : "16-bit PCM: 32 kHz stereo, 1,024 kbps before network overhead. ") +
             QString("Use the generated viewer link in Chrome. Other viewers may use Opus instead. RED is available with Opus.")
         : (audioBitrateSpin_->value() < 32
             ? QString("Very low bitrates reduce fidelity and may collapse stereo. Use mono or increase the bitrate. Changes apply on the next stream.")
-            : QString("Default: 192 kbps stereo. Changes apply on the next stream.")));
+            : QString("Default: 128 kbps stereo. Changes apply on the next stream.")));
 }
 
 void MainWindow::syncRoomModeLqUiState() {

@@ -2418,6 +2418,7 @@ class VideoEncoder::Impl {
             : std::max(1, config_.gopSize);
         const int bFrames = std::max(0, config_.bFrames);
         const int bufferSize = std::max(maxBitrate, bitrate) * 2;
+        const auto softwareWorkers = std::clamp(std::thread::hardware_concurrency() / 2, 1u, 4u);
 
         std::string encoderName;
         auto chooseEncoder = [&](const char *nvenc,
@@ -2491,6 +2492,7 @@ class VideoEncoder::Impl {
             "-hide_banner",
             "-loglevel", "error",
             "-nostats",
+            "-filter_threads", "1",
             // Keep the frame consumed by rawvideo stream analysis. nobuffer
             // discards it, delaying startup until a second input arrives and
             // shifting the FIFO input-PTS/output-packet association by a frame.
@@ -2505,6 +2507,12 @@ class VideoEncoder::Impl {
             "-maxrate", std::to_string(maxBitrate) + "k",
             "-bufsize", std::to_string(bufferSize) + "k",
         };
+        // Match the Constrained Baseline RTP offer and the native MF path.
+        // Advanced options may override this for a receiver known to accept High.
+        if (config_.codec == VideoCodec::H264) {
+            args.insert(args.end(), {"-profile:v",
+                encoderName == "h264_amf" ? "constrained_baseline" : "baseline"});
+        }
         if (qsvHardwareUpload) {
             // Pool raw decoder input before hardware upload. Direct raw-frame
             // upload still grows driver memory on affected Intel drivers; a
@@ -2544,6 +2552,7 @@ class VideoEncoder::Impl {
             // The legacy llhq alias is not exposed by newer AV1 NVENC builds.
             // p4 plus the low-latency tune is the supported cross-codec equivalent.
             args.push_back("p4");
+            args.insert(args.end(), {"-multipass", "disabled", "-spatial-aq", "0", "-temporal-aq", "0"});
             args.push_back("-tune");
             args.push_back("ll");
             args.push_back("-zerolatency");
@@ -2570,7 +2579,10 @@ class VideoEncoder::Impl {
         } else if (encoderName.find("_qsv") != std::string::npos) {
             // Raw elementary output is correlated with input PTS in FIFO order.
             // QSV permits B frames by default; reordering breaks that mapping.
-            args.insert(args.end(), {"-bf", "0", "-async_depth", "1"});
+            args.insert(args.end(), {"-preset", "veryfast", "-bf", "0", "-async_depth", "1"});
+            if (config_.codec == VideoCodec::H264) {
+                args.insert(args.end(), {"-look_ahead", "0"});
+            }
             if (config_.codec == VideoCodec::H264 || config_.codec == VideoCodec::H265) {
                 args.insert(args.end(), {"-forced_idr", "1"});
             }
@@ -2588,18 +2600,22 @@ class VideoEncoder::Impl {
                     "-header_insertion_mode", "idr"});
             }
         } else if (encoderName == "libx264") {
+            args.insert(args.end(), {"-threads", std::to_string(softwareWorkers), "-bf", "0"});
             args.push_back("-preset");
             args.push_back("veryfast");
             args.push_back("-tune");
             args.push_back("zerolatency");
         } else if (encoderName == "libx265") {
+            args.insert(args.end(), {"-x265-params", "pools=" + std::to_string(softwareWorkers) +
+                ":frame-threads=1:bframes=0:rc-lookahead=0"});
             args.push_back("-preset");
-            args.push_back("fast");
+            args.push_back("veryfast");
             args.push_back("-tune");
             args.push_back("zerolatency");
         } else if (encoderName == "libaom-av1") {
+            args.insert(args.end(), {"-usage", "realtime", "-threads", std::to_string(softwareWorkers)});
             args.push_back("-cpu-used");
-            args.push_back("6");
+            args.push_back("8");
             args.push_back("-row-mt");
             args.push_back("1");
             args.push_back("-lag-in-frames");
@@ -3904,9 +3920,9 @@ class VideoEncoder::Impl {
         type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
         setCommonFrameAttributes(type);
         type->SetUINT32(MF_MT_AVG_BITRATE, static_cast<UINT32>(std::max(1, config_.bitrate) * 1000));
-        if (!usingHardware_) {
-            type->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base);
-        }
+        // Match the Baseline RTP offer on hardware as well as software. Leaving
+        // the hardware media type untouched allowed an MFT to emit Main.
+        type->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base);
     }
 
     void configureInputType(IMFMediaType *type, const GUID &subtype) {
@@ -4101,9 +4117,18 @@ class VideoEncoder::Impl {
         }
 
         codecApi_ = codecApi;
-        const ULONG gopSize = static_cast<ULONG>(std::max(1, config_.gopSize));
+        const ULONG gopSize = static_cast<ULONG>(config_.lowLatency
+            ? std::max(1, std::min(config_.gopSize, config_.frameRate))
+            : std::max(1, config_.gopSize));
         if (!setCodecApiUi4(CODECAPI_AVEncMPVGOPSize, gopSize)) {
             spdlog::warn("[VideoEncoder] Failed to set GOP size");
+        }
+
+        // The native path must request the same no-reordering contract as
+        // FFmpeg. Older MFTs may expose only AVLowLatencyMode/Baseline.
+        if (!setCodecApiUi4(CODECAPI_AVEncMPVDefaultBPictureCount,
+                           static_cast<ULONG>(std::max(0, config_.bFrames)))) {
+            spdlog::debug("[VideoEncoder] Explicit B-picture count unsupported");
         }
 
         VARIANT lowLatency;

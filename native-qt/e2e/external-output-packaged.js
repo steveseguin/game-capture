@@ -97,7 +97,8 @@ paths:
       assert(Number.isFinite(seconds)&&seconds>0&&seconds<=86400,'Invalid case duration');
       const protocol=id.startsWith('rtmps-')?'rtmp':id.startsWith('rtsp-udp-')?'rtsp-udp':id.split('-')[0],mono=id.includes('mono'),silent=id.includes('silent'),dir=path.join(out,id);
       fs.mkdirSync(dir,{recursive:true});const discovery=path.join(dir,'control.json');
-      const bitrate=Number(id.match(/-(?:mono|stereo)-(\d+)$/)?.[1]||192);
+      const freshDefaults=opts.defaults==='true';
+      const bitrate=Number(id.match(/-(?:mono|stereo)-(\d+)$/)?.[1]||(freshDefaults?128:192));
       const result={id,configuration,protocol,channels:mono?1:2,silent,bitrateKbps:bitrate,phases:[]};results.cases.push(result);
       const direct=protocol==='udp'||protocol==='rist';
       const url=protocol==='udp'?'udp://127.0.0.1:18892':protocol==='rist'?'rist://127.0.0.1:18894':protocol.startsWith('rtsp')?(protocol==='rtspt'?'rtspt':'rtsp')+'://127.0.0.1:18854/'+id:protocol==='whip'?'http://127.0.0.1:'+(turnProxy?'18888':'18889')+'/'+id+'/whip':protocol==='srt'?
@@ -113,11 +114,16 @@ paths:
       const args=['--headless','--output='+protocol,'--output-url='+url,'--source=window','--window=Game Capture Quality Source',
         '--resolution='+(configuration.resolution||opts.resolution||'1280x720'),'--fps='+(configuration.fps||opts.fps||60),'--audio-source='+(silent?'none':'selected-window'),'--audio-channels='+(mono?1:2),
         '--duration-ms='+Math.max(1800000,(seconds+300)*1000),'--local-control','--local-control-discovery='+discovery];
+      if(freshDefaults){
+        // Exercise the application's actual CLI defaults, not equivalent flags.
+        for(let i=args.length-1;i>=0;--i)if(/^--(resolution|fps|audio-channels)=/.test(args[i]))args.splice(i,1);
+        result.usesAppDefaults=true;
+      }
       if(relayHost&&protocol==='whip')args.push('--ice-mode=relay');
       for(const key of ['video-encoder','bitrate-kbps','ffmpeg-options','codec'])
         if(configuration[key]!==undefined||opts[key]!==undefined)args.push('--'+(key==='codec'?'video-codec':key)+'='+(configuration[key]??opts[key]));
       if(impairment&&protocol==='srt')args.push('--srt-latency-ms='+Number(opts['srt-latency-ms']||400));
-      args.push((protocol==='whip'?'--audio-bitrate-kbps=':'--aac-bitrate-kbps=')+bitrate);
+      if(!freshDefaults)args.push((protocol==='whip'?'--audio-bitrate-kbps=':'--aac-bitrate-kbps=')+bitrate);
       if(protocol==='rtmp')args.push('--output-key='+id);
       if(protocol==='srt')args.push('--srt-stream-id=publish:'+id);
       if(id.startsWith('srt-encrypted')&&id!=='srt-encrypted-url')args.push('--srt-passphrase=qa:+%2B?&= pass2026');

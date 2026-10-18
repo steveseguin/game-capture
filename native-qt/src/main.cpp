@@ -224,7 +224,7 @@ int main(int argc, char *argv[]) {
     int height = 0;
     int fps = 0;
     int bitrateKbps = 0;
-    int audioBitrateKbps = 192;
+    int audioBitrateKbps = versus::defaults::AudioBitrateKbps;
     int audioChannels = 2;
     bool pcmAudio = false;
     bool audioRed = false;
@@ -850,6 +850,7 @@ int main(int argc, char *argv[]) {
     }
     if (fps > 0) {
         encoderOverride.frameRate = fps;
+        encoderOverride.gopSize = fps;
         hasVideoConfigOverride = true;
     }
     if (bitrateKbps > 0) {

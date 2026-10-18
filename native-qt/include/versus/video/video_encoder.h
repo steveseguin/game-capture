@@ -1,5 +1,7 @@
 #pragma once
 
+#include "versus/media_defaults.h"
+
 #include <atomic>
 #include <cstdint>
 #include <deque>
@@ -69,13 +71,13 @@ struct EncoderConfig {
     uint8_t alphaBackgroundRed = 0;
     uint8_t alphaBackgroundGreen = 255;
     uint8_t alphaBackgroundBlue = 0;
-    int width = 1280;
-    int height = 720;
-    int frameRate = 60;
-    int bitrate = 4000;
-    int minBitrate = 2000;
-    int maxBitrate = 4000;
-    int gopSize = 60;
+    int width = defaults::VideoWidth;
+    int height = defaults::VideoHeight;
+    int frameRate = defaults::VideoFps;
+    int bitrate = defaults::VideoBitrateKbps;
+    int minBitrate = defaults::VideoBitrateKbps / 2;
+    int maxBitrate = defaults::VideoBitrateKbps;
+    int gopSize = defaults::VideoFps;
     int bFrames = 0;
     bool lowLatency = true;
     bool operator==(const EncoderConfig &) const = default;
