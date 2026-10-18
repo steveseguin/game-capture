@@ -68,6 +68,10 @@ def main():
               'discardedInputBlocks': sum(not r['kept'] for r in inputs),
               'discardedInputBlocksAfter2s': sum(not r['kept'] for r in later_inputs),
               'uncoveredTapFramesAfter2s': sum(r['frames']*r['activeTaps']-r['coveredFrames'] for r in later_outputs),
+              # The former fixed 20 ms hold emitted 10 ms chunks at >=30 ms
+              # age. A 1 ms margin excludes timestamp/rounding boundary effects.
+              'outputBlocksYoungerThan29ms': sum(age(r) < 29 for r in outputs),
+              'earlyOutputBlocksWithIncompleteCoverage': sum(age(r) < 29 and r['coveredFrames'] < r['frames']*r['activeTaps'] for r in outputs),
               'maximumActiveTaps': max(r['activeTaps'] for r in rows)}
     with (args.report/'linux-audio-timing.json').open('x') as out:
         json.dump(result, out, indent=2)

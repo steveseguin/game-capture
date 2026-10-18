@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Bounded packaged CLI and Qt GUI selection, child/same-process stream joins and removals, recreation, output moves, late viewers, app exit, retained notices, stale-selection rejection and explicit reselection pass, including the current 20 ms hold candidate on X11. Root exit stops its audio; no silent replacement by name. Prior native Wayland GUI routing/lifecycle evidence exists, but the changed audio behavior needs a fresh Wayland regression. Still required: native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, actual PID-reuse collisions, audio-server loss, mixed-microphone continuity on app loss, continuous multi-stream/mixed-input timing under CPU load and physical-output conditions, calibrated A/V startup and endurance. The current desktop-reference pilot still reaches +54 ms against the unchanged 50 ms limit. See linux_app_audio_latency_checkpoint and the earlier application-audio evidence."
+      "remaining": "The readiness-driven Linux candidate passes bounded CLI and Qt GUI selected-app lifecycle, notices, stale-selection rejection and explicit reselection. All nine continuous receiver phases pass their 100 ms tone/clock checks, but native timing exposes short transition coverage gaps, including 667 uncovered tap frames (~13.9 ms) on an output move. This is not glitch-free qualification. Required: finer-grained transition PCM, fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load and physical-output conditions, calibrated A/V startup and final-package endurance. Desktop-reference startup still reaches +61.5 ms against 50 ms. See linux_app_audio_readiness_checkpoint and earlier evidence."
     },
     {
       "id": "system-audio",
@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "The current 20 ms audio-hold candidate passes bounded X11 default 1280x720/60 cadence/PCM and browser-reference timing, but desktop-reference startup skew still reaches +54 ms and absolute zero-offset calibration remains unresolved. Deliberate +/-150 ms stimulus-response controls pass; those controls do not waive absolute timing. The prior 120 ms audio/DAMAGE package passed all 372 cadence/PCM intervals in one 31-minute X11 run, but initial A/V skew reached +76 ms; that run does not qualify the changed audio behavior. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resource observations and cleanup. The prior native Wayland pilot failed all six delivery windows at about 47\u201349 fps and its source fell below 57 fps in three windows; isolate source/compositor/PipeWire throughput before attributing the full shortfall. High-motion content and higher profiles need separate evidence. See x11_damage_endurance_checkpoint, av_desktop_reference_checkpoint, av_desktop_delay_controls_checkpoint and linux_app_audio_latency_checkpoint."
+      "remaining": "Readiness-driven audio passes bounded X11 cadence/PCM but desktop-reference startup still reaches +61.5 ms against 50 ms; absolute zero-offset calibration remains unresolved. Deliberate +/-150 ms stimulus-response controls do not waive absolute timing. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but initial skew reached +76 ms; it does not qualify current audio behavior. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior native Wayland pilot failed all six delivery windows at 47\u201349 fps and its source fell below 57 fps in three; isolate source/compositor/PipeWire throughput. High-motion content and higher profiles need separate evidence. See x11_damage_endurance_checkpoint, av_desktop_reference_checkpoint, av_desktop_delay_controls_checkpoint and linux_app_audio_readiness_checkpoint."
     },
     {
       "id": "arm-portability",
@@ -22034,6 +22034,504 @@
           "audioWarningClearedOnExplicitRestart"
         ]
       }
+    },
+    {
+      "case": "trace",
+      "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/results.json",
+      "reportSha256": "7b87c669f1f9cdd5598ae6f2616f6347ccc01408b74fe1068d41775a2826a8db",
+      "passed": false,
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+      "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "analysis": {
+        "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/av-analysis.json",
+        "sha256": "0f70ad1efbbc14131aac0a38f25a550d3355bd3b9df6b0c4a490c3179d1c19a5",
+        "passed": false
+      },
+      "referenceComparison": {
+        "summary": {
+          "referenceDifferenceMs": {
+            "median": 43.50000000000165,
+            "minimum": 37.50000000000142,
+            "maximum": 46.50000000000176
+          },
+          "receiverMinusBrowserMs": {
+            "median": -18.000000000000682,
+            "minimum": -28.000000000002245,
+            "maximum": 16.9999999999999
+          },
+          "receiverMinusDesktopMs": {
+            "median": 25.500000000000966,
+            "minimum": 17.50000000000007,
+            "maximum": 61.50000000000055
+          }
+        },
+        "calibrated": false,
+        "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/reference-comparison.json",
+        "sha256": "95ec445896faa3c4a29109bfd628c9a85b97ab158fdf279934d6260a7b70bde0"
+      },
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/linux-audio-timing.json",
+        "sha256": "f58545081b389d6f4358e26fc916aeaeba2ebe892bdf3227352140a3124f9b3e",
+        "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+        "traceComplete": true,
+        "traceSha256": "be934ac7e1e0a887d6b1f80c38ad881f88e81ca0cb72b3784885d0fb03ed35e7",
+        "rows": 7286,
+        "inputBlocks": 3643,
+        "outputBlocks": 3643,
+        "observedSeconds": 36.4212389,
+        "inputArrivalAgeMs": {
+          "count": 3643,
+          "minimum": 4.8774,
+          "median": 7.5721,
+          "p95": 9.667,
+          "p99": 9.9654,
+          "maximum": 11.9917
+        },
+        "inputArrivalAgeAfter2sMs": {
+          "count": 3442,
+          "minimum": 4.8774,
+          "median": 7.58045,
+          "p95": 9.6728,
+          "p99": 10.064,
+          "maximum": 11.9917
+        },
+        "inputEstimatedAgeMs": {
+          "count": 3643,
+          "minimum": 5.535,
+          "median": 10.94,
+          "p95": 20.535,
+          "p99": 23.659,
+          "maximum": 25.81
+        },
+        "outputAgeMs": {
+          "count": 3643,
+          "minimum": 11.5716,
+          "median": 14.274,
+          "p95": 16.3754,
+          "p99": 16.7694,
+          "maximum": 33.611
+        },
+        "outputAgeAfter2sMs": {
+          "count": 3442,
+          "minimum": 11.5716,
+          "median": 14.28005,
+          "p95": 16.3777,
+          "p99": 16.7694,
+          "maximum": 18.6941
+        },
+        "clockAnchorsIncludingInitial": 1,
+        "untimedInputBlocks": 0,
+        "discardedInputBlocks": 0,
+        "discardedInputBlocksAfter2s": 0,
+        "uncoveredTapFramesAfter2s": 0,
+        "outputBlocksYoungerThan29ms": 3642,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 1
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/host-cleanup.json",
+        "sha256": "96caabb7c9d3d2ffd9a4ae1a270d48e320305af02fe7afe770e52353d8c6acb9",
+        "passed": true
+      }
+    },
+    {
+      "case": "apps",
+      "report": "native-qt/qa/reports/linux-audio-ready-apps/e11880e8-00ff-4437-88f8-b6009be1f377/results.json",
+      "reportSha256": "b0ee151b90a06d8cf3c21a17443e609c7b9cb48bb6a7efd441c6c54503a08dcc",
+      "passed": true,
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+      "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "caseStages": {
+        "selected-app": [
+          "continuousObserver",
+          "continuous",
+          "video",
+          "audio",
+          "childJoined",
+          "childRemoved",
+          "secondStreamSameProcess",
+          "secondStreamRemoved",
+          "noStreams",
+          "streamRecreated",
+          "outputMoved",
+          "lateAudio",
+          "noAudioAfterAppExit",
+          "videoAfterAppExit"
+        ]
+      },
+      "continuousReceiver": {
+        "phases": [
+          {
+            "label": "initial",
+            "file": "initial-continuous.json.gz",
+            "sha256": "e277e3aaba4268c1b1b52dd1700e2792c0d4e58e6ad73fdab2e9a5078b1646bf",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 6,
+            "wallSeconds": 6.071400146484375,
+            "windows": 60,
+            "checkedContentWindows": 60,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "childJoined",
+            "file": "childJoined-continuous.json.gz",
+            "sha256": "e5eb08d438d4b81e4b951a483ac8278ac0bbb97a47f3086879f0f3aa3bb69658",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 4.5,
+            "wallSeconds": 4.475800048828125,
+            "windows": 45,
+            "checkedContentWindows": 45,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "childRemoved",
+            "file": "childRemoved-continuous.json.gz",
+            "sha256": "9c8b926282da68c85e9f7f4d308264ad7380b4197f076ff8cce44ad38269cf45",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 4.5,
+            "wallSeconds": 4.4647998046875,
+            "windows": 45,
+            "checkedContentWindows": 45,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "secondStreamSameProcess",
+            "file": "secondStreamSameProcess-continuous.json.gz",
+            "sha256": "268d4fa917fba408e88dd1323b5abbb187bea907c75445adca17f8c5df744c44",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 4.4,
+            "wallSeconds": 4.4585,
+            "windows": 44,
+            "checkedContentWindows": 44,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "secondStreamRemoved",
+            "file": "secondStreamRemoved-continuous.json.gz",
+            "sha256": "c6795c1d6e79ccfb0c64ae3ce31643497efd8d05a514b0c9eca1bff1a8e1b0e3",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 4.5,
+            "wallSeconds": 4.4605,
+            "windows": 45,
+            "checkedContentWindows": 45,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "noStreams",
+            "file": "noStreams-continuous.json.gz",
+            "sha256": "c772b8b2209e5d1b4a8bcaebaa79a10f82854ff7a02a09dbda93cd59b87a5efe",
+            "passed": true,
+            "expectedSilent": true,
+            "transitionAllowanceMs": 500,
+            "seconds": 4.4,
+            "wallSeconds": 4.4577001953125,
+            "windows": 44,
+            "checkedContentWindows": 39,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "streamRecreated",
+            "file": "streamRecreated-continuous.json.gz",
+            "sha256": "62f05fae8e56ed1e28ed997dba027a34f7ae12f90f244adcb63aa193d4070fc4",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 500,
+            "seconds": 4.6,
+            "wallSeconds": 4.5292998046875,
+            "windows": 46,
+            "checkedContentWindows": 41,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "outputMoved",
+            "file": "outputMoved-continuous.json.gz",
+            "sha256": "7f18fe35880ecbe75347ebbf7b7823781d2db9ab3b08e8028110a73672e93a8f",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 4.3,
+            "wallSeconds": 4.340900146484375,
+            "windows": 43,
+            "checkedContentWindows": 43,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          },
+          {
+            "label": "lateViewer",
+            "file": "lateViewer-continuous.json.gz",
+            "sha256": "903429948f463f7cb2e18f1bf025bccf53624d89ceca56e83e99030e3e1e3316",
+            "passed": true,
+            "expectedSilent": false,
+            "transitionAllowanceMs": 0,
+            "seconds": 4.6,
+            "wallSeconds": 4.62189990234375,
+            "windows": 46,
+            "checkedContentWindows": 46,
+            "contentErrors": 0,
+            "gaps": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": []
+          }
+        ],
+        "nativeCoverageByPhase": [
+          {
+            "phase": "initial",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 0,
+            "uncoveredNativeTapFrames": 0,
+            "uncoveredBlockOffsetsMs": []
+          },
+          {
+            "phase": "childJoined",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 2,
+            "uncoveredNativeTapFrames": 865,
+            "uncoveredBlockOffsetsMs": [
+              174.9,
+              184.9
+            ]
+          },
+          {
+            "phase": "childRemoved",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 0,
+            "uncoveredNativeTapFrames": 0,
+            "uncoveredBlockOffsetsMs": []
+          },
+          {
+            "phase": "secondStreamSameProcess",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 3,
+            "uncoveredNativeTapFrames": 975,
+            "uncoveredBlockOffsetsMs": [
+              268.3,
+              284.3,
+              287.3
+            ]
+          },
+          {
+            "phase": "secondStreamRemoved",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 0,
+            "uncoveredNativeTapFrames": 0,
+            "uncoveredBlockOffsetsMs": []
+          },
+          {
+            "phase": "noStreams",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 0,
+            "uncoveredNativeTapFrames": 0,
+            "uncoveredBlockOffsetsMs": []
+          },
+          {
+            "phase": "streamRecreated",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 4,
+            "uncoveredNativeTapFrames": 1582,
+            "uncoveredBlockOffsetsMs": [
+              350.6,
+              361.6,
+              372.6,
+              381.6
+            ]
+          },
+          {
+            "phase": "outputMoved",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 2,
+            "uncoveredNativeTapFrames": 667,
+            "uncoveredBlockOffsetsMs": [
+              264.3,
+              273.3
+            ]
+          },
+          {
+            "phase": "lateViewer",
+            "receiverWindowsPassed": true,
+            "uncoveredNativeBlocks": 0,
+            "uncoveredNativeTapFrames": 0,
+            "uncoveredBlockOffsetsMs": []
+          }
+        ],
+        "scope": "Continuous 100 ms received-PCM summaries, with clock/integrity checks throughout. Only deliberate full-source pause/resume has 500 ms content settling. Passing tone windows does not exclude shorter audible dropouts or establish A/V timing."
+      },
+      "nativeTiming": {
+        "report": "native-qt/qa/reports/linux-audio-ready-apps/e11880e8-00ff-4437-88f8-b6009be1f377/linux-audio-timing.json",
+        "sha256": "ceae306f4fde41b325b052da611dc8b4b8087482c28b3e9ab7ffb5ee281a1753",
+        "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+        "traceComplete": true,
+        "traceSha256": "2a49ed0c5f7306c999a6ecbed865e0f5601e18233170835144a6421d0ce83c57",
+        "rows": 9148,
+        "inputBlocks": 4749,
+        "outputBlocks": 4399,
+        "observedSeconds": 44.0001154,
+        "inputArrivalAgeMs": {
+          "count": 4749,
+          "minimum": 7.2554,
+          "median": 9.2378,
+          "p95": 11.2485,
+          "p99": 11.9499,
+          "maximum": 12.7925
+        },
+        "inputArrivalAgeAfter2sMs": {
+          "count": 4548,
+          "minimum": 7.2554,
+          "median": 9.2377,
+          "p95": 11.2569,
+          "p99": 11.9503,
+          "maximum": 12.7925
+        },
+        "inputEstimatedAgeMs": {
+          "count": 4749,
+          "minimum": 6.814,
+          "median": 10.209,
+          "p95": 13.927,
+          "p99": 15.624,
+          "maximum": 16.685
+        },
+        "outputAgeMs": {
+          "count": 4399,
+          "minimum": 10.3716,
+          "median": 17.53,
+          "p95": 42.521,
+          "p99": 49.0259,
+          "maximum": 50.4612
+        },
+        "outputAgeAfter2sMs": {
+          "count": 4198,
+          "minimum": 10.3716,
+          "median": 17.5264,
+          "p95": 42.7855,
+          "p99": 49.1076,
+          "maximum": 50.4612
+        },
+        "clockAnchorsIncludingInitial": 5,
+        "untimedInputBlocks": 0,
+        "discardedInputBlocks": 0,
+        "discardedInputBlocksAfter2s": 0,
+        "uncoveredTapFramesAfter2s": 4089,
+        "outputBlocksYoungerThan29ms": 3885,
+        "earlyOutputBlocksWithIncompleteCoverage": 0,
+        "maximumActiveTaps": 2
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-ready-apps/e11880e8-00ff-4437-88f8-b6009be1f377/host-cleanup.json",
+        "sha256": "0bbbf90c6c2762704fd502d23d567b96b3d0422ff6aae7d1274d4004c5078b06",
+        "passed": true
+      }
+    },
+    {
+      "case": "apps-gui",
+      "report": "native-qt/qa/reports/linux-audio-ready-apps-gui/32ea0911-9712-4ae9-b6bc-ef1e8cd9166f/results.json",
+      "reportSha256": "d476134048136ede43f9d3d8ed8f36014c759e2d3ac7243b4b4631bf8a37145d",
+      "passed": true,
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+      "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "caseStages": {
+        "selected-app": [
+          "video",
+          "audio",
+          "healthyAudioHasNoWarning",
+          "childJoined",
+          "childRemoved",
+          "secondStreamSameProcess",
+          "secondStreamRemoved",
+          "noStreams",
+          "streamRecreated",
+          "outputMoved",
+          "lateAudio",
+          "noAudioAfterAppExit",
+          "appLossWarningVisible",
+          "videoAfterAppExit",
+          "guiStopSettled",
+          "audioWarningClearedOnStop",
+          "videoWithStaleApp",
+          "staleAppNotReplaced",
+          "staleAppWarningVisible",
+          "afterExplicitReselection",
+          "audioWarningClearedOnExplicitRestart"
+        ]
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-ready-apps-gui/32ea0911-9712-4ae9-b6bc-ef1e8cd9166f/host-cleanup.json",
+        "sha256": "2ac89a146c407a755b28189cc6dad0f5182da72a25e617619bb36d64c1b052cc",
+        "passed": true
+      }
+    },
+    {
+      "case": "disabled",
+      "report": "native-qt/qa/reports/linux-audio-ready-disabled/ad6d5c22-071d-44c8-bd19-40fc1debd86b/results.json",
+      "reportSha256": "b6a4f27c7ddd58568828ffc05722828486ddc9fc24b60ddacbe9796b15a65929",
+      "passed": true,
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+      "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "allSixCadenceAndPcmIntervalsPassed": true,
+      "analysis": {
+        "report": "native-qt/qa/reports/linux-audio-ready-disabled/ad6d5c22-071d-44c8-bd19-40fc1debd86b/av-analysis.json",
+        "sha256": "002b9c0e69508f49195cfb96a40ce1091768c5d189e6ada5a0ee235cc73dcfae",
+        "passed": true
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-ready-disabled/ad6d5c22-071d-44c8-bd19-40fc1debd86b/host-cleanup.json",
+        "sha256": "dc6f5b69fa87b46a9d73d6204a3575fe4f38f777d39bca36a1c67b00aa9d59d0",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -22102,7 +22600,8 @@
     "For X11 DAMAGE regression use linux-window-publish.js --backend=x11 --idle-source=true under the private X11 wrapper; --gui=true --preview=true adds Qt/preview coverage. The source sends one final identity then stops drawing, while decoded output must remain paced and capture readbacks must stop. Separately run the ordinary CLI workflow on Xvfb with -extension DAMAGE to exercise timed fallback. Native trace diagnostics now allow up to 360 requested seconds at the fixed one-receiver 60fps profile; actual 100,000-row truncation is still rejected.",
     "linux-av-sync.js --source-reference=desktop is an opt-in X11 diagnostic limited to <=60 seconds without hold. It records the owned X11 drawable and dedicated Pulse sink monitor with lossless H264/PCM using one common wall-clock offset, plus simultaneous canvas/WebAudio and receiver recordings. reference-comparison.json compares matching pulses and browser output-clock estimates. This mode deliberately keeps passed=false until independently calibrated; inspect recordingWorkflowPassed, diagnosticPassed, comparison and cleanup separately.",
     "For real stimulus-delay response calibration, run three separate linux-av-sync.js --source-reference=desktop --seconds=30 workflows: zero, --fixture-output-audio-delay-ms=150, and --fixture-video-delay-ms=150. Only the desktop audio branch is delayed in the audio case. Analyze the completed report directories with linux-av-calibrate-desktop.py --baseline=... --audio-delay=... --video-delay=... --reports=... . delayResponsePassed is narrower than absolute timing or application qualification; deliberate controls are prohibited outside diagnostic mode.",
-    "linux-av-sync.js --source-reference=desktop --trace-audio=true opts into bounded Linux selected-app input/output timing metadata, writes linux-audio-timing.csv, and verifies its complete footer/hash through linux-audio-timing-report.py. Positive input age means assigned sample time precedes arrival. Trace is disabled in ordinary runs and is not endurance qualification; no PCM content is logged."
+    "linux-av-sync.js --source-reference=desktop --trace-audio=true opts into bounded Linux selected-app input/output timing metadata, writes linux-audio-timing.csv, and verifies its complete footer/hash through linux-audio-timing-report.py. Positive input age means assigned sample time precedes arrival. Trace is disabled in ordinary runs and is not endurance qualification; no PCM content is logged.",
+    "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true records continuous received PCM summaries across app-stream transitions plus opt-in native timing metadata. All clock/integrity windows are checked; only intentional full-source pause/resume has 500 ms content settling. 100 ms tone-window success does not exclude sub-window glitches. Original raw batches and helper hashes are retained."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -25903,5 +26402,528 @@
     ],
     "ownedProcessesRemaining": [],
     "remaining": "Startup remains above50ms against the desktop reference. Investigate releasing fully covered chunks promptly while retaining a bounded wait for incomplete tap coverage; do not blindly reduce the hold or shift timestamps to pass. Measure continuous multi-stream/mixed-microphone timing, CPU load, physical outputs/devices, audio-server loss and Wayland. Rerun >=30-minute cadence/A/V on the final production behavior; the earlier DAMAGE endurance belongs to the 120ms audio package. Absolute reference calibration and all other parity rows remain open."
+  },
+  "linux_app_audio_readiness_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-4992dba41abb-d44378285c95.deb",
+      "sha256": "f3660d9e4c1d2e64bc9c1fd3d2fe9da295a2de2d602022455a9b27d927dd7c97",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-4992dba41abb-d44378285c95",
+      "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d"
+    },
+    "baselinePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-429f416f5fda-044050c55437.deb",
+      "sha256": "c4018feea30c0377d3f6d86bc799569f7dfc118a9f5430099a9c285c5823731c",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-429f416f5fda-044050c55437",
+      "manifestSha256": "0558ad8ee344eb6688cbd380097997363e1cfeed3815e3e26afe564dbb380969"
+    },
+    "productionChange": "Linux selected-app mixing releases due 10 ms chunks immediately when every active tap has contiguous coverage. Incomplete/no-tap chunks retain the existing 20 ms deadline. Capture timestamps, shared/Windows/macOS production inputs and dependencies are unchanged.",
+    "evidence": [
+      {
+        "case": "trace",
+        "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/results.json",
+        "reportSha256": "7b87c669f1f9cdd5598ae6f2616f6347ccc01408b74fe1068d41775a2826a8db",
+        "passed": false,
+        "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+        "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+        "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "analysis": {
+          "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/av-analysis.json",
+          "sha256": "0f70ad1efbbc14131aac0a38f25a550d3355bd3b9df6b0c4a490c3179d1c19a5",
+          "passed": false
+        },
+        "referenceComparison": {
+          "summary": {
+            "referenceDifferenceMs": {
+              "median": 43.50000000000165,
+              "minimum": 37.50000000000142,
+              "maximum": 46.50000000000176
+            },
+            "receiverMinusBrowserMs": {
+              "median": -18.000000000000682,
+              "minimum": -28.000000000002245,
+              "maximum": 16.9999999999999
+            },
+            "receiverMinusDesktopMs": {
+              "median": 25.500000000000966,
+              "minimum": 17.50000000000007,
+              "maximum": 61.50000000000055
+            }
+          },
+          "calibrated": false,
+          "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/reference-comparison.json",
+          "sha256": "95ec445896faa3c4a29109bfd628c9a85b97ab158fdf279934d6260a7b70bde0"
+        },
+        "nativeTiming": {
+          "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/linux-audio-timing.json",
+          "sha256": "f58545081b389d6f4358e26fc916aeaeba2ebe892bdf3227352140a3124f9b3e",
+          "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+          "traceComplete": true,
+          "traceSha256": "be934ac7e1e0a887d6b1f80c38ad881f88e81ca0cb72b3784885d0fb03ed35e7",
+          "rows": 7286,
+          "inputBlocks": 3643,
+          "outputBlocks": 3643,
+          "observedSeconds": 36.4212389,
+          "inputArrivalAgeMs": {
+            "count": 3643,
+            "minimum": 4.8774,
+            "median": 7.5721,
+            "p95": 9.667,
+            "p99": 9.9654,
+            "maximum": 11.9917
+          },
+          "inputArrivalAgeAfter2sMs": {
+            "count": 3442,
+            "minimum": 4.8774,
+            "median": 7.58045,
+            "p95": 9.6728,
+            "p99": 10.064,
+            "maximum": 11.9917
+          },
+          "inputEstimatedAgeMs": {
+            "count": 3643,
+            "minimum": 5.535,
+            "median": 10.94,
+            "p95": 20.535,
+            "p99": 23.659,
+            "maximum": 25.81
+          },
+          "outputAgeMs": {
+            "count": 3643,
+            "minimum": 11.5716,
+            "median": 14.274,
+            "p95": 16.3754,
+            "p99": 16.7694,
+            "maximum": 33.611
+          },
+          "outputAgeAfter2sMs": {
+            "count": 3442,
+            "minimum": 11.5716,
+            "median": 14.28005,
+            "p95": 16.3777,
+            "p99": 16.7694,
+            "maximum": 18.6941
+          },
+          "clockAnchorsIncludingInitial": 1,
+          "untimedInputBlocks": 0,
+          "discardedInputBlocks": 0,
+          "discardedInputBlocksAfter2s": 0,
+          "uncoveredTapFramesAfter2s": 0,
+          "outputBlocksYoungerThan29ms": 3642,
+          "earlyOutputBlocksWithIncompleteCoverage": 0,
+          "maximumActiveTaps": 1
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-ready-trace/18f2ebe6-79c7-4f44-95d7-a6be895094c9/host-cleanup.json",
+          "sha256": "96caabb7c9d3d2ffd9a4ae1a270d48e320305af02fe7afe770e52353d8c6acb9",
+          "passed": true
+        }
+      },
+      {
+        "case": "apps",
+        "report": "native-qt/qa/reports/linux-audio-ready-apps/e11880e8-00ff-4437-88f8-b6009be1f377/results.json",
+        "reportSha256": "b0ee151b90a06d8cf3c21a17443e609c7b9cb48bb6a7efd441c6c54503a08dcc",
+        "passed": true,
+        "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+        "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+        "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+        "caseStages": {
+          "selected-app": [
+            "continuousObserver",
+            "continuous",
+            "video",
+            "audio",
+            "childJoined",
+            "childRemoved",
+            "secondStreamSameProcess",
+            "secondStreamRemoved",
+            "noStreams",
+            "streamRecreated",
+            "outputMoved",
+            "lateAudio",
+            "noAudioAfterAppExit",
+            "videoAfterAppExit"
+          ]
+        },
+        "continuousReceiver": {
+          "phases": [
+            {
+              "label": "initial",
+              "file": "initial-continuous.json.gz",
+              "sha256": "e277e3aaba4268c1b1b52dd1700e2792c0d4e58e6ad73fdab2e9a5078b1646bf",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 6,
+              "wallSeconds": 6.071400146484375,
+              "windows": 60,
+              "checkedContentWindows": 60,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "childJoined",
+              "file": "childJoined-continuous.json.gz",
+              "sha256": "e5eb08d438d4b81e4b951a483ac8278ac0bbb97a47f3086879f0f3aa3bb69658",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 4.5,
+              "wallSeconds": 4.475800048828125,
+              "windows": 45,
+              "checkedContentWindows": 45,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "childRemoved",
+              "file": "childRemoved-continuous.json.gz",
+              "sha256": "9c8b926282da68c85e9f7f4d308264ad7380b4197f076ff8cce44ad38269cf45",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 4.5,
+              "wallSeconds": 4.4647998046875,
+              "windows": 45,
+              "checkedContentWindows": 45,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "secondStreamSameProcess",
+              "file": "secondStreamSameProcess-continuous.json.gz",
+              "sha256": "268d4fa917fba408e88dd1323b5abbb187bea907c75445adca17f8c5df744c44",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 4.4,
+              "wallSeconds": 4.4585,
+              "windows": 44,
+              "checkedContentWindows": 44,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "secondStreamRemoved",
+              "file": "secondStreamRemoved-continuous.json.gz",
+              "sha256": "c6795c1d6e79ccfb0c64ae3ce31643497efd8d05a514b0c9eca1bff1a8e1b0e3",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 4.5,
+              "wallSeconds": 4.4605,
+              "windows": 45,
+              "checkedContentWindows": 45,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "noStreams",
+              "file": "noStreams-continuous.json.gz",
+              "sha256": "c772b8b2209e5d1b4a8bcaebaa79a10f82854ff7a02a09dbda93cd59b87a5efe",
+              "passed": true,
+              "expectedSilent": true,
+              "transitionAllowanceMs": 500,
+              "seconds": 4.4,
+              "wallSeconds": 4.4577001953125,
+              "windows": 44,
+              "checkedContentWindows": 39,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "streamRecreated",
+              "file": "streamRecreated-continuous.json.gz",
+              "sha256": "62f05fae8e56ed1e28ed997dba027a34f7ae12f90f244adcb63aa193d4070fc4",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 500,
+              "seconds": 4.6,
+              "wallSeconds": 4.5292998046875,
+              "windows": 46,
+              "checkedContentWindows": 41,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "outputMoved",
+              "file": "outputMoved-continuous.json.gz",
+              "sha256": "7f18fe35880ecbe75347ebbf7b7823781d2db9ab3b08e8028110a73672e93a8f",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 4.3,
+              "wallSeconds": 4.340900146484375,
+              "windows": 43,
+              "checkedContentWindows": 43,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            },
+            {
+              "label": "lateViewer",
+              "file": "lateViewer-continuous.json.gz",
+              "sha256": "903429948f463f7cb2e18f1bf025bccf53624d89ceca56e83e99030e3e1e3316",
+              "passed": true,
+              "expectedSilent": false,
+              "transitionAllowanceMs": 0,
+              "seconds": 4.6,
+              "wallSeconds": 4.62189990234375,
+              "windows": 46,
+              "checkedContentWindows": 46,
+              "contentErrors": 0,
+              "gaps": 0,
+              "clippedSamples": 0,
+              "missingChannelFrames": 0,
+              "invalidSamples": 0,
+              "errors": []
+            }
+          ],
+          "nativeCoverageByPhase": [
+            {
+              "phase": "initial",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 0,
+              "uncoveredNativeTapFrames": 0,
+              "uncoveredBlockOffsetsMs": []
+            },
+            {
+              "phase": "childJoined",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 2,
+              "uncoveredNativeTapFrames": 865,
+              "uncoveredBlockOffsetsMs": [
+                174.9,
+                184.9
+              ]
+            },
+            {
+              "phase": "childRemoved",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 0,
+              "uncoveredNativeTapFrames": 0,
+              "uncoveredBlockOffsetsMs": []
+            },
+            {
+              "phase": "secondStreamSameProcess",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 3,
+              "uncoveredNativeTapFrames": 975,
+              "uncoveredBlockOffsetsMs": [
+                268.3,
+                284.3,
+                287.3
+              ]
+            },
+            {
+              "phase": "secondStreamRemoved",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 0,
+              "uncoveredNativeTapFrames": 0,
+              "uncoveredBlockOffsetsMs": []
+            },
+            {
+              "phase": "noStreams",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 0,
+              "uncoveredNativeTapFrames": 0,
+              "uncoveredBlockOffsetsMs": []
+            },
+            {
+              "phase": "streamRecreated",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 4,
+              "uncoveredNativeTapFrames": 1582,
+              "uncoveredBlockOffsetsMs": [
+                350.6,
+                361.6,
+                372.6,
+                381.6
+              ]
+            },
+            {
+              "phase": "outputMoved",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 2,
+              "uncoveredNativeTapFrames": 667,
+              "uncoveredBlockOffsetsMs": [
+                264.3,
+                273.3
+              ]
+            },
+            {
+              "phase": "lateViewer",
+              "receiverWindowsPassed": true,
+              "uncoveredNativeBlocks": 0,
+              "uncoveredNativeTapFrames": 0,
+              "uncoveredBlockOffsetsMs": []
+            }
+          ],
+          "scope": "Continuous 100 ms received-PCM summaries, with clock/integrity checks throughout. Only deliberate full-source pause/resume has 500 ms content settling. Passing tone windows does not exclude shorter audible dropouts or establish A/V timing."
+        },
+        "nativeTiming": {
+          "report": "native-qt/qa/reports/linux-audio-ready-apps/e11880e8-00ff-4437-88f8-b6009be1f377/linux-audio-timing.json",
+          "sha256": "ceae306f4fde41b325b052da611dc8b4b8087482c28b3e9ab7ffb5ee281a1753",
+          "scope": "Summarize bounded native selected-app audio timing metadata; no PCM analysis.\n\nPositive arrival age means a block's assigned first-sample time precedes its\narrival. Output age includes the intentional mixing hold plus scheduling. These\nobservations describe one workload and do not by themselves establish a safe\nhold for other devices, multiple streams, recovery, or CPU load.\n",
+          "traceComplete": true,
+          "traceSha256": "2a49ed0c5f7306c999a6ecbed865e0f5601e18233170835144a6421d0ce83c57",
+          "rows": 9148,
+          "inputBlocks": 4749,
+          "outputBlocks": 4399,
+          "observedSeconds": 44.0001154,
+          "inputArrivalAgeMs": {
+            "count": 4749,
+            "minimum": 7.2554,
+            "median": 9.2378,
+            "p95": 11.2485,
+            "p99": 11.9499,
+            "maximum": 12.7925
+          },
+          "inputArrivalAgeAfter2sMs": {
+            "count": 4548,
+            "minimum": 7.2554,
+            "median": 9.2377,
+            "p95": 11.2569,
+            "p99": 11.9503,
+            "maximum": 12.7925
+          },
+          "inputEstimatedAgeMs": {
+            "count": 4749,
+            "minimum": 6.814,
+            "median": 10.209,
+            "p95": 13.927,
+            "p99": 15.624,
+            "maximum": 16.685
+          },
+          "outputAgeMs": {
+            "count": 4399,
+            "minimum": 10.3716,
+            "median": 17.53,
+            "p95": 42.521,
+            "p99": 49.0259,
+            "maximum": 50.4612
+          },
+          "outputAgeAfter2sMs": {
+            "count": 4198,
+            "minimum": 10.3716,
+            "median": 17.5264,
+            "p95": 42.7855,
+            "p99": 49.1076,
+            "maximum": 50.4612
+          },
+          "clockAnchorsIncludingInitial": 5,
+          "untimedInputBlocks": 0,
+          "discardedInputBlocks": 0,
+          "discardedInputBlocksAfter2s": 0,
+          "uncoveredTapFramesAfter2s": 4089,
+          "outputBlocksYoungerThan29ms": 3885,
+          "earlyOutputBlocksWithIncompleteCoverage": 0,
+          "maximumActiveTaps": 2
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-ready-apps/e11880e8-00ff-4437-88f8-b6009be1f377/host-cleanup.json",
+          "sha256": "0bbbf90c6c2762704fd502d23d567b96b3d0422ff6aae7d1274d4004c5078b06",
+          "passed": true
+        }
+      },
+      {
+        "case": "apps-gui",
+        "report": "native-qt/qa/reports/linux-audio-ready-apps-gui/32ea0911-9712-4ae9-b6bc-ef1e8cd9166f/results.json",
+        "reportSha256": "d476134048136ede43f9d3d8ed8f36014c759e2d3ac7243b4b4631bf8a37145d",
+        "passed": true,
+        "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+        "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+        "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+        "caseStages": {
+          "selected-app": [
+            "video",
+            "audio",
+            "healthyAudioHasNoWarning",
+            "childJoined",
+            "childRemoved",
+            "secondStreamSameProcess",
+            "secondStreamRemoved",
+            "noStreams",
+            "streamRecreated",
+            "outputMoved",
+            "lateAudio",
+            "noAudioAfterAppExit",
+            "appLossWarningVisible",
+            "videoAfterAppExit",
+            "guiStopSettled",
+            "audioWarningClearedOnStop",
+            "videoWithStaleApp",
+            "staleAppNotReplaced",
+            "staleAppWarningVisible",
+            "afterExplicitReselection",
+            "audioWarningClearedOnExplicitRestart"
+          ]
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-ready-apps-gui/32ea0911-9712-4ae9-b6bc-ef1e8cd9166f/host-cleanup.json",
+          "sha256": "2ac89a146c407a755b28189cc6dad0f5182da72a25e617619bb36d64c1b052cc",
+          "passed": true
+        }
+      },
+      {
+        "case": "disabled",
+        "report": "native-qt/qa/reports/linux-audio-ready-disabled/ad6d5c22-071d-44c8-bd19-40fc1debd86b/results.json",
+        "reportSha256": "b6a4f27c7ddd58568828ffc05722828486ddc9fc24b60ddacbe9796b15a65929",
+        "passed": true,
+        "manifestSha256": "012bedba2480914ebeb98afe7b34a3a658030af6671453b047b5c89e66498a4d",
+        "executableSha256": "4992dba41abb1a4d7d564da47ff73f73b2d7b23c50418e7c63cdc56636e1b1f8",
+        "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+        "allSixCadenceAndPcmIntervalsPassed": true,
+        "analysis": {
+          "report": "native-qt/qa/reports/linux-audio-ready-disabled/ad6d5c22-071d-44c8-bd19-40fc1debd86b/av-analysis.json",
+          "sha256": "002b9c0e69508f49195cfb96a40ce1091768c5d189e6ada5a0ee235cc73dcfae",
+          "passed": true
+        },
+        "cleanup": {
+          "report": "native-qt/qa/reports/linux-audio-ready-disabled/ad6d5c22-071d-44c8-bd19-40fc1debd86b/host-cleanup.json",
+          "sha256": "dc6f5b69fa87b46a9d73d6204a3575fe4f38f777d39bca36a1c67b00aa9d59d0",
+          "passed": true
+        }
+      }
+    ],
+    "gates": {
+      "report": "native-qt/build-linux/linux-audio-ready-gates.json",
+      "sha256": "734d460bc90adc94b015bca7c405fecd374d8f9897dd2138e88cbf917654bcf5",
+      "classification": "Build and source/package-integrity gates only; not application testing."
+    },
+    "interpretation": "The bounded single-app trace emitted chunks at 14.274 ms median age, compared with 37.62245 ms in the preceding fixed-hold run. It emitted 3642 chunks younger than 29 ms with no incomplete early coverage, discarded blocks or uncovered active-tap frames after 2 s. All six cadence/PCM intervals pass, but desktop-reference skew still reaches 61.5 ms against the unchanged 50 ms limit; median 25.5 ms, minimum 17.5 ms. Browser-reference differences (-28..+17 ms) and the reference-path difference (median 43.5 ms) do not establish absolute calibration. The multi-stream CLI lifecycle passes all nine continuous receiver phases, but 100 ms tone windows conceal short coverage gaps: trace records 4,089 uncovered tap frames during joins/recreation/output move, including 667 frames (~13.9 ms) over two output-move chunks. There are zero incomplete early chunks in either native trace. Retain this as an open continuity issue, not glitch-free qualification.",
+    "ownedProcessesRemaining": [],
+    "remaining": "Investigate short monitor coverage gaps and transition discovery, using finer-grained PCM evidence and baseline comparisons. Startup A/V skew still fails; do not shift sample timestamps or relax limits. Final-package >=30-minute X11 and native Wayland runs, absolute software-reference calibration, mixed microphone/CPU-load/device-fault workflows, physical outputs/devices, and Windows/macOS runtime regression remain required."
   }
 }

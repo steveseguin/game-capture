@@ -17,6 +17,9 @@ const communicationsMix = opts['communications-mix'] === 'true';
 const audioWarnings = opts['audio-warnings'] === 'true';
 assert(opts['combined-audio-loss'] !== 'true' || (communications && communicationsMix), 'Combined loss requires communications mixing');
 const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
+const continuousApps=opts['continuous-app-audio']==='true';
+assert(!continuousApps||(matrix==='apps'&&!wayland),'Continuous app diagnostic currently requires explicit X11 CLI apps');
+const continuity=continuousApps?require('./linux-app-audio-continuity'):null;
 assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -31,6 +34,7 @@ for (const item of manifest.payload.files) {
 }
 const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(report, {recursive:true});
 for (const name of ['linux-audio-publish.js', 'macos-media-receiver.js', 'audio-settings-packaged-e2e.js', 'linux-ui-control.py', 'linux-app-audio-source.py', 'linux-portal-select.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
+if(continuousApps)for(const name of ['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : (communications ? 'explicit communications output and owned virtual microphone' : 'default system output and owned virtual microphone')}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.`,
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
@@ -38,9 +42,11 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
+if(continuousApps){result.traceAudio=true;result.diagnosticOnly=true;result.continuousHarnesses=Object.fromEntries(['linux-app-audio-continuity.js','macos-continuous-audio.js','linux-audio-timing-report.py'].map(n=>[n,sha(path.join(report,n))]));}
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 const pactl = (...args) => execFileSync('pactl', args, {encoding:'utf8', timeout:5000}).trim();
 const modules = [], tones = []; let sourceBrowser, viewerBrowser, publisher, log, control, discovery, appSource, portalSelector, keyboardServer, keyboardDirectory, portalOwner;
+let continuousPage=null;
 const startedAtSeconds = Math.floor(Date.now() / 1000);
 const checkPortalOwner = () => {
   const owner = execFileSync('gdbus', ['call', '--session', '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus', '--method', 'org.freedesktop.DBus.GetNameOwner', 'org.freedesktop.impl.portal.desktop.gnome'], {encoding:'utf8', timeout:5000, stdio:['ignore', 'pipe', 'pipe']}).trim();
@@ -129,6 +135,7 @@ function barriers() {
     const env = {...process.env};
     for (const key of Object.keys(env)) if (/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(key) || /^(GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN)$/.test(key)) delete env[key];
     env.XDG_STATE_HOME = path.join(report, 'private-state'); env.XDG_CONFIG_HOME = path.join(report, 'private-config'); env.XDG_DATA_HOME = path.join(report, 'private-data');
+    if(continuousApps){env.VERSUS_LINUX_AUDIO_TRACE=path.join(report,'linux-audio-timing.csv');result.audioTrace={path:'linux-audio-timing.csv',scope:'One selected-app lifecycle capture; opt-in timing metadata, no PCM in native trace.'};}
     if (wayland) { env.XDG_SESSION_TYPE = 'wayland'; env.WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || 'wayland-0'; env.QT_QPA_PLATFORM = 'wayland'; }
     else { env.XDG_SESSION_TYPE = 'x11'; delete env.WAYLAND_DISPLAY; env.QT_QPA_PLATFORM = 'xcb'; }
     if (gui) env.QT_LINUX_ACCESSIBILITY_ALWAYS_ON = '1';
@@ -302,8 +309,16 @@ function barriers() {
         await quit(); entry.passed = true; save(); continue;
       }
       const viewer = await receiver(viewerBrowser, stream, publisher);
+      if(continuousApps){entry.continuousObserver=await continuity.start(viewer);continuousPage=viewer;entry.continuous=[];}
+      const continuousSample=async(label,settings={})=>{
+        if(!continuousApps)return;
+        const batch=await continuity.drain(viewer),file=label+'-continuous.json.gz';
+        fs.writeFileSync(path.join(report,file),require('zlib').gzipSync(JSON.stringify(batch)),{flag:'wx'});
+        entry.continuous.push({label,file,sha256:sha(path.join(report,file)),...continuity.analyze(batch,settings)});save();
+      };
       entry.video = await observe(viewer, 3000); requireMoving(entry.video, fixture.name + ' video');
       entry.audio = await observeAudio(viewer); requireAudio(entry.audio, fixture.name, {microphone:fixture.mix, excluded:communications || apps || fixture.name === 'microphone'}); save();
+      await continuousSample('initial');
       const diagnostics = await api('/diagnostics'); entry.audioDiagnostics = diagnostics.audio;
       assert.equal(diagnostics.audio.source_mode, fixture.mode);
       if (communications) assert.equal(diagnostics.audio.communications_output_device, 'pulse-output:' + communicationsSink);
@@ -316,6 +331,7 @@ function barriers() {
           if (automaticApp) { entry[label + 'SourceClock'] = await source.evaluate(() => ({state:audioFixture.state, time:audioFixture.currentTime, baseLatency:audioFixture.baseLatency, outputLatency:audioFixture.outputLatency})); save(); }
           const observation = await observeAudio(viewer);
           entry[label] = observation; requireAudio(observation, label, {excluded:true, ...checks}); save();
+          await continuousSample(label,{silent:!!checks.silent,transition:label==='noStreams'||label==='streamRecreated'});
         };
         if (automaticApp) {
           await source.evaluate(() => audioFixture.suspend()); await sample('automaticAppSilent', {silent:true});
@@ -337,6 +353,8 @@ function barriers() {
         const late = await receiver(viewerBrowser, stream, publisher);
         entry.lateAudio = await observeAudio(late); requireAudio(entry.lateAudio, 'App late viewer', {excluded:true});
         await late.close();
+        await continuousSample('lateViewer');
+        if(continuousPage){await continuity.stop(continuousPage);continuousPage=null;}
         await appSource.stop();
         appSource = null; await sleep(1200);
         const beforeLoss = await api('/diagnostics'); await sleep(800); const afterLoss = await api('/diagnostics');
@@ -516,12 +534,14 @@ function barriers() {
         await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Recovered-output Stop failed');
         await quit();
       }
+      if(continuousApps)assert(entry.continuous.every(c=>c.passed),'Continuous received app audio failed; inspect every recorded phase');
       entry.passed = true; save();
     }
     for (const source of tones.filter(source => !source.retired)) { assert.equal(source.child.exitCode, null); assert(!source.error, source.error); }
     result.passed = true;
   } catch (error) { result.error = String(error.stack || error); process.exitCode = 1; }
   finally {
+    if(continuousPage)try{await continuity.stop(continuousPage);continuousPage=null;}catch(error){result.continuousCleanupError=String(error);result.passed=false;process.exitCode=1;}
     if (publisher) { try { await quit(); } catch { publisher?.kill(); if (publisher) await publisher.closed; } }
     if (portalSelector && portalSelector.exitCode === null) portalSelector.kill();
     if (appSource) { try { await appSource.stop(); } catch (error) { result.fixtureCleanupError = String(error); result.passed = false; process.exitCode = 1; } }
@@ -539,6 +559,13 @@ function barriers() {
         assert(!/status=\d+\/(?:SEGV|ABRT)|Failed with result 'core-dump'/.test(journal), 'Portal service crashed');
         if (portalOwner) { checkPortalOwner(); result.portalBackend.survived = true; }
       } catch (error) { result.portalAuditError = String(error); result.passed = false; process.exitCode = 1; }
+    }
+    if(continuousApps){
+      try{
+        const file=path.join(report,'linux-audio-timing.csv');result.audioTrace.sha256=sha(file);result.audioTrace.bytes=fs.statSync(file).size;save();
+        execFileSync('python3',[path.join(report,'linux-audio-timing-report.py'),report],{encoding:'utf8',timeout:30000});
+        const analysis=path.join(report,'linux-audio-timing.json');result.audioTrace.analysisSha256=sha(analysis);result.audioTrace.analysis=JSON.parse(fs.readFileSync(analysis));assert(result.audioTrace.analysis.traceComplete);
+      }catch(error){result.audioTraceError=String(error);result.passed=false;process.exitCode=1;}
     }
     save(); console.log(JSON.stringify({report, passed:result.passed, error:result.error, cleanupError:result.cleanupError}));
   }

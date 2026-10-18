@@ -274,10 +274,10 @@ struct WindowAudioCaptureCore::LinuxImpl {
         ProcessTimingTrace timingTrace;
         const int64_t epoch = webrtc::mediaTime100ns();
         int64_t outputFrame = 0;
-        // Allow two requested 10 ms monitor fragments of arrival margin. Keep
-        // original capture timestamps; a large hold delays audio transmission
-        // and makes receivers accumulate extra video buffering during startup.
-        constexpr int64_t delay100ns = 200000;
+        // Complete chunks can leave as soon as their sample times are due.
+        // Wait at most two requested 10 ms fragments for incomplete monitor
+        // coverage; preserve the same deadline and original sample timestamps.
+        constexpr int64_t maximumWait100ns = 200000;
         spdlog::info("[LinuxAudio] Capturing app PID {} generation {} and its children", root.pid, root.birth);
         while (running && server.connected()) {
             if (!query && Clock::now() >= refresh) {
@@ -382,9 +382,24 @@ struct WindowAudioCaptureCore::LinuxImpl {
                     }
                 }
             }
-            const auto dueFrame = (webrtc::mediaTime100ns() - epoch - delay100ns) * 48000 / 10000000;
-            if (dueFrame - outputFrame > 12000) { fail("Application audio could not keep up with the capture clock."); return; }
+            const auto now = webrtc::mediaTime100ns();
+            const auto dueFrame = (now - epoch) * 48000 / 10000000;
+            const auto deadlineFrame = (now - epoch - maximumWait100ns) * 48000 / 10000000;
+            if (deadlineFrame - outputFrame > 12000) { fail("Application audio could not keep up with the capture clock."); return; }
             while (running && outputFrame + 480 <= dueFrame) {
+                if (outputFrame + 480 > deadlineFrame) {
+                    bool complete = !taps.empty();
+                    for (const auto &[index, tap] : taps) {
+                        int64_t coveredUntil = outputFrame;
+                        for (const auto &block : tap->blocks) {
+                            if (block.first > coveredUntil) break;
+                            coveredUntil = std::max(coveredUntil, block.first + int64_t(block.samples.size() / 2));
+                            if (coveredUntil >= outputFrame + 480) break;
+                        }
+                        if (coveredUntil < outputFrame + 480) { complete = false; break; }
+                    }
+                    if (!complete) break;
+                }
                 StreamChunk chunk; chunk.samples.resize(960, 0.0f);
                 chunk.captureTime100ns = epoch + outputFrame * 10000000 / 48000;
                 int64_t coveredFrames = 0;
