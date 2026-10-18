@@ -49,7 +49,9 @@ checks compressed and uncompressed evidence hashes, recalculates cadence and
 delivery ratios, and checks PCM continuity across interval boundaries. It also
 requires the requested hardware/software path, artifact identity, duration,
 dimensions and post-endurance functional result. Barcode agreement does not
-prove equality with every source pixel. RSS observations do not prove absence
+prove equality with every source pixel. The summary records observed source
+capture and encoded dimensions separately: a requested 1280×720 output does
+not imply that the captured window had those dimensions. RSS observations do not prove absence
 of a memory leak, and whole-host CPU is not isolated encoder cost.
 
 Running the application and inspecting received behavior is testing. Syntax,

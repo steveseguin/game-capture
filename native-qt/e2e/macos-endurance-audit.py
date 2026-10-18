@@ -139,6 +139,16 @@ def main():
         require(all(s['video']['hardware_encoder'] == (case['encoder'] == 'videotoolbox')
                     and s['video']['active_codec'] == 'H.264' for s in samples),
                 'requested hardware/software H.264 path remains active')
+        dimensions = {}
+        for label, prefix in [('sourceCaptureDimensions', 'last_capture'),
+                              ('encodedDimensions', 'last_sent')]:
+            observed = sorted({(s['video'][prefix + '_width'], s['video'][prefix + '_height'])
+                               for s in samples})
+            require(all(w > 0 and h > 0 for w, h in observed), 'valid ' + label)
+            dimensions[label] = [dict(width=w, height=h) for w, h in observed]
+        require(dimensions['encodedDimensions'] == [dict(width=data['requested']['width'],
+                                                        height=data['requested']['height'])],
+                'publisher output dimensions remain requested size')
         recording = case['independentAudioRecording']
         audio_path = args.report.parent / recording['path']
         if audio_path.resolve().parent != args.report.parent.resolve():
@@ -148,6 +158,7 @@ def main():
                           continuousAudioWindows=audio_windows, identityWraps=wraps, failureCounts=counters,
                           continuousAudioSeconds=audio_frames / 48000,
                           receivedFps=describe([c['receivedFps'] for c in chunks]),
+                          **dimensions,
                           publisherRssMiB=describe([s['rssKiB']/1024 for s in samples]),
                           wholeHostCpuPercent=describe([s['system']['cpu_percent'] for s in samples]),
                           independentAudioRecording=recording, evidence=evidence))
