@@ -5204,13 +5204,25 @@ bool VideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet) {
 bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
                                              EncodedPacket &packet,
                                              int64_t sourceTimestamp) {
+    return encodeWithSourceTimestamp(frame, packet, sourceTimestamp, frame.timestamp);
+}
+
+bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
+                                             EncodedPacket &packet,
+                                             int64_t sourceTimestamp,
+                                             int64_t presentationTimestamp) {
     if (!initialized_) {
         return false;
     }
     if (sourceTimestamp == std::numeric_limits<int64_t>::min()) {
         return false;
     }
+#ifdef __APPLE__
+    bool ok = impl_->encode(frame, packet, sourceTimestamp, presentationTimestamp);
+#else
+    (void)presentationTimestamp;
     bool ok = impl_->encode(frame, packet, sourceTimestamp);
+#endif
     if (ok && config_.requireEveryFrameKeyframe) {
         protectedPacketContractHealthy_.store(
             packet.codec == VideoCodec::VP9 && packet.isKeyframe,

@@ -3,8 +3,8 @@
 #include "versus/video/video_encoder.h"
 
 namespace versus::platform {
-// Native implementation behind VideoEncoder's existing synchronous facade.
-// One bounded in-flight VT frame preserves identity without altering Windows.
+// Native implementation behind VideoEncoder's packet facade. VT waits for one
+// native frame; VFR x264 retains at most one accepted frame for its next input.
 class MacVideoEncoder {
 public:
     MacVideoEncoder();
@@ -12,7 +12,8 @@ public:
     bool initialize(const video::EncoderConfig &, bool handover = false);
     bool primeHandover(const video::CapturedFrame &) { return false; }
     void shutdown();
-    bool encode(const video::CapturedFrame &, video::EncodedPacket &, int64_t sourceTimestamp);
+    bool encode(const video::CapturedFrame &, video::EncodedPacket &, int64_t sourceTimestamp,
+                int64_t presentationTimestamp);
     void setBitrate(int kbps);
     void requestKeyframe();
     video::VideoCodec activeCodec() const;

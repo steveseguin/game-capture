@@ -110,7 +110,12 @@ struct MacVideoEncoder::State {
     std::atomic<VideoCodec> codec{VideoCodec::H264};
     std::atomic<EncodeFailureKind> failure{EncodeFailureKind::None};
     bool forceKeyframe = true;
-    int64_t softwareSequence = 0;
+    struct SoftwareInput {
+        int64_t encoderPts, capturePts, sourceIdentity;
+    };
+    std::deque<SoftwareInput> softwareInputs;
+    int64_t softwareClockOrigin = -1, softwareLastPresentation = -1;
+    bool softwareAbandoned = false;
     std::vector<uint8_t> i420;
     std::mutex mutex;
     std::condition_variable ready;
@@ -192,7 +197,7 @@ struct MacVideoEncoder::State {
         param.i_csp = X264_CSP_I420;
         param.i_fps_num = config.frameRate; param.i_fps_den = 1;
         param.i_timebase_num = 1; param.i_timebase_den = 10000000;
-        param.b_vfr_input = 0;
+        param.b_vfr_input = 1;
         param.i_bframe = 0;
         param.i_threads = static_cast<int>(std::clamp(std::thread::hardware_concurrency() / 2, 1u, 4u));
         param.i_keyint_max = keyframeInterval(config);
@@ -207,6 +212,9 @@ struct MacVideoEncoder::State {
         param.i_log_level = X264_LOG_WARNING;
         if (x264_param_apply_profile(&param, "baseline") < 0) return false;
         software = x264_encoder_open(&param);
+        if (software && x264_encoder_maximum_delayed_frames(software) != 1) {
+            x264_encoder_close(software); software = nullptr;
+        }
         return software != nullptr;
     }
 };
@@ -236,7 +244,8 @@ bool MacVideoEncoder::initialize(const EncoderConfig &config, bool handover) {
     state_->config = config;
     state_->codec = config.codec;
     state_->forceKeyframe = true;
-    state_->softwareSequence = 0;
+    state_->softwareClockOrigin = state_->softwareLastPresentation = -1;
+    state_->softwareAbandoned = false;
     state_->abandoned = false;
     if (config.preferredHardware != HardwareEncoder::None) state_->hardware = state_->startHardware();
     if (!state_->hardware && (!config.explicitEncoderSelection || config.preferredHardware == HardwareEncoder::None))
@@ -256,20 +265,35 @@ void MacVideoEncoder::shutdown() {
         CFRelease(state_->session); state_->session = nullptr;
     }
     if (state_->software) { x264_encoder_close(state_->software); state_->software = nullptr; }
+    // Live shutdown/reconfiguration discards the final buffered frame. It must
+    // never escape into the next encoder generation or acquire a new identity.
+    state_->softwareInputs.clear();
     state_->hardware = false;
     state_->output = {};
     state_->i420.clear();
 }
-bool MacVideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet, int64_t sourceTimestamp) {
+bool MacVideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet,
+                             int64_t sourceTimestamp, int64_t presentationTimestamp) {
     packet = {};
     if (!state_->initialized) return false;
     if (state_->ffmpeg) return state_->ffmpeg->encode(frame, packet, sourceTimestamp);
     const auto &config = state_->config;
     const size_t area = static_cast<size_t>(config.width) * config.height;
     if (state_->software) {
+        if (state_->softwareAbandoned || state_->softwareInputs.size() > 1) {
+            state_->failure = EncodeFailureKind::OutputStalled; return false;
+        }
+        // Rate control follows the live output clock, not capture timestamps
+        // (which repeat for static images) or caller-owned identity tokens.
+        if (presentationTimestamp < 0 || presentationTimestamp <= state_->softwareLastPresentation ||
+            (state_->softwareClockOrigin >= 0 &&
+             presentationTimestamp - state_->softwareClockOrigin > std::numeric_limits<int64_t>::max() / 2)) {
+            state_->failure = EncodeFailureKind::InvalidInput; return false;
+        }
         if (!toI420(frame, config.width, config.height, state_->i420)) {
             state_->failure = EncodeFailureKind::InvalidInput; return false;
         }
+        if (state_->softwareClockOrigin < 0) state_->softwareClockOrigin = presentationTimestamp;
         x264_picture_t input, output;
         x264_picture_init(&input); x264_picture_init(&output);
         input.img.i_csp = X264_CSP_I420; input.img.i_plane = 3;
@@ -278,16 +302,35 @@ bool MacVideoEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet, 
         input.img.plane[2] = input.img.plane[1] + area / 4;
         input.img.i_stride[0] = config.width;
         input.img.i_stride[1] = input.img.i_stride[2] = config.width / 2;
-        input.i_pts = state_->softwareSequence++;
+        input.i_pts = presentationTimestamp - state_->softwareClockOrigin;
         input.i_type = state_->forceKeyframe ? X264_TYPE_IDR : X264_TYPE_AUTO;
+        state_->softwareInputs.push_back({input.i_pts, frame.timestamp, sourceTimestamp});
         x264_nal_t *nals = nullptr; int count = 0;
         const int bytes = x264_encoder_encode(state_->software, &nals, &count, &input, &output);
-        if (bytes <= 0 || output.i_pts != input.i_pts) {
+        if (bytes < 0) {
+            state_->softwareAbandoned = true;
             state_->failure = EncodeFailureKind::OutputStalled; return false;
         }
+        state_->softwareLastPresentation = presentationTimestamp;
+        state_->forceKeyframe = false;
+        if (bytes == 0) {
+            if (state_->softwareInputs.size() != 1 || x264_encoder_delayed_frames(state_->software) != 1) {
+                state_->softwareAbandoned = true;
+                state_->failure = EncodeFailureKind::OutputStalled;
+            } else state_->failure = EncodeFailureKind::OutputPending;
+            return false;
+        }
+        if (count <= 0 || !nals || state_->softwareInputs.size() != 2 ||
+            output.i_pts != state_->softwareInputs.front().encoderPts ||
+            output.i_dts != output.i_pts || output.i_type == X264_TYPE_B || output.i_type == X264_TYPE_BREF) {
+            state_->softwareAbandoned = true;
+            state_->failure = EncodeFailureKind::OutputStalled; return false;
+        }
+        const auto completed = state_->softwareInputs.front();
+        state_->softwareInputs.pop_front();
         for (int i = 0; i < count; ++i) packet.data.insert(packet.data.end(), nals[i].p_payload, nals[i].p_payload + nals[i].i_payload);
-        packet.pts = packet.dts = frame.timestamp;
-        packet.sourceTimestamp = sourceTimestamp; packet.isKeyframe = output.b_keyframe;
+        packet.pts = packet.dts = completed.capturePts;
+        packet.sourceTimestamp = completed.sourceIdentity; packet.isKeyframe = output.b_keyframe;
         packet.codec = VideoCodec::H264;
         state_->forceKeyframe = false;
         state_->failure = EncodeFailureKind::None;

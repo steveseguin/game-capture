@@ -57,10 +57,18 @@ private slots:
         CapturedFrame frame;
         frame.width = 128; frame.height = 72; frame.stride = 128 * 4;
         frame.data.assign(frame.stride * frame.height, 128);
-        for (int i = 0; i < 76; ++i) {
+        const int delayed = !hardware && !av1 ? 1 : 0;
+        for (int i = 0; i < 76 + delayed; ++i) {
             frame.timestamp = 100000000LL + i * 10000000LL / 15;
             EncodedPacket packet;
-            QVERIFY(encoder.encode(frame, packet));
+            const bool ready = encoder.encode(frame, packet);
+            if (delayed && i == 0) {
+                QVERIFY(!ready); QVERIFY(packet.data.empty());
+                QCOMPARE(encoder.lastEncodeFailureKind(), EncodeFailureKind::OutputPending);
+                continue;
+            }
+            QVERIFY(ready);
+            QCOMPARE(packet.sourceTimestamp, int64_t(100000000LL + (i-delayed) * 10000000LL / 15));
             QCOMPARE(packet.pts, packet.dts);
             if (av1) {
                 QByteArray header(12, 0);
@@ -138,7 +146,8 @@ private slots:
         frame.width = 128; frame.height = 72; frame.stride = frame.width * 4;
         frame.data.resize(frame.stride * frame.height);
         std::vector<bool> keyframes;
-        for (int i = 0; i < 30; ++i) {
+        const int delayed = config.codec == VideoCodec::H264 && config.preferredHardware == HardwareEncoder::None ? 1 : 0;
+        for (int i = 0; i < 30 + delayed; ++i) {
             for (size_t pixel = 0; pixel < frame.data.size(); pixel += 4) {
                 frame.data[pixel] = i % 2 ? 240 : 0;
                 frame.data[pixel + 1] = 0;
@@ -150,9 +159,16 @@ private slots:
             frame.timestamp = 900000000000LL + i * 10000000LL / 30;
             if (i == 10) { encoder.setBitrate(600); encoder.requestKeyframe(); }
             EncodedPacket packet;
-            QVERIFY2(encoder.encodeWithSourceTimestamp(frame, packet, 10000 + i), qPrintable(QString("Frame %1 failed with kind %2").arg(i).arg(static_cast<int>(encoder.lastEncodeFailureKind()))));
-            QCOMPARE(packet.sourceTimestamp, int64_t(10000 + i));
-            QCOMPARE(packet.pts, frame.timestamp);
+            const bool ready = encoder.encodeWithSourceTimestamp(frame, packet, 10000 + i);
+            if (delayed && i == 0) {
+                QVERIFY(!ready); QVERIFY(packet.data.empty());
+                QCOMPARE(encoder.lastEncodeFailureKind(), EncodeFailureKind::OutputPending);
+                continue;
+            }
+            QVERIFY2(ready, qPrintable(QString("Frame %1 failed with kind %2").arg(i).arg(static_cast<int>(encoder.lastEncodeFailureKind()))));
+            const int completed = i - delayed;
+            QCOMPARE(packet.sourceTimestamp, int64_t(10000 + completed));
+            QCOMPARE(packet.pts, int64_t(900000000000LL + completed * 10000000LL / 30));
             QCOMPARE(packet.codec, config.codec);
             if (config.codec == VideoCodec::H264)
                 QCOMPARE(packet.isKeyframe, detail::h264AccessUnitIsKeyframe(packet.data, detail::H264BitstreamFormat::AnnexB));
@@ -168,7 +184,7 @@ private slots:
                 QCOMPARE(packet.isKeyframe, irap);
                 if (packet.isKeyframe) QVERIFY(vps && sps && pps);
             }
-            if (i == 0 || i == 10) QVERIFY(packet.isKeyframe);
+            if (completed == 0 || completed == 10) QVERIFY(packet.isKeyframe);
             keyframes.push_back(packet.isKeyframe);
             if (ivf) {
                 QByteArray header(12, 0); auto *p = reinterpret_cast<uchar *>(header.data());
@@ -205,7 +221,14 @@ private slots:
         QVERIFY(!encoder.isHardwareEncoderActive());
         QVERIFY(encoder.initialize(config));
         EncodedPacket restarted;
+        const int64_t firstRestartTimestamp = frame.timestamp;
+        if (delayed) {
+            QVERIFY(!encoder.encode(frame, restarted));
+            QCOMPARE(encoder.lastEncodeFailureKind(), EncodeFailureKind::OutputPending);
+            frame.timestamp += 10000000LL / 30;
+        }
         QVERIFY(encoder.encode(frame, restarted));
+        QCOMPARE(restarted.sourceTimestamp, firstRestartTimestamp);
         QVERIFY(restarted.isKeyframe);
         encoder.shutdown();
 
@@ -298,6 +321,51 @@ private slots:
         const auto pid=pidFile.readAll().trimmed().toLongLong(); QVERIFY(pid>1);
         QTRY_VERIFY_WITH_TIMEOUT(::kill(static_cast<pid_t>(pid),0)==-1 && errno==ESRCH,2000);
     }
+    void softwarePresentationClockAndIdentity() {
+        EncoderConfig config;
+        config.width = 128; config.height = 72; config.frameRate = 60;
+        config.bitrate = config.maxBitrate = 500;
+        config.preferredHardware = HardwareEncoder::None; config.explicitEncoderSelection = true;
+        VideoEncoder encoder;
+        CapturedFrame frame;
+        frame.width = 128; frame.height = 72; frame.stride = 512;
+        frame.timestamp = 777; // the same cached capture is presented repeatedly
+        frame.data.assign(frame.stride * frame.height, 128);
+        const int64_t offsets[] = {0,166667,500000,1000000,1166667,1500000,2000000,2166667,2500000};
+        for (int generation = 0; generation < 3; ++generation) {
+            QVERIFY(encoder.initialize(config));
+            const int64_t origin = generation == 1 ? 0 : 900000000000LL;
+            for (int i = 0; i < 9; ++i) {
+                const int64_t identity = -7000 - generation * 1000 - i * 103;
+                const int64_t presentation = origin + offsets[i];
+                if (i == 4) { encoder.setBitrate(700); encoder.requestKeyframe(); }
+                EncodedPacket packet;
+                const bool ready = encoder.encodeWithSourceTimestamp(frame, packet, identity, presentation);
+                if (i == 0) {
+                    QVERIFY(!ready); QVERIFY(packet.data.empty());
+                    QCOMPARE(encoder.lastEncodeFailureKind(), EncodeFailureKind::OutputPending);
+                } else {
+                    QVERIFY(ready);
+                    QCOMPARE(encoder.lastEncodeFailureKind(), EncodeFailureKind::None);
+                    QCOMPARE(packet.sourceTimestamp, int64_t(identity + 103));
+                    QCOMPARE(packet.pts, frame.timestamp); QCOMPARE(packet.dts, frame.timestamp);
+                    if (i == 1 || i == 5) QVERIFY(packet.isKeyframe);
+                }
+                if (i == 2) {
+                    // Rejected inputs must not consume or relabel the pending frame.
+                    for (const int64_t invalid : {int64_t(-1),presentation,presentation-1,
+                             origin + std::numeric_limits<int64_t>::max()/2 + 1}) {
+                        QVERIFY(!encoder.encodeWithSourceTimestamp(frame, packet, 123456, invalid));
+                        QVERIFY(packet.data.empty());
+                        QCOMPARE(encoder.lastEncodeFailureKind(), EncodeFailureKind::InvalidInput);
+                    }
+                }
+            }
+            // initialize() above must discard the old generation's pending tail.
+        }
+        encoder.shutdown();
+    }
+
     void strictSelectionAndInvalidInput() {
         VideoEncoder encoder;
         EncoderConfig config;

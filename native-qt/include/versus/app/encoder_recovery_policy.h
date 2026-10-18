@@ -18,6 +18,7 @@ inline SoftwareEncoderFailureDisposition classifySoftwareEncoderFailure(
     switch (failureKind) {
         case video::EncodeFailureKind::Timeout:
         case video::EncodeFailureKind::Backpressure:
+        case video::EncodeFailureKind::OutputPending:
             return SoftwareEncoderFailureDisposition::Transient;
         case video::EncodeFailureKind::OutputStalled:
             return SoftwareEncoderFailureDisposition::ImmediateFallback;

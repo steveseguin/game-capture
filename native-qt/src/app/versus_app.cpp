@@ -6543,6 +6543,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     video::EncodedPacket hqPacket;
     video::EncodedPacket lqPacket;
     bool haveHqPacket = false;
+    bool awaitingEncoderOutput = false;
     bool haveLqPacket = false;
 
     const bool alphaWorkflowForFrame = !hqPeers.empty() && usesVp9AlphaTrack(videoConfig_);
@@ -6660,7 +6661,8 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
         const bool encodeOk = videoEncoder_.encodeWithSourceTimestamp(
             frame,
             hqPacket,
-            encoderSourceTimestamp);
+            encoderSourceTimestamp,
+            frameOutputTimestamp);
         hqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::steady_clock::now() - encodeStart)
                                  .count();
@@ -6668,7 +6670,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
         if (!encodeOk && encodeFailureKind == video::EncodeFailureKind::None) {
             encodeFailureKind = video::EncodeFailureKind::Timeout;
         }
-        if (!encodeOk) {
+        const bool outputPending = !encodeOk && encodeFailureKind == video::EncodeFailureKind::OutputPending;
+        awaitingEncoderOutput |= outputPending;
+        if (!encodeOk && !outputPending) {
             if (encodeFailureKind == video::EncodeFailureKind::Timeout ||
                 encodeFailureKind == video::EncodeFailureKind::Backpressure) {
                 videoEncodeTimeouts_.fetch_add(1, std::memory_order_relaxed);
@@ -6678,7 +6682,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
             }
         }
 
-        if (hardwareEncodingBefore && !externalFfmpegEncoder) {
+        if (hardwareEncodingBefore && !externalFfmpegEncoder && !outputPending) {
             hardwareEncodeSampleCount_++;
             if (!encodeOk) {
                 hardwareEncodeFailCount_++;
@@ -6921,7 +6925,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 videoEncoder_.requestKeyframe();
                 pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             }
-        } else {
+        } else if (!outputPending) {
             const SoftwareEncoderFailureDisposition softwareFailureDisposition =
                 classifySoftwareEncoderFailure(encodeFailureKind);
             const bool transientExternalFailure =
@@ -6989,6 +6993,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
             if (videoEncoderLq_.encodeWithSourceTimestamp(
                     frame,
                     lqPacket,
+                    frameOutputTimestamp,
                     frameOutputTimestamp)) {
                 lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         std::chrono::steady_clock::now() - lqEncodeStart)
@@ -7012,9 +7017,13 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         std::chrono::steady_clock::now() - lqEncodeStart)
                                         .count();
-                videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
-                if (requestKeyframe) {
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                if (videoEncoderLq_.lastEncodeFailureKind() == video::EncodeFailureKind::OutputPending) {
+                    awaitingEncoderOutput = true;
+                } else {
+                    videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                    if (requestKeyframe) {
+                        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    }
                 }
             }
         }
@@ -7033,7 +7042,9 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     }
 
     if (!haveHqPacket && !haveLqPacket && completedAlphaPairs.empty()) {
-        return false;
+        // Accepted input is successful progress, not a send failure. Frame/byte
+        // counters below still advance only when a packet is actually sent.
+        return awaitingEncoderOutput;
     }
 
     bool sentAny = false;

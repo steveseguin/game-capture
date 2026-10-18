@@ -45,7 +45,10 @@ enum class EncodeFailureKind {
     ProcessExited,
     IoFailure,
     InvalidInput,
-    Unsupported
+    Unsupported,
+    // Input was accepted, but the bounded pipeline needs its next input before
+    // returning a packet. This is neither a timeout nor an encode failure.
+    OutputPending
 };
 
 struct EncoderConfig {
@@ -208,6 +211,13 @@ class VideoEncoder {
     bool encodeWithSourceTimestamp(const CapturedFrame &frame,
                                    EncodedPacket &packet,
                                    int64_t sourceTimestamp);
+    // A live output can repeat one captured image at several presentation
+    // times. Supply that output clock separately from the opaque source token
+    // and the capture timestamp. Backends with private CFR clocks retain them.
+    bool encodeWithSourceTimestamp(const CapturedFrame &frame,
+                                   EncodedPacket &packet,
+                                   int64_t sourceTimestamp,
+                                   int64_t presentationTimestamp);
     void setBitrate(int kbps);
     void requestKeyframe();
     bool guaranteesEveryFrameKeyframe() const;
