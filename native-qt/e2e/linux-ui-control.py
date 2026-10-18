@@ -50,7 +50,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate"])
+    parser.add_argument("command", choices=["dump", "press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -99,6 +99,14 @@ def main():
                            "bounds": geometry(node),
                            "states": [str(state.value_nick) for state in node.get_state_set().get_states()]}
                           for node in nodes(app)], indent=2))
+    elif args.command == "close-window":
+        frame = find("frame", "Game Capture - Powered by VDO.Ninja")
+        assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), "Owned application is not active"
+        if os.environ.get("QT_QPA_PLATFORM") == "xcb":
+            subprocess.run(['xdotool', 'key', '--clearmodifiers', 'alt+F4'], check=True, timeout=3)
+        else:
+            assert os.environ.get('GC_QA_KEYBOARD_SOCKET'), 'Owned keyboard is required'
+            subprocess.run([sys.executable, str(Path(__file__).with_name('linux-portal-select.py')), '--keys', 'ALT_F4'], check=True, timeout=8)
     elif args.command == "activate":
         frame = find("frame", "Game Capture - Powered by VDO.Ninja")
         if not frame.get_state_set().contains(Atspi.StateType.ACTIVE):
@@ -176,12 +184,30 @@ def main():
         time.sleep(.25); pump()
         if not any(node.get_role_name() == "combo box" and node.get_name() == selected for node in nodes(app)):
             raise RuntimeError("Combo did not select the requested value; combo names=" + repr([node.get_name() for node in nodes(app) if node.get_role_name() == "combo box"]) + "; rows=" + repr([node.get_name() for node in rows]))
-    elif args.command in ["text", "read-text", "reveal"]:
+    elif args.command in ["text", "read-text", "reveal", "paste", "copy"]:
         matches = [node for node in nodes(app) if node.get_role_name() in ["text", "password text"] and node.get_name() == args.name]
         if len(matches) != 1:
             raise RuntimeError("Text control is absent or ambiguous")
         field = matches[0]
-        if args.command == "reveal":
+        if args.command in ["paste", "copy"]:
+            assert field.get_state_set().contains(Atspi.StateType.SENSITIVE), "Paste target is disabled"
+            keyboard = Path(__file__).with_name('linux-portal-select.py')
+            def send(values):
+                frame = find("frame", "Game Capture - Powered by VDO.Ninja")
+                assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), "Owned application is not active"
+                subprocess.run([sys.executable, str(keyboard), '--keys', *values], check=True, timeout=8)
+                pump()
+            assert os.environ.get('GC_QA_KEYBOARD_SOCKET'), 'Owned keyboard is required'
+            for _ in range(80):
+                if field.get_state_set().contains(Atspi.StateType.FOCUSED):
+                    break
+                send(['TAB'])
+            else:
+                raise RuntimeError('Could not focus the owned paste target')
+            send(['CTRL_A', 'CTRL_C' if args.command == 'copy' else 'CTRL_V'])
+            time.sleep(.5); pump()
+            print(json.dumps(Atspi.Text.get_text(field.get_text_iface(), 0, -1)))
+        elif args.command == "reveal":
             buttons = [node for node in nodes(field.get_parent()) if node.get_role_name() in ["push button", "toggle button", "check box"] and node.get_name() in ["Show", "Hide"]]
             if len(buttons) != 1:
                 raise RuntimeError("Expected one credential reveal button in " + field.get_parent().get_role_name() + "; found " + str(len(buttons)))

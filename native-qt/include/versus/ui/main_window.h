@@ -79,6 +79,11 @@ class MainWindow : public QMainWindow {
     void applyDarkTheme();
     void updateStatus(const QString &text, const QString &statusClass);
     void updateGoLiveButton();
+    void copyShareLink();
+#ifdef __linux__
+    void finishPendingShareLinkCopy();
+    QString pendingShareLinkCopy_;
+#endif
     void refreshWindowList();
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
 #ifdef __linux__

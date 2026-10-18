@@ -6,6 +6,8 @@ const assert=require('assert/strict'),{spawn,execFileSync}=require('child_proces
 const {chromium}=require('playwright');
 const {receiver,observe,requireMoving,waitFor,sleep}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
+const noTray=opts['no-tray']==='true';assert(!noTray||(opts.gui==='true'&&opts.backend==='x11'),'No-tray fixture requires private X11 GUI');
+const tray=opts.tray==='true';assert(!tray||(opts.gui==='true'&&opts.backend==='wayland'),'Tray fixture requires native GNOME Wayland GUI');
 const preview=opts.preview==='true';assert(!preview||opts.gui==='true','Preview requires GUI');
 const gui=opts.gui==='true',external=opts.external==='true',width=gui?960:640,height=gui?540:360;
 const rateControl=opts['rate-control']==='true',portalCancel=opts['portal-cancel']==='true',pendingQuit=opts['pending-quit']==='true',pendingStop=opts['pending-stop']==='true',sourceLoss=opts['source-loss']==='true';
@@ -40,6 +42,7 @@ assert(fs.existsSync(path.join(bundle,'usr/share/applications/game-capture.deskt
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 if(preview)fs.copyFileSync(path.join(__dirname,'linux-preview-observer.py'),path.join(report,'preview-observer.py'));
+if(tray)fs.copyFileSync(path.join(__dirname,'linux-tray-control.py'),path.join(report,'tray-control.py'));
 fs.copyFileSync(path.join(__dirname,'linux-portal-select.py'),path.join(report,'portal-selector.py'));
 fs.copyFileSync(path.join(__dirname,'macos-media-receiver.js'),path.join(report,'receiver.js'));
 fs.copyFileSync(path.join(__dirname,'linux-ui-control.py'),path.join(report,'linux-ui-control.py'));
@@ -51,7 +54,8 @@ const result={scope:`Extracted Ubuntu DEB, ${gui?'actual Qt GUI':'CLI'} ${extern
   guiHelperSha256:sha(path.join(__dirname,'linux-ui-control.py')),
   host:{platform:os.platform(),release:os.release(),arch:os.arch(),logicalCpus:os.cpus().length},
   previewObserverSha256:preview?sha(path.join(__dirname,'linux-preview-observer.py')):null,
-  requested:{preview,backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,portalCancel,pendingQuit,pendingStop,sourceLoss,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
+  trayHelperSha256:tray?sha(path.join(__dirname,'linux-tray-control.py')):null,
+  requested:{noTray,tray,trayCopyFocus:opts['tray-copy-focus']==='true',trayCopy:opts['tray-copy']||'tray',preview,backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,portalCancel,pendingQuit,pendingStop,sourceLoss,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
 let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector,keyboardServer,keyboardDirectory,portalOwner;
 const startedAtSeconds=Math.floor(Date.now()/1000);
 const portalBackend='org.freedesktop.impl.portal.desktop.gnome';
@@ -118,6 +122,14 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during startup');assert(!result.launchError,result.launchError);return fs.existsSync(discovery);},15000,'No control discovery');
   control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
   const ui=(...arguments_)=>execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),...arguments_],{env,encoding:'utf8',timeout:opts.backend==='wayland'?60000:10000,stdio:['ignore','pipe','pipe']});
+  let trayActionIndex=0;
+  const trayUi = (...arguments_) => {
+    const shot=arguments_[0]==='action'?path.join(report,'tray-'+(++trayActionIndex)+'-'+arguments_[1].replaceAll(' ','-')+'.png'):null;
+    const observation=JSON.parse(execFileSync('python3',[path.join(__dirname,'linux-tray-control.py'),String(publisher.pid),...arguments_,...(shot?['--screenshot='+shot]:[])],{env,encoding:'utf8',timeout:30000,stdio:['ignore','pipe','pipe']}));
+    if(shot)observation.screenshot={file:path.basename(shot),sha256:sha(shot)};
+    return observation;
+  };
+  const mainVisible = () => JSON.parse(ui('dump')).some(row=>row.role==='frame'&&row.name==='Game Capture - Powered by VDO.Ninja'&&row.states.includes('visible'));
   const previewShot = (label, expected) => {
     ui('activate');
     const output=path.join(report,'preview-'+label+'.png');
@@ -134,13 +146,16 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   };
   if(gui){
     await waitFor(()=>{try{return JSON.parse(ui('dump')).some(r=>['Go live','Go live unavailable'].includes(r.name));}catch{return false;}},20000,'GUI not accessible');
+    if(noTray){const option=JSON.parse(ui('dump')).find(row=>row.name==='Minimize To Tray On Close');assert(option&&!option.states.includes('sensitive')&&!option.states.includes('checked'),'No-host tray preference is enabled');result.noTray={preferenceDisabled:true};}
+    if(tray){result.tray={idle:trayUi('snapshot')};assert.match(result.tray.idle.tooltip,/Idle/);save();}
     ui('press','Show advanced settings');
     ui('choose','Auto (Hardware, then Software)','Software (x264 / VP9 / AV1 / HEVC)');
     ui('choose','1280x720','960x540');ui('choose','60','30');
     if(codec!=='h264')ui('choose-prefix','H.264 (Compatibility)',codec==='vp9'?'VP9 (':'AV1 (');
     ui('choose','Selected window/app audio','No audio');
-    if(preview&&!JSON.parse(ui('dump')).some(row=>row.role==='combo box'&&row.name==='No microphone'))ui('choose','Linux default microphone/input','No microphone');
+    if((preview||tray||noTray)&&!JSON.parse(ui('dump')).some(row=>row.role==='combo box'&&row.name==='No microphone'))ui('choose','Linux default microphone/input','No microphone');
     ui('source',opts.backend==='wayland'?'Choose a window':title);ui('text','Stream ID or VDO.Ninja URL',stream);ui('text','Stream password','false');
+    if(tray){assert.equal(JSON.parse(ui('copy','Stream ID or VDO.Ninja URL')),stream);assert.equal(JSON.parse(ui('paste','Stream ID or VDO.Ninja URL')),stream);result.tray.fixtureCopyPastePassed=true;}
     if(external){ui('text','FFmpeg Path',helperPath);ui('text','FFmpeg Options','-threads 2');}
     fs.writeFileSync(path.join(report,'ui-before-live.json'),ui('dump'));
     if(pendingQuit||pendingStop){
@@ -264,6 +279,49 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   const late=await receiver(viewerBrowser,stream,publisher);result.phases.late=await observe(late,3000);requireMoving(result.phases.late,'Late Linux receiver',expectedCodec);save();
   if(external){result.helpersBeforeStop=helperProcesses();assert.equal(result.helpersBeforeStop.length,1);}
   await checkPreview('resized');
+  if(noTray){
+    ui('activate');ui('close-window');await waitFor(()=>publisher.exitCode!==null,10000,'Window close stranded the publisher without a tray');await publisher.closed;
+    assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));result.noTray.closeExitsWhileLive=true;result.passed=true;save();return;
+  }
+  if(tray){
+    result.tray.live=trayUi('snapshot');assert.match(result.tray.live.tooltip,/LIVE/);
+    assert.notEqual(result.tray.idle.iconSha256,result.tray.live.iconSha256,'Live tray icon did not change');
+    const share=JSON.parse(ui('dump')).filter(row=>row.role==='label'&&row.name.startsWith('https://vdo.ninja/?view='+stream));assert.equal(share.length,1);
+    ui('activate');ui('close-window');await waitFor(()=>!mainVisible(),6000,'Close did not hide the window to tray');
+    assert((await api('/diagnostics')).app.live);result.tray.closeHidesWhileLive=true;
+    result.phases.trayHidden=await observe(viewer,4000);requireMoving(result.phases.trayHidden,'Publishing while closed to tray',expectedCodec);save();
+    if(opts['tray-copy']==='window'){
+      result.tray.show=trayUi('action','Show');await waitFor(()=>mainVisible(),6000,'Tray Show did not reopen');ui('activate');ui('press','Copy Link');result.tray.copy={action:'Window Copy Link button'};
+    }else{
+      result.tray.copy=trayUi('action','Copy Share Link');
+      if(opts['tray-copy-focus']==='true'){
+        await waitFor(()=>{const rows=JSON.parse(ui('dump'));return rows.some(row=>row.role==='frame'&&row.name==='Game Capture - Powered by VDO.Ninja'&&row.states.includes('active'))&&rows.some(row=>row.role==='label'&&row.name==='Share link copied to clipboard');},6000,'Tray copy did not restore focus and complete');
+        result.tray.copyRestoredFocusAndCompleted=true;
+      }else{
+        assert(!mainVisible(),'Copy link unexpectedly reopened the window');
+        result.tray.show=trayUi('action','Show');await waitFor(()=>mainVisible(),6000,'Tray Show did not reopen the window');
+      }
+    }
+    result.tray.hide=trayUi('action','Hide');await waitFor(()=>!mainVisible(),6000,'Tray Hide did not hide the window');
+    result.phases.trayHiddenAgain=await observe(viewer,3000);requireMoving(result.phases.trayHiddenAgain,'Publishing after tray Hide',expectedCodec);
+    trayUi('action','Show');await waitFor(()=>mainVisible(),6000,'Second Show did not reopen the window');
+    result.tray.stop=trayUi('action','Stop');await waitFor(async()=>{const d=await api('/diagnostics');return !d.app.live&&!d.app.capturing;},10000,'Tray Stop did not stop capture');
+    const before=await api('/diagnostics');await sleep(600);assert.equal(before.video.frames_captured,(await api('/diagnostics')).video.frames_captured);
+    result.tray.stopped=trayUi('snapshot');assert.match(result.tray.stopped.tooltip,/Idle/);assert.equal(result.tray.stopped.iconSha256,result.tray.idle.iconSha256);
+    ui('activate');const pasted=JSON.parse(ui('paste','Stream ID or VDO.Ninja URL'));assert(pasted===share[0].name,'Copy/paste differs from the shown share link');
+    result.tray.shareLinkRoundTripPassed=true;
+    trayUi('action','Hide');await waitFor(()=>!mainVisible(),6000,'Window did not hide before tray restart');
+    selectPortal('portal-tray-restart');result.tray.restart=trayUi('action','Go Live');
+    await waitFor(async()=> (await api('/diagnostics')).app.live,30000,'Tray Go Live did not restart publishing');
+    await waitFor(()=>portalSelector.exitCode!==null,10000,'Tray restart portal selection did not finish');assert.equal(portalSelector.exitCode,0);
+    assert(JSON.parse(fs.readFileSync(path.join(report,'portal-tray-restart.json'))).passed);
+    const restarted=await receiver(viewerBrowser,stream,publisher);result.phases.trayRestarted=await observe(restarted,4000);requireMoving(result.phases.trayRestarted,'Tray Go Live after pasted share URL',expectedCodec);
+    assert(!mainVisible(),'Tray restart unexpectedly reopened the window');result.tray.restartWhileHiddenPassed=true;
+    result.tray.quit=trayUi('action','Quit');await waitFor(()=>publisher.exitCode!==null,10000,'Tray Quit did not retire the live publisher');await publisher.closed;
+    assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));
+    const owner=execFileSync('gdbus',['call','--session','--dest','org.freedesktop.DBus','--object-path','/org/freedesktop/DBus','--method','org.freedesktop.DBus.NameHasOwner',result.tray.live.service],{encoding:'utf8',timeout:5000});assert(owner.includes('false'),'Tray registration survived app exit');
+    result.tray.quitWhileHiddenLivePassed=true;result.passed=true;save();return;
+  }
   if(gui){
     let replacementMarkup;
     if(sourceLoss){

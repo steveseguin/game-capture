@@ -17,7 +17,7 @@ import sys
 import time
 
 
-ALLOWED_KEYS = {"HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB"}
+ALLOWED_KEYS = {"HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
 
 
 def emit_keys(device, keys):
@@ -25,12 +25,15 @@ def emit_keys(device, keys):
     if not isinstance(keys, list) or len(keys) > 64 or any(key not in ALLOWED_KEYS for key in keys):
         raise RuntimeError("Unexpected QA keys")
     for key in keys:
-        if key == "ALT_TAB":
-            device.write(ec.EV_KEY, ec.KEY_LEFTALT, 1)
-            device.write(ec.EV_KEY, ec.KEY_TAB, 1); device.syn()
+        chords = {"ALT_TAB": (ec.KEY_LEFTALT, ec.KEY_TAB), "ALT_F4": (ec.KEY_LEFTALT, ec.KEY_F4),
+                  "CTRL_A": (ec.KEY_LEFTCTRL, ec.KEY_A), "CTRL_V": (ec.KEY_LEFTCTRL, ec.KEY_V), "CTRL_C": (ec.KEY_LEFTCTRL, ec.KEY_C)}
+        if key in chords:
+            modifier, button = chords[key]
+            device.write(ec.EV_KEY, modifier, 1)
+            device.write(ec.EV_KEY, button, 1); device.syn()
             time.sleep(.05)
-            device.write(ec.EV_KEY, ec.KEY_TAB, 0)
-            device.write(ec.EV_KEY, ec.KEY_LEFTALT, 0); device.syn()
+            device.write(ec.EV_KEY, button, 0)
+            device.write(ec.EV_KEY, modifier, 0); device.syn()
             time.sleep(.25)
             continue
         code = getattr(ec, "KEY_" + key)
@@ -128,7 +131,7 @@ def main():
         root = Atspi.get_desktop(0)
         for index in range(root.get_child_count()):
             app = root.get_child_at_index(index)
-            if app.get_name() == "xdg-desktop-portal-gnome":
+            if app is not None and app.get_name() == "xdg-desktop-portal-gnome":
                 for dialog in nodes(app):
                     if dialog.get_role_name() == "frame" and dialog.get_name() == "Share Screen":
                         return list(nodes(dialog))

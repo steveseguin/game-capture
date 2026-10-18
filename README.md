@@ -38,6 +38,8 @@ This is an early port with incomplete feature parity. Minimum-OS and clean-machi
 
 The Linux port targets Ubuntu 24.04 on x86-64 and is still under development. It uses the shared application core with Linux window, camera, audio and encoder backends. Local development DEBs and their exact workflow evidence are tracked in the [Linux parity ledger](native-qt/qa/linux-parity.json); there is no qualified Linux release yet. Hardware encoding, full output/recovery coverage, clean installation and Windows/macOS regression qualification remain open.
 
+When your desktop provides a system tray, closing the window keeps streaming. Use the tray’s **Show** action to reopen it, or **Quit** to stop and exit. On Wayland, the tray’s **Copy Share Link** action brings the window forward and completes the copy once it gains focus.
+
 On Wayland, select **Go live** and choose a window in the desktop permission dialog to start its preview. The live preview uses the same capture session as publishing and clears when streaming stops. X11 also shows a selected-window thumbnail before streaming.
 
 For application audio, choose **Selected window/app audio**. X11 can use the selected window's process automatically; on Wayland, choose a running **Audio app** explicitly. **Refresh audio apps** updates the list after an app starts playing sound. The selection covers that process and its children, and is cleared when Game Capture is relaunched. If the app closes, select its new instance before restarting the stream. The CLI equivalent is `--audio-source=selected-window --audio-process=<PID>`; omit `--audio-process` for automatic X11 selection. System audio and microphone/input selection remain separate choices.

@@ -28,6 +28,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--isolated', type=Path)
+    parser.add_argument('--window-manager', action='store_true')
     parser.add_argument('command', nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
@@ -48,7 +49,7 @@ def main():
             env[name] = str(directory)
         env.update(QT_QPA_PLATFORM='xcb', XDG_SESSION_TYPE='x11', QT_LINUX_ACCESSIBILITY_ALWAYS_ON='1', GC_QA_PRIVATE_DESKTOP=str(report))
         print('Private desktop:', report, flush=True)
-        return subprocess.call(['dbus-run-session', '--', sys.executable, str(Path(__file__).resolve()), '--reports=' + str(args.reports), '--isolated=' + str(report), '--', *command], env=env)
+        return subprocess.call(['dbus-run-session', '--', sys.executable, str(Path(__file__).resolve()), '--reports=' + str(args.reports), '--isolated=' + str(report), *(['--window-manager'] if args.window_manager else []), '--', *command], env=env)
 
     import dbus
     import gi
@@ -62,7 +63,8 @@ def main():
     accessibility = bus.get_object('org.a11y.Bus', '/org/a11y/bus')
     dbus.Interface(accessibility, 'org.freedesktop.DBus.Properties').Set('org.a11y.Status', 'IsEnabled', dbus.Boolean(True))
     dbus.Interface(accessibility, 'org.a11y.Bus').GetAddress()
-    child = keyring = None
+    child = keyring = window_manager = None
+    window_manager_log = None
     result = {'scope': 'Owned isolated desktop/keyring fixture; application evidence is in child workflow reports.', 'harnessSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), 'passed': False}
     try:
         with tempfile.TemporaryDirectory(prefix='gc-gui-keyring-') as control, (report / 'private-keyring.log').open('wb') as log:
@@ -74,6 +76,16 @@ def main():
             service = Secret.Service.get_sync(Secret.ServiceFlags.OPEN_SESSION, None)
             collection = Secret.Collection.for_alias_sync(service, 'default', Secret.CollectionFlags.NONE, None)
             assert collection and not collection.get_locked()
+            if args.window_manager:
+                window_manager_log = (report / 'private-window-manager.log').open('wb')
+                window_manager = subprocess.Popen(['xfwm4', '--compositor=off', '--sm-client-disable'], stdout=window_manager_log, stderr=window_manager_log)
+                def manager_ready():
+                    assert window_manager.poll() is None, 'Owned window manager exited'
+                    value = subprocess.check_output(['xprop', '-root', '_NET_SUPPORTING_WM_CHECK'], text=True, timeout=3)
+                    return 'window id #' in value and not value.strip().endswith('0x0')
+                wait(manager_ready)
+                assert not bus.name_has_owner('org.kde.StatusNotifierWatcher'), 'Private desktop unexpectedly has a tray host'
+                result['windowManager'] = 'xfwm4; private X11 display/session bus, no tray host'
             child = subprocess.Popen(command, start_new_session=True)
             result['exitCode'] = child.wait()
             result['passed'] = result['exitCode'] == 0
@@ -87,6 +99,11 @@ def main():
             except subprocess.TimeoutExpired:
                 os.killpg(child.pid, signal.SIGKILL)
                 child.wait(timeout=5)
+        if window_manager and window_manager.poll() is None:
+            window_manager.terminate()
+            window_manager.wait(timeout=5)
+        if window_manager_log:
+            window_manager_log.close()
         if keyring and keyring.poll() is None:
             keyring.terminate()
             keyring.wait(timeout=5)

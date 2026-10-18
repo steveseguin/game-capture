@@ -749,6 +749,13 @@ MainWindow::MainWindow(
 #endif
     }
 
+#ifdef __linux__
+    connect(qApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+        if (state == Qt::ApplicationActive)
+            QTimer::singleShot(0, this, &MainWindow::finishPendingShareLinkCopy);
+    });
+#endif
+
     // Stats timer (update every second when live)
     statsTimer_ = new QTimer(this);
     statsTimer_->setInterval(1000);
@@ -1510,17 +1517,7 @@ void MainWindow::setupMenuBar() {
 
     copyShareLinkAction_ = fileMenu->addAction("Copy Share Link");
     copyShareLinkAction_->setEnabled(false);
-    connect(copyShareLinkAction_, &QAction::triggered, this, [this]() {
-        if (!core_) {
-            return;
-        }
-        const QString shareLink = QString::fromStdString(core_->getShareLink());
-        if (shareLink.isEmpty()) {
-            return;
-        }
-        QGuiApplication::clipboard()->setText(shareLink);
-        updateStatus("Share link copied to clipboard", "ready");
-    });
+    connect(copyShareLinkAction_, &QAction::triggered, this, &MainWindow::copyShareLink);
 
     openShareLinkAction_ = fileMenu->addAction("Open Share Link");
     openShareLinkAction_->setEnabled(false);
@@ -2719,17 +2716,7 @@ void MainWindow::setupTrayIcon() {
 
     copyShareLinkTrayAction_ = trayMenu_->addAction("Copy Share Link");
     copyShareLinkTrayAction_->setEnabled(false);
-    connect(copyShareLinkTrayAction_, &QAction::triggered, this, [this]() {
-        if (!core_) {
-            return;
-        }
-        const QString shareLink = QString::fromStdString(core_->getShareLink());
-        if (shareLink.isEmpty()) {
-            return;
-        }
-        QGuiApplication::clipboard()->setText(shareLink);
-        updateStatus("Share link copied to clipboard", "ready");
-    });
+    connect(copyShareLinkTrayAction_, &QAction::triggered, this, &MainWindow::copyShareLink);
 
     openShareLinkTrayAction_ = trayMenu_->addAction("Open Share Link");
     openShareLinkTrayAction_->setEnabled(false);
@@ -4821,6 +4808,42 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     syncCodecUiState();
 }
 
+void MainWindow::copyShareLink() {
+    if (!core_) return;
+    const auto link = QString::fromStdString(core_->getShareLink());
+    if (link.isEmpty()) return;
+#ifdef __linux__
+    // GNOME rejects Wayland clipboard offers from an unfocused client. A tray
+    // menu belongs to the shell, so complete its request after our window gains
+    // focus instead of claiming that an unaccepted clipboard write succeeded.
+    if (QGuiApplication::platformName().startsWith("wayland") &&
+        (!isVisible() || QGuiApplication::applicationState() != Qt::ApplicationActive)) {
+        pendingShareLinkCopy_ = link;
+        updateStatus("Activate this window to finish copying the share link.", "ready");
+        if (isMinimized()) showNormal(); else show();
+        raise();
+        activateWindow();
+        if (showHideAction_) showHideAction_->setText("Hide");
+        QTimer::singleShot(0, this, &MainWindow::finishPendingShareLinkCopy);
+        return;
+    }
+    pendingShareLinkCopy_.clear();
+#endif
+    QGuiApplication::clipboard()->setText(link);
+    updateStatus("Share link copied to clipboard", "ready");
+}
+
+#ifdef __linux__
+void MainWindow::finishPendingShareLinkCopy() {
+    if (pendingShareLinkCopy_.isEmpty() || quitRequested_ || !isVisible() ||
+        QGuiApplication::applicationState() != Qt::ApplicationActive) return;
+    const auto link = pendingShareLinkCopy_;
+    pendingShareLinkCopy_.clear();
+    QGuiApplication::clipboard()->setText(link);
+    updateStatus("Share link copied to clipboard", "ready");
+}
+#endif
+
 void MainWindow::updateTrayLiveIndicator(bool live) {
     if (!trayIcon_) {
         return;
@@ -5095,6 +5118,9 @@ void MainWindow::refreshPublisherPreview() {
 
 void MainWindow::closeEvent(QCloseEvent *event) {
     savePersistedSettings();
+#ifdef __linux__
+    pendingShareLinkCopy_.clear();
+#endif
 
     if (!runtimeOptions_.systemIntegrationsEnabled) {
         QMainWindow::closeEvent(event);

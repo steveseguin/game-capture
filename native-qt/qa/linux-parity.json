@@ -78,7 +78,7 @@
       "id": "vdo-direct",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged X11 and native Wayland GUI H264/no-audio publication using an entered stream ID and password=false, decoded moving/static/resize, late viewer and fresh-portal restart passed. Broader GUI/CLI settings, generated links, real passwords, TURN, browser/OBS delivery combinations and reconnect/recovery remain."
+      "remaining": "Packaged X11 and native Wayland GUI H264/no-audio publication using an entered stream ID and password=false, decoded moving/static/resize, late viewer and fresh-portal restart passed. Broader GUI/CLI settings, generated links, real passwords, TURN, browser/OBS delivery combinations and reconnect/recovery remain. Packaged copy/paste of the shown share URL and restart from that pasted URL passed through GNOME tray controls, with password=false and decoded H264. This adds no real-password or Open Share Link browser-launch qualification."
     },
     {
       "id": "vdo-rooms",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, camera preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Camera preview, tray/reopen, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, camera preview, other display scales, tray and full keyboard/accessibility remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, camera preview, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Camera preview, other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission, camera preview, other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open."
     },
     {
       "id": "profiles",
@@ -126,7 +126,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified. Packaged mux server restart and RTMP helper-stall recovery now passed; wider loss/retry and shutdown-during-startup scenarios remain. Packaged WHIP server restart, silent-STUN fallback and pending POST/ICE cancellation now passed; Wayland GUI and wider networking failures remain. X11 GUI Stop/restart and server-restart recovery now passed for external publishing, including RTMP helper-stall recovery. Native Wayland GUI portal cancellation/retry and Stop/fresh-portal/restart passed; permission-policy denial, revocation and startup-quit remain unqualified. Native Wayland GUI source-loss/explicit replacement restart now passed with stable portal owner. Pending permission Stop/Quit now cancels the application worker, but GNOME 46.2 crashes; desktop recovery remains a release gap. Native Wayland GUI input removal without replacement, app exit with video continuing, stale-app refusal and explicit reselection passed on the audio GUI checkpoint. Selected communications-output removal/recreation now passed without fallback or silent reopening, with video continuing; X11 mixing preserved the explicitly selected microphone. Explicit restart restored decoded output audio. Final packaged X11 combined communications-output/microphone loss retained both warnings without automatic reopening; missing saved output on X11/Wayland retained a visible notice, preserved video and recovered decoded audio after explicit restart. X11 app stale-selection and microphone-loss notices passed. Audio-server loss, external-publishing warning persistence, wider lifecycle failures and endurance remain open. Packaged Wayland preview now clears on Stop and source loss, then displays the newly authorized source after explicit restart; decoded publishing remains valid. Final packaged GNOME tray Stop/restart and Quit while hidden/live passed, with decoded video and portal-owner continuity. Private X11 no-host close exited without leaving a hidden publisher. Dynamic tray-host loss and denied-focus clipboard recovery remain open."
     },
     {
       "id": "packaging",
@@ -10213,6 +10213,2033 @@
           "sha256": "554a5ef1674ced24d277d293e966f20f6ecd6e5b23545abf73f6a446eb5b9070"
         }
       ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "101365501ca4e550fbb52af25eca14e12f35d9f9ee29d1d02229836c5728e046",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "3224fed975a46bfbbfe38b45c1df7e41aac2b75a11b77f0788668ee69efc914f",
+      "guiHelperSha256": "f854b77f56f88c59ca40f4e3c843de9f5928f963d27169e5cd5215d384c352cf",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "72c5f3e000d9f4416da8137a40df7438226139971ec2823141b75146d4af3282",
+      "portalJournalSha256": "b91a44bbeb4b5cf31dd132f71ff959980c2597f80695964d15697cbc48e52d24",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-workflows/001884d0-0fd0-47e0-bf4d-a34e3a6fc0f3/results.json",
+      "reportSha256": "f209d1d92d3363015e9d3a6ca06eed360d6772c77f567b225295f150e08e8e5d",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "tray": true,
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Previous package reproduced an empty clipboard after native GNOME tray Copy Share Link while the app was hidden. Close-to-tray video continuity and tray menu interactions reached the copy/paste assertion; full workflow failed.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.2992",
+          "pid": 2683035
+        },
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.2992",
+          "pid": 2683035
+        },
+        "closeHidesWhileLive": true,
+        "copy": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.2992",
+          "pid": 2683035,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Copy Share Link",
+          "screenshot": {
+            "file": "tray-1-Copy-Share-Link.png",
+            "sha256": "41c78b35dd633a99b237a8f140502284c621dad3ea61ca85a3f7482dda976a53"
+          }
+        },
+        "show": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.2992",
+          "pid": 2683035,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Show",
+          "screenshot": {
+            "file": "tray-2-Show.png",
+            "sha256": "613b3b18b90097e6f3820321e1a5dc6a2d4ed6e87a8319b205de16f716d721a8"
+          }
+        },
+        "hide": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.2992",
+          "pid": 2683035,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Hide",
+          "screenshot": {
+            "file": "tray-3-Hide.png",
+            "sha256": "44d4ad5e01208d62542f2252a53e898c62dbee4112a184cc8b83b94389aac8b4"
+          }
+        },
+        "stop": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.2992",
+          "pid": 2683035,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Stop",
+          "screenshot": {
+            "file": "tray-5-Stop.png",
+            "sha256": "41c01c42daaa6c1373893a1ff8bb55b06b969962171b811cf3df775314cc4c90"
+          }
+        },
+        "stopped": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.2992",
+          "pid": 2683035
+        }
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "error": "AssertionError [ERR_ASSERTION]: Tray copy/paste differs from the shown share link\n+ actual - expected\n\n+ ''\n- 'https://vdo.ninja/?view=gclinux7dbe3c1844cd54f6312101cc39bc&password=false&stereo=1&ab=510&audiocodec=red'\n\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:294:93\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)",
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 179,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 88,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHiddenAgain": {
+          "distinctIdentities": 90,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-workflows/001884d0-0fd0-47e0-bf4d-a34e3a6fc0f3/tray-1-Copy-Share-Link.png",
+          "sha256": "41c78b35dd633a99b237a8f140502284c621dad3ea61ca85a3f7482dda976a53"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-workflows/001884d0-0fd0-47e0-bf4d-a34e3a6fc0f3/tray-2-Show.png",
+          "sha256": "613b3b18b90097e6f3820321e1a5dc6a2d4ed6e87a8319b205de16f716d721a8"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-workflows/001884d0-0fd0-47e0-bf4d-a34e3a6fc0f3/tray-3-Hide.png",
+          "sha256": "44d4ad5e01208d62542f2252a53e898c62dbee4112a184cc8b83b94389aac8b4"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-workflows/001884d0-0fd0-47e0-bf4d-a34e3a6fc0f3/tray-4-Show.png",
+          "sha256": "cababed0f781c96b46d73164b17aff8705de57ae285bb662c348db6a79f0502d"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-workflows/001884d0-0fd0-47e0-bf4d-a34e3a6fc0f3/tray-5-Stop.png",
+          "sha256": "41c01c42daaa6c1373893a1ff8bb55b06b969962171b811cf3df775314cc4c90"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "ab1d7144372967aefe571fec676fff15e372f4d4c6c59008623bcb0ab1b67a13",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "cfb35b1b9a8533ea3d92cc32dba6c4880e25b50609829aa03740c38c681de8f9",
+      "guiHelperSha256": "ad145141faf0914e1e494ab21a504355d761297ed9d95cbacb89ae5c8969dd32",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "72c5f3e000d9f4416da8137a40df7438226139971ec2823141b75146d4af3282",
+      "portalJournalSha256": "e8cd5a641195754cf40168cd18573d95a619d3dcd5fdd7ef0e1dde8d13037933",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-copy-comparison/ecb23d8f-3095-4959-b741-df14c9ac16ea/results.json",
+      "reportSha256": "7550ca71bdb0c2ff5858fd04837cd8b4b3b12f3aab388063dce29a412a311420",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "tray": true,
+        "trayCopy": "window",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Fixture diagnosis: native foreground Ctrl+C/Ctrl+V passed. The comparison then stopped because its AT-SPI File-menu opener did not expose the requested item. Replaced that comparison action with the actual visible Copy Link button; no full qualification from this run.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3056",
+          "pid": 2684333
+        },
+        "fixtureCopyPastePassed": true,
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3056",
+          "pid": 2684333
+        },
+        "closeHidesWhileLive": true,
+        "show": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3056",
+          "pid": 2684333,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Show",
+          "screenshot": {
+            "file": "tray-1-Show.png",
+            "sha256": "78773295dc55c37fb3775b6b9033a4e7912a82676ca5af5f8b06b1c8c7bec5d2"
+          }
+        }
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py 2684333 menu Copy Share Link\n/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py:31: DeprecationWarning: Atspi.Action.get_action_name is deprecated\n  return [interface.get_action_name(i) for i in range(interface.get_n_actions())] if interface else []\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 264, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py\", line 230, in main\n    assert item.get_state_set().contains(Atspi.StateType.SHOWING)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at ui (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:123:29)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:288:146",
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 177,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 87,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-copy-comparison/ecb23d8f-3095-4959-b741-df14c9ac16ea/tray-1-Show.png",
+          "sha256": "78773295dc55c37fb3775b6b9033a4e7912a82676ca5af5f8b06b1c8c7bec5d2"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "8908831d05478aacb7bc0de0cee63bab03303abee33df2632fd16c84e572b071",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "cfb35b1b9a8533ea3d92cc32dba6c4880e25b50609829aa03740c38c681de8f9",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "72c5f3e000d9f4416da8137a40df7438226139971ec2823141b75146d4af3282",
+      "portalJournalSha256": "cfa02076137dd846a9cb168b74ceb548bcb74af9666ec1b579da8a274725d62b",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/results.json",
+      "reportSha256": "7df8eb550ce591b631bcfe29c98d4632e29c633a5a622e0acbe30b6e31089030",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": true,
+        "trayCopyFocus": false,
+        "trayCopy": "window",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Baseline package passed the full GNOME tray workflow using the foreground Copy Link button: close/hide/show with decoded video, clipboard round trip, Stop, pasted-link restart through tray Go Live with fresh portal consent, hidden-live Quit and removed tray registration. Confirms the copy failure is specific to the background tray path.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3103",
+          "pid": 2686107
+        },
+        "fixtureCopyPastePassed": true,
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3103",
+          "pid": 2686107
+        },
+        "closeHidesWhileLive": true,
+        "show": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3103",
+          "pid": 2686107,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Show",
+          "screenshot": {
+            "file": "tray-1-Show.png",
+            "sha256": "cbaf62dbd2ed245952ed9a2d2547bf23a0bd6486ec6ae0687aa22aca4a103f20"
+          }
+        },
+        "copy": {
+          "action": "Window Copy Link button"
+        },
+        "hide": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3103",
+          "pid": 2686107,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Hide",
+          "screenshot": {
+            "file": "tray-2-Hide.png",
+            "sha256": "1a79b287b478c175db1ddae9459a64c536f501210c6ca1cf168c97084ae65150"
+          }
+        },
+        "stop": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3103",
+          "pid": 2686107,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Stop",
+          "screenshot": {
+            "file": "tray-4-Stop.png",
+            "sha256": "517b13a0ab44f17c6bc5dc872e9c3baa91bd64a69ee95b2ef9882f0cd770a5f0"
+          }
+        },
+        "stopped": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3103",
+          "pid": 2686107
+        },
+        "shareLinkRoundTripPassed": true,
+        "restart": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3103",
+          "pid": 2686107,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Go Live",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Go Live",
+          "screenshot": {
+            "file": "tray-6-Go-Live.png",
+            "sha256": "5a2b498090becdc22e605b5b08a8274b2f11106b94931322f43ddb29a432f500"
+          }
+        },
+        "restartWhileHiddenPassed": true,
+        "quit": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3103",
+          "pid": 2686107,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Quit",
+          "screenshot": {
+            "file": "tray-7-Quit.png",
+            "sha256": "733cfd81d649a0a68d563ae516946d56aaae80355bb379514812f0b596baa7cd"
+          }
+        },
+        "quitWhileHiddenLivePassed": true
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 178,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 88,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHiddenAgain": {
+          "distinctIdentities": 87,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayRestarted": {
+          "distinctIdentities": 118,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-1-Show.png",
+          "sha256": "cbaf62dbd2ed245952ed9a2d2547bf23a0bd6486ec6ae0687aa22aca4a103f20"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-2-Hide.png",
+          "sha256": "1a79b287b478c175db1ddae9459a64c536f501210c6ca1cf168c97084ae65150"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-3-Show.png",
+          "sha256": "5dff28a8b27e02d7457d1b886a2da411f7c528060faf1dceee364837f2e29e84"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-4-Stop.png",
+          "sha256": "517b13a0ab44f17c6bc5dc872e9c3baa91bd64a69ee95b2ef9882f0cd770a5f0"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-5-Hide.png",
+          "sha256": "cbc55036a8ebf6799cb9f8ce1a61b00242dd819650578d1efe6fc9cdf927e9d4"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-6-Go-Live.png",
+          "sha256": "5a2b498090becdc22e605b5b08a8274b2f11106b94931322f43ddb29a432f500"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-window-copy/be4e6e7f-6d12-4b67-8717-afa6b8d61236/tray-7-Quit.png",
+          "sha256": "733cfd81d649a0a68d563ae516946d56aaae80355bb379514812f0b596baa7cd"
+        }
+      ]
+    },
+    {
+      "executableSha256": "1964dd34f395f284023a944b9163c36feea9677f43b8139538cb86d73b4667cf",
+      "manifestSha256": "c80e616285ff49768af2cb6be82b1aabdf521c4ebe82cbee5f84c4b3d73e1188",
+      "harnessSha256": "c3520d4a77cd1c74ffb0c4f368fe6b1bc36aaea4d227a73bda83d1b8959da53e",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "cfb35b1b9a8533ea3d92cc32dba6c4880e25b50609829aa03740c38c681de8f9",
+      "guiHelperSha256": "ad145141faf0914e1e494ab21a504355d761297ed9d95cbacb89ae5c8969dd32",
+      "previewObserverSha256": null,
+      "trayHelperSha256": null,
+      "backend": "linux-tray-x11",
+      "report": "native-qt/qa/reports/linux-no-tray-workflows/58356bdf-c78d-4de1-b0fa-f5a674b5b428/results.json",
+      "reportSha256": "6b2e80984035b072081e4a5e23e620b5641e4d0d03641d705f36519746d8dea6",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": true,
+        "tray": false,
+        "trayCopy": "tray",
+        "preview": false,
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Baseline package on private Xvfb/xfwm4 desktop without a tray host disabled and unchecked close-to-tray preference, published decoded media, and exited cleanly on normal Alt+F4 while live.",
+      "noTray": {
+        "preferenceDisabled": true,
+        "closeExitsWhileLive": true
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 177,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 88,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": []
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "8908831d05478aacb7bc0de0cee63bab03303abee33df2632fd16c84e572b071",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "cfb35b1b9a8533ea3d92cc32dba6c4880e25b50609829aa03740c38c681de8f9",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "72c5f3e000d9f4416da8137a40df7438226139971ec2823141b75146d4af3282",
+      "portalJournalSha256": "09ebb6b4ca3067ced4afc1c4988a15752779ac31958b70ba2b8d86294926858a",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/results.json",
+      "reportSha256": "f4fedfdeea4aa932c232d2e5a62747a126f72aa7413cdd69b901cb06a342b4e7",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": true,
+        "trayCopyFocus": false,
+        "trayCopy": "window",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Failed full workflow: clipboard round trip passed, then a None accessibility child aborted the portal selector before a fresh permission choice. Application cleanup of the pending request reproduced the previously established GNOME 46.2 portal SIGSEGV. No full workflow qualification from this attempt; fixture guard and desktop recovery are recorded separately.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3253",
+          "pid": 2689156
+        },
+        "fixtureCopyPastePassed": true,
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3253",
+          "pid": 2689156
+        },
+        "closeHidesWhileLive": true,
+        "show": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3253",
+          "pid": 2689156,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Show",
+          "screenshot": {
+            "file": "tray-1-Show.png",
+            "sha256": "e31ce9e115495fabbf0732889ba70547c24f20052dcef89be70957d1ccbf765d"
+          }
+        },
+        "copy": {
+          "action": "Window Copy Link button"
+        },
+        "hide": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3253",
+          "pid": 2689156,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Hide",
+          "screenshot": {
+            "file": "tray-2-Hide.png",
+            "sha256": "0cd855688f73e290446b9195e4bbd63cea6e862f8966b9b356f227a21872ad62"
+          }
+        },
+        "stop": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3253",
+          "pid": 2689156,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Stop",
+          "screenshot": {
+            "file": "tray-4-Stop.png",
+            "sha256": "e726f835c3333d863c0aead33d932b8949a151a4c3411268c2b5adaa098839c8"
+          }
+        },
+        "stopped": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3253",
+          "pid": 2689156
+        },
+        "shareLinkRoundTripPassed": true,
+        "restart": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3253",
+          "pid": 2689156,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Go Live",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Go Live",
+          "screenshot": {
+            "file": "tray-6-Go-Live.png",
+            "sha256": "60edd06b8aa47e182cd700b948e33c262cac4b740cb4d7c14f077daada80bef8"
+          }
+        }
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)"
+      },
+      "error": "Error: Tray Go Live did not restart publishing\n    at waitFor (/home/ubuntu/code/game-capture/native-qt/e2e/macos-media-receiver.js:33:9)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:315:5\nAssertionError [ERR_ASSERTION]: Portal service crashed during workflow\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:375:7",
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 176,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 88,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHiddenAgain": {
+          "distinctIdentities": 90,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/tray-1-Show.png",
+          "sha256": "e31ce9e115495fabbf0732889ba70547c24f20052dcef89be70957d1ccbf765d"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/tray-2-Hide.png",
+          "sha256": "0cd855688f73e290446b9195e4bbd63cea6e862f8966b9b356f227a21872ad62"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/tray-3-Show.png",
+          "sha256": "3ec4d9387a54e97d6c087b4ccf36a2fd6648bf27b6298bda6f7c110f53d7ba57"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/tray-4-Stop.png",
+          "sha256": "e726f835c3333d863c0aead33d932b8949a151a4c3411268c2b5adaa098839c8"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/tray-5-Hide.png",
+          "sha256": "ba578db25320b38800a7e35addbebb68eda1afa9eee1aa5042363b8b6411b0b5"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/28de95b5-a654-4f98-876b-0a9aae8823e5/tray-6-Go-Live.png",
+          "sha256": "60edd06b8aa47e182cd700b948e33c262cac4b740cb4d7c14f077daada80bef8"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "8908831d05478aacb7bc0de0cee63bab03303abee33df2632fd16c84e572b071",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "cfb35b1b9a8533ea3d92cc32dba6c4880e25b50609829aa03740c38c681de8f9",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "72c5f3e000d9f4416da8137a40df7438226139971ec2823141b75146d4af3282",
+      "portalJournalSha256": "d8b553c46d8037df2ce279db184ae5a3107274efb5025b5a715791a1ccd5b986",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/results.json",
+      "reportSha256": "c9513fb927c959eec8feef2422ea2fbff1139d1785f1446d9c0e35b9852f7c56",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": true,
+        "trayCopyFocus": true,
+        "trayCopy": "tray",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Final package passed actual GNOME tray menus, close/hide/show with independent decoded video, live/idle indicator changes, clipboard round trip, Stop, hidden restart from a pasted share URL with fresh portal consent, and hidden-live Quit with discovery/tray registration retirement. Tray-copy case automatically restored app focus and completed copying; comparison uses the foreground Copy Link button. This is bounded GNOME 46 qualification.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3179",
+          "pid": 2687978
+        },
+        "fixtureCopyPastePassed": true,
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3179",
+          "pid": 2687978
+        },
+        "closeHidesWhileLive": true,
+        "copy": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3179",
+          "pid": 2687978,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Copy Share Link",
+          "screenshot": {
+            "file": "tray-1-Copy-Share-Link.png",
+            "sha256": "559f3bae5a152d2b1dbd75d35c3ec14f01f2066f308df9c9cef77be96efc7218"
+          }
+        },
+        "copyRestoredFocusAndCompleted": true,
+        "hide": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3179",
+          "pid": 2687978,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Hide",
+          "screenshot": {
+            "file": "tray-2-Hide.png",
+            "sha256": "609b9461000830f2853f1a5198a7be8d8741f8648b5837c0fc8eec23774291d5"
+          }
+        },
+        "stop": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3179",
+          "pid": 2687978,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Stop",
+          "screenshot": {
+            "file": "tray-4-Stop.png",
+            "sha256": "1c7180da851fdcdbefe94e4f9e0e7e463aa3236ec8548b9b53e7bf2d4b9ac263"
+          }
+        },
+        "stopped": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3179",
+          "pid": 2687978
+        },
+        "shareLinkRoundTripPassed": true,
+        "restart": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3179",
+          "pid": 2687978,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Go Live",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Go Live",
+          "screenshot": {
+            "file": "tray-6-Go-Live.png",
+            "sha256": "f3d67233d3382cd22d751f20d5c4d1cae1f5ac9da3fe13b3fd0258da837247ae"
+          }
+        },
+        "restartWhileHiddenPassed": true,
+        "quit": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3179",
+          "pid": 2687978,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Quit",
+          "screenshot": {
+            "file": "tray-7-Quit.png",
+            "sha256": "c9b73fef16a6d6e132aca900199647526bc0453e89fafcd0b221a82f15096415"
+          }
+        },
+        "quitWhileHiddenLivePassed": true
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.1514',)",
+        "survived": true
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 179,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 90,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHiddenAgain": {
+          "distinctIdentities": 90,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayRestarted": {
+          "distinctIdentities": 118,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-1-Copy-Share-Link.png",
+          "sha256": "559f3bae5a152d2b1dbd75d35c3ec14f01f2066f308df9c9cef77be96efc7218"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-2-Hide.png",
+          "sha256": "609b9461000830f2853f1a5198a7be8d8741f8648b5837c0fc8eec23774291d5"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-3-Show.png",
+          "sha256": "fd0305a2f67dccc67d3a426ae322e6607858bc521a03e26fd29e65a3d8444a93"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-4-Stop.png",
+          "sha256": "1c7180da851fdcdbefe94e4f9e0e7e463aa3236ec8548b9b53e7bf2d4b9ac263"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-5-Hide.png",
+          "sha256": "8231c0c456ac55153acf1f41432df691bdf732cf2ff994e242a86a6a00632ece"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-6-Go-Live.png",
+          "sha256": "f3d67233d3382cd22d751f20d5c4d1cae1f5ac9da3fe13b3fd0258da837247ae"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final/a0d9407e-7816-408f-a157-de953bc7f220/tray-7-Quit.png",
+          "sha256": "c9b73fef16a6d6e132aca900199647526bc0453e89fafcd0b221a82f15096415"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "8908831d05478aacb7bc0de0cee63bab03303abee33df2632fd16c84e572b071",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "72c5f3e000d9f4416da8137a40df7438226139971ec2823141b75146d4af3282",
+      "portalJournalSha256": "860d43f0d4cc0d69e560065f1c46f40f42d65ebe78ebfdf08db8f7ace38d5f93",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-final-recovered/0620790b-5471-486e-a88e-97d8ae166cea/results.json",
+      "reportSha256": "afd609fd1da6d0ed3388c6ac47f3e32e2a6f07649a5dc406f4e395b520c84429",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": true,
+        "trayCopyFocus": false,
+        "trayCopy": "window",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Fixture failure during GNOME tray traversal: an unrelated accessibility object disappeared. No full workflow qualification; portal remained healthy. The fixture now skips only stale objects and still requires the exact owned tray and enabled action.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3329",
+          "pid": 2690495
+        },
+        "fixtureCopyPastePassed": true,
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3329",
+          "pid": 2690495
+        },
+        "closeHidesWhileLive": true,
+        "show": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3329",
+          "pid": 2690495,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Show",
+          "screenshot": {
+            "file": "tray-1-Show.png",
+            "sha256": "816ebe12b08bac3f1b9061f475252c7bacd7ccfa7f05d19b62e1c999378b1930"
+          }
+        },
+        "copy": {
+          "action": "Window Copy Link button"
+        }
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.3318',)",
+        "survived": true
+      },
+      "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py 2690495 action Hide --screenshot=/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-tray-final-recovered/0620790b-5471-486e-a88e-97d8ae166cea/tray-2-Hide.png\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py\", line 102, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py\", line 79, in main\n    menus = [node for node in nodes(shell) if node.get_role_name() == 'menu' and node.get_name() == result['Title'] and has(node, Atspi.StateType.SHOWING)]\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py\", line 23, in nodes\n    yield from nodes(child)\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py\", line 23, in nodes\n    yield from nodes(child)\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py\", line 23, in nodes\n    yield from nodes(child)\n  [Previous line repeated 12 more times]\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-tray-control.py\", line 20, in nodes\n    for i in range(node.get_child_count()):\n                   ^^^^^^^^^^^^^^^^^^^^^^\ngi.repository.GLib.GError: atspi_error: Method \"Get\" with signature \"ss\" on interface \"org.freedesktop.DBus.Properties\" could not be processed as object /org/a11y/atspi/accessible/14678 does not exist\n (1)\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at trayUi (/home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:128:34)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:305:22",
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 176,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 117,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 86,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-recovered/0620790b-5471-486e-a88e-97d8ae166cea/tray-1-Show.png",
+          "sha256": "816ebe12b08bac3f1b9061f475252c7bacd7ccfa7f05d19b62e1c999378b1930"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "8908831d05478aacb7bc0de0cee63bab03303abee33df2632fd16c84e572b071",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "777efaf0ab16918b3af8781e425b1374469e8181b309b9f4505e8bdfbdf29873",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "trayHelperSha256": "fc5e0ab5ee324572855a853f0f6b53e84046cba3419c5e4f623c4adfd6049370",
+      "portalJournalSha256": "debb50a39d54c98e509c05096291719214d35d04f91e4e677d606d5f9c859bb1",
+      "backend": "linux-tray-wayland",
+      "report": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/results.json",
+      "reportSha256": "d8cad31f6e1d0cc05c623c052ae42fc6668c9b0f025dc91677731c9c0bb50739",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, Wayland portal window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": false,
+        "tray": true,
+        "trayCopyFocus": false,
+        "trayCopy": "window",
+        "preview": false,
+        "backend": "wayland",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Final package foreground Copy Link workflow passed after fixing disappearing accessibility objects. Clipboard paste, hidden tray restart with fresh consent and hidden-live Quit were verified. Pending permission cancellation remains a known desktop release gap.",
+      "tray": {
+        "idle": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3377",
+          "pid": 2691522
+        },
+        "fixtureCopyPastePassed": true,
+        "live": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3377",
+          "pid": 2691522
+        },
+        "closeHidesWhileLive": true,
+        "show": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3377",
+          "pid": 2691522,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Show",
+          "staleNodesSkipped": 0,
+          "screenshot": {
+            "file": "tray-1-Show.png",
+            "sha256": "cd636ea83d9cd9ab86662966728a29059d38f7ddc6b2ff35af9abce02f4cbc17"
+          }
+        },
+        "copy": {
+          "action": "Window Copy Link button"
+        },
+        "hide": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3377",
+          "pid": 2691522,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Hide",
+          "staleNodesSkipped": 0,
+          "screenshot": {
+            "file": "tray-2-Hide.png",
+            "sha256": "720110f36e5fd2ba06c87b6185daf31bddc0c2c3f1734606954524e1d54ac2af"
+          }
+        },
+        "stop": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3377",
+          "pid": 2691522,
+          "menu": [
+            {
+              "name": "Hide",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Stop",
+          "staleNodesSkipped": 0,
+          "screenshot": {
+            "file": "tray-4-Stop.png",
+            "sha256": "4fd497e779b2853476b5b698d1faf394883f298ebea280df0ddc49597636924a"
+          }
+        },
+        "stopped": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3377",
+          "pid": 2691522
+        },
+        "shareLinkRoundTripPassed": true,
+        "restart": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - Idle",
+          "iconSha256": "5e6fda33a50808096fd6d45ceb4d0b1b0d9bd0a45a3becd1c57a9f0c19c2f6b8",
+          "service": ":1.3377",
+          "pid": 2691522,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Go Live",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": false
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Go Live",
+          "staleNodesSkipped": 0,
+          "screenshot": {
+            "file": "tray-6-Go-Live.png",
+            "sha256": "c0c612c1d442e21fb798f720b0d1a38d81c920cb9fe5c8f3826e8ee942987ac4"
+          }
+        },
+        "restartWhileHiddenPassed": true,
+        "quit": {
+          "Id": "game-capture",
+          "Title": "game-capture",
+          "Status": "Active",
+          "tooltip": "Game Capture - LIVE",
+          "iconSha256": "e3c78ac9423b7a3263158b77cc38464236260879d228853fdef3bf4b9bf27ebc",
+          "service": ":1.3377",
+          "pid": 2691522,
+          "menu": [
+            {
+              "name": "Show",
+              "enabled": true
+            },
+            {
+              "name": "Stop",
+              "enabled": true
+            },
+            {
+              "name": "Copy Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Open Share Link",
+              "enabled": true
+            },
+            {
+              "name": "Quit",
+              "enabled": true
+            }
+          ],
+          "action": "Quit",
+          "staleNodesSkipped": 0,
+          "screenshot": {
+            "file": "tray-7-Quit.png",
+            "sha256": "190eb289d13787920be0a83059a0a7efcbe39854f8e0b0d7b4a1950f54f3dc2c"
+          }
+        },
+        "quitWhileHiddenLivePassed": true
+      },
+      "portalBackend": {
+        "name": "org.freedesktop.impl.portal.desktop.gnome",
+        "owner": "(':1.3318',)",
+        "survived": true
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 179,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 89,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHidden": {
+          "distinctIdentities": 120,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayHiddenAgain": {
+          "distinctIdentities": 89,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "trayRestarted": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": [
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-1-Show.png",
+          "sha256": "cd636ea83d9cd9ab86662966728a29059d38f7ddc6b2ff35af9abce02f4cbc17"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-2-Hide.png",
+          "sha256": "720110f36e5fd2ba06c87b6185daf31bddc0c2c3f1734606954524e1d54ac2af"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-3-Show.png",
+          "sha256": "e040f85ea6f609f25f740a6d851cbb901cb76997cc592ae512997fabd0c2794d"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-4-Stop.png",
+          "sha256": "4fd497e779b2853476b5b698d1faf394883f298ebea280df0ddc49597636924a"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-5-Hide.png",
+          "sha256": "4d372260e9d93b7d73f5c3ceac962f53670a68b75cec9c8e3a2952a019e9291b"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-6-Go-Live.png",
+          "sha256": "c0c612c1d442e21fb798f720b0d1a38d81c920cb9fe5c8f3826e8ee942987ac4"
+        },
+        {
+          "path": "native-qt/qa/reports/linux-tray-final-foreground/90b04e9a-aeac-4ab8-be37-a09dc06fc184/tray-7-Quit.png",
+          "sha256": "190eb289d13787920be0a83059a0a7efcbe39854f8e0b0d7b4a1950f54f3dc2c"
+        }
+      ]
+    },
+    {
+      "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+      "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+      "harnessSha256": "8908831d05478aacb7bc0de0cee63bab03303abee33df2632fd16c84e572b071",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "cfb35b1b9a8533ea3d92cc32dba6c4880e25b50609829aa03740c38c681de8f9",
+      "guiHelperSha256": "8ece3e9bbbd78c289e169f21b66a6ac37fe088ec9ece678af1debd65d4995ef0",
+      "previewObserverSha256": null,
+      "trayHelperSha256": null,
+      "backend": "linux-tray-x11",
+      "report": "native-qt/qa/reports/linux-tray-final-no-host/d46c82d6-bb40-4059-bc18-0287935481e1/results.json",
+      "reportSha256": "047ece8d6e094425c4738b4472dff2fc9415792dae333cc605542735932fe1f4",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB, actual Qt GUI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "noTray": true,
+        "tray": false,
+        "trayCopyFocus": false,
+        "trayCopy": "tray",
+        "preview": false,
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 960,
+        "height": 540,
+        "external": false,
+        "gui": true,
+        "rateControl": false,
+        "portalCancel": false,
+        "pendingQuit": false,
+        "pendingStop": false,
+        "sourceLoss": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Final package passed private Xvfb/xfwm4 desktop without a tray host: disabled/unchecked close-to-tray option, decoded moving/static/resized/late-viewer video and clean normal window-close exit while live.",
+      "noTray": {
+        "preferenceDisabled": true,
+        "closeExitsWhileLive": true
+      },
+      "exitCode": 0,
+      "exitSignal": null,
+      "videoObservations": {
+        "moving": {
+          "distinctIdentities": 178,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "static": {
+          "distinctIdentities": 1,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "resized": {
+          "distinctIdentities": 119,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        },
+        "late": {
+          "distinctIdentities": 87,
+          "identityReadFailures": 0,
+          "width": 960,
+          "height": 540
+        }
+      },
+      "screenshots": []
     }
   ],
   "host_environment": {
@@ -10602,6 +12629,58 @@
       {
         "path": "native-qt/build-linux-preview-gates.log",
         "sha256": "e8c09658c81a654c2cf57ec7cf897cb9752f4fc72131bed9ad5f9ade7fdc5571"
+      }
+    ]
+  },
+  "tray_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-7ea09138e4c8-19b284b4a40c.deb",
+    "sha256": "e723f379dc83f08f075f97c821dac4884066691865bbac2fe1f70a41d0d3763e",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-7ea09138e4c8-19b284b4a40c",
+    "manifestSha256": "eea3ed418531782f1df7a74d1ab61a38d8cfc47c24eb4d2e9ebee31495714330",
+    "executableSha256": "7ea09138e4c820c15cfc6455e57deecdb2af62468c0badb2a6f7e5a57a636db7",
+    "qualification": "Development checkpoint: exact Debian payload passed GNOME 46 Wayland tray-copy and foreground-copy workflows plus private X11/no-tray close behavior. Copy Share Link on native Wayland restores the main window and defers the clipboard write until the application is active. Both shared copy actions reuse one method; Windows/macOS and X11 retain immediate copying in code. Windows/macOS runtime regression, other tray hosts, host loss/reappearance, launch-again reopen and denied focus/deferred-copy cancellation remain unqualified.",
+    "cleanupReport": "native-qt/qa/reports/linux-tray-final/cleanup.json",
+    "cleanupReportSha256": "c56311fe27af4ecd1a02aa8235f32fe9e66261202f80fa1bd9a4b82ebed8816c",
+    "apiReferences": [
+      "https://raw.githubusercontent.com/GNOME/mutter/46.2/src/wayland/meta-wayland-data-device.c",
+      "https://raw.githubusercontent.com/qt/qtwayland/v6.4.2/src/client/qwaylanddatadevice.cpp",
+      "https://raw.githubusercontent.com/qt/qtwayland/v6.4.2/src/client/qwaylandclipboard.cpp"
+    ],
+    "privateDesktopEvidence": [
+      {
+        "report": "native-qt/qa/reports/linux-no-tray-desktop/ca7cdbde-9748-4c37-9a25-10f479419d5a/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports.",
+        "windowManager": "xfwm4; private X11 display/session bus, no tray host"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-tray-final-private-desktop/896c697d-94cb-4990-bd8a-b1fb59071493/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports.",
+        "windowManager": "xfwm4; private X11 display/session bus, no tray host"
+      }
+    ],
+    "portalRecovery": {
+      "report": "native-qt/qa/reports/linux-tray-final/portal-recovery.json",
+      "sha256": "456b9eb0065d5dc1884c2ce64a982685affeae675ad494691087887fff2a6e85",
+      "classification": "Desktop restoration after existing pending-permission cancellation failure; not a release exception."
+    }
+  },
+  "tray_gates": {
+    "classification": "Release build, packaging, syntax and diff checks are gates, not application testing.",
+    "passed": true,
+    "logs": [
+      {
+        "path": "native-qt/build-linux-tray-copy.log",
+        "sha256": "971de6648d911323eb06d604690ed1f93c02e51612c4078cfc1e85250ddd5d6f"
+      },
+      {
+        "path": "native-qt/build-linux-tray-copy-package.log",
+        "sha256": "e3275c84e3e63d85a3826e0c336517b10a836744895f060c3a3f94d03c46351a"
+      },
+      {
+        "path": "native-qt/build-linux-tray-gates.log",
+        "sha256": "5e0ebf57131baaea75578072947e78a2c03f05c0da72f5f6406addee4cb59868"
       }
     ]
   }
