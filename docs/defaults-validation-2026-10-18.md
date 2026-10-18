@@ -1,6 +1,6 @@
 # Packaged defaults validation ? 2026-10-18 UTC
 
-Unreleased Windows candidates based on Game Capture 0.2.64 and Desktop Studio 0.9.2. This validates the new defaults; it does not publish a new app release. See [the default policy](streaming-defaults.md).
+Unreleased Windows candidates based on Game Capture 0.2.64 and Desktop Studio 0.9.2. These measurements precede the signed Windows 0.2.65 release; see [final release qualification](release-0.2.65-windows-validation.md) for those separate results. The measurements below remain tied to the original candidate hashes. See [the default policy](streaming-defaults.md).
 
 ## What actually ran
 

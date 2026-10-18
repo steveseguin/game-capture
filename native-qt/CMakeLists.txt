@@ -6,7 +6,7 @@ if(CMAKE_HOST_APPLE AND (NOT DEFINED CMAKE_SYSTEM_NAME OR CMAKE_SYSTEM_NAME STRE
     set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "macOS target architecture")
     set(CMAKE_OSX_DEPLOYMENT_TARGET "14.2" CACHE STRING "Minimum supported macOS version")
 endif()
-project(game-capture-native-qt VERSION 0.2.64 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.65 LANGUAGES CXX)
 
 if(APPLE)
     if(NOT CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")

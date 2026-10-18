@@ -1,0 +1,460 @@
+{
+  "application": "Game Capture",
+  "version": "0.2.65",
+  "sourceCommit": "ff9ac2e6320f67700740f9403085b05b8788861b",
+  "executableSha256": "82879f4501c32bb8a55a5f5ffc2d5b99100286667e8560a00eb591be045b84dc",
+  "host": {
+    "capturedUtc": "2026-10-18T02:32:57.5095444Z",
+    "os": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "build": "26200",
+    "cpu": "Intel(R) Core(TM) Ultra 7 265K",
+    "logicalCpus": 20,
+    "ramGiB": 63.5,
+    "gpus": [
+      {
+        "Name": "Intel(R) Graphics",
+        "DriverVersion": "32.0.101.6881"
+      },
+      {
+        "Name": "NVIDIA TITAN RTX",
+        "DriverVersion": "32.0.16.1047"
+      },
+      {
+        "Name": "AMD Radeon RX 9060 XT",
+        "DriverVersion": "32.0.22042.14002"
+      }
+    ],
+    "workloadCpuAffinity": "0-9",
+    "scope": "Single Windows host; not AMD-only or clean-machine qualification"
+  },
+  "scope": "Short serialized local synthetic output qualification. CPU means cover publisher plus child processes; 100 one-core percent is one occupied logical core. RSS sums can double-count shared pages. GPU engines must remain separate and are not total GPU percentages. Recording and non-recording cases are different workloads. No demanding-game or WAN qualification.",
+  "cases": [
+    {
+      "case": "udp-default-auto",
+      "decoded_fps": 59.9719382641812,
+      "frame_gap_ms_p95": 17.000000000001236,
+      "clean_decode": true,
+      "duplicate_timestamps": 0,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.0040000000000013,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Constrained Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "profile": "LC",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 3947.1525355782724,
+      "audio_kbps": 128.23377767102997,
+      "decoded_audio_rms": [
+        0.033478617668151855,
+        0.033437445759773254
+      ],
+      "cpu_machine_percent_mean": 2.325,
+      "cpu_one_core_percent_mean": 46.5,
+      "system_cpu_percent_mean": 10.466666666666667,
+      "rss_mib_mean": 197.19943576388889,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 6.841683182250151,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.605905201284173,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0
+      },
+      "gpu_sample_count": 17,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": true
+    },
+    {
+      "case": "udp-default-software",
+      "decoded_fps": 59.99919894260423,
+      "frame_gap_ms_p95": 17.000000000001236,
+      "clean_decode": true,
+      "duplicate_timestamps": 0,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.0000000000000004,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Constrained Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "profile": "LC",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 3942.698762366323,
+      "audio_kbps": 103.31852207677835,
+      "decoded_audio_rms": [
+        0.03010791540145874,
+        0.03006545826792717
+      ],
+      "cpu_machine_percent_mean": 2.0676315789473687,
+      "cpu_one_core_percent_mean": 41.35263157894737,
+      "system_cpu_percent_mean": 9.605263157894736,
+      "rss_mib_mean": 173.6706414473684,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 6.909874914458463,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.657047195992295,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0
+      },
+      "gpu_sample_count": 18,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": true
+    },
+    {
+      "case": "udp-default-nvenc",
+      "decoded_fps": 59.79893459366364,
+      "frame_gap_ms_p95": 17.000000000001236,
+      "clean_decode": true,
+      "duplicate_timestamps": 0,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.084,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Constrained Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "profile": "LC",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 3987.616613930388,
+      "audio_kbps": 128.16428485649092,
+      "decoded_audio_rms": [
+        0.033875688910484314,
+        0.033834896981716156
+      ],
+      "cpu_machine_percent_mean": 1.4894444444444446,
+      "cpu_one_core_percent_mean": 29.78888888888889,
+      "system_cpu_percent_mean": 9.344444444444445,
+      "rss_mib_mean": 298.43250868055554,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 6.931782189761679,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.653592324683153,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_0_engtype_3D": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_10_engtype_Copy": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_11_engtype_Copy": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_12_engtype_Copy": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_1_engtype_LegacyOverlay": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_2_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_3_engtype_Copy": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_4_engtype_Copy": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_5_engtype_Copy": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_6_engtype_Security": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_7_engtype_VideoEncode": 18.618092530870676,
+        "luid_0x00000000_0x000174A7_phys_0_eng_8_engtype_VR": 0.0,
+        "luid_0x00000000_0x000174A7_phys_0_eng_9_engtype_Copy": 0.0
+      },
+      "gpu_sample_count": 17,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": true
+    },
+    {
+      "case": "udp-default-qsv",
+      "decoded_fps": 59.34611228940734,
+      "frame_gap_ms_p95": 17.000000000001236,
+      "clean_decode": true,
+      "duplicate_timestamps": 0,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.266,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "profile": "LC",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 4008.7167953899716,
+      "audio_kbps": 103.26952483887753,
+      "decoded_audio_rms": [
+        0.03009214997291565,
+        0.030057450756430626
+      ],
+      "cpu_machine_percent_mean": 1.5058823529411764,
+      "cpu_one_core_percent_mean": 30.11764705882353,
+      "system_cpu_percent_mean": 8.958823529411765,
+      "rss_mib_mean": 286.09972426470586,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 8.454785605330036,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 10.462584582057453,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.507457312214825,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0
+      },
+      "gpu_sample_count": 17,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": true
+    },
+    {
+      "case": "udp-default-amf",
+      "decoded_fps": 59.745151466581184,
+      "frame_gap_ms_p95": 17.000000000003013,
+      "clean_decode": true,
+      "duplicate_timestamps": 0,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.0999999999999999,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Constrained Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "aac",
+          "profile": "LC",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 3950.643692899503,
+      "audio_kbps": 128.1085625075057,
+      "decoded_audio_rms": [
+        0.033867184072732925,
+        0.03382222354412079
+      ],
+      "cpu_machine_percent_mean": 2.0144444444444445,
+      "cpu_one_core_percent_mean": 40.28888888888889,
+      "system_cpu_percent_mean": 9.911111111111111,
+      "rss_mib_mean": 195.54600694444446,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 7.010928401164706,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.707939382681655,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_0_engtype_3D": 0.5869262645934845,
+        "luid_0x00000000_0x00230879_phys_0_eng_1_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_2_engtype_Compute 0": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_3_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_4_engtype_Timer 0": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_5_engtype_Security 1": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_6_engtype_Video JPEG 0": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_7_engtype_Video Codec Engine": 11.824665405509219
+      },
+      "gpu_sample_count": 17,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": true
+    },
+    {
+      "case": "whip-default-auto",
+      "decoded_fps": 60.257475083056484,
+      "frame_gap_ms_p95": 17.000000000001236,
+      "clean_decode": false,
+      "duplicate_timestamps": 6,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.0000000000000004,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Constrained Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "opus",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 3960.6299003322265,
+      "audio_kbps": 128.0512,
+      "decoded_audio_rms": [
+        0.03054170310497284,
+        0.03047470934689045
+      ],
+      "cpu_machine_percent_mean": 3.015909090909091,
+      "cpu_one_core_percent_mean": 60.31818181818182,
+      "system_cpu_percent_mean": 11.554545454545455,
+      "rss_mib_mean": 174.92223011363637,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 7.0037681893363395,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.201089915574855,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0
+      },
+      "gpu_sample_count": 21,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": false
+    },
+    {
+      "case": "whip-default-amf",
+      "decoded_fps": 59.98512765430059,
+      "frame_gap_ms_p95": 17.000000000003013,
+      "clean_decode": true,
+      "duplicate_timestamps": 0,
+      "backward_timestamps": 0,
+      "b_frames": 0,
+      "max_keyframe_gap_seconds": 1.0039999999999996,
+      "streams": [
+        {
+          "codec_type": "video",
+          "codec_name": "h264",
+          "profile": "Constrained Baseline",
+          "width": 1280,
+          "height": 720,
+          "avg_frame_rate": "60/1",
+          "has_b_frames": 0
+        },
+        {
+          "codec_type": "audio",
+          "codec_name": "opus",
+          "avg_frame_rate": "0/0",
+          "sample_rate": "48000",
+          "channels": 2
+        }
+      ],
+      "video_kbps": 4007.508551598777,
+      "audio_kbps": 128.0512204881953,
+      "decoded_audio_rms": [
+        0.03352117910981178,
+        0.03345636650919914
+      ],
+      "cpu_machine_percent_mean": 2.283095238095238,
+      "cpu_one_core_percent_mean": 45.66190476190476,
+      "system_cpu_percent_mean": 11.604761904761904,
+      "rss_mib_mean": 173.99237351190476,
+      "gpu_per_engine_percent_mean": {
+        "luid_0x00000000_0x00017137_phys_0_eng_0_engtype_3D": 7.103549621434742,
+        "luid_0x00000000_0x00017137_phys_0_eng_10_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_11_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_12_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_1_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_2_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_3_engtype_VideoProcessing": 8.269317140152728,
+        "luid_0x00000000_0x00017137_phys_0_eng_4_engtype_VideoDecode": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_5_engtype_Compute": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_6_engtype_GSC": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_7_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_8_engtype_": 0.0,
+        "luid_0x00000000_0x00017137_phys_0_eng_9_engtype_": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_0_engtype_3D": 0.6259497267538121,
+        "luid_0x00000000_0x00230879_phys_0_eng_1_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_2_engtype_Compute 0": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_3_engtype_Copy": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_4_engtype_Timer 0": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_5_engtype_Security 1": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_6_engtype_Video JPEG 0": 0.0,
+        "luid_0x00000000_0x00230879_phys_0_eng_7_engtype_Video Codec Engine": 11.720204416718465
+      },
+      "gpu_sample_count": 20,
+      "recording_queue_drops": null,
+      "default_output_checks_passed": true
+    }
+  ]
+}
