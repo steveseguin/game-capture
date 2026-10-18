@@ -4141,7 +4141,14 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     const bool bitrateChanged = nextConfig.bitrate != videoConfig_.bitrate;
     const bool resolutionChanged = nextConfig.width != videoConfig_.width || nextConfig.height != videoConfig_.height;
     const bool fpsChanged = nextConfig.frameRate != videoConfig_.frameRate;
-    const bool requiresReinit = resolutionChanged || fpsChanged;
+    const bool requiresReinit = resolutionChanged || fpsChanged
+#ifdef __linux__
+        // libavcodec's libvpx/libaom wrappers read rate control at initialization.
+        // Updating AVCodecContext alone reports a new target without changing
+        // the stream. Use the existing reconfigure/rollback path on Linux.
+        || bitrateChanged
+#endif
+        ;
 
     if (!capturing_) {
         videoConfig_ = nextConfig;

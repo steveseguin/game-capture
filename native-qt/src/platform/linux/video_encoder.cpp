@@ -1,4 +1,5 @@
 #include "versus/platform/linux_encoder.h"
+#include "versus/platform/posix_ffmpeg_encoder.h"
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
 #include <QImage>
@@ -20,6 +21,7 @@ using namespace video;
 struct LinuxVideoEncoder::State {
     mutable std::mutex mutex;
     EncoderConfig config;
+    std::unique_ptr<PosixFfmpegEncoder> external;
     AVCodecContext *context = nullptr;
     AVFrame *frame = nullptr;
     AVPacket *packet = nullptr;
@@ -33,6 +35,7 @@ struct LinuxVideoEncoder::State {
     std::map<int64_t, Identity> pending;
 
     void close() {
+        external.reset();
         avcodec_free_context(&context);
         av_frame_free(&frame);
         av_packet_free(&packet);
@@ -80,6 +83,10 @@ struct LinuxVideoEncoder::State {
             av_dict_set(&options, "delay", "0", 0);
             av_dict_set(&options, "forced-idr", "1", 0);
         } else {
+            // Match the shared FFmpeg helper's realtime rate control. Merely
+            // setting a maximum leaves libvpx/libaom in one-pass VBR, which can
+            // substantially overshoot a low live-stream target.
+            context->rc_min_rate = context->rc_max_rate = context->bit_rate;
             av_dict_set(&options, "cpu-used", "8", 0);
             av_dict_set(&options, "lag-in-frames", "0", 0);
             av_dict_set(&options, "auto-alt-ref", "0", 0);
@@ -117,7 +124,17 @@ bool LinuxVideoEncoder::initialize(const EncoderConfig &config, bool handover) {
     if (handover || config.width < 2 || config.height < 2 || config.width > 3840 ||
         config.height > 2160 || (config.width & 1) || (config.height & 1) || config.frameRate < 1)
         return false;
-    // CLI FFmpeg options cannot silently change the native library contract.
+    // Reuse the Mac subprocess contract when the operator explicitly selects
+    // a VP9/AV1 helper or options. Ordinary Linux encoding stays in libavcodec.
+    if ((config.codec == VideoCodec::VP9 || config.codec == VideoCodec::AV1) &&
+        (!config.ffmpegPath.empty() || !config.ffmpegOptions.empty())) {
+        s.external = std::make_unique<PosixFfmpegEncoder>();
+        if (!s.external->initialize(config)) { s.failure = s.external->lastFailure(); s.external.reset(); return false; }
+        s.name = config.codec == VideoCodec::VP9 ? "FFmpeg libvpx-vp9" : "FFmpeg libaom-av1";
+        s.failure = EncodeFailureKind::None;
+        spdlog::info("[LinuxEncoder] {} {}x{} at {} fps (explicit helper/options)", s.name, config.width, config.height, config.frameRate);
+        return true;
+    }
     if (!config.ffmpegOptions.empty()) {
         spdlog::error("[LinuxEncoder] Custom FFmpeg arguments require an external encoder backend");
         return false;
@@ -142,6 +159,11 @@ bool LinuxVideoEncoder::encode(const CapturedFrame &input, EncodedPacket &output
                                int64_t sourceTimestamp, int64_t presentationTimestamp) {
     std::lock_guard lock(state_->mutex);
     auto &s = *state_;
+    if (s.external) {
+        const bool ok = s.external->encode(input, output, sourceTimestamp);
+        s.failure = s.external->lastFailure();
+        return ok;
+    }
     s.failure = EncodeFailureKind::InvalidInput;
     const bool gray = s.config.enableAlpha;
     const int channels = gray ? 1 : 4;
@@ -203,13 +225,18 @@ void LinuxVideoEncoder::setBitrate(int kbps) {
     std::lock_guard lock(state_->mutex);
     if (kbps <= 0) return;
     state_->config.bitrate = kbps;
+    if (state_->external) { state_->external->setBitrate(kbps); return; }
     if (state_->context) {
         state_->context->bit_rate = int64_t(kbps) * 1000;
         state_->context->rc_max_rate = int64_t(kbps) * 1000;
         state_->context->rc_buffer_size = kbps * 500;
     }
 }
-void LinuxVideoEncoder::requestKeyframe() { std::lock_guard lock(state_->mutex); state_->keyframe = true; }
+void LinuxVideoEncoder::requestKeyframe() {
+    std::lock_guard lock(state_->mutex);
+    if (state_->external) state_->external->requestKeyframe();
+    else state_->keyframe = true;
+}
 VideoCodec LinuxVideoEncoder::activeCodec() const { std::lock_guard lock(state_->mutex); return state_->config.codec; }
 std::string LinuxVideoEncoder::activeCodecName() const {
     switch (activeCodec()) {

@@ -103,7 +103,7 @@ struct FfmpegProbeInfo {
     bool bundled = false;
     bool userOverride = false;
     bool hasLibvpxVp9 = false;
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     bool hasLibaomAv1 = false;
 #endif
     bool gplEnabled = false;

@@ -180,6 +180,10 @@ versus::video::VideoCodec codecFromUiValue(const QString &value) {
 }
 
 bool codecUsesExternalFfmpeg(versus::video::VideoCodec codec) {
+#ifdef __linux__
+    (void)codec;
+    return false; // Native libavcodec is the default; custom helpers are opt-in.
+#endif
 #ifdef __APPLE__
     if (codec == versus::video::VideoCodec::H265) return false;
 #endif
@@ -2302,6 +2306,9 @@ void MainWindow::setupUI() {
     connect(alphaWorkflowCheck_, &QCheckBox::toggled, this, [this](bool) {
         syncCodecUiState();
     });
+#ifdef __linux__
+    connect(ffmpegOptionsInput_, &QLineEdit::textChanged, this, [this]() { refreshFfmpegStatus(); });
+#endif
     connect(ffmpegPathInput_, &QLineEdit::textChanged, this, [this]() {
         refreshFfmpegStatus();
     });
@@ -3171,7 +3178,7 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
         config.enableAlpha = false;
         config.bFrames = 0;
     }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     // Keep saved software tuning without passing it to native H.264/HEVC encoders,
     // including destinations which select H.264 above.
     if (config.codec != versus::video::VideoCodec::VP9 && config.codec != versus::video::VideoCodec::AV1)
@@ -3405,9 +3412,15 @@ void MainWindow::onGoLiveClicked() {
                      config.enableAlpha,
                      static_cast<int>(config.alphaBackgroundMode));
 
+#ifdef __linux__
+        const bool requiresFfmpeg = muxedOutput ||
+            ((config.codec == versus::video::VideoCodec::VP9 || config.codec == versus::video::VideoCodec::AV1 || config.enableAlpha) &&
+             (!config.ffmpegPath.empty() || !config.ffmpegOptions.empty()));
+#else
         const bool requiresFfmpeg =
             muxedOutput || codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
             (config.explicitEncoderSelection && (config.preferredHardware == versus::video::HardwareEncoder::QuickSync || config.preferredHardware == versus::video::HardwareEncoder::AMF));
+#endif
 
         const QString streamTargetRaw = externalOutput ? QString() : streamIdInput_->text().trimmed();
         const ParsedStreamTarget parsedTarget = parseStreamTargetInput(streamTargetRaw);
@@ -3502,7 +3515,7 @@ void MainWindow::onGoLiveClicked() {
                                !info.hasLibvpxVp9) {
                         failureStatus = "FFmpeg lacks libvpx-vp9. Choose a compatible FFmpeg for the VP9/alpha workflow.";
                     }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
                     else if (config.codec == versus::video::VideoCodec::AV1 && !info.hasLibaomAv1) {
                         failureStatus = "FFmpeg lacks libaom-av1. Choose a compatible FFmpeg for AV1 publishing.";
                     }
@@ -4084,12 +4097,16 @@ void MainWindow::syncCodecUiState() {
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
     const QString mode = encoderSelect_->currentData().toString();
     const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
-    const bool enableFfmpegFields = muxedOutput || mode == "ffmpeg_nvenc" || mode == "qsv" || mode == "amf" || usesExternalFfmpeg || alphaWorkflowSelected;
+    const bool enableFfmpegFields =
+#ifdef __linux__
+        selectedCodec == versus::video::VideoCodec::VP9 || selectedCodec == versus::video::VideoCodec::AV1 ||
+#endif
+        muxedOutput || mode == "ffmpeg_nvenc" || mode == "qsv" || mode == "amf" || usesExternalFfmpeg || alphaWorkflowSelected;
     if (ffmpegPathInput_) {
         ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
     if (ffmpegOptionsInput_) {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
         const bool softwareCodec = !externalOutput &&
             (selectedCodec == versus::video::VideoCodec::VP9 || selectedCodec == versus::video::VideoCodec::AV1);
         ffmpegOptionsInput_->setEnabled(configControlsEnabled_ && softwareCodec);
@@ -4189,14 +4206,23 @@ void MainWindow::refreshFfmpegStatus() {
     const auto selectedCodec = codecSelect_ && !externalOutput
         ? codecFromUiValue(codecSelect_->currentData().toString())
         : versus::video::VideoCodec::H264;
+#ifdef __linux__
+    const bool customHelper = (ffmpegPathInput_ && !ffmpegPathInput_->text().trimmed().isEmpty()) ||
+        (ffmpegOptionsInput_ && !ffmpegOptionsInput_->text().trimmed().isEmpty());
+    const bool needsFfmpeg = muxedOutput || (customHelper &&
+        (selectedCodec == versus::video::VideoCodec::VP9 || selectedCodec == versus::video::VideoCodec::AV1 || alphaWorkflowSelected));
+#else
     const bool needsFfmpeg =
         codecSelect_ &&
         (muxedOutput || codecUsesExternalFfmpeg(selectedCodec) ||
          (encoderSelect_ && (encoderSelect_->currentData().toString() == "ffmpeg_nvenc" ||
                              (encoderSelect_->currentData().toString() == "qsv" || encoderSelect_->currentData().toString() == "amf"))) ||
          alphaWorkflowSelected);
+#endif
     if (!needsFfmpeg) {
-#ifdef __APPLE__
+#ifdef __linux__
+        ffmpegStatusLabel_->setText("Leave the path and options empty for default encoding. Custom FFmpeg settings apply to VP9/AV1.");
+#elif defined(__APPLE__)
         ffmpegStatusLabel_->setText("The bundled FFmpeg helper handles VP9, AV1 and SRT, RTMP, RTSP, UDP and RIST output.");
 #else
         ffmpegStatusLabel_->setText("Needed for VP9/AV1/H.265, FFmpeg NVENC, Intel Quick Sync, or OBS alpha.");
@@ -4204,7 +4230,7 @@ void MainWindow::refreshFfmpegStatus() {
         ffmpegStatusLabel_->setStyleSheet(QString("color: %1; font-size: 11px;").arg(COLOR_TEXT_DIM));
         return;
     }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     ffmpegStatusLabel_->setText("Checking FFmpeg...");
 #else
     ffmpegStatusLabel_->setText("Checking ffmpeg.exe...");
@@ -4269,7 +4295,9 @@ void MainWindow::showFfmpegStatus(const versus::video::FfmpegProbeInfo &info) {
         return;
     }
     if (!info.resolved) {
-#ifdef __APPLE__
+#ifdef __linux__
+        ffmpegStatusLabel_->setText("FFmpeg was not found. Install FFmpeg or choose a compatible executable.");
+#elif defined(__APPLE__)
         ffmpegStatusLabel_->setText("FFmpeg was not found. Repair the bundled installation or select a compatible helper.");
 #else
         ffmpegStatusLabel_->setText("ffmpeg.exe not found. Use the bundled FFmpeg or a compatible custom path for the selected codec/workflow.");
@@ -4282,7 +4310,12 @@ void MainWindow::showFfmpegStatus(const versus::video::FfmpegProbeInfo &info) {
         (alphaWorkflowSelected && selectedCodec == versus::video::VideoCodec::H264);
     const QString source = info.userOverride
         ? QStringLiteral("custom")
-        : (info.bundled ? QStringLiteral("bundled") : QStringLiteral("development"));
+        : (info.bundled ? QStringLiteral("bundled") :
+#ifdef __linux__
+            QStringLiteral("system"));
+#else
+            QStringLiteral("development"));
+#endif
     QString status = QString("Using %1 FFmpeg: %2").arg(source, QString::fromStdString(info.path));
     if (!info.version.empty()) {
         status += QString("\n%1").arg(QString::fromStdString(info.version));
@@ -4304,7 +4337,7 @@ void MainWindow::showFfmpegStatus(const versus::video::FfmpegProbeInfo &info) {
             ? "\nlibvpx-vp9 available; the alpha mask is CPU encoded."
             : "\nlibvpx-vp9 available.";
     }
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     if (selectedCodec == versus::video::VideoCodec::AV1) {
         status += info.hasLibaomAv1 ? "\nlibaom-av1 available; AV1 is CPU encoded." : "\nMissing libaom-av1; AV1 will not start.";
         if (!info.hasLibaomAv1) {

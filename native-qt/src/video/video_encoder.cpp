@@ -1091,7 +1091,7 @@ FfmpegProbeInfo probeFfmpegImpl(const std::string &configuredPath) {
     }
 
     info.hasLibvpxVp9 = textContainsInsensitive(encoderProbe.output, "libvpx-vp9");
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
     info.hasLibaomAv1 = textContainsInsensitive(encoderProbe.output, "libaom-av1");
 #endif
     info.gplEnabled = textContainsInsensitive(info.configuration, "--enable-gpl");

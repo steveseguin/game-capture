@@ -11,7 +11,7 @@
       "id": "shared-core",
       "required": true,
       "status": "implemented-unqualified",
-      "remaining": "Windows/macOS regression qualification of integrated branch and shared POSIX extraction"
+      "remaining": "Windows/macOS regression qualification of integrated branch, including shared POSIX resolver and VP9/AV1 subprocess encoder extracted from macOS. Linux reuses the subprocess worker, IVF identity contract, bounded retirement and literal custom argument handling."
     },
     {
       "id": "wayland-window",
@@ -58,8 +58,8 @@
     {
       "id": "software-encoding",
       "required": true,
-      "status": "implemented-unqualified",
-      "remaining": "H264/x264, VP9, HEVC, AV1; actual output identities/color/quality/cadence, live bitrate/keyframes and timestamps; custom FFmpeg path/options backend"
+      "status": "partial-e2e-passed",
+      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified."
     },
     {
       "id": "hardware-encoding",
@@ -101,7 +101,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Wayland GUI, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain; Linux FFmpeg help text needs correction. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Wayland GUI, preview, tray/reopen, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific."
     },
     {
       "id": "profiles",
@@ -119,7 +119,7 @@
       "id": "recovery",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain."
+      "remaining": "Bounded input removal, app playback pause/resume, stream removal/recreation/output move, app exit, stale selection, explicit reselection and three GUI start/stop cycles passed. Audio-server and network loss, mixed microphone continuity on primary loss, camera hotplug, suspend/resume, shutdown during startup, endurance and all owned worker cleanup across other modes remain. Custom VP9/AV1 helpers retired after GUI stop/quit and CLI source loss; helper crash/stall and failed live reconfiguration rollback remain unqualified."
     },
     {
       "id": "packaging",
@@ -491,6 +491,698 @@
       "passed": true,
       "finding": "Actual X11 Qt Audio app selector and dynamic app routing passed. Three Go live/Stop cycles verified stale selection was not replaced by a new same-name app, video continued without that audio, and explicitly selecting the new process restored decoded isolated audio.",
       "limits": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps-gui workflow. Physical microphones, native PipeWire/JACK app streams, Wayland GUI, endurance and A/V drift excluded."
+    },
+    {
+      "backend": "native-vp9",
+      "report": "native-qt/qa/reports/linux-software-codecs/ba29721b-1f4e-4204-b4cb-818cab4e7915/results.json",
+      "reportSha256": "480081d32547b7415796a62d87ffb240a76e98df91f877e37465c50ae5a1617f",
+      "executableSha256": "bb6522875163a883ef152ade806560d82846f2f1104aae29a5811d34f1ba0839",
+      "manifestSha256": "92a0ffa9b03fe22d19c4a2b1714fa1a30016d74d77652669c8c4a030ba834132",
+      "harnessSha256": "afbf0e129419693f2df092bea435137d7a7795dfd4c69e5cebdbe9d680ff8e6e",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "passed": true,
+      "finding": "Packaged native VP9: moving/static decoded identities, resize, late viewer and source-loss cleanup passed.",
+      "limits": "Extracted Ubuntu DEB, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "native-av1",
+      "report": "native-qt/qa/reports/linux-software-codecs/5ca0105f-2ab0-4f43-8901-cf22254a1e59/results.json",
+      "reportSha256": "f5ce7177015d41d26108114803f3915395f4bf0ce5fc317b6ad06b11d778aeb2",
+      "executableSha256": "bb6522875163a883ef152ade806560d82846f2f1104aae29a5811d34f1ba0839",
+      "manifestSha256": "92a0ffa9b03fe22d19c4a2b1714fa1a30016d74d77652669c8c4a030ba834132",
+      "harnessSha256": "afbf0e129419693f2df092bea435137d7a7795dfd4c69e5cebdbe9d680ff8e6e",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "passed": true,
+      "finding": "Packaged native AV1: moving/static decoded identities, resize, late viewer and source-loss cleanup passed.",
+      "limits": "Extracted Ubuntu DEB, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "native-hevc-fallback",
+      "report": "native-qt/qa/reports/linux-software-codecs/8ca7868f-fa2b-40f5-99e9-49190c84cb11/results.json",
+      "reportSha256": "643e53fdd49a47417d1855b0cdcad782e28ef40dbbb95271afa8155d5708ba10",
+      "executableSha256": "bb6522875163a883ef152ade806560d82846f2f1104aae29a5811d34f1ba0839",
+      "manifestSha256": "92a0ffa9b03fe22d19c4a2b1714fa1a30016d74d77652669c8c4a030ba834132",
+      "harnessSha256": "afbf0e129419693f2df092bea435137d7a7795dfd4c69e5cebdbe9d680ff8e6e",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "passed": false,
+      "finding": "HEVC decoding not qualified. libx265 initialized, but browser capabilities/answer lacked HEVC and shared negotiation fell back to H264; expected HEVC MIME assertion failed.",
+      "limits": "Extracted Ubuntu DEB, X11 window capture and software H.265 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "external-vp9-cli",
+      "report": "native-qt/qa/reports/linux-custom-ffmpeg/9073071c-d7a3-4e4c-8d0e-1af89c65d7e8/results.json",
+      "reportSha256": "cf45f547b1fd17f926f31b624003c682200ceea9f500d6d2ad74f79a32ab5068",
+      "executableSha256": "e5e3cbac8eea739ed17db3639ee16de4c154fe96fd3ed5b788f494ef3b8deba2",
+      "manifestSha256": "47bf0c282a1a96d8a5bec3210110f4b87b798241441612454811c792907a04b7",
+      "harnessSha256": "8f7ce479342799ddc2edca229deb04155149f592bafb81576ed47cfe2800ba3b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "finding": "Explicit custom FFmpeg VP9 helper path with spaces and literal options verified against live process argv/executable; decoded moving/static identities, resize, late viewer and source-loss cleanup passed.",
+      "limits": "Extracted Ubuntu DEB, CLI explicit external FFmpeg, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "external-av1-cli",
+      "report": "native-qt/qa/reports/linux-custom-ffmpeg/fa26b786-d156-4237-b538-f0de1f00a412/results.json",
+      "reportSha256": "dd43b41c67ecdb14c244d2b1d675bfdf5d86b0529cefcd91b931147fe036e159",
+      "executableSha256": "e5e3cbac8eea739ed17db3639ee16de4c154fe96fd3ed5b788f494ef3b8deba2",
+      "manifestSha256": "47bf0c282a1a96d8a5bec3210110f4b87b798241441612454811c792907a04b7",
+      "harnessSha256": "8f7ce479342799ddc2edca229deb04155149f592bafb81576ed47cfe2800ba3b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "finding": "Explicit custom FFmpeg AV1 helper path with spaces and literal options verified against live process argv/executable; decoded moving/static identities, resize, late viewer and source-loss cleanup passed.",
+      "limits": "Extracted Ubuntu DEB, CLI explicit external FFmpeg, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "external-vp9-gui",
+      "report": "native-qt/qa/reports/linux-custom-ffmpeg/d3fc56c8-7913-4480-9936-adffa2336e66/results.json",
+      "reportSha256": "105b16627ee158e6623d218502ee9a5d839a3db946dca21b694f5b36f33c028f",
+      "executableSha256": "e5e3cbac8eea739ed17db3639ee16de4c154fe96fd3ed5b788f494ef3b8deba2",
+      "manifestSha256": "47bf0c282a1a96d8a5bec3210110f4b87b798241441612454811c792907a04b7",
+      "harnessSha256": "8f7ce479342799ddc2edca229deb04155149f592bafb81576ed47cfe2800ba3b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "finding": "Actual Qt software/VP9 selection, custom helper path and options, Go live/Stop controls; decoded moving/static identities, resize, late viewer and stop/quit cleanup passed. The GUI used its Standard 4000 kbps preset, as confirmed by helper argv and native log; the older harness requested metadata incorrectly copied the 2000 kbps CLI override.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI explicit external FFmpeg, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "external-av1-gui",
+      "report": "native-qt/qa/reports/linux-custom-ffmpeg/8723cd6b-9369-4576-93f8-369e3e1590b6/results.json",
+      "reportSha256": "ddb67579f64abaf52062f853cf9d797957203a1f82a01151be81c50e5ced5c82",
+      "executableSha256": "e5e3cbac8eea739ed17db3639ee16de4c154fe96fd3ed5b788f494ef3b8deba2",
+      "manifestSha256": "47bf0c282a1a96d8a5bec3210110f4b87b798241441612454811c792907a04b7",
+      "harnessSha256": "8f7ce479342799ddc2edca229deb04155149f592bafb81576ed47cfe2800ba3b",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "finding": "Actual Qt software/AV1 selection, custom helper path and options, Go live/Stop controls; decoded moving/static identities, resize, late viewer and stop/quit cleanup passed. The GUI used its Standard 4000 kbps preset, as confirmed by helper argv and native log; the older harness requested metadata incorrectly copied the 2000 kbps CLI override.",
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI explicit external FFmpeg, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification"
+    },
+    {
+      "backend": "native-av1-bitrate-failure",
+      "report": "native-qt/qa/reports/linux-bitrate-before/bd2595c6-4870-409a-8518-8a292c0e5cf5/results.json",
+      "reportSha256": "ac7ee12128ba0749d3b319aac71c7cf95967e5c095c2aef1204b4bb10c8ea2bb",
+      "executableSha256": "e5e3cbac8eea739ed17db3639ee16de4c154fe96fd3ed5b788f494ef3b8deba2",
+      "manifestSha256": "47bf0c282a1a96d8a5bec3210110f4b87b798241441612454811c792907a04b7",
+      "harnessSha256": "7452ce61909beadd2fdb5001accbfe2afaa257db35151a4f6fc676249a4f959d",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "portalHarnessSha256": "5002dc79a2a6beebdb6783bb61c1236c3c01d2483dba041208664fa4f2728c26",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": false,
+      "finding": "Actual authenticated 2000-to-500 kbps control changed diagnostics, but receiver payload rate stayed 1965-to-1998 kbps. Unauthorized request rejected. Confirms native libaom rate update failure before fix.",
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 1965.3076474092195,
+          "fps": 29.987953360532693,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 1997.626275503578,
+          "fps": 29.989842656179054,
+          "configuredKbps": 500
+        }
+      }
+    },
+    {
+      "backend": "native-av1-rate-stress",
+      "report": "native-qt/qa/reports/linux-bitrate-final/03313dfb-c95d-4c4f-a57b-84527708a0bd/results.json",
+      "reportSha256": "c875505d5d24e4e2e29681a9196e81961f472958ec7665a0b632c4c21fc6a69a",
+      "executableSha256": "4185710fd78d1b75c9713e9b7ec55d6c26dbf2bba972e8cdd28f3cceab4772a6",
+      "manifestSha256": "4a4d4e69269a53b74148a061368a6351aa757782b04c931aed541cbbdf743d10",
+      "harnessSha256": "7452ce61909beadd2fdb5001accbfe2afaa257db35151a4f6fc676249a4f959d",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 1965.8293658861737,
+          "fps": 29.98698946188247,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 916.3518888048515,
+          "fps": 29.981599253555217,
+          "configuredKbps": 500
+        },
+        "rateRestored": {
+          "kbps": 1958.312152864871,
+          "fps": 29.978151038565397,
+          "configuredKbps": 2000
+        }
+      },
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification; 160x90 changing noise grid, 640x360/30 output.",
+      "finding": "Authenticated bitrate reduction/restoration responded after Linux reinitialization; decoded identities and source-loss cleanup passed. This earlier harness checked relative response only; received 500 kbps-target rates overshot to about 1000 kbps. It does not qualify target accuracy. Later CBR configuration and explicit target checks supersede this qualification."
+    },
+    {
+      "backend": "native-vp9-rate-stress",
+      "report": "native-qt/qa/reports/linux-bitrate-final/06e6fd48-7ea0-41df-9081-881de52347f5/results.json",
+      "reportSha256": "69018c689fd6b0e4e020b4a01f64676484c1a606ab5a3fe9c578571d1598b2d3",
+      "executableSha256": "4185710fd78d1b75c9713e9b7ec55d6c26dbf2bba972e8cdd28f3cceab4772a6",
+      "manifestSha256": "4a4d4e69269a53b74148a061368a6351aa757782b04c931aed541cbbdf743d10",
+      "harnessSha256": "7452ce61909beadd2fdb5001accbfe2afaa257db35151a4f6fc676249a4f959d",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 1623.9121906629146,
+          "fps": 29.985294948651195,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 1026.605535108323,
+          "fps": 29.98560749405925,
+          "configuredKbps": 500
+        },
+        "rateRestored": {
+          "kbps": 1609.7120822586262,
+          "fps": 29.986056985500465,
+          "configuredKbps": 2000
+        }
+      },
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification; 160x90 changing noise grid, 640x360/30 output.",
+      "finding": "Authenticated bitrate reduction/restoration responded after Linux reinitialization; decoded identities and source-loss cleanup passed. This earlier harness checked relative response only; received 500 kbps-target rates overshot to about 1000 kbps. It does not qualify target accuracy. Later CBR configuration and explicit target checks supersede this qualification."
+    },
+    {
+      "backend": "native-h264-rate-stress",
+      "report": "native-qt/qa/reports/linux-bitrate-final/918e78b5-b2c9-4f6e-9aac-40ef910e3be5/results.json",
+      "reportSha256": "e62375d0731f691c05d54338d6940d61ac6577dd2414f9d8426b4708f47a7ca4",
+      "executableSha256": "4185710fd78d1b75c9713e9b7ec55d6c26dbf2bba972e8cdd28f3cceab4772a6",
+      "manifestSha256": "4a4d4e69269a53b74148a061368a6351aa757782b04c931aed541cbbdf743d10",
+      "harnessSha256": "7452ce61909beadd2fdb5001accbfe2afaa257db35151a4f6fc676249a4f959d",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2000.5729466415273,
+          "fps": 29.98806522697039,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 495.67683783310804,
+          "fps": 29.986257693007598,
+          "configuredKbps": 500
+        },
+        "rateRestored": {
+          "kbps": 1999.454453895936,
+          "fps": 29.988423832485424,
+          "configuredKbps": 2000
+        }
+      },
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification; 160x90 changing noise grid, 640x360/30 output.",
+      "finding": "Authenticated bitrate reduction/restoration responded after Linux reinitialization; decoded identities and source-loss cleanup passed."
+    },
+    {
+      "backend": "external-vp9-rate-stress",
+      "report": "native-qt/qa/reports/linux-bitrate-final/a2dca134-2100-4bfb-8f67-2b5a46ca3c03/results.json",
+      "reportSha256": "84d10a33766131f3567e0a6f5de2c98060f33945a3042e5852bd468fb7adf854",
+      "executableSha256": "4185710fd78d1b75c9713e9b7ec55d6c26dbf2bba972e8cdd28f3cceab4772a6",
+      "manifestSha256": "4a4d4e69269a53b74148a061368a6351aa757782b04c931aed541cbbdf743d10",
+      "harnessSha256": "d00970c41b06e8ddcdd98759e3ca3c09a85d0d5f81fbe30c2d62cac96701b4f5",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": false,
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2032.5644477682886,
+          "fps": 29.980123738415752,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 1458.508670184125,
+          "fps": 29.985105752088405,
+          "configuredKbps": 500
+        }
+      },
+      "limits": "Extracted Ubuntu DEB, CLI explicit external FFmpeg, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification; 160x90 changing noise grid, 640x360/30 output.",
+      "finding": "AssertionError [ERR_ASSERTION]: Received video bitrate did not fall"
+    },
+    {
+      "backend": "external-av1-rate-stress",
+      "report": "native-qt/qa/reports/linux-bitrate-final/cf4300c1-14d7-4374-9085-626a6025e153/results.json",
+      "reportSha256": "17ad3b602130d0318b11b76dab49ec7f86e96b860b0ba2725656b302eaa3aea1",
+      "executableSha256": "4185710fd78d1b75c9713e9b7ec55d6c26dbf2bba972e8cdd28f3cceab4772a6",
+      "manifestSha256": "4a4d4e69269a53b74148a061368a6351aa757782b04c931aed541cbbdf743d10",
+      "harnessSha256": "1a14e3b41d4f8ccafd0ada5b6c381e276e4f1be9db129e76e0271be9e80887c3",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": false,
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 1982.2899311450144,
+          "fps": 29.98754667556271,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 993.0769779835348,
+          "fps": 29.987795494363013,
+          "configuredKbps": 500
+        }
+      },
+      "limits": "Extracted Ubuntu DEB, CLI explicit external FFmpeg, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification; 160x90 changing noise grid, 640x360/30 output.",
+      "finding": "AssertionError [ERR_ASSERTION]: Received video rate is outside the bounded 500 kbps target tolerance"
+    },
+    {
+      "backend": "independent-ffmpeg-rate-reference",
+      "report": "native-qt/qa/reports/linux-codec-rate-reference/av1/results.json",
+      "reportSha256": "0f9406e5de2e55439670496e2328e1ea972204eab5b0ad8ca81682839d089087",
+      "harnessSha256": "21262d3f83ad5572f76097f1a4844d60e8cb46bbc817e71fa5ce33bc642aa082",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "finding": "Independent codec calibration, not application testing. At low targets, independent FFmpeg also overshoots the detailed noise fixture; the 40x23 fixture is used for bounded application control qualification.",
+      "rates": [
+        {
+          "requestedKbps": 2000,
+          "encodedKbps": 2066.776
+        },
+        {
+          "requestedKbps": 500,
+          "encodedKbps": 1127.2462222222223
+        }
+      ],
+      "noiseGrid": "160x90",
+      "limits": "Synthetic noise/barcode geometry; no browser decorations, capture resampling, transport or application"
+    },
+    {
+      "backend": "independent-ffmpeg-rate-reference",
+      "report": "native-qt/qa/reports/linux-codec-rate-reference/av1-80x45/results.json",
+      "reportSha256": "344845f9e3d3535d87ad4081cabc064328b4eb4f1822582785f0609b0aba546a",
+      "harnessSha256": "c955dab51fb72dad70dcf4a44c94be2672045489b9a03684b0cc0e2a87ec2935",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "finding": "Independent codec calibration, not application testing. At low targets, independent FFmpeg also overshoots the detailed noise fixture; the 40x23 fixture is used for bounded application control qualification.",
+      "rates": [
+        {
+          "requestedKbps": 2000,
+          "encodedKbps": 1745.0622222222223
+        },
+        {
+          "requestedKbps": 500,
+          "encodedKbps": 531.4568888888889
+        }
+      ],
+      "noiseGrid": "80x45",
+      "limits": "Synthetic noise/barcode geometry; no browser decorations, capture resampling, transport or application"
+    },
+    {
+      "backend": "independent-ffmpeg-rate-reference",
+      "report": "native-qt/qa/reports/linux-codec-rate-reference/vp9/results.json",
+      "reportSha256": "33da3f64d7956397bc8b72ed315f61ffcbbad690877069b9988ad254771a36f2",
+      "harnessSha256": "21262d3f83ad5572f76097f1a4844d60e8cb46bbc817e71fa5ce33bc642aa082",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "finding": "Independent codec calibration, not application testing. At low targets, independent FFmpeg also overshoots the detailed noise fixture; the 40x23 fixture is used for bounded application control qualification.",
+      "rates": [
+        {
+          "requestedKbps": 2000,
+          "encodedKbps": 2065.4062222222224
+        },
+        {
+          "requestedKbps": 500,
+          "encodedKbps": 1406.2435555555555
+        }
+      ],
+      "noiseGrid": "160x90",
+      "limits": "Synthetic noise/barcode geometry; no browser decorations, capture resampling, transport or application"
+    },
+    {
+      "backend": "independent-ffmpeg-rate-reference",
+      "report": "native-qt/qa/reports/linux-codec-rate-reference/vp9-40x23/results.json",
+      "reportSha256": "9c94b3c9bd06b4984bc68077319aa3e53e3449ecafae2f269e2c33733d17b30d",
+      "harnessSha256": "26c5ceebf4d8cdf96e57ab303f3dd6917b351713eb3c3521926c6bc45cb38291",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "finding": "Independent codec calibration, not application testing. At low targets, independent FFmpeg also overshoots the detailed noise fixture; the 40x23 fixture is used for bounded application control qualification.",
+      "rates": [
+        {
+          "requestedKbps": 2000,
+          "encodedKbps": 2034.360888888889
+        },
+        {
+          "requestedKbps": 500,
+          "encodedKbps": 667.5457777777777
+        }
+      ],
+      "noiseGrid": "40x23",
+      "limits": "Synthetic noise/barcode geometry; no browser decorations, capture resampling, transport or application"
+    },
+    {
+      "backend": "independent-ffmpeg-rate-reference",
+      "report": "native-qt/qa/reports/linux-codec-rate-reference/vp9-80x45/results.json",
+      "reportSha256": "329a2d6e41051019005b0cc5cf7ababee5d4d0ca699fe8c85f73ddc71753bc1f",
+      "harnessSha256": "c955dab51fb72dad70dcf4a44c94be2672045489b9a03684b0cc0e2a87ec2935",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "finding": "Independent codec calibration, not application testing. At low targets, independent FFmpeg also overshoots the detailed noise fixture; the 40x23 fixture is used for bounded application control qualification.",
+      "rates": [
+        {
+          "requestedKbps": 2000,
+          "encodedKbps": 2034.735111111111
+        },
+        {
+          "requestedKbps": 500,
+          "encodedKbps": 785.3866666666667
+        }
+      ],
+      "noiseGrid": "80x45",
+      "limits": "Synthetic noise/barcode geometry; no browser decorations, capture resampling, transport or application"
+    },
+    {
+      "backend": "external-vp9-control-final",
+      "report": "native-qt/qa/reports/linux-software-control/033977ea-b8a6-453c-8893-c16f4ce11166/results.json",
+      "reportSha256": "dce02509599e5b441af16a598bb346ae9c1afbaa8e223199ec0917195a6c263e",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "5b32a6ad495fedaff2a752cad5945fb688ab0e92e08928dd989aedb49a4f0f18",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "limits": "Extracted Ubuntu DEB, CLI explicit external FFmpeg, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "vp9",
+        "width": 640,
+        "height": 360,
+        "external": true,
+        "gui": false,
+        "rateControl": true,
+        "targetBitrateKbps": 1000,
+        "noiseGrid": "40x23",
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2030.4036141149013,
+          "fps": 29.93018933656278,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 1017.687888415841,
+          "fps": 29.987974270083797,
+          "configuredKbps": 1000
+        },
+        "rateRestored": {
+          "kbps": 2032.238021061067,
+          "fps": 29.985148608559218,
+          "configuredKbps": 2000
+        }
+      },
+      "finding": "Authenticated rate reduction/restoration, rejected unauthorized request, measured received rates, decoded identities, static pacing, resize, late viewer and source-loss cleanup passed. Decoded identity continuity was observed across both control transitions. Exact custom helper argv/executable and owned-helper retirement verified."
+    },
+    {
+      "backend": "external-vp9-gui-final",
+      "report": "native-qt/qa/reports/linux-software-control/1865a2df-036a-4e25-960e-3c9ed4bab1ec/results.json",
+      "reportSha256": "aeed67dc3758c119543e4984100a759f7f2314664ebc2d6a94b9d492f8a82f3d",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "5b32a6ad495fedaff2a752cad5945fb688ab0e92e08928dd989aedb49a4f0f18",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI explicit external FFmpeg, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "vp9",
+        "width": 960,
+        "height": 540,
+        "external": true,
+        "gui": true,
+        "rateControl": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Actual Qt software codec and custom FFmpeg path/options selection, Go live/Stop, moving/static decoded identities, resize, late viewer, settled stop, quit and owned-helper retirement passed."
+    },
+    {
+      "backend": "external-av1-control-final",
+      "report": "native-qt/qa/reports/linux-software-control/2a0a7798-5c05-4e14-8972-de34edc84db6/results.json",
+      "reportSha256": "a544ea07185f0520e78889438679bc91866bf3d35fefffba596e81738ac644a7",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "5b32a6ad495fedaff2a752cad5945fb688ab0e92e08928dd989aedb49a4f0f18",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "limits": "Extracted Ubuntu DEB, CLI explicit external FFmpeg, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "external": true,
+        "gui": false,
+        "rateControl": true,
+        "targetBitrateKbps": 1000,
+        "noiseGrid": "40x23",
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2037.4118857856101,
+          "fps": 30.129157581355045,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 1052.639810626976,
+          "fps": 29.989966038497233,
+          "configuredKbps": 1000
+        },
+        "rateRestored": {
+          "kbps": 2113.288713637619,
+          "fps": 29.988090318622415,
+          "configuredKbps": 2000
+        }
+      },
+      "finding": "Authenticated rate reduction/restoration, rejected unauthorized request, measured received rates, decoded identities, static pacing, resize, late viewer and source-loss cleanup passed. Decoded identity continuity was observed across both control transitions. Exact custom helper argv/executable and owned-helper retirement verified."
+    },
+    {
+      "backend": "native-vp9-control-final",
+      "report": "native-qt/qa/reports/linux-software-control/67175d77-f2c7-4356-bc54-5291dc2a87b6/results.json",
+      "reportSha256": "1fa0bf91c9eb7993bec0021e2818011192b93288bf6d2cadae141a7c33767990",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "c464c56cb7ae802fde389fd72d438d317d054e0fca6be921d808b3007a5920d1",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software VP9 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "vp9",
+        "width": 640,
+        "height": 360,
+        "external": false,
+        "gui": false,
+        "rateControl": true,
+        "noiseGrid": "40x23",
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2001.798936663734,
+          "fps": 29.98247292729024,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 508.22589002912537,
+          "fps": 29.986827424267275,
+          "configuredKbps": 500
+        },
+        "rateRestored": {
+          "kbps": 2008.4421789337368,
+          "fps": 29.986382091196656,
+          "configuredKbps": 2000
+        }
+      },
+      "finding": "Authenticated rate reduction/restoration, rejected unauthorized request, measured received rates, decoded identities, static pacing, resize, late viewer and source-loss cleanup passed."
+    },
+    {
+      "backend": "native-h264-control-final",
+      "report": "native-qt/qa/reports/linux-software-control/bff5b784-4b8c-488b-aa30-2ab89503f02b/results.json",
+      "reportSha256": "26ff0b16618fa7ead8a7cce54a26aa9da26ba5301e4b9753cb7fef6cd1fc2251",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "c3ebd708e1353791168d2fc7244639d308b963a72295f967699c2f0412803754",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "h264",
+        "width": 640,
+        "height": 360,
+        "external": false,
+        "gui": false,
+        "rateControl": true,
+        "noiseGrid": "40x23",
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 1999.7432006658794,
+          "fps": 29.987580129951063,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 490.9157195022313,
+          "fps": 30.12863661972047,
+          "configuredKbps": 500
+        },
+        "rateRestored": {
+          "kbps": 2019.9273426280272,
+          "fps": 29.986586984581567,
+          "configuredKbps": 2000
+        }
+      },
+      "finding": "Authenticated rate reduction/restoration, rejected unauthorized request, measured received rates, decoded identities, static pacing, resize, late viewer and source-loss cleanup passed. Decoded identity continuity was observed across both control transitions."
+    },
+    {
+      "backend": "external-av1-gui-final",
+      "report": "native-qt/qa/reports/linux-software-control/ed53450a-bfe7-4dee-9e6e-353f85adf73a/results.json",
+      "reportSha256": "7d8d9239be93849686ba334c25bf650b7b7aebb12e02f9e2f8f1f7a1324de1d9",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "5b32a6ad495fedaff2a752cad5945fb688ab0e92e08928dd989aedb49a4f0f18",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "helperSha256": "ed16af623947494a72e284b6eb8ff225f2da22b38b5d5069c2fd4b4ba3384e41",
+      "passed": true,
+      "limits": "Extracted Ubuntu DEB, actual Qt GUI explicit external FFmpeg, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "av1",
+        "width": 960,
+        "height": 540,
+        "external": true,
+        "gui": true,
+        "rateControl": false,
+        "targetBitrateKbps": null,
+        "noiseGrid": null,
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "audio": "none"
+      },
+      "finding": "Actual Qt software codec and custom FFmpeg path/options selection, Go live/Stop, moving/static decoded identities, resize, late viewer, settled stop, quit and owned-helper retirement passed."
+    },
+    {
+      "backend": "native-av1-control-final",
+      "report": "native-qt/qa/reports/linux-software-control/f9374c02-edb2-4934-9766-75ad206b880b/results.json",
+      "reportSha256": "7af3e7c39f6475127b7adbb5343079abf8b4c63124f1416afaaaa5d2a6a704b7",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "c464c56cb7ae802fde389fd72d438d317d054e0fca6be921d808b3007a5920d1",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": false,
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification",
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "external": false,
+        "gui": false,
+        "rateControl": true,
+        "noiseGrid": "40x23",
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2004.5221749069283,
+          "fps": 29.98825236988635,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true
+      },
+      "finding": "Error: rateReduced: 2 frames have no agreeing barcode rows. Low-rate AV1 image fidelity remains unqualified; earlier harness did not retain the failed observation payload, so no corruption root cause is established."
+    },
+    {
+      "backend": "native-av1-control-final",
+      "report": "native-qt/qa/reports/linux-software-control/d041a442-b43c-45a2-8d51-5e381353cb80/results.json",
+      "reportSha256": "239f493fccd28dff35ce88f443bc3ba325a4a5c3ea859bfbecf26a0c10d48ca1",
+      "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+      "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+      "harnessSha256": "5b32a6ad495fedaff2a752cad5945fb688ab0e92e08928dd989aedb49a4f0f18",
+      "receiverHarnessSha256": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+      "guiHelperSha256": "04cf39cd9c451f4f62ddc155039cbae0c9bc09d053f2ec437aa6ca15244c7252",
+      "passed": true,
+      "requested": {
+        "backend": "x11",
+        "encoder": "software",
+        "codec": "av1",
+        "width": 640,
+        "height": 360,
+        "external": false,
+        "gui": false,
+        "rateControl": true,
+        "targetBitrateKbps": 1000,
+        "noiseGrid": "40x23",
+        "fps": 30,
+        "bitrateKbps": 2000,
+        "audio": "none"
+      },
+      "receivedRates": {
+        "rateBaseline": {
+          "kbps": 2005.7164471898095,
+          "fps": 29.988993646061054,
+          "configuredKbps": 2000
+        },
+        "unauthorizedRejected": true,
+        "rateReduced": {
+          "kbps": 1018.5827072358891,
+          "fps": 29.989362729528484,
+          "configuredKbps": 1000
+        },
+        "rateRestored": {
+          "kbps": 2019.2873610273064,
+          "fps": 29.988805448356803,
+          "configuredKbps": 2000
+        }
+      },
+      "finding": "Authenticated 2000-to-1000 kbps reduction and restoration, rejected unauthorized control, decoded identities during both transitions, measured received rates, static pacing, resize, late viewer and source-loss cleanup passed.",
+      "limits": "Extracted Ubuntu DEB, CLI default encoder, X11 window capture and software AV1 reception; excludes audio, hardware encoders, endurance and production qualification"
     }
   ],
   "host_environment": {
@@ -519,7 +1211,10 @@
     "node native-qt/e2e/linux-camera-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --camera-id=<exact V4L2 id> --hdmi-loopback=true",
     "xvfb-run -a node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=routes|codecs|gui",
     "xvfb-run -a node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=apps-auto|apps-gui",
-    "WAYLAND_DISPLAY=wayland-0 node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=apps --backend=wayland"
+    "WAYLAND_DISPLAY=wayland-0 node native-qt/e2e/linux-audio-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --matrix=apps --backend=wayland",
+    "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --codec=vp9|av1 --external=true --gui=true",
+    "xvfb-run -a node native-qt/e2e/linux-window-publish.js --publisher=<extracted>/usr/bin/game-capture --manifest-sha256=<sha256> --reports=<reports> --codec=h264|vp9|av1 --rate-control=true --noise-grid=40x23 --target-bitrate=1000",
+    "python3 native-qt/e2e/linux-codec-rate-reference.py --workflow-report=<external-encoder-results.json> --output=<new-reference-directory> --noise-grid=160x90|80x45|40x23 (independent calibration, not application testing)"
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -557,5 +1252,23 @@
     "log": "native-qt/build-linux-process-audio-gates.log",
     "logSha256": "c3b6bc0978ca186aaccf1c7cb1267978087285b55e43d48e530bb9b91bb345d4",
     "cross_platform": "New process selection and native backend branches are Linux-only; Windows/macOS runtime regression qualification remains open."
+  },
+  "software_encoder_regression_gates": {
+    "classification": "Gates only; not application testing.",
+    "passed": [
+      "PlatformCapabilitiesGate",
+      "PosixFfmpegGate"
+    ],
+    "log": "native-qt/build-linux-posix-encoder-gates.log",
+    "logSha256": "24b3575f120d2f424e85da61d5d7257acfce89f28a6737a68466c62fa585491e",
+    "cross_platform": "Subprocess encoder extraction is identical to the prior macOS implementation after renaming includes/classes/resolver calls and log prefixes. Runtime Windows/macOS regression qualification remains open."
+  },
+  "software_encoder_checkpoint": {
+    "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-fcfd17976533-8b68dd696b77.deb",
+    "sha256": "efdeb48213a819c02286b0765f50e96352fd6bf6b9fbc33994297b1adf7e7d7d",
+    "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-fcfd17976533-8b68dd696b77",
+    "manifestSha256": "f2f618dacb634a4f43ae93f386e46bca7bdcf015d251324af1a470f1b6d32a9a",
+    "executableSha256": "fcfd179765330822947ad3efd7b73f236461aaeb544bdab944e13105b1c82961",
+    "qualification": "Development checkpoint only: extracted Ubuntu DEB on this host, X11/Xvfb, bounded 640x360/30 CLI and 960x540/30 GUI. No clean-install, default 720p60, physical Xorg, endurance, hardware or Windows/macOS qualification."
   }
 }

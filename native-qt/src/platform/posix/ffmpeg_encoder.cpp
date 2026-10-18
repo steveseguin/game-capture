@@ -1,5 +1,5 @@
-#include "versus/platform/macos_ffmpeg_encoder.h"
-#include "versus/platform/macos_ffmpeg.h"
+#include "versus/platform/posix_ffmpeg_encoder.h"
+#include "versus/platform/posix_ffmpeg.h"
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
 #include <QImage>
@@ -69,7 +69,7 @@ QStringList arguments(const EncoderConfig &c) {
         auto protectedOptions = detail::appendProtectedVp9Options(std::move(args), custom);
         args = std::move(protectedOptions.args);
         if (!protectedOptions.rejectedOptions.empty())
-            spdlog::warn("[MacFFmpeg] Ignored {} options that conflict with protected VP9 alpha", protectedOptions.rejectedOptions.size());
+            spdlog::warn("[FFmpegEncoder] Ignored {} options that conflict with protected VP9 alpha", protectedOptions.rejectedOptions.size());
     } else args.insert(args.end(), custom.begin(), custom.end());
     // Raw input retains its first analyzed frame; never use nobuffer here.
     args.insert(args.end(), {"-fps_mode", "passthrough", "-flush_packets", "1", "-f", "ivf", "pipe:1"});
@@ -105,7 +105,7 @@ QByteArray prepare(const CapturedFrame &frame, const EncoderConfig &c) {
 }
 }
 
-struct MacFfmpegEncoder::State {
+struct PosixFfmpegEncoder::State {
     EncoderConfig config;
     std::string executable;
     std::thread thread;
@@ -205,7 +205,7 @@ struct MacFfmpegEncoder::State {
                 if (timer.elapsed() >= FrameDeadlineMs && packet.data.empty()) error = EncodeFailureKind::Timeout;
             }
             if (error != EncodeFailureKind::None) {
-                spdlog::warn("[MacFFmpeg] Encoder generation retired (failure={})", int(error));
+                spdlog::warn("[FFmpegEncoder] Encoder generation retired (failure={})", int(error));
                 healthy = false; retire();
             }
             {
@@ -218,9 +218,9 @@ struct MacFfmpegEncoder::State {
     }
 };
 
-MacFfmpegEncoder::MacFfmpegEncoder() : state_(std::make_unique<State>()) {}
-MacFfmpegEncoder::~MacFfmpegEncoder() { shutdown(); }
-bool MacFfmpegEncoder::initialize(const EncoderConfig &config) {
+PosixFfmpegEncoder::PosixFfmpegEncoder() : state_(std::make_unique<State>()) {}
+PosixFfmpegEncoder::~PosixFfmpegEncoder() { shutdown(); }
+bool PosixFfmpegEncoder::initialize(const EncoderConfig &config) {
     shutdown();
     state_->failure = EncodeFailureKind::Unsupported;
     if ((config.codec != VideoCodec::VP9 && config.codec != VideoCodec::AV1) ||
@@ -235,7 +235,7 @@ bool MacFfmpegEncoder::initialize(const EncoderConfig &config) {
         (config.codec == VideoCodec::AV1 ? !probe.hasLibaomAv1 : !probe.hasLibvpxVp9) ||
         (probe.bundled && (probe.gplEnabled || probe.nonfreeEnabled))) return false;
     state_->config = config;
-    state_->executable = resolveMacFfmpeg(config.ffmpegPath).string();
+    state_->executable = resolvePosixFfmpeg(config.ffmpegPath).string();
     state_->stop = state_->ready = state_->job = state_->completed = state_->restart = state_->busy = false;
     state_->thread = std::thread([this] { state_->run(); });
     std::unique_lock lock(state_->mutex);
@@ -243,12 +243,12 @@ bool MacFfmpegEncoder::initialize(const EncoderConfig &config) {
     const bool ok = ready && state_->started;
     lock.unlock(); if (!ok) shutdown(); return ok;
 }
-void MacFfmpegEncoder::shutdown() {
+void PosixFfmpegEncoder::shutdown() {
     { std::lock_guard lock(state_->mutex); state_->stop = true; state_->wake.notify_all(); }
     if (state_->thread.joinable()) state_->thread.join();
     state_->input = {}; state_->output = {}; state_->healthy = false;
 }
-bool MacFfmpegEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet, int64_t identity) {
+bool PosixFfmpegEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet, int64_t identity) {
     packet = {};
     std::unique_lock lock(state_->mutex);
     if (!state_->healthy || state_->stop || state_->busy) return false;
@@ -261,13 +261,13 @@ bool MacFfmpegEncoder::encode(const CapturedFrame &frame, EncodedPacket &packet,
     if (state_->stop || state_->failure != EncodeFailureKind::None) return false;
     packet = std::move(state_->output); return !packet.data.empty();
 }
-void MacFfmpegEncoder::setBitrate(int kbps) {
+void PosixFfmpegEncoder::setBitrate(int kbps) {
     if (kbps < 1 || kbps > 200000) return;
     std::lock_guard lock(state_->mutex); state_->config.bitrate = kbps; state_->restart = true;
 }
-void MacFfmpegEncoder::requestKeyframe() {
+void PosixFfmpegEncoder::requestKeyframe() {
     std::lock_guard lock(state_->mutex);
     if (!state_->config.requireEveryFrameKeyframe) state_->restart = true;
 }
-EncodeFailureKind MacFfmpegEncoder::lastFailure() const { return state_->failure.load(); }
+EncodeFailureKind PosixFfmpegEncoder::lastFailure() const { return state_->failure.load(); }
 }

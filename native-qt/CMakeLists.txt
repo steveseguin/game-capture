@@ -219,7 +219,7 @@ if(APPLE)
     list(APPEND VERSUS_PLATFORM_SOURCES src/platform/macos/media_activity.mm src/platform/macos/syphon_capture.mm src/platform/macos/app_paths.cpp src/platform/macos/window_capture.mm
         src/platform/macos/source_list.cpp include/versus/platform/macos_source_list.h
         src/platform/macos/audio_choices.cpp include/versus/platform/macos_audio_choices.h
-        src/platform/macos/video_encoder.cpp src/platform/macos/ffmpeg_encoder.cpp src/platform/macos/ffmpeg.cpp src/platform/posix/ffmpeg.cpp src/platform/macos/system_resources.cpp src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm)
+        src/platform/macos/video_encoder.cpp src/platform/posix/ffmpeg_encoder.cpp src/platform/macos/ffmpeg.cpp src/platform/posix/ffmpeg.cpp src/platform/macos/system_resources.cpp src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm)
     set_source_files_properties(src/platform/macos/media_activity.mm src/platform/macos/syphon_capture.mm src/platform/macos/window_capture.mm src/platform/macos/network.mm src/platform/macos/audio_capture.mm src/platform/macos/audio_input.mm src/platform/macos/camera_capture.mm src/platform/macos/output_profiles.mm
         PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
     set(VERSUS_PLATFORM_LIBRARIES "-framework ScreenCaptureKit" "-framework CoreMedia"
@@ -502,6 +502,13 @@ if(VERSUS_BUILD_TESTS)
         add_executable(test_audio_sample_clock tests/test_audio_sample_clock.cpp)
         target_include_directories(test_audio_sample_clock PRIVATE include)
         add_test(NAME AudioSampleClockGate COMMAND test_audio_sample_clock)
+    endif()
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # Reuse the existing POSIX probe contract gate on Linux as well.
+        add_executable(test_posix_ffmpeg tests/test_macos_ffmpeg.cpp)
+        set_target_properties(test_posix_ffmpeg PROPERTIES AUTOMOC ON)
+        target_link_libraries(test_posix_ffmpeg PRIVATE versus-lib Qt6::Test)
+        add_test(NAME PosixFfmpegGate COMMAND test_posix_ffmpeg)
     endif()
     if(APPLE)
         # Native texture-transfer gate and owned sender fixture.

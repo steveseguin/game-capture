@@ -1,11 +1,25 @@
 'use strict';
-// Extracted Ubuntu DEB -> X11/Wayland window -> software H.264 -> real VDO.Ninja receiver.
-// Hosted VM functional coverage only. No hardware encoder, audio or performance claim.
+// Extracted Ubuntu DEB -> X11/Wayland window -> selected software codec -> real VDO.Ninja receiver.
+// Bounded functional coverage only. No hardware encoder, audio or performance claim.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),os=require('os');
-const assert=require('assert/strict'),{spawn}=require('child_process');
+const assert=require('assert/strict'),{spawn,execFileSync}=require('child_process');
 const {chromium}=require('playwright');
 const {receiver,observe,requireMoving,waitFor,sleep}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
+const gui=opts.gui==='true',external=opts.external==='true',width=gui?960:640,height=gui?540:360;
+const rateControl=opts['rate-control']==='true';
+assert(!rateControl||!gui,'Rate control currently qualifies CLI only');
+const targetBitrate=Number(opts['target-bitrate']||1000);
+assert([500,1000].includes(targetBitrate),'Unknown rate-control fixture target');
+const noiseGrid=opts['noise-grid']||'160x90';
+assert(['160x90','80x45','40x23'].includes(noiseGrid),'Unknown noise fixture grid');
+const [noiseWidth,noiseHeight]=noiseGrid.split('x').map(Number);
+assert(!gui||opts.backend!=='wayland','GUI helper currently qualifies X11 only');
+assert(!external||['vp9','av1'].includes(opts.codec),'External helper matrix supports VP9/AV1');
+const codec=opts.codec||'h264', expectedCodec='video/'+codec;
+assert(['h264','vp8','vp9','av1','h265'].includes(codec),'Unknown codec');
+assert(!gui||['vp9','av1'].includes(codec),'GUI codec matrix supports VP9/AV1');
+const codecName={h264:'H.264',h265:'H.265',vp8:'VP8',vp9:'VP9',av1:'AV1'}[codec];
 assert.equal(process.platform,'linux');for(const key of ['publisher','reports','manifest-sha256'])assert(opts[key]);
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..'),manifestFile=path.join(bundle,'release-artifact-manifest.json');
 const sha=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
@@ -23,13 +37,27 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 fs.copyFileSync(path.join(__dirname,'linux-portal-select.py'),path.join(report,'portal-selector.py'));
 fs.copyFileSync(path.join(__dirname,'macos-media-receiver.js'),path.join(report,'receiver.js'));
-const result={scope:`Extracted Ubuntu DEB, ${opts.backend==='wayland'?'Wayland portal':'X11'} window capture and software H.264 reception; excludes audio, hardware encoders, endurance and production qualification`,
+fs.copyFileSync(path.join(__dirname,'linux-ui-control.py'),path.join(report,'linux-ui-control.py'));
+const helperPath=external?path.join(report,'custom ffmpeg','ffmpeg'):'';
+if(external){fs.mkdirSync(path.dirname(helperPath));fs.symlinkSync('/usr/bin/ffmpeg',helperPath);}
+const result={scope:`Extracted Ubuntu DEB, ${gui?'actual Qt GUI':'CLI'} ${external?'explicit external FFmpeg':'default encoder'}, ${opts.backend==='wayland'?'Wayland portal':'X11'} window capture and software ${codecName} reception; excludes audio, hardware encoders, endurance and production qualification`,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname,'macos-media-receiver.js')),portalHarnessSha256:sha(path.join(__dirname,'linux-portal-select.py')),
+  guiHelperSha256:sha(path.join(__dirname,'linux-ui-control.py')),
   host:{platform:os.platform(),release:os.release(),arch:os.arch(),logicalCpus:os.cpus().length},
-  requested:{backend:opts.backend||'x11',encoder:'software',codec:'h264',width:640,height:360,fps:30,bitrateKbps:2000,audio:'none'},phases:{},passed:false};
+  requested:{backend:opts.backend||'x11',encoder:'software',codec,width,height,external,gui,rateControl,targetBitrateKbps:rateControl?targetBitrate:null,noiseGrid:rateControl?noiseGrid:null,fps:30,bitrateKbps:gui?4000:2000,audio:'none'},phases:{},passed:false};
 let publisher,sourceBrowser,viewerBrowser,log,control,discovery,portalSelector;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');
+const processStart=pid=>{try{return fs.readFileSync('/proc/'+pid+'/stat','utf8').split(') ').pop().split(' ')[19];}catch{return null;}};
+const helperProcesses=()=>{
+  const children=new Set(fs.readdirSync('/proc/'+publisher.pid+'/task').flatMap(tid=>{
+    try{return fs.readFileSync('/proc/'+publisher.pid+'/task/'+tid+'/children','utf8').trim().split(/\s+/).filter(Boolean);}catch{return[];}
+  }));
+  return [...children].flatMap(pid=>{try{
+    const argv=fs.readFileSync('/proc/'+pid+'/cmdline','utf8').split('\0').filter(Boolean);
+    return argv[0]===helperPath?[{pid:Number(pid),startTimeTicks:processStart(pid),argv,executableSha256:sha('/proc/'+pid+'/exe')}]:[];
+  }catch{return[];}});
+};
 async function api(route,body){const r=await fetch(control.base_url+route,{method:body?'POST':'GET',
   headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok,'Control status '+r.status);return r.json();}
 (async()=>{console.log('Reports: '+report);save();try{
@@ -41,8 +69,10 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   const title='Owned Linux Capture '+crypto.randomBytes(8).toString('hex');
   await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
     const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,paused:false};
+    const noise=document.createElement('canvas');noise.width=${noiseWidth};noise.height=${noiseHeight};const nctx=noise.getContext('2d'),pixels=nctx.createImageData(${noiseWidth},${noiseHeight});
     function draw(){canvas.width=innerWidth;canvas.height=innerHeight;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
       const w=canvas.width,h=canvas.height;ctx.fillStyle='#183042';ctx.fillRect(0,0,w,h);
+      if(${rateControl}){let seed=fixture.id+1;for(let i=0;i<pixels.data.length;i+=4){seed=(Math.imul(seed,1664525)+1013904223)>>>0;pixels.data[i]=pixels.data[i+1]=pixels.data[i+2]=seed>>>24;pixels.data[i+3]=255;}nctx.putImageData(pixels,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(noise,0,0,w,h);}
       ctx.fillStyle='#00ffff';ctx.fillRect(.1*w,.25*h,.05*w,.5*h);ctx.fillStyle='#ff00ff';ctx.fillRect(.85*w,.25*h,.05*w,.5*h);
       for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}
       ctx.fillStyle='white';ctx.font='22px sans-serif';ctx.fillText('Owned source '+fixture.id,20,.9*h);requestAnimationFrame(draw);
@@ -50,9 +80,13 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   await source.bringToFront();await sleep(1000);await source.screenshot({path:path.join(report,'source.png')});
   result.browserVersion=sourceBrowser.version();result.sourceTitle=title;result.initialSourceMetrics=await source.evaluate(()=>({innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio}));save();
   const stream='gclinux'+crypto.randomBytes(14).toString('hex');discovery=path.join(report,'private-control.json');
-  const args=['--headless','--source=window','--window='+(opts.backend==='wayland'?'Choose a window':title),'--stream='+stream,'--password=false',
-    '--video-encoder=software','--video-codec=h264','--resolution=640x360','--fps=30','--bitrate-kbps=2000',
+  const remoteToken=crypto.randomBytes(24).toString('hex');
+  const args=[gui?'--settings-dir='+path.join(report,'private-settings'):'--headless','--source=window','--window='+(opts.backend==='wayland'?'Choose a window':title),'--stream='+stream,'--password=false',
+    '--video-encoder=software','--video-codec='+codec,'--resolution='+width+'x'+height,'--fps=30','--bitrate-kbps=2000',
     '--audio-source=none','--duration-ms=150000','--local-control','--local-control-port=0','--local-control-discovery='+discovery];
+  if(external)args.push('--ffmpeg-path='+helperPath,'--ffmpeg-options=-threads 2');
+  if(rateControl)args.push('--remote-control','--remote-token='+remoteToken);
+  if(gui)env.QT_LINUX_ACCESSIBILITY_ALWAYS_ON='1';
   log=fs.createWriteStream(path.join(report,'private-publisher.log'));
   publisher=spawn(exe,args,{cwd:bundle,env,windowsHide:true,stdio:['ignore','pipe','pipe']});
   publisher.stdout.pipe(log,{end:false});publisher.stderr.pipe(log,{end:false});
@@ -61,31 +95,109 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   publisher.on('error',error=>{result.launchError=String(error);});
   await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during startup');assert(!result.launchError,result.launchError);return fs.existsSync(discovery);},15000,'No control discovery');
   control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,publisher.pid);
+  const ui=(...arguments_)=>execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),...arguments_],{env,encoding:'utf8',timeout:10000,stdio:['ignore','pipe','pipe']});
+  if(gui){
+    ui('press','Show advanced settings');
+    ui('choose','Auto (Hardware, then Software)','Software (x264 / VP9 / AV1 / HEVC)');
+    ui('choose','1280x720','960x540');ui('choose','60','30');
+    ui('choose-prefix','H.264 (Compatibility)',codec==='vp9'?'VP9 (':'AV1 (');
+    ui('choose','Selected window/app audio','No audio');
+    ui('source',title);ui('text','Stream ID or VDO.Ninja URL',stream);ui('text','Stream password','false');
+    if(external){ui('text','FFmpeg Path',helperPath);ui('text','FFmpeg Options','-threads 2');}
+    fs.writeFileSync(path.join(report,'ui-before-live.json'),ui('dump'));
+    ui('press','Go live');await waitFor(async()=> (await api('/diagnostics')).app.live,15000,'GUI did not go live');
+  }
+
   if(opts.backend==='wayland')await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during portal selection');return fs.readFileSync(path.join(report,'private-publisher.log'),'utf8').includes('[Headless] Going live');},75000,'Portal selection/startup did not finish');
   viewerBrowser=await chromium.launch({executablePath:opts.browser||'/usr/bin/google-chrome',headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+  const capabilities=await viewerBrowser.newPage();result.receiverCapabilities=await capabilities.evaluate(()=>RTCRtpReceiver.getCapabilities('video'));await capabilities.close();save();
   const viewer=await receiver(viewerBrowser,stream,publisher);
-  result.phases.moving=await observe(viewer,6000);result.initialDistinct=requireMoving(result.phases.moving,'Initial Linux software stream');await viewer.screenshot({path:path.join(report,'receiver.png')});save();
-  assert.equal(result.phases.moving.width,640);assert.equal(result.phases.moving.height,360);
+  result.phases.moving=await observe(viewer,6000);result.initialDistinct=requireMoving(result.phases.moving,'Initial Linux software stream',expectedCodec);await viewer.screenshot({path:path.join(report,'receiver.png')});save();
+  assert.equal(result.phases.moving.width,width);assert.equal(result.phases.moving.height,height);
   const diagnostics=await api('/diagnostics');
   result.activeEncoder=diagnostics.video.active_encoder;result.hardwareEncoder=diagnostics.video.hardware_encoder;
+  result.configuredBitrateKbps=diagnostics.video.configured_bitrate_kbps;
+  assert.equal(result.configuredBitrateKbps,result.requested.bitrateKbps);
   assert.equal(result.hardwareEncoder,false,'Explicit software request used hardware');
-  assert.equal(diagnostics.video.active_codec,'H.264');
+  assert.equal(diagnostics.video.active_codec,codecName);
+  const encoderNames={h264:'libx264',h265:'libx265',vp8:'libvpx',vp9:'libvpx-vp9',av1:'libaom-av1'};
+  assert.equal(result.activeEncoder,(external?'FFmpeg ':'')+encoderNames[codec]);
+  if(external){
+    result.helperProcesses=helperProcesses();
+    assert.equal(result.helperProcesses.length,1,'Custom FFmpeg path did not own exactly one encoder process');
+    assert(result.helperProcesses[0].argv.some((arg,i,args)=>arg==='-threads'&&args[i+1]==='2'),'Custom options not passed to the encoder');
+    result.helperSha256=sha('/usr/bin/ffmpeg');assert.equal(result.helperProcesses[0].executableSha256,result.helperSha256);
+  }
   result.publisherCounters={framesCaptured:diagnostics.video.frames_captured,framesSent:diagnostics.video.frames_sent,
     encodeFailures:diagnostics.video.encode_failures,encodeTimeouts:diagnostics.video.encode_timeouts};
+  if(rateControl){
+    const send=async(targetBitrate,remote)=>viewer.evaluate(({targetBitrate,remote})=>{
+      const uuid=Object.keys(session.rpcs).find(id=>session.rpcs[id].connectionState==='connected');
+      if(!uuid)throw Error('No connected publisher');
+      return session.sendRequest({targetBitrate,remote},uuid)!==false;
+    },{targetBitrate,remote});
+    const sample=async label=>{
+      const before=await observe(viewer,100);const after=await observe(viewer,7000);
+      result.phases[label]=after;save();
+      const end=after.tracks.find(t=>t.kind==='video'&&t.codec?.toLowerCase()===expectedCodec);
+      const start=before.tracks.find(t=>t.id===end?.id);assert(start&&end,'Missing inbound video stats');
+      const kbps=(end.bytesReceived-start.bytesReceived)*8/(end.timestamp-start.timestamp);
+      const fps=(end.framesDecoded-start.framesDecoded)*1000/(end.timestamp-start.timestamp);
+      assert(kbps>0&&fps>10,'Stream stopped during bitrate control');
+      const diagnostic=await api('/diagnostics');assert.equal(diagnostic.video.active_codec,codecName);
+      const measurement={kbps,fps,configuredKbps:diagnostic.video.configured_bitrate_kbps};
+      result.rateControl[label]=measurement;save();
+      requireMoving(after,label,expectedCodec);return measurement;
+    };
+    const change=async(target,wanted,label)=>{
+      const [transition]=await Promise.all([observe(viewer,4000),(async()=>{
+        // Start observation before sending control so the transition is included.
+        await sleep(150);assert(await send(target,remoteToken));
+        await waitFor(async()=>(await api('/diagnostics')).video.configured_bitrate_kbps===wanted,10000,'Bitrate control not applied');
+      })()]);
+      result.phases[label]=transition;save();requireMoving(transition,label,expectedCodec);
+    };
+    result.rateControl={};
+    await sleep(2000);const baseline=await sample('rateBaseline');
+    assert.equal(baseline.configuredKbps,2000);
+    assert(await send(targetBitrate,'invalid-owned-fixture-token'));await sleep(1500);
+    assert.equal((await api('/diagnostics')).video.configured_bitrate_kbps,2000,'Unauthorized control was accepted');
+    result.rateControl.unauthorizedRejected=true;
+    await change(targetBitrate,targetBitrate,'rateReductionTransition');const reduced=await sample('rateReduced');
+    // Measure the received payload: a changed diagnostics field alone is insufficient.
+    assert(reduced.kbps<baseline.kbps*.65,'Received video bitrate did not fall');
+    assert(reduced.kbps>=targetBitrate*.5&&reduced.kbps<=targetBitrate*1.5,'Received video rate is outside the bounded target tolerance');
+    await change(false,2000,'rateRestorationTransition');const restored=await sample('rateRestored');
+    assert(restored.kbps>reduced.kbps*1.5,'Received video bitrate did not recover');
+    assert(restored.kbps>baseline.kbps*.65,'Restored video bitrate remains below baseline');save();
+  }
   await source.evaluate(()=>{fixture.paused=true;});await sleep(1000);
   result.phases.static=await observe(viewer,2500);
   assert(!result.phases.static.observerError);assert.equal(result.phases.static.identityReadFailures,0);
   assert.equal(new Set(result.phases.static.observations.map(x=>x.id)).size,1,'Static picture changed');
   assert(result.phases.static.observations.length>=10,'Static picture was not paced');save();
   await source.evaluate(()=>{fixture.paused=false;});if(opts.backend==='wayland'){const session=await source.context().newCDPSession(source);const {windowId}=await session.send('Browser.getWindowForTarget');await session.send('Browser.setWindowBounds',{windowId,bounds:{width:600,height:460}});}else await source.setViewportSize({width:680,height:420});await sleep(800);await source.screenshot({path:path.join(report,'source-resized.png')});result.resizedSourceMetrics=await source.evaluate(()=>({innerWidth,innerHeight,outerWidth,outerHeight,devicePixelRatio}));const sourceSession=await source.context().newCDPSession(source);result.resizedWindowBounds=await sourceSession.send('Browser.getWindowForTarget');if(opts.backend==='wayland'){assert(result.resizedSourceMetrics.innerWidth<=result.resizedSourceMetrics.outerWidth,'Fixture viewport exceeds its real window');assert(result.initialSourceMetrics.outerWidth!==result.resizedSourceMetrics.outerWidth||result.initialSourceMetrics.outerHeight!==result.resizedSourceMetrics.outerHeight,'Native source window did not resize');}if(opts['desktop-evidence']==='true')await new Promise((resolve,reject)=>{const shot=spawn('gnome-screenshot',['-f',path.join(report,'desktop-resized.png')],{env});shot.once('error',reject);shot.once('close',code=>code===0?resolve():reject(Error('Desktop screenshot failed')));});await viewer.screenshot({path:path.join(report,'receiver-resized.png')});
-  result.phases.resized=await observe(viewer,4000);requireMoving(result.phases.resized,'Resized Linux stream');save();
-  const late=await receiver(viewerBrowser,stream,publisher);result.phases.late=await observe(late,3000);requireMoving(result.phases.late,'Late Linux receiver');save();
+  result.phases.resized=await observe(viewer,4000);requireMoving(result.phases.resized,'Resized Linux stream',expectedCodec);save();
+  const late=await receiver(viewerBrowser,stream,publisher);result.phases.late=await observe(late,3000);requireMoving(result.phases.late,'Late Linux receiver',expectedCodec);save();
+  if(external){result.helpersBeforeStop=helperProcesses();assert.equal(result.helpersBeforeStop.length,1);}
+  if(gui){
+    ui('press','Stop streaming');await waitFor(async()=>!(await api('/diagnostics')).app.capturing,10000,'GUI stop did not finish');
+    const before=await api('/diagnostics');await sleep(500);const after=await api('/diagnostics');
+    assert.equal(before.video.frames_captured,after.video.frames_captured);result.guiStopSettled=true;
+    await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,8000,'GUI quit did not finish');await publisher.closed;
+    assert.equal(publisher.exitCode,0);assert(!fs.existsSync(discovery));result.passed=true;
+  }else{
   await sourceBrowser.close();sourceBrowser=null;
   await waitFor(()=>publisher.exitCode!==null,15000,'Publisher did not report destroyed source');
   await publisher.closed;result.exitCode=publisher.exitCode;result.exitSignal=publisher.signalCode;
   assert.equal(result.exitCode,3,'Expected source-loss exit code');assert.equal(result.exitSignal,null);
   assert(!fs.existsSync(discovery),'Discovery survived shutdown');result.sourceClosureReported=true;result.passed=true;
-}catch(error){result.error=String(error.stack||error);process.exitCode=1;}finally{
+  }
+  if(external){
+    await waitFor(()=>[...result.helperProcesses,...result.helpersBeforeStop].every(p=>processStart(p.pid)!==p.startTimeTicks),5000,'Owned FFmpeg helper survived shutdown');
+    result.helpersRetired=true;
+  }
+}catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;}finally{
   if(publisher&&publisher.exitCode===null){
     try{if(control)await api('/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,6000,'Cleanup quit timed out');}
     catch{publisher.kill();await publisher.closed;}
@@ -94,5 +206,6 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
   if(sourceBrowser)await sourceBrowser.close();if(viewerBrowser)await viewerBrowser.close();
   if(log)await new Promise(resolve=>log.end(resolve));
   if(publisher){result.exitCode=publisher.exitCode;result.exitSignal=publisher.signalCode;}
+  if(gui){const nativeLog=path.join(report,'private-state/GameCapture/logs/game-capture-debug.log');if(fs.existsSync(nativeLog))fs.copyFileSync(nativeLog,path.join(report,'private-native.log'));}
   save();console.log(JSON.stringify({report,passed:result.passed,error:result.error}));
 }})();

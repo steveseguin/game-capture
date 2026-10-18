@@ -8,6 +8,7 @@ pkg_check_modules(XCB_CAPTURE REQUIRED IMPORTED_TARGET xcb xcb-composite)
 list(REMOVE_ITEM VERSUS_PLATFORM_SOURCES src/video/window_capture.cpp src/video/camera_capture.cpp src/audio/window_audio_capture_core.cpp)
 list(APPEND VERSUS_PLATFORM_SOURCES
     src/platform/posix/ffmpeg.cpp
+    src/platform/posix/ffmpeg_encoder.cpp
     src/platform/linux/video_encoder.cpp
     src/platform/linux/network.cpp
     src/platform/linux/window_capture.cpp

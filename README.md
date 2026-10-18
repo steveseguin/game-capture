@@ -40,6 +40,8 @@ The Linux port targets Ubuntu 24.04 on x86-64 and is still under development. It
 
 For application audio, choose **Selected window/app audio**. X11 can use the selected window's process automatically; on Wayland, choose a running **Audio app** explicitly. **Refresh audio apps** updates the list after an app starts playing sound. The selection covers that process and its children, and is cleared when Game Capture is relaunched. If the app closes, select its new instance before restarting the stream. The CLI equivalent is `--audio-source=selected-window --audio-process=<PID>`; omit `--audio-process` for automatic X11 selection. System audio and microphone/input selection remain separate choices.
 
+For software video, leave **FFmpeg Path** and **FFmpeg Options** empty to use the native Linux encoder. VP9 and AV1 also support an external FFmpeg helper: enter a path, custom options, or both. Options alone use the system FFmpeg. The CLI equivalents are `--ffmpeg-path=/path/to/ffmpeg` and `--ffmpeg-options="-threads 2"`. H.264 and HEVC use the native encoder; HEVC receiver compatibility is still unqualified.
+
 ## Help and development
 
 - [Website](https://steveseguin.github.io/game-capture/gamecapture.html) · [Screenshots & demos](media-assets/README.md) · [Setup guide](https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja)
