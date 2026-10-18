@@ -28,14 +28,6 @@ int keyframeInterval(const EncoderConfig &config) {
                              : std::max(1, config.gopSize);
 }
 
-// Experimental comparison branch: isolate H.264 rate control while preserving
-// the released profile, conversion, pacing and HEVC behavior. Do not promote
-// this policy without matched native-app receiver and live-bitrate evidence.
-CFStringRef bitrateProperty(const EncoderConfig &config) {
-    return config.codec == VideoCodec::H264 ? kVTCompressionPropertyKey_ConstantBitRate
-                                           : kVTCompressionPropertyKey_AverageBitRate;
-}
-
 bool setInteger(VTCompressionSessionRef session, CFStringRef property, int value, bool required = true) {
     CFNumberRef number = CFNumberCreate(nullptr, kCFNumberIntType, &value);
     const auto result = VTSessionSetProperty(session, property, number);
@@ -47,6 +39,23 @@ bool setProperty(VTCompressionSessionRef session, CFStringRef property, CFTypeRe
     const auto result = VTSessionSetProperty(session, property, value);
     if (result != noErr) spdlog::warn("[VideoToolbox] Property failed (status={})", result);
     return result == noErr;
+}
+
+// Isolated comparison candidate: retain average rate for inexpensive scenes,
+// but bound H.264 bursts to half a second of the requested payload budget.
+// This needs real receiver and dynamic-rate qualification before promotion.
+bool setHardwareBitrate(VTCompressionSessionRef session, VideoCodec codec, int kbps) {
+    if (!setInteger(session, kVTCompressionPropertyKey_AverageBitRate, kbps * 1000)) return false;
+    if (codec != VideoCodec::H264) return true;
+    const int bytes = std::max(1, kbps * 1000 / 16);
+    const double seconds = 0.5;
+    CFNumberRef byteValue = CFNumberCreate(nullptr, kCFNumberIntType, &bytes);
+    CFNumberRef durationValue = CFNumberCreate(nullptr, kCFNumberDoubleType, &seconds);
+    const void *values[] = {byteValue, durationValue};
+    CFArrayRef limits = CFArrayCreate(nullptr, values, 2, &kCFTypeArrayCallBacks);
+    const bool ok = setProperty(session, kVTCompressionPropertyKey_DataRateLimits, limits);
+    CFRelease(limits); CFRelease(durationValue); CFRelease(byteValue);
+    return ok;
 }
 
 bool toI420(const CapturedFrame &frame, int width, int height, std::vector<uint8_t> &pixels) {
@@ -176,7 +185,7 @@ struct MacVideoEncoder::State {
                 hevc ? kVTProfileLevel_HEVC_Main_AutoLevel : kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel) &&
             setInteger(session, kVTCompressionPropertyKey_ExpectedFrameRate, config.frameRate) &&
             setInteger(session, kVTCompressionPropertyKey_MaxKeyFrameInterval, keyframeInterval(config)) &&
-            setInteger(session, bitrateProperty(config), config.bitrate * 1000) &&
+            setHardwareBitrate(session, config.codec, config.bitrate) &&
             setProperty(session, kVTCompressionPropertyKey_ColorPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2) &&
             setProperty(session, kVTCompressionPropertyKey_TransferFunction, kCVImageBufferTransferFunction_sRGB) &&
             setProperty(session, kVTCompressionPropertyKey_YCbCrMatrix, kCVImageBufferYCbCrMatrix_ITU_R_601_4);
@@ -415,7 +424,7 @@ void MacVideoEncoder::setBitrate(int kbps) {
     if (!state_->initialized || kbps < 1 || kbps > 200000) return;
     if (state_->ffmpeg) { state_->ffmpeg->setBitrate(kbps); state_->config.bitrate = kbps; return; }
     bool ok = false;
-    if (state_->session) ok = setInteger(state_->session, bitrateProperty(state_->config), kbps * 1000);
+    if (state_->session) ok = setHardwareBitrate(state_->session, state_->config.codec, kbps);
     else if (state_->software) {
         x264_param_t param;
         x264_encoder_parameters(state_->software, &param);
