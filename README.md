@@ -44,4 +44,4 @@ This is an early port with incomplete feature parity. Minimum-OS and clean-machi
 
 Free and open source under [AGPL-3.0](LICENSE).
 
-Encoding: [streaming defaults and advanced policy](docs/streaming-defaults.md).
+Encoding: **[Illustrated settings guide: resolution, bitrate, WHIP and CPU/GPU costs](https://steveseguin.github.io/game-capture/encoder-guide/)** · [Default policy](docs/streaming-defaults.md).

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 330" role="img" aria-labelledby="title desc">
+    <title id="title">A stylized game scene and smooth frame sequence</title>
+    <desc id="desc">Original diagram illustrating a game picture becoming a video stream; not a measured image-quality comparison.</desc>
+    <rect width="720" height="330" rx="18" fill="#122238"/>
+    <path d="M0 40h720M0 290h720M40 0v330M680 0v330" stroke="#29405a"/>
+    <path d="M66 231 241 76l90 94 67-72 137 133" fill="#254859"/>
+    <path d="m66 231 175-155 18 55-18-12-29 20-7-7z" fill="#65e5ed"/>
+    <path d="m235 266 77-90 77 90z" fill="#203047"/><path d="m312 176-8 90h16z" fill="#ecf98b"/>
+    <path d="M93 264h79M437 264h79M106 278h49M456 278h49" stroke="#65e5ed" stroke-width="3"/>
+    <circle cx="474" cy="99" r="22" fill="#ecf98b"/>
+    <text x="78" y="57" font-family="Arial,sans-serif" font-size="16" fill="#a5bed0">PLAY / CAPTURE / SHARE</text><path d="M566 150h30m-10-9 10 9-10 9" fill="none" stroke="#65e5ed" stroke-width="3"/>
+    <rect x="610" y="69" width="60" height="188" rx="9" fill="#21364a"/>
+    <rect x="620" y="137" width="8" height="82" rx="3" fill="#65e5ed"/><rect x="634" y="101" width="8" height="118" rx="3" fill="#65e5ed"/><rect x="648" y="153" width="8" height="66" rx="3" fill="#65e5ed"/>
+    <text x="640" y="241" text-anchor="middle" font-family="Arial,sans-serif" font-size="11" fill="#e7eff8">LIVE</text>
+    </svg>

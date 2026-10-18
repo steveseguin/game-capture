@@ -1,0 +1,89 @@
+{
+  "measured_utc_date": "2026-10-18",
+  "scope": "Unreleased Windows candidates; local synthetic sources.",
+  "cpu_basis": "Publisher process tree, percent of 20 logical CPUs; excludes source browser and receiver.",
+  "gpu_basis": "One attributed codec engine, not total GPU load; null means unavailable or inapplicable.",
+  "source_sha256": "51ef594aed3a111eef34f96e87f149edcedae4e797f601e0403bf66fdac6b83b",
+  "rows": [
+    {
+      "case": "udp-default-auto",
+      "app": "Game Capture",
+      "cpu_percent": 3.108888888888889,
+      "memory_mib": 196.57573784722223,
+      "fps": 59.976746983121515,
+      "codec_engine_percent": null,
+      "codec_engine": null
+    },
+    {
+      "case": "udp-default-software",
+      "app": "Game Capture",
+      "cpu_percent": 2.243421052631579,
+      "memory_mib": 173.92722039473685,
+      "fps": 59.94310213567336,
+      "codec_engine_percent": null,
+      "codec_engine": null
+    },
+    {
+      "case": "udp-default-nvenc",
+      "app": "Game Capture",
+      "cpu_percent": 1.6107894736842105,
+      "memory_mib": 299.04420230263156,
+      "fps": 59.78043112428881,
+      "codec_engine_percent": 18.353591825755885,
+      "codec_engine": "VideoEncode"
+    },
+    {
+      "case": "udp-default-qsv",
+      "app": "Game Capture",
+      "cpu_percent": 1.8529411764705883,
+      "memory_mib": 295.0859375,
+      "fps": 59.386129897154746,
+      "codec_engine_percent": 10.528336445884905,
+      "codec_engine": "VideoDecode"
+    },
+    {
+      "case": "whip-default-auto",
+      "app": "Game Capture",
+      "cpu_percent": 2.5411363636363635,
+      "memory_mib": 175.4659090909091,
+      "fps": 60.24996885770046,
+      "codec_engine_percent": null,
+      "codec_engine": null
+    },
+    {
+      "case": "udp-default-amf",
+      "app": "Game Capture",
+      "cpu_percent": 1.912777777777778,
+      "memory_mib": 195.76866319444446,
+      "fps": 59.74452408601289,
+      "codec_engine_percent": 11.75616033429946,
+      "codec_engine": "Video Codec Engine"
+    },
+    {
+      "case": "whip-default-amf",
+      "app": "Game Capture",
+      "cpu_percent": 2.1747619047619047,
+      "memory_mib": 175.04817708333334,
+      "fps": 60.001651800462504,
+      "codec_engine_percent": 11.75246713019125,
+      "codec_engine": "Video Codec Engine"
+    }
+  ],
+  "software_av1": [
+    {
+      "app": "game",
+      "passed": true,
+      "encoder": "FFmpeg libaom-av1",
+      "configured_fps": 30,
+      "configured_bitrate_kbps": 4000,
+      "rendered_fps": 29.700457904407774,
+      "p95_render_gap_ms": 33.5,
+      "valid_source_id_frames": 598,
+      "cpu_machine_percent_mean": 2.786785714285714,
+      "rss_mib_mean": 188.20479910714286,
+      "hardware_encoder": false,
+      "audio_codec": "opus",
+      "note": "Opt-in software AV1 at explicit 720p30; receiver video and decoded PCM verified. Existing media-quality harness uses instrumented resource monitoring."
+    }
+  ]
+}
