@@ -83,7 +83,9 @@ SCStreamConfiguration *configuration(int width, int height, bool alpha = false) 
     config.minimumFrameInterval = kCMTimeZero;
     config.pixelFormat = kCVPixelFormatType_32BGRA;
     config.queueDepth = 3;
-    config.showsCursor = YES;
+    // Match Windows Graphics Capture's IsCursorCaptureEnabled(false). The
+    // system pointer is an overlay, not part of the selected window's pixels.
+    config.showsCursor = NO;
     config.scalesToFit = YES;
     config.preservesAspectRatio = YES;
     config.ignoreShadowsSingleWindow = YES;
