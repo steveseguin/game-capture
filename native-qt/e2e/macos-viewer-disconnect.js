@@ -13,7 +13,7 @@ const cycles=Number(opts.cycles||3);assert(Number.isInteger(cycles)&&cycles>=1&&
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true});
 const result={scope:'Packaged Mac viewer close/rejoin with surviving-viewer video and stereo audio; same-host browser, no performance qualification',
-  encoder:opts.encoder,leaveMode,diagnosticSchema,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],trackCloseObservations:[],harnesses:{},passed:false};
+  encoder:opts.encoder,leaveMode,diagnosticSchema,expectedExecutableSha256:opts['expected-executable-sha256'],cycles:[],trackCloseObservations:[],counterGateFailures:[],harnesses:{},passed:false};
 for(const name of ['macos-viewer-disconnect.js','macos-independent-sender.js','macos-media-receiver.js']){
   const file=path.join(__dirname,name);result.harnesses[name]=sha(fs.readFileSync(file));fs.copyFileSync(file,path.join(report,name));
 }
@@ -30,6 +30,15 @@ const snapshot=d=>({time:Date.now(),peers:d.metrics.peer_count,activeVideoPeers:
   peerStates:d.peers.map(p=>({state:p.last_connection_state,videoActive:p.media.last_observed_video_track_active,
     audioActive:p.media.last_observed_audio_track_active,dataOpen:p.transport.data_channel_open,
     retired:p.transport.transport_retired,disconnected:p.transport.disconnected_since_steady_ms>0}))});
+function checkCounterGates(snapshot,label){
+  if(diagnosticSchema!=='classified')return;
+  for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed']){
+    if(snapshot.reasons[key]!==0)result.counterGateFailures.push({label,reason:key,count:snapshot.reasons[key]});
+  }
+  const classified=Object.values(snapshot.reasons).reduce((a,b)=>a+b,0);
+  if(classified!==snapshot.sendFailures)result.counterGateFailures.push({label,reason:'aggregate_mismatch',classified,total:snapshot.sendFailures});
+  save();
+}
 async function awaitClosedTracks(label){
   const started=Date.now(),entry={label,boundMs:15000,observationLimitMs:closeObservationMs,samples:[]};result.trackCloseObservations.push(entry);
   while(true){
@@ -95,12 +104,8 @@ async function picture(page,label){
     await awaitClosedTracks('Last viewer in cycle '+index);
     await sleep(500);entry.afterTracksClosed=snapshot(await diagnostics());
     assert.equal(entry.afterTracksClosed.encodeFailures,0);assert.equal(entry.afterTracksClosed.encodeTimeouts,0);
-    const reasons=entry.afterTracksClosed.reasons;
-    if(diagnosticSchema==='classified'){
-      for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(reasons[key],0,'Unexpected '+key);
-      assert.equal(Object.values(reasons).reduce((a,b)=>a+b,0),entry.afterTracksClosed.sendFailures,'Aggregate failure count differs from reason totals');
-    }
-    entry.passed=true;save();
+    checkCounterGates(entry.afterTracksClosed,'cycle-'+index);
+    entry.mediaAndCleanupPassed=true;entry.passed=!result.counterGateFailures.some(f=>f.label==='cycle-'+index);save();
   }
   // The final fresh viewer proves reception still starts after the last close.
   const fresh=await openViewer();result.finalRejoinPicture=await picture(fresh,'Final fresh viewer');await leave(fresh);
@@ -113,18 +118,17 @@ async function picture(page,label){
   result.lastCloseToSessionRemovalMs=Date.now()-lastClose;
   await sleep(500);result.final=snapshot(await diagnostics());save();
   assert.equal(result.final.encodeFailures,0);assert.equal(result.final.encodeTimeouts,0);
-  if(diagnosticSchema==='classified'){
-    for(const key of ['empty_packet','packetizer_unavailable','pacer_failed','send_failed'])assert.equal(result.final.reasons[key],0,'Final unexpected '+key);
-    assert.equal(Object.values(result.final.reasons).reduce((a,b)=>a+b,0),result.final.sendFailures);
-  }
+  checkCounterGates(result.final,'final');
   sender.stdin.end('finish\n');await waitFor(()=>sender.exitCode!==null,15000,'Sender cleanup did not finish');await sender.closed;
   const local=JSON.parse(fs.readFileSync(path.join(senderReport,'results.json')));assert.equal(sender.exitCode,0);assert(local.passed);
   assert.equal(local.executableSha256,result.expectedExecutableSha256);assert.equal(local.sessionBindingSha256,result.sessionBindingSha256);
   result.publisherExitCode=local.exitCode;result.publisherDiscoveryRemoved=!fs.existsSync(path.join(senderReport,'private-control.json'));
   assert(result.publisherDiscoveryRemoved);result.observedUnavailableSends=diagnosticSchema==='classified'?result.final.reasons.track_unavailable+result.final.reasons.transport_unavailable:null;
   result.completed=true;
-  result.passed=result.trackCloseObservations.every(o=>o.within15Seconds);
-  if(!result.passed){result.error='Track closure exceeded the unchanged 15-second bound; extended observations retained';process.exitCode=1;}
+  result.counterGatePassed=result.counterGateFailures.length===0;
+  result.timingGatePassed=result.trackCloseObservations.every(o=>o.within15Seconds);
+  result.passed=result.counterGatePassed&&result.timingGatePassed;
+  if(!result.passed){result.error='Media/cleanup workflows completed; retained counter or 15-second timing gate failures';process.exitCode=1;}
 }catch(error){result.error=clean(error.stack||error);process.exitCode=1;}
 finally{
   if(browser)await browser.close();
