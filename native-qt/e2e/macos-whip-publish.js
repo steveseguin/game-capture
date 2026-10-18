@@ -3,12 +3,14 @@
 // Packaged Mac camera/input -> WHIP -> independent MediaMTX/browser receiver.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),http=require('http'),net=require('net'),dgram=require('dgram');
 const {spawn,execFileSync}=require('child_process'),{chromium}=require('playwright');
-const {sleep,waitFor,receiverAt,observe,requireMoving,observeAudio}=require('./macos-media-receiver');
+const {sleep,waitFor,receiverAt,observe,observeDecoded,requireMoving,observeAudio}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 if(process.platform!=='darwin'||!opts.app||!opts.reports||!opts.server||!opts['camera-device']||!opts['camera-helper']||!opts['tone-helper']||!opts['microphone-device'])
   throw Error('Required: --app, --reports, --server, --camera-device, --camera-helper, --microphone-device and --tone-helper');
 const turnDiscovery=opts['turn-discovery']||'none';
 const unresponsiveStun=opts['unresponsive-stun']==='true';
+const cadenceSeconds=Number(opts['cadence-seconds']||0);
+if(!Number.isInteger(cadenceSeconds)||cadenceSeconds<0||cadenceSeconds>120||cadenceSeconds%10)throw Error('--cadence-seconds must be 0 or a multiple of 10 up to 120');
 const restartCycles=opts['restart-cycles']===undefined?null:Number(opts['restart-cycles']);
 if(restartCycles!==null&&(!Number.isInteger(restartCycles)||restartCycles<1||restartCycles>5))throw Error('--restart-cycles must be an integer from 1 to 5');
 if(unresponsiveStun&&(turnDiscovery!=='none'||opts.gui))throw Error('Unresponsive STUN workflow requires headless publishing without TURN discovery');
@@ -30,6 +32,7 @@ const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiver
   helperSha256:opts.gui?hash(path.resolve(opts['ui-helper'])):null,serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Packaged WHIP with controlled virtual camera/input and local MediaMTX; release/remote TURN qualification excluded',cases:[],trace:[],passed:false};
 result.turnDiscovery=turnDiscovery;
 result.restartCycles=restartCycles;
+result.cadenceSeconds=cadenceSeconds;
 result.cameraFixtureSha256=hash(path.resolve(opts['camera-helper']));
 result.toneFixtureSha256=hash(path.resolve(opts['tone-helper']));
 if(opts['browser-executable'])result.browserExecutableSha256=hash(path.resolve(opts['browser-executable']));
@@ -117,7 +120,7 @@ function audioCheck(value,silent=false){
     const guiArgs=[`--settings-dir=${settingsDirectory}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
     let publisher=launch(exe,opts.gui?guiArgs:['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,'--output=whip',`--output-url=http://127.0.0.1:${proxy.address().port}/${stream}/whip`,`--output-token=${token}`,
       ...(turnDiscovery!=='none'?['--ice-mode=relay']:[]),
-      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000',`--duration-ms=${180000+(restartCycles||0)*60000}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
+      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000',`--duration-ms=${180000+(restartCycles||0)*60000+cadenceSeconds*1000}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
     async function ready(){await waitFor(()=>{if(publisher.exitCode!==null)throw Error('Publisher exited before ready');return fs.existsSync(discovery);},10000,'No control discovery');return JSON.parse(fs.readFileSync(discovery));}
     let control=await ready();
     const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000});
@@ -143,6 +146,45 @@ function audioCheck(value,silent=false){
     }
     const url=`http://127.0.0.1:${webPort}/${stream}/?muted=true`;
     let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);entry.audio=await observeAudio(page);audioCheck(entry.audio);
+    if(cadenceSeconds){
+      entry.cadence=[];
+      const fixtureState=async()=>{
+        const offset=fixture.output().length;fixture.stdin.write('state\n');
+        return waitFor(()=>{
+          for(const line of fixture.output().slice(offset).split('\n'))if(line.startsWith('{')&&line.endsWith('}')){
+            const state=JSON.parse(line);if(Number.isInteger(state.publishedFrames)&&Number.isFinite(state.time))return state;
+          }
+          if(fixture.exitCode!==null)throw Error('Camera fixture exited during cadence observation');
+          return false;
+        },5000,'Camera fixture did not report its source counter');
+      };
+      const browserState=()=>page.evaluate(async()=>{
+        const tracks=[];
+        for(const pc of window.reviewPCs)if(pc.connectionState==='connected'){
+          const stats=await pc.getStats();
+          for(const item of stats.values())if(item.type==='inbound-rtp'&&item.kind==='video')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType});
+        }
+        const video=[...document.querySelectorAll('video')].find(v=>v.videoWidth&&!v.paused);
+        if(!video)throw Error('No playing cadence receiver');
+        const q=video.getVideoPlaybackQuality();
+        return {epochMs:performance.timeOrigin+performance.now(),visibility:document.visibilityState,
+          playbackRate:video.playbackRate,currentTime:video.currentTime,
+          playback:{creationTime:q.creationTime,totalVideoFrames:q.totalVideoFrames,droppedVideoFrames:q.droppedVideoFrames,corruptedVideoFrames:q.corruptedVideoFrames},tracks};
+      });
+      const appState=async()=>{const d=await api(control,'/diagnostics');return {epochMs:Date.now(),video:d.video,output:d.output};};
+      for(let index=0;index<cadenceSeconds/10;index++){
+        const before=await Promise.all([fixtureState(),appState(),browserState()]);
+        const row={index,sourceBefore:before[0],publisherBefore:before[1],receiverBefore:before[2]};entry.cadence.push(row);
+        const measured=await Promise.all([observe(page,10000),observeDecoded(page,10000,null,'camera',true)]);
+        row.presentation=measured[0];row.decoded=measured[1];
+        requireMoving(row.presentation,'Cadence presentation');requireMoving(row.decoded,'Cadence decoded track');
+        const after=await Promise.all([fixtureState(),appState(),browserState()]);
+        Object.assign(row,{sourceAfter:after[0],publisherAfter:after[1],receiverAfter:after[2]});
+        const rate=observation=>new Set(observation.observations.map(f=>f.id)).size/((observation.ended-observation.started)/1000);
+        console.log(JSON.stringify({encoder,cadenceInterval:index,decodedDistinctFps:rate(row.decoded),presentationDistinctFps:rate(row.presentation)}));
+        fs.writeFileSync(path.join(report,encoder+'-cadence.json'),JSON.stringify({scope:'Paired decoded-track and presentation observations with separate source/publisher/receiver bookends; not physical display or latency measurement',intervals:entry.cadence},null,2));
+      }
+    }
     tone.stdin.write('silence\n');await sleep(700);entry.silence=await observeAudio(page);audioCheck(entry.silence,true);tone.stdin.write('sound\n');
     fixture.stdin.write('pause\n');await sleep(700);entry.static=await observe(page,2500);if(new Set(entry.static.observations.map(f=>f.id)).size!==1||entry.static.observations.length<10)throw Error('Static video did not stay paced');fixture.stdin.write('resume\n');
     const late=await receiverAt(browser,url,publisher);entry.late=await observe(late,3000);requireMoving(entry.late,'Late WHIP viewer');entry.lateAudio=await observeAudio(late);audioCheck(entry.lateAudio);await late.close();
