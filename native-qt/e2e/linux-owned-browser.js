@@ -4,7 +4,10 @@
 const fs=require('fs'),path=require('path'),assert=require('assert/strict'),crypto=require('crypto');
 const {execFileSync,spawn}=require('child_process'),{chromium}=require('playwright');
 const {decodeAnchoredRows,waitFor,sleep}=require('./macos-media-receiver');
-async function create(env,report){
+async function create(env,report,options={}){
+  const purpose=options.purpose||'viewer';assert(['viewer','releases'].includes(purpose));
+  const releases='https://github.com/steveseguin/game-capture/releases';
+  const matchesPage=url=>purpose==='viewer'||url.toLowerCase()===releases;
   const wrapper=env.GC_QA_WAYLAND_DESKTOP||env.GC_QA_PRIVATE_DESKTOP;assert(wrapper);
   for(const key of ['XDG_CONFIG_HOME','XDG_DATA_HOME'])assert.equal(path.dirname(env[key]),wrapper,'Require isolated desktop directories');
   assert(!env.SNAP&&!fs.existsSync(path.join(env.XDG_RUNTIME_DIR,'flatpak-info')),'Workflow covers native DEB launch');
@@ -13,9 +16,9 @@ async function create(env,report){
   const id='game-capture-owned-'+crypto.randomBytes(8).toString('hex')+'.desktop';
   const handler=path.join(report,'owned-browser-handler.py'),profile=path.join(report,'owned-browser-profile');
   const events=path.join(report,'owned-browser-events.jsonl');
-  const config={browser:'/usr/bin/google-chrome',profile,events};
+  const config={browser:'/usr/bin/google-chrome',profile,events,purpose,releases};
   fs.writeFileSync(path.join(report,'owned-browser-config.json'),JSON.stringify(config));
-  fs.writeFileSync(handler,`import json,subprocess,sys\nfrom pathlib import Path\nfrom urllib.parse import urlsplit\nc=json.loads(Path(__file__).with_name('owned-browser-config.json').read_text())\nassert len(sys.argv)==2 and urlsplit(sys.argv[1]).scheme=='https' and urlsplit(sys.argv[1]).netloc=='vdo.ninja'\nwith open(c['events'],'a') as f:f.write(json.dumps({'url':sys.argv[1]})+'\\n')\nsubprocess.run([c['browser'],'--user-data-dir='+c['profile'],'--new-window',sys.argv[1]],check=True,timeout=20)\n`);
+  fs.writeFileSync(handler,`import json,subprocess,sys\nfrom pathlib import Path\nfrom urllib.parse import urlsplit\nc=json.loads(Path(__file__).with_name('owned-browser-config.json').read_text())\nassert len(sys.argv)==2\nu=urlsplit(sys.argv[1])\nassert sys.argv[1]==c['releases'] if c['purpose']=='releases' else u.scheme=='https' and u.netloc=='vdo.ninja'\nwith open(c['events'],'a') as f:f.write(json.dumps({'url':sys.argv[1]})+'\\n')\nsubprocess.run([c['browser'],'--user-data-dir='+c['profile'],'--new-window',sys.argv[1]],check=True,timeout=20)\n`);
   // Desktop Exec has its own quoting rules. This generated path is not shell code.
   assert(!/[\s"\\`$%]/.test(handler));
   fs.writeFileSync(path.join(applications,id),`[Desktop Entry]\nType=Application\nName=Game Capture Owned QA Browser\nExec=/usr/bin/python3 ${handler} %u\nTerminal=false\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\n`);
@@ -37,15 +40,17 @@ async function create(env,report){
     const portFile=path.join(profile,'DevToolsActivePort');
     await waitFor(()=>{assert.equal(child.exitCode,null);return fs.existsSync(portFile);},15000,'Owned browser did not start');
     const endpoint='http://127.0.0.1:'+fs.readFileSync(portFile,'utf8').split('\n')[0];
-    return {release,close,evidence:{desktopId:id,privateMimeAssociation:true,systemLaunchersUnmodified:true,nativeBrowserLaunch:true},
+    return {release,close,evidence:{desktopId:id,privateMimeAssociation:true,systemLaunchersUnmodified:true,nativeBrowserLaunch:true,purpose},
       async opened(url,previous){
         assert(!browser,'Release previous browser observation before the next desktop launch');
+        assert(purpose!=='releases'||url===releases,'Only the fixed Releases URL is permitted');
         await waitFor(()=>fs.existsSync(events)&&fs.readFileSync(events,'utf8').trim().split('\n').length>previous,15000,'Open Link did not invoke private default browser');
         const entries=fs.readFileSync(events,'utf8').trim().split('\n').map(JSON.parse);assert.equal(entries.length,previous+1);assert.equal(entries.at(-1).url,url,'Browser received a different URL');
-        await waitFor(async()=>{const r=await fetch(endpoint+'/json/list',{signal:AbortSignal.timeout(3000)});return (await r.json()).some(t=>t.type==='page'&&t.url===url);},20000,'Desktop browser did not open generated URL');
+        await waitFor(async()=>{const r=await fetch(endpoint+'/json/list',{signal:AbortSignal.timeout(3000)});return (await r.json()).some(t=>t.type==='page'&&(purpose==='releases'?matchesPage(t.url):t.url===url));},20000,'Desktop browser did not open generated URL');
         browser=await chromium.connectOverCDP(endpoint);const context=browser.contexts()[0];
-        const page=await waitFor(()=>context.pages().find(p=>p.url()===url),15000,'Opened page not observable');
+        const page=await waitFor(()=>context.pages().find(p=>purpose==='releases'?matchesPage(p.url()):p.url()===url),15000,'Opened page not observable');
         await page.waitForLoadState('domcontentloaded');
+        if(purpose==='releases'){assert(matchesPage(page.url()));return page;}
         // Observe peers created by the hosted page itself; no navigation, role,
         // signaling or media injection is used to make the desktop handoff pass.
         await page.evaluate('globalThis.reviewDecodeIdentityRows = '+decodeAnchoredRows.toString());

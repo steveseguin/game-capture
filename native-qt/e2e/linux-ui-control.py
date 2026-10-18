@@ -51,7 +51,7 @@ def press(node):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("pid", type=int)
-    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "footer", "deny-camera-start", "close-window", "paste", "copy"])
+    parser.add_argument("command", choices=["dump", "press", "key-press", "choose", "choose-prefix", "text", "read-text", "reveal", "menu", "value", "source", "preview", "activate", "quit-menu", "move-monitor-right", "footer", "release-link", "deny-camera-start", "close-window", "paste", "copy"])
     parser.add_argument("name", nargs="?")
     parser.add_argument("value", nargs="?")
     args = parser.parse_args()
@@ -202,6 +202,43 @@ def main():
             label = find('label', args.name)
             result.update(message=label.get_name(),messageBounds=visible(label))
         print(json.dumps(result))
+    elif args.command == "release-link":
+        label = find('label', 'Releases')
+        frame = find('frame', 'Game Capture - Powered by VDO.Ninja')
+        assert frame.get_state_set().contains(Atspi.StateType.ACTIVE)
+        assert label.get_state_set().contains(Atspi.StateType.VISIBLE)
+        assert label.get_state_set().contains(Atspi.StateType.SHOWING)
+        rect = label.get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+        assert rect.width > 0 and rect.height > 0
+        if args.name == 'mouse':
+            assert os.environ.get('QT_QPA_PLATFORM') == 'xcb', 'Mouse fixture requires owned X11'
+            subprocess.run(['xdotool', 'mousemove', str(rect.x+rect.width//2), str(rect.y+rect.height//2),
+                            'click', '1'], check=True, timeout=3)
+        else:
+            assert args.name == 'keyboard'
+            def send(key):
+                assert frame.get_state_set().contains(Atspi.StateType.ACTIVE), 'Owned application lost focus'
+                if os.environ.get('QT_QPA_PLATFORM') == 'wayland':
+                    assert os.environ.get('GC_QA_KEYBOARD_SOCKET')
+                    subprocess.run([sys.executable, str(Path(__file__).with_name('linux-portal-select.py')),
+                                    '--keys', key], check=True, timeout=8)
+                else:
+                    subprocess.run(['xdotool', 'key', '--clearmodifiers', {'TAB':'Tab','ENTER':'Return'}[key]],
+                                   check=True, timeout=3)
+                time.sleep(.05); pump()
+            for _ in range(100):
+                if label.get_state_set().contains(Atspi.StateType.FOCUSED): break
+                send('TAB')
+            else: raise RuntimeError('Tab navigation did not focus Releases link')
+            # QLabel first focuses the widget, then Tab selects its anchor.
+            # Enter activates the selected anchor, not the unfocused text cursor.
+            # The Qt AT-SPI label has no Text interface. A further Tab must
+            # stay inside this one-link label before Enter opens the browser.
+            send('TAB')
+            assert label.get_state_set().contains(Atspi.StateType.FOCUSED), 'Anchor Tab left Releases label'
+            send('ENTER')
+        print(json.dumps({'action':'Releases link', 'input':args.name,
+                          'bounds':[rect.x,rect.y,rect.width,rect.height]}))
     elif args.command == "preview":
         for node in nodes(app):
             if node.get_role_name() == "scroll bar":

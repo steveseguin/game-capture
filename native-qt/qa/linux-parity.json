@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission now passed linux_local_window_preview_checkpoint; other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Camera disconnect and initial permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial connection rejection/TLS timeout now return to visible failure with Go live available and capture stopped on both desktops; explicit retry produces decoded HQ/LQ video and stereo audio. Local-control Stop through GUI startup and actual File-menu Quit now cancel a pending initial TLS handshake promptly on both desktops. Cancellation status and fresh decoded retry pass; the shared Starting button remains disabled. Post-TLS startup cancellation races and other fault modes remain open. Native GNOME Wayland physical camera selection, live/restarted preview identities, idle/Stop clearing, publication and persisted settings without capture now pass on an owned virtual monitor; matching X11 camera regression passed. Camera initial permission errors and hotplug remain open. Camera busy-device error visibility, enabled retry, isolation of an existing publisher and explicit successful retry after release now pass on both desktops, including a second application launch with saved settings. Camera permission failure no longer disappears during automatic source refresh on Linux. Packaged X11 and native Wayland verify retained visible error through 6.5 seconds of denial, disabled startup after source removal, explicit reselection/retry and full preview/Stop/restart/relaunch. Other permission mechanisms/initial denial and hotplug remain open. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_update_notification_checkpoint: Linux now requires a matching uploaded amd64 DEB from the fixed repository before advertising an update. Nine packaged isolated-X11 footer/cache/HTTPS/failure/relaunch workflows pass; browser handoff, actual release/install delivery and native desktop integration remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission now passed linux_local_window_preview_checkpoint; other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Camera disconnect and initial permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial connection rejection/TLS timeout now return to visible failure with Go live available and capture stopped on both desktops; explicit retry produces decoded HQ/LQ video and stereo audio. Local-control Stop through GUI startup and actual File-menu Quit now cancel a pending initial TLS handshake promptly on both desktops. Cancellation status and fresh decoded retry pass; the shared Starting button remains disabled. Post-TLS startup cancellation races and other fault modes remain open. Native GNOME Wayland physical camera selection, live/restarted preview identities, idle/Stop clearing, publication and persisted settings without capture now pass on an owned virtual monitor; matching X11 camera regression passed. Camera initial permission errors and hotplug remain open. Camera busy-device error visibility, enabled retry, isolation of an existing publisher and explicit successful retry after release now pass on both desktops, including a second application launch with saved settings. Camera permission failure no longer disappears during automatic source refresh on Linux. Packaged X11 and native Wayland verify retained visible error through 6.5 seconds of denial, disabled startup after source removal, explicit reselection/retry and full preview/Stop/restart/relaunch. Other permission mechanisms/initial denial and hotplug remain open. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_update_notification_checkpoint: Linux now requires a matching uploaded amd64 DEB from the fixed repository before advertising an update. Nine packaged isolated-X11 footer/cache/HTTPS/failure/relaunch workflows pass; browser handoff, actual release/install delivery and native desktop integration remain open. See linux_update_browser_checkpoint: packaged fixed Releases link opens the actual public page through the system default-browser handoff on X11 (mouse/keyboard) and owned GNOME Wayland (keyboard); actual Linux release/install delivery and physical desktop remain open."
     },
     {
       "id": "profiles",
@@ -132,7 +132,7 @@
       "id": "packaging",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "See linux_clean_install_checkpoint: Ubuntu24.04 amd64 DEB clean install, ordinary-user desktop-entry launch and decoded X11 H264/UDP capture, saved-settings relaunch, actual .1-to-.2 APT upgrade, removal/launcher absence and reinstall passed in owned containers. Runtime/source/dependency identity and shipped manifests/licenses/permissions verified. Native GNOME/Wayland installation and desktop integration, reboot/login keyring behavior, updater asset/delivery workflow and failed-upgrade/rollback remain unqualified. Container image strips optional documentation; no claim that its excluded docs were installed. See linux_update_notification_checkpoint: Linux now requires a matching uploaded amd64 DEB from the fixed repository before advertising an update. Nine packaged isolated-X11 footer/cache/HTTPS/failure/relaunch workflows pass; browser handoff, actual release/install delivery and native desktop integration remain open."
+      "remaining": "See linux_clean_install_checkpoint: Ubuntu24.04 amd64 DEB clean install, ordinary-user desktop-entry launch and decoded X11 H264/UDP capture, saved-settings relaunch, actual .1-to-.2 APT upgrade, removal/launcher absence and reinstall passed in owned containers. Runtime/source/dependency identity and shipped manifests/licenses/permissions verified. Native GNOME/Wayland installation and desktop integration, reboot/login keyring behavior, updater asset/delivery workflow and failed-upgrade/rollback remain unqualified. Container image strips optional documentation; no claim that its excluded docs were installed. See linux_update_notification_checkpoint: Linux now requires a matching uploaded amd64 DEB from the fixed repository before advertising an update. Nine packaged isolated-X11 footer/cache/HTTPS/failure/relaunch workflows pass; browser handoff, actual release/install delivery and native desktop integration remain open. See linux_update_browser_checkpoint: packaged fixed Releases link opens the actual public page through the system default-browser handoff on X11 (mouse/keyboard) and owned GNOME Wayland (keyboard); actual Linux release/install delivery and physical desktop remain open."
     },
     {
       "id": "endurance",
@@ -32326,5 +32326,415 @@
       "hostDesktopAudioUnchanged": true
     },
     "remaining": "Bounded Xvfb update notification only. Public Linux release publication/distribution, cold network response containing a Linux asset, real default-browser Releases handoff, installer download/verification and failed-upgrade/rollback remain unqualified. Checker compares app SemVer, not same-version Debian package revisions; package revision release policy remains to be settled before distribution. No automatic updater is introduced: Windows/macOS workflow opens fixed Releases page. Native Wayland integration, network fault variants, Windows/macOS runtime and full23-row capture/audio/device/performance scope remain open. Original physical Mutter/stock portal failures remain unresolved."
+  },
+  "linux_update_browser_checkpoint": {
+    "timestamp": "2026-10-18T22:23:40.214791+00:00",
+    "passed": true,
+    "classification": "Packaged end-to-end fixed Releases link handoff on isolated X11 and owned software GNOME Wayland. QA harness changes only; application package unchanged.",
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-64fd58d01163-a9235e93e1ea.deb",
+      "sha256": "f6e5f12448025c89c9545f0cae7bc910e4a8283a9e7200e34eb7de6697673874",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-64fd58d01163-a9235e93e1ea",
+      "manifestSha256": "43617759a6d05b4b62deea396bad52f26b3c22c3827342cd1d9557355a4af2c0"
+    },
+    "executableSha256": "64fd58d011632009ac4d4ef5e1c4c0b7cf1b9e0f3af3557f4cda52524faa5752",
+    "qualification": "X11 normal Tab/Enter and mouse click; owned Wayland normal Tab/Enter. Actual GUI link triggers unchanged QDesktopServices and system launcher, which passes the exact fixed Releases URL to an owned private Chrome MIME association/profile. Public GitHub release page loads and contains actual release links. Screenshot reviewed, no capture/audio publication, cache unchanged, File-menu Quit exits normally, private associations removed. Wayland compositor survives; keyring/session owners unchanged; all owned processes retire.",
+    "workflows": [
+      {
+        "report": "native-qt/qa/reports/linux-update-browser-x11/6a0012b4-1d9e-433b-a4e3-75ab815eff3d/results.json",
+        "sha256": "f8438032ffe77b3320d0dd2d59796adbdc89d7bb768fed1ce9c186f5a9bea09f",
+        "backend": "x11",
+        "cases": [
+          {
+            "input": "keyboard",
+            "passed": true,
+            "footer": {
+              "frame": [
+                615,
+                275,
+                980,
+                720
+              ],
+              "goLiveBounds": [
+                999,
+                589,
+                200,
+                50
+              ],
+              "goLiveEnabled": false,
+              "goLiveName": "Go live unavailable",
+              "message": "New version available: v99.0.0",
+              "messageBounds": [
+                631,
+                964,
+                155,
+                15
+              ]
+            },
+            "before": {
+              "live": false,
+              "capturing": false,
+              "framesSent": 0,
+              "audioPacketsSent": 0
+            },
+            "activation": {
+              "action": "Releases link",
+              "input": "keyboard",
+              "bounds": [
+                798,
+                964,
+                45,
+                15
+              ]
+            },
+            "browserPage": {
+              "url": "https://github.com/steveseguin/game-capture/releases",
+              "title": "Releases \u00b7 steveseguin/game-capture",
+              "releaseLinks": [
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.65",
+                  "text": "Game Capture 0.2.65 \u2014 Windows"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3",
+                  "text": "macOS 0.2.65 Beta 3 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.2",
+                  "text": "macOS 0.2.65 Beta 2 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.1",
+                  "text": "macOS 0.2.65 Beta 1 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2",
+                  "text": "macOS 0.2.64 Beta 2 \u2014 Apple Silicon (Experimental)"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1",
+                  "text": "macOS 0.2.64 Beta 1 \u2014 Apple Silicon (Experimental)"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.64",
+                  "text": "Game Capture 0.2.64"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1",
+                  "text": "Game Capture macOS 0.2.62 Beta 1 \u2014 Experimental (Apple Silicon)"
+                },
+                {
+                  "href": "https://github.com/steveseguin/game-capture/releases/tag/v0.2.64",
+                  "text": "Game Capture 0.2.64"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.63",
+                  "text": "Game Capture 0.2.63"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.62",
+                  "text": "Game Capture 0.2.62"
+                }
+              ]
+            },
+            "after": {
+              "live": false,
+              "capturing": false,
+              "framesSent": 0,
+              "audioPacketsSent": 0
+            },
+            "fixedUrlReceived": true,
+            "cacheUnchanged": true,
+            "quitNormally": true
+          },
+          {
+            "input": "mouse",
+            "passed": true,
+            "footer": {
+              "frame": [
+                615,
+                275,
+                980,
+                720
+              ],
+              "goLiveBounds": [
+                999,
+                589,
+                200,
+                50
+              ],
+              "goLiveEnabled": false,
+              "goLiveName": "Go live unavailable",
+              "message": "New version available: v99.0.0",
+              "messageBounds": [
+                631,
+                964,
+                155,
+                15
+              ]
+            },
+            "before": {
+              "live": false,
+              "capturing": false,
+              "framesSent": 0,
+              "audioPacketsSent": 0
+            },
+            "activation": {
+              "action": "Releases link",
+              "input": "mouse",
+              "bounds": [
+                798,
+                964,
+                45,
+                15
+              ]
+            },
+            "browserPage": {
+              "url": "https://github.com/steveseguin/game-capture/releases",
+              "title": "Releases \u00b7 steveseguin/game-capture",
+              "releaseLinks": [
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.65",
+                  "text": "Game Capture 0.2.65 \u2014 Windows"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3",
+                  "text": "macOS 0.2.65 Beta 3 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.2",
+                  "text": "macOS 0.2.65 Beta 2 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.1",
+                  "text": "macOS 0.2.65 Beta 1 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2",
+                  "text": "macOS 0.2.64 Beta 2 \u2014 Apple Silicon (Experimental)"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1",
+                  "text": "macOS 0.2.64 Beta 1 \u2014 Apple Silicon (Experimental)"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.64",
+                  "text": "Game Capture 0.2.64"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1",
+                  "text": "Game Capture macOS 0.2.62 Beta 1 \u2014 Experimental (Apple Silicon)"
+                },
+                {
+                  "href": "https://github.com/steveseguin/game-capture/releases/tag/v0.2.64",
+                  "text": "Game Capture 0.2.64"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.63",
+                  "text": "Game Capture 0.2.63"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.62",
+                  "text": "Game Capture 0.2.62"
+                }
+              ]
+            },
+            "after": {
+              "live": false,
+              "capturing": false,
+              "framesSent": 0,
+              "audioPacketsSent": 0
+            },
+            "fixedUrlReceived": true,
+            "cacheUnchanged": true,
+            "quitNormally": true
+          }
+        ],
+        "privateAssociationRemoved": true,
+        "browser": {
+          "desktopId": "game-capture-owned-6df6ff8c30e5ac93.desktop",
+          "privateMimeAssociation": true,
+          "systemLaunchersUnmodified": true,
+          "nativeBrowserLaunch": true,
+          "purpose": "releases"
+        },
+        "screenshots": [
+          {
+            "file": "native-qt/qa/reports/linux-update-browser-x11/6a0012b4-1d9e-433b-a4e3-75ab815eff3d/keyboard-browser.png",
+            "sha256": "029b04e1b6fa898d2cb56ba0d959684524ae60e3dfd5d19f0815fe8981703506"
+          },
+          {
+            "file": "native-qt/qa/reports/linux-update-browser-x11/6a0012b4-1d9e-433b-a4e3-75ab815eff3d/mouse-browser.png",
+            "sha256": "029b04e1b6fa898d2cb56ba0d959684524ae60e3dfd5d19f0815fe8981703506"
+          }
+        ]
+      },
+      {
+        "report": "native-qt/qa/reports/linux-update-browser-wayland/27bd75a4-af94-4516-bc0b-a73cc38025a4/results.json",
+        "sha256": "7a457fee2a21f0c8a6ab1fa1ef3a3a391b3987b5a75261d3012f3b9efc7bccc3",
+        "backend": "wayland",
+        "cases": [
+          {
+            "input": "keyboard",
+            "passed": true,
+            "footer": {
+              "frame": [
+                0,
+                0,
+                980,
+                720
+              ],
+              "goLiveBounds": [
+                384,
+                267,
+                200,
+                50
+              ],
+              "goLiveEnabled": false,
+              "goLiveName": "Go live unavailable",
+              "message": "New version available: v99.0.0",
+              "messageBounds": [
+                16,
+                689,
+                155,
+                15
+              ]
+            },
+            "before": {
+              "live": false,
+              "capturing": false,
+              "framesSent": 0,
+              "audioPacketsSent": 0
+            },
+            "activation": {
+              "action": "Releases link",
+              "input": "keyboard",
+              "bounds": [
+                183,
+                689,
+                45,
+                15
+              ]
+            },
+            "browserPage": {
+              "url": "https://github.com/steveseguin/game-capture/releases",
+              "title": "Releases \u00b7 steveseguin/game-capture",
+              "releaseLinks": [
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.65",
+                  "text": "Game Capture 0.2.65 \u2014 Windows"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3",
+                  "text": "macOS 0.2.65 Beta 3 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.2",
+                  "text": "macOS 0.2.65 Beta 2 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.1",
+                  "text": "macOS 0.2.65 Beta 1 \u2014 Experimental"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2",
+                  "text": "macOS 0.2.64 Beta 2 \u2014 Apple Silicon (Experimental)"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.1",
+                  "text": "macOS 0.2.64 Beta 1 \u2014 Apple Silicon (Experimental)"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.64",
+                  "text": "Game Capture 0.2.64"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/macos-v0.2.62-beta.1",
+                  "text": "Game Capture macOS 0.2.62 Beta 1 \u2014 Experimental (Apple Silicon)"
+                },
+                {
+                  "href": "https://github.com/steveseguin/game-capture/releases/tag/v0.2.64",
+                  "text": "Game Capture 0.2.64"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.63",
+                  "text": "Game Capture 0.2.63"
+                },
+                {
+                  "href": "/steveseguin/game-capture/releases/tag/v0.2.62",
+                  "text": "Game Capture 0.2.62"
+                }
+              ]
+            },
+            "after": {
+              "live": false,
+              "capturing": false,
+              "framesSent": 0,
+              "audioPacketsSent": 0
+            },
+            "fixedUrlReceived": true,
+            "cacheUnchanged": true,
+            "quitNormally": true
+          }
+        ],
+        "privateAssociationRemoved": true,
+        "browser": {
+          "desktopId": "game-capture-owned-42e15986068d1caf.desktop",
+          "privateMimeAssociation": true,
+          "systemLaunchersUnmodified": true,
+          "nativeBrowserLaunch": true,
+          "purpose": "releases"
+        },
+        "screenshots": [
+          {
+            "file": "native-qt/qa/reports/linux-update-browser-wayland/27bd75a4-af94-4516-bc0b-a73cc38025a4/keyboard-browser.png",
+            "sha256": "63579ec0ed38d99ea025d5829e2c31e43c0a25482b9cd6a6e0140ce3ab1234be"
+          }
+        ]
+      }
+    ],
+    "waylandDesktop": {
+      "compositorReport": "native-qt/qa/reports/linux-update-browser-wayland-compositor/2bb59fa5-162b-4d0a-bc76-002e5e42f875/results.json",
+      "compositorReportSha256": "22fa7ae3f8de58ef384d994184d5ff7c65c5d593052f02efcc5b58373d0b1638",
+      "keyringReport": "native-qt/qa/reports/linux-update-browser-wayland-keyring/80b28698-b4fc-4756-823d-8d8332463c0f/results.json",
+      "keyringReportSha256": "bf5dfb75d431404851766fd31e292940a8ee90cc892402668b5f29ad9d02054f",
+      "compositorSurvived": true,
+      "ownedProcessesRetired": true,
+      "storeRetired": true,
+      "originalOwnersUnchanged": true,
+      "sessionBusUnchanged": true
+    },
+    "fixtureCorrections": [
+      {
+        "report": "native-qt/qa/reports/linux-update-browser-x11/c557fbde-bf50-4563-884e-cecd2d4e9346/results.json",
+        "sha256": "8dcb77b52e945bae5a80abffcc08078236b5979c72a1dfe8bc5ca84791f227fa",
+        "description": "Keyboard fixture stopped at QLabel widget focus before its anchor was selected. Extra normal Tab then Enter is required; mouse diagnostic proved browser handoff worked."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-update-browser-x11/ad8febb3-6a9b-46bc-97fa-563cbfe12c8a/results.json",
+        "sha256": "1a517c9378179777db28787d5cf5dc110388b2f5c45c21f04c36981fa7978108",
+        "description": "Qt AT-SPI QLabel exposes no Text interface. Final fixture instead verifies that extra Tab retains focus inside the one-link label, then checks actual browser handoff."
+      },
+      {
+        "report": "native-qt/qa/reports/linux-update-browser-wayland/dce79f09-fccf-4ff0-bd7a-c9c79cb09483/results.json",
+        "sha256": "8154722ca29359c40f91a71323c6b34ba1be97c087657441774e5dc91b88cbb9",
+        "description": "Browser initial window mapped after app activation and took focus. Fixture reactivates the owned app immediately before footer operation."
+      }
+    ],
+    "reference": {
+      "url": "https://github.com/qt/qtbase/blob/v6.4.2/src/widgets/widgets/qwidgettextcontrol.cpp",
+      "finding": "Qt keyboard link activation requires selected text; setFocusToNextOrPreviousAnchor selects it. QLabel focus alone is insufficient. No product workaround introduced."
+    },
+    "gates": {
+      "classification": "JavaScript/Python syntax, whitespace and exact archived production-source/package identity; not application testing.",
+      "productionSourceInputsUnchanged": 146,
+      "packageUnchanged": true
+    },
+    "cleanup": {
+      "ownedProcessesRemaining": [],
+      "fixtureRootsAudited": 8,
+      "allHandlesTerminal": true
+    },
+    "remaining": "Compatible future release is a private cache fixture; cold network response with a compatible Linux asset remains unqualified. Actual Linux release distribution, installer download/verification, same-app-version Debian revision policy, failed-install/rollback and native physical-desktop/login integration remain open. This does not qualify all browsers or physical Wayland/Xorg. Windows/macOS runtime, original Mutter/portal failures, capture/audio/device/performance gaps and full23-row goal remain unchanged."
   }
 }
