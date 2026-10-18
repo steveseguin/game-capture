@@ -42,12 +42,12 @@ bool setProperty(VTCompressionSessionRef session, CFStringRef property, CFTypeRe
 }
 
 // Isolated comparison candidate: retain average rate for inexpensive scenes,
-// but bound H.264 bursts to half a second of the requested payload budget.
+// but bound H.264 bursts to half a second at 1.5 times the requested budget.
 // This needs real receiver and dynamic-rate qualification before promotion.
 bool setHardwareBitrate(VTCompressionSessionRef session, VideoCodec codec, int kbps) {
     if (!setInteger(session, kVTCompressionPropertyKey_AverageBitRate, kbps * 1000)) return false;
     if (codec != VideoCodec::H264) return true;
-    const int bytes = std::max(1, kbps * 1000 / 16);
+    const int bytes = std::max(1, kbps * 1000 * 3 / 32);
     const double seconds = 0.5;
     CFNumberRef byteValue = CFNumberCreate(nullptr, kCFNumberIntType, &bytes);
     CFNumberRef durationValue = CFNumberCreate(nullptr, kCFNumberDoubleType, &seconds);
