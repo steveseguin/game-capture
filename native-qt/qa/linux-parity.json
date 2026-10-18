@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Preview before publishing after explicit permission remains open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance."
     },
     {
       "id": "x11-window",
@@ -66,7 +66,7 @@
       "id": "software-encoding",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified. Linux helper resolution now prefers /usr/bin/ffmpeg after explicit overrides; default-helper VP9/AV1 regression qualification remains open. Bounded default 1280x720/60 software H264 at 4000 kbps now passes decoded pulse identities, >=95% delivery and cadence thresholds for 36 five-second intervals with continuous selected-app PCM. This is controlled low-detail X11 content; long-run/high-motion and native Wayland profile qualification remain open, and paired A/V timing is unresolved as recorded in av_timing_baseline_checkpoint."
+      "remaining": "Packaged native H264/VP9/AV1 and explicit FFmpeg VP9/AV1 decoded moving/static identities, resize, late viewers and cleanup passed. Latest package X11 GUI custom helper paths with spaces, literal options and helper retirement passed for VP9/AV1. With a calibrated 40x23 noise fixture at 640x360/30, authenticated bitrate reduction/restoration and unauthorized rejection passed: H264/VP9 native 2000-to-500 kbps; AV1 native and VP9/AV1 helpers 2000-to-1000 kbps. Transition identity continuity observed for H264, AV1 and both helpers. Linux bitrate changes reinitialize with rollback; native VPx/AV1 use realtime CBR. HEVC actual decoding remains unqualified: available Chrome negotiates H264 fallback. Detailed 160x90 noise overshoots 500 kbps with independent FFmpeg as well; native AV1 at 500 kbps lost barcode fidelity in the 40x23 fixture, without an established root cause. Low-rate quality/overshoot, 720p60 and higher profiles, color/quality/cadence, timestamp/drift, failure rollback/recovery, custom option edge cases and OBS compatibility remain. VP8 backend is unqualified. Linux helper resolution now prefers /usr/bin/ffmpeg after explicit overrides; default-helper VP9/AV1 regression qualification remains open. Bounded default 1280x720/60 software H264 at 4000 kbps now passes decoded pulse identities, >=95% delivery and cadence thresholds for 36 five-second intervals with continuous selected-app PCM. This is controlled low-detail X11 content; long-run/high-motion and native Wayland profile qualification remain open, and paired A/V timing is unresolved as recorded in av_timing_baseline_checkpoint. The later 31-minute run exposes recurring default-profile X11 picture repetition despite continuing capture/decode counts and clean audio. This supersedes any inference of sustained qualification from the three-minute pilot; the encoder/capture stage still needs attribution."
     },
     {
       "id": "hardware-encoding",
@@ -137,8 +137,8 @@
     {
       "id": "endurance",
       "required": true,
-      "status": "missing",
-      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed."
+      "status": "e2e-failed",
+      "remaining": "Separate 30-minute default 720p60 A/V runs, decoded identities/audio, calibrated skew/drift, resource observations; higher profiles need separate evidence A packaged X11 180-second controlled-source pilot now passes 36 cadence intervals (about 59\u201360 decoded fps) and 1821 continuous 100 ms PCM windows at 1280x720/60 software H264/stereo Opus, with recorded RSS/health and clean shutdown. Its paired A/V timing fails the 50 ms added-skew criterion. The matched-duration browser-only control also crosses that limit; absolute input/recording-path calibration remains unresolved. No 30-minute run or timing pass is claimed. A subsequent exact-package 31-minute X11 default-profile run completed cleanly with all 372 continuous PCM intervals passing, but 18 video intervals failed distinct-picture delivery in five recurring clusters. Initial A/V skew reached +61 ms; final skew passed and median initial-to-final drift was +10 ms. Overall endurance and calibrated timing remain failed/unqualified; see av_endurance_checkpoint. A traced three-minute X11 diagnostic passes all cadence/PCM windows but does not reproduce the large recurring dip; its three repeats originate before the capture callback, not cached-output reuse. A native Wayland 30-second default-profile run now completes with full source visibility and clean portal/monitor/keyring/audio cleanup, but all six delivery windows fail at 47\u201349 distinct fps and three source windows fall below 57 fps. Audio passes; A/V timing fails. The source/compositor baseline still needs isolation."
     },
     {
       "id": "arm-portability",
@@ -21033,6 +21033,229 @@
         "sha256": "003fb60ae1c5de4ea420660c68051595f9eff726e0ccbb84f949ce428e9c94ec"
       },
       "interpretation": "Packaged application completed all capture/recording/shutdown steps and all 36 decoded cadence/PCM intervals. Overall workflow fails the existing 50 ms absolute added-skew criterion. This is not 30-minute endurance or calibrated timing qualification."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-av-endurance-x11/8d3a265e-cb40-4f01-8a47-cb36f5f5ff4a/results.json",
+      "reportSha256": "d0583dda1e0d3845b0d6bc0a9649c05d0fdfb2a9fd3555cac57be5c893c93649",
+      "wrapperReport": "native-qt/qa/reports/linux-av-endurance-x11-desktop/e4d7ea4b-fac3-4203-b48c-e4e587733ae0/results.json",
+      "wrapperSha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone, Wayland and OBS.",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0",
+      "executableSha256": "36d1122a5d171a6f0770e54d8faf6794eeb29bb7cd37fee4314c6fa7c35be558",
+      "harnesses": {
+        "linux-av-sync.js": "2fbcdf0aeac3ecef8b702da963d9e072a10611590ced9281b4ae9f4cab5bd88a",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432"
+      },
+      "enduranceObservations": {
+        "intervals": 372,
+        "failedIntervals": [
+          11,
+          12,
+          13,
+          92,
+          94,
+          95,
+          96,
+          176,
+          177,
+          178,
+          179,
+          259,
+          260,
+          261,
+          341,
+          342,
+          343,
+          344
+        ],
+        "decodedObservationSeconds": 1860.7278010253906,
+        "continuousPcmSeconds": 1881.1999999999998,
+        "continuousPcmWindows": 18812,
+        "allAudioIntervalsPassed": true,
+        "receivedFpsRange": [
+          46.998120534144654,
+          60.11223554906481
+        ],
+        "minimumDeliveryRatio": 0.783302008902411,
+        "observationGapTotalMs": 20470.9990234375,
+        "maximumObservationGapMs": 111.400146484375,
+        "publisherRssKiBRange": [
+          120400,
+          128376
+        ]
+      },
+      "timing": {
+        "passed": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "matchedPulses": 28,
+            "medianAdditionalOffsetMs": -34.000000000000696,
+            "rangeAdditionalOffsetMs": [
+              -44.000000000004036,
+              61.000000000000384
+            ]
+          },
+          {
+            "name": "final",
+            "passed": true,
+            "matchedPulses": 29,
+            "medianAdditionalOffsetMs": -24.00000000000091,
+            "rangeAdditionalOffsetMs": [
+              -30.000000000008242,
+              -15.000000000000568
+            ]
+          }
+        ],
+        "medianDriftMs": 9.999999999999787,
+        "longRunDriftQualified": false,
+        "report": "native-qt/qa/reports/linux-av-endurance-x11/8d3a265e-cb40-4f01-8a47-cb36f5f5ff4a/av-analysis.json",
+        "sha256": "9f3ba7e60629ad67c8be94c260ecd03e8038ad36aeb71e89efc5807c189312d2"
+      },
+      "interpretation": "One unchanged packaged publisher completed 31 minutes of default-profile X11 capture, paired initial/final recordings and clean shutdown. All continuous PCM intervals pass, but 18 video intervals fail distinct-picture delivery and one initial A/V pulse exceeds the 50 ms skew limit. Median drift is about 10 ms; this does not qualify endurance or absolute timing."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-av-trace-x11/6a94a2f9-cfc3-4ec3-9137-bbca27cbda50/results.json",
+      "reportSha256": "7fe9d772ad61bb63669598cda06a3577f8c921928fda90bef17d80fad07297f1",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0",
+      "executableSha256": "36d1122a5d171a6f0770e54d8faf6794eeb29bb7cd37fee4314c6fa7c35be558",
+      "harnesses": {
+        "linux-av-sync.js": "6f6e90293b87d2145c15a8c7937cbcd404a3dc6724319f3aef709a5aa7408cfe",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-trace-report.js": "846a8424ef198a07e5741b7af5bbd28de649af3cc6061b8b192fdc81c08825f9"
+      },
+      "boundedMedia": {
+        "intervals": 36,
+        "failedIntervals": [],
+        "sourceBelow57FpsIntervals": [],
+        "decodedObservationSeconds": 180.087400390625,
+        "sourceFpsRange": [
+          59.79760867961384,
+          60.311943972815854
+        ],
+        "receivedFpsRange": [
+          59.17159878827691,
+          59.997600681886794
+        ],
+        "allPcmIntervalsPassed": true,
+        "continuousPcmSeconds": 182.09999999999997,
+        "continuousPcmWindows": 1821
+      },
+      "timing": {
+        "report": "native-qt/qa/reports/linux-av-trace-x11/6a94a2f9-cfc3-4ec3-9137-bbca27cbda50/av-analysis.json",
+        "sha256": "1e2411d02bed9fc06895a4cd944888f1d5670e6b72179ef37977f8a6fad27b3b",
+        "passed": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "matchedPulses": 28,
+            "medianAdditionalOffsetMs": -38.99999999999437,
+            "rangeAdditionalOffsetMs": [
+              -45.99999999999227,
+              67.99999999999962
+            ]
+          },
+          {
+            "name": "final",
+            "passed": true,
+            "matchedPulses": 28,
+            "medianAdditionalOffsetMs": -29.000000000003467,
+            "rangeAdditionalOffsetMs": [
+              -36.000000000001364,
+              -22.000000000002018
+            ]
+          }
+        ],
+        "medianDriftMs": 9.999999999990905,
+        "longRunDriftQualified": false
+      },
+      "interpretation": "Bounded diagnostic with the packaged application and opt-in native tracing. All 36 cadence/PCM intervals pass; paired A/V timing fails. Three repeated identities are already present in capture callbacks and are submitted unchanged, with no cached-capture reuse, missing joins or identity mismatches. The larger recurring low-delivery cluster was not reproduced in this three-minute run, so its exact stage attribution remains open. Tracing is disabled in endurance qualification."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-av-wayland/2923768c-1766-4065-872e-cf1ffb6c6c08/results.json",
+      "reportSha256": "c1c1e36bcfb4b888eaffd3f6fea5905da49582701844673aa1d99c7ed1fe5ba3",
+      "passed": false,
+      "scope": "Exact Ubuntu DEB, owned native GNOME Wayland window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0",
+      "executableSha256": "36d1122a5d171a6f0770e54d8faf6794eeb29bb7cd37fee4314c6fa7c35be558",
+      "harnesses": {
+        "linux-av-sync.js": "8746430306c53f979e0397336ab03044fb9b4c9cc4fee0a7991a4c4e6a03e47d",
+        "linux-av-probe.js": "493e4007791d6f393468d10cc81309abf6e43b3edd03bcd77d7adf11388b82cd",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "528b95fdd649b8f797eeeae770a7139a261d85d9a6de57b05fe5ff21562f6200",
+        "macos-media-receiver.js": "f9ce7202c7be0ec31bceb16ed841aa0a31683ab356212665f9ff7867b4499b78",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "linux-av-wayland.js": "f11600aab440064e43c359239f0c06ef842e798e9e1ae820632870a0b8f03672",
+        "linux-source-monitor.py": "5ed3d15e953f69655780b581d1c33b410bee95abda666d585f081cb191ac18ee",
+        "linux-virtual-monitor.py": "e0b5c7631d41064cbb6cc5dbd773d72d3984f48d827873baf3e4f8c8b8a4e750",
+        "linux-portal-select.py": "f222a66856947900d4717ae1bad96d4947f054947989ed3aabbc46244e5db68a"
+      },
+      "boundedMedia": {
+        "intervals": 6,
+        "failedIntervals": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "sourceBelow57FpsIntervals": [
+          3,
+          4,
+          5
+        ],
+        "decodedObservationSeconds": 30.015999755859376,
+        "sourceFpsRange": [
+          53.79784861142516,
+          61.51633718068879
+        ],
+        "receivedFpsRange": [
+          47.13589472286543,
+          48.996081270453075
+        ],
+        "allPcmIntervalsPassed": true,
+        "continuousPcmSeconds": 30.4,
+        "continuousPcmWindows": 304
+      },
+      "timing": {
+        "report": "native-qt/qa/reports/linux-av-wayland/2923768c-1766-4065-872e-cf1ffb6c6c08/av-analysis.json",
+        "sha256": "4e050c554a6c263fe75671b11d0efcfcf0d29cbf17694da31427d4b7b829a376",
+        "passed": false,
+        "phases": [
+          {
+            "name": "initial",
+            "passed": false,
+            "matchedPulses": 13,
+            "medianAdditionalOffsetMs": -19.999999999999574,
+            "rangeAdditionalOffsetMs": [
+              -76.00000000000051,
+              28.00000000000047
+            ]
+          }
+        ],
+        "medianDriftMs": null,
+        "longRunDriftQualified": false
+      },
+      "interpretation": "Native GNOME portal grant, fully visible real 1280x720 browser client on an owned 1440x1000 virtual monitor, selected Chrome-process audio and exact-package publication/recording/shutdown completed. All six decoded-delivery intervals fail at about 47\u201349 distinct fps, and the source itself falls below 57 fps in three intervals. All PCM intervals pass. Absolute A/V timing also fails. Separate source/compositor/capture performance before assigning the full shortfall to application code; this is not default-profile or endurance qualification.",
+      "wrapperReport": "native-qt/qa/reports/linux-av-wayland-desktop/634fd4ad-8e78-4cd0-ab1a-834674a59095/results.json",
+      "wrapperSha256": "8e7e04aa546d88612905e0703954736883677570ca971f9cb40318a5d77448df"
     }
   ],
   "host_environment": {
@@ -21095,7 +21318,9 @@
     "Use the matching owned desktop wrapper with linux-camera-publish.js --gui=true --gui-permission-retry=true --backend=x11|wayland and existing exact-package/physical-HDMI options. Requires bubblewrap and sudo mknod for an owned private device alias. Restricts only the publisher namespace, restores permissions and removes the alias on cleanup; host device mode/identity/ACL must remain unchanged. Run sequentially on the physical camera.",
     "python3 -m venv native-qt/build-linux/qa-av-venv && native-qt/build-linux/qa-av-venv/bin/pip install -r native-qt/qa/linux-av-requirements.txt (isolated offline measurement dependencies only)",
     "Use linux-private-desktop.py with a 1440x1000 Xvfb display and linux-av-sync.js --publisher=<exact extracted package executable> --manifest-sha256=<sha> --reports=<private directory> --analysis-python=<absolute venv/bin/python without symlink resolution> --seconds=60 --hold-seconds=1740. This keeps one publisher live for initial/final recordings and >=30 minutes between phase starts; overall pass also requires all cadence/PCM intervals and existing A/V thresholds.",
-    "Use linux-av-reference.js under a separate owned X11 desktop with --source-fixture=<saved linux-av-source.html> --analysis-python=<venv Python> --seconds=60 --hold-seconds=60 for the browser-only clock/recording control. This is not packaged application testing."
+    "Use linux-av-reference.js under a separate owned X11 desktop with --source-fixture=<saved linux-av-source.html> --analysis-python=<venv Python> --seconds=60 --hold-seconds=60 for the browser-only clock/recording control. This is not packaged application testing.",
+    "Run linux-av-sync.js --trace-capture=true with total requested capture <=240 seconds under the owned X11 wrapper for bounded native capture/submit identity diagnostics; frame-trace-analysis.json requires readable markers and exact capture joins. Keep tracing disabled for endurance.",
+    "Run linux-av-sync.js --backend=wayland under linux-wayland-desktop.py. It owns a temporary 1440x1000 monitor, verifies a fully visible native 1280x720 source from monitor pixels, uses real portal consent, and restores the original layout. This requires the existing authorized keyboard fixture, GNOME Mutter ScreenCast, GStreamer and Pillow."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -23891,5 +24116,295 @@
       "passed": true
     },
     "remaining": "Separate >=30-minute default 720p60 X11 and native Wayland A/V runs, independent absolute skew and drift calibration, receiver/OBS presentation, physical inputs, higher-detail/high-motion content and higher output profiles. The current controlled-source cadence result is bounded to about three minutes."
+  },
+  "av_endurance_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc.deb",
+      "sha256": "89a0e8a4c3d3ea40f40949a002fab71472e54c166b10fe9c23e2c65b2cf4dea1",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0"
+    },
+    "applicationEvidence": {
+      "report": "native-qt/qa/reports/linux-av-endurance-x11/8d3a265e-cb40-4f01-8a47-cb36f5f5ff4a/results.json",
+      "sha256": "d0583dda1e0d3845b0d6bc0a9649c05d0fdfb2a9fd3555cac57be5c893c93649"
+    },
+    "productionChange": "None. Endurance executed the committed A/V workflow from 235ad59 with tracing disabled. Later diagnostic/Wayland harness edits did not affect this running process.",
+    "observations": {
+      "intervals": 372,
+      "failedIntervals": [
+        11,
+        12,
+        13,
+        92,
+        94,
+        95,
+        96,
+        176,
+        177,
+        178,
+        179,
+        259,
+        260,
+        261,
+        341,
+        342,
+        343,
+        344
+      ],
+      "decodedObservationSeconds": 1860.7278010253906,
+      "continuousPcmSeconds": 1881.1999999999998,
+      "continuousPcmWindows": 18812,
+      "allAudioIntervalsPassed": true,
+      "receivedFpsRange": [
+        46.998120534144654,
+        60.11223554906481
+      ],
+      "minimumDeliveryRatio": 0.783302008902411,
+      "observationGapTotalMs": 20470.9990234375,
+      "maximumObservationGapMs": 111.400146484375,
+      "publisherRssKiBRange": [
+        120400,
+        128376
+      ]
+    },
+    "timing": {
+      "passed": false,
+      "phases": [
+        {
+          "name": "initial",
+          "passed": false,
+          "matchedPulses": 28,
+          "medianAdditionalOffsetMs": -34.000000000000696,
+          "rangeAdditionalOffsetMs": [
+            -44.000000000004036,
+            61.000000000000384
+          ]
+        },
+        {
+          "name": "final",
+          "passed": true,
+          "matchedPulses": 29,
+          "medianAdditionalOffsetMs": -24.00000000000091,
+          "rangeAdditionalOffsetMs": [
+            -30.000000000008242,
+            -15.000000000000568
+          ]
+        }
+      ],
+      "medianDriftMs": 9.999999999999787,
+      "longRunDriftQualified": false,
+      "report": "native-qt/qa/reports/linux-av-endurance-x11/8d3a265e-cb40-4f01-8a47-cb36f5f5ff4a/av-analysis.json",
+      "sha256": "9f3ba7e60629ad67c8be94c260ecd03e8038ad36aeb71e89efc5807c189312d2"
+    },
+    "cadenceInterpretation": {
+      "report": "native-qt/qa/reports/linux-av-endurance-x11/8d3a265e-cb40-4f01-8a47-cb36f5f5ff4a/cadence-clock-analysis.json",
+      "sha256": "2acb0e3ffd0186a0f7a275c5699850ac11724524ba879ec0e3e0380a513d4cbe",
+      "scriptSha256": "2511bed88c30cfdfe61c2fe43e8763e5a1f48b616fc023b73c58351a8372a4d7",
+      "failureClusters": [
+        [
+          11,
+          12,
+          13
+        ],
+        [
+          92,
+          94,
+          95,
+          96
+        ],
+        [
+          176,
+          177,
+          178,
+          179
+        ],
+        [
+          259,
+          260,
+          261
+        ],
+        [
+          341,
+          342,
+          343,
+          344
+        ]
+      ],
+      "clusterCenterSeparationSeconds": [
+        415.8443332519531,
+        420.95375,
+        417.18758325195313,
+        417.2179167480469
+      ],
+      "sourceMeanPeriodMs": 16.66598810515163,
+      "nominalPollingPeriodMs": 16.666666666666668,
+      "predictedPhaseCycleSeconds": 409.3627056970975,
+      "interpretation": "Five low-delivery clusters recur about every 416\u2013421 seconds. Source draws stay regular, and receiver sequences alternate repeated identities with skipped source identities while capture/decode counters continue and report no drops. A small source/polling clock mismatch predicts a similar cycle. This is a hypothesis requiring capture/submit identity tracing, not an attribution of every failure to a production stage."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-av-endurance-x11/8d3a265e-cb40-4f01-8a47-cb36f5f5ff4a/host-cleanup.json",
+      "sha256": "68016bc40f00182bc20c02f190ff8db0f4edce8ff953ca42015793ee95430807",
+      "passed": true
+    },
+    "remaining": "Diagnose and fix repeated X11 pictures without relaxing the delivery threshold; rerun the exact package for >=30 minutes. Independently calibrate absolute A/V timing (the prior browser-only control also fails skew). Native Wayland default-profile endurance, physical inputs, high-motion/high-detail content, OBS and other output combinations remain unqualified."
+  },
+  "av_diagnostic_wayland_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc.deb",
+      "sha256": "89a0e8a4c3d3ea40f40949a002fab71472e54c166b10fe9c23e2c65b2cf4dea1",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-36d1122a5d17-00d00e7e8cfc",
+      "manifestSha256": "357421d79ea6701598736770a922cb21fd076f2bedf6d8008188685096b8bbd0"
+    },
+    "productionChange": "None. Adds Linux-only qualification tools: bounded native capture/submit tracing and native GNOME A/V source placement with actual virtual-monitor pixels, real portal consent, and owned-resource cleanup. The portal key helper adds only bounded move keys; previous key actions are unchanged.",
+    "trace": {
+      "applicationEvidence": {
+        "report": "native-qt/qa/reports/linux-av-trace-x11/6a94a2f9-cfc3-4ec3-9137-bbca27cbda50/results.json",
+        "sha256": "7fe9d772ad61bb63669598cda06a3577f8c921928fda90bef17d80fad07297f1"
+      },
+      "report": "native-qt/qa/reports/linux-av-trace-x11/6a94a2f9-cfc3-4ec3-9137-bbca27cbda50/frame-trace-analysis.json",
+      "sha256": "9b1560dd859c94ed7d26ee96004d773024192b1f7364fb8239341fa2e4c0e36e",
+      "traceComplete": true,
+      "rows": 44960,
+      "observationWindowTotals": {
+        "capture": {
+          "rows": 10804,
+          "unknownIds": 0,
+          "repeatedContent": 3,
+          "reusedCapture": 0,
+          "repeatedContentFromNewCapture": 3
+        },
+        "submit": {
+          "rows": 10804,
+          "unknownIds": 0,
+          "repeatedContent": 3,
+          "reusedCapture": 0,
+          "repeatedContentFromNewCapture": 3
+        }
+      },
+      "interpretation": "Bounded diagnostic with the packaged application and opt-in native tracing. All 36 cadence/PCM intervals pass; paired A/V timing fails. Three repeated identities are already present in capture callbacks and are submitted unchanged, with no cached-capture reuse, missing joins or identity mismatches. The larger recurring low-delivery cluster was not reproduced in this three-minute run, so its exact stage attribution remains open. Tracing is disabled in endurance qualification."
+    },
+    "nativeWayland": {
+      "applicationEvidence": {
+        "report": "native-qt/qa/reports/linux-av-wayland/2923768c-1766-4065-872e-cf1ffb6c6c08/results.json",
+        "sha256": "c1c1e36bcfb4b888eaffd3f6fea5905da49582701844673aa1d99c7ed1fe5ba3"
+      },
+      "fixtureReport": "native-qt/qa/reports/linux-av-wayland/2923768c-1766-4065-872e-cf1ffb6c6c08/wayland-av-fixture.json",
+      "fixtureSha256": "8d0fa956c6385cced023f3eb8dc6a0487df7217b58e6926e17ca343802149334",
+      "ownedMonitorImage": "native-qt/qa/reports/linux-av-wayland/2923768c-1766-4065-872e-cf1ffb6c6c08/owned-monitor-source.png",
+      "ownedMonitorImageSha256": "c744f241d685924470561f1dda382c35ecd2a54df48f6a864a55e41cda803302",
+      "sourceVisibility": {
+        "pid": 2810151,
+        "title": "Owned Linux Capture AV 6a0f3349bf487b9c",
+        "before": [
+          0,
+          0,
+          1312,
+          852
+        ],
+        "canvasBounds": [
+          78,
+          144,
+          1280,
+          720
+        ],
+        "cyan": [
+          142,
+          288,
+          193,
+          720
+        ],
+        "magenta": [
+          1243,
+          288,
+          1294,
+          720
+        ],
+        "passed": true,
+        "after": [
+          0,
+          0,
+          1312,
+          852
+        ]
+      },
+      "sourceScreenApi": {
+        "width": 1280,
+        "height": 720,
+        "screenWidth": 800,
+        "screenHeight": 600,
+        "devicePixelRatio": 1
+      },
+      "interpretation": "Native GNOME portal grant, fully visible real 1280x720 browser client on an owned 1440x1000 virtual monitor, selected Chrome-process audio and exact-package publication/recording/shutdown completed. All six decoded-delivery intervals fail at about 47\u201349 distinct fps, and the source itself falls below 57 fps in three intervals. All PCM intervals pass. Absolute A/V timing also fails. Separate source/compositor/capture performance before assigning the full shortfall to application code; this is not default-profile or endurance qualification.",
+      "accessibility": "Only the disposable source Chrome receives ACCESSIBILITY_ENABLED=1 and --force-renderer-accessibility. The desktop accessibility setting stays disabled. The process/executable/profile/native-backend/title/focus checks remain mandatory. Chromium reference: https://chromium.googlesource.com/chromium/src/+/bca3bfd267de3305764d9c596269fcff2552cc57/chrome/test/fuzzing/atspi_in_process_fuzzer.cc",
+      "monitorVerification": "Chrome reports the original 800x600 screen despite moving to the owned monitor. The gate instead requires a native 1280x720 client, DPR 1, both full-size fixture markers and the entire inferred canvas rectangle inside the actual 1440x1000 monitor image. A bounded keyboard move of the active owned window corrects clipping before publisher launch."
+    },
+    "setupFailures": [
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/085c4c22-f02b-4aea-8cd2-6606cda0879e/results.json",
+        "sha256": "96f115d63e1e772f72a9544ef414534a351a82b9aaf2828338e436d33fdd092d",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n800 !== 1440\n\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:50:106)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/0bf3dacb-6995-4ef5-844e-7235f2d8aaf8/results.json",
+        "sha256": "a3067bf0e3d64962057d9195550a2abad70a98e0c991bbf4fbd7b2e572a31124",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/0bf3dacb-6995-4ef5-844e-7235f2d8aaf8/linux-source-monitor.py --pid=2808430 --title=Owned Linux Capture AV 07e5e7788abcd138\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/0bf3dacb-6995-4ef5-844e-7235f2d8aaf8/linux-source-monitor.py\", line 71, in <module>\n    assert frame is not None, 'The explicitly owned Chrome source is not active: '+json.dumps({'matches':observed,'applications':applications})\n           ^^^^^^^^^^^^^^^^^\nAssertionError: The explicitly owned Chrome source is not active: {\"matches\": [], \"applications\": [{\"name\": \"gnome-shell\", \"pid\": 3823, \"owned\": false}, {\"name\": \"gsd-color\", \"pid\": 4000, \"owned\": false}, {\"name\": \"gsd-keyboard\", \"pid\": 4018, \"owned\": false}, {\"name\": \"gsd-media-keys\", \"pid\": 4022, \"owned\": false}, {\"name\": \"gsd-wacom\", \"pid\": 4050, \"owned\": false}, {\"name\": \"gsd-power\", \"pid\": 4033, \"owned\": false}, {\"name\": \"Thunar\", \"pid\": 4406, \"owned\": false}, {\"name\": \"ibus-extension-gtk3\", \"pid\": 4149, \"owned\": false}, {\"name\": \"evolution-alarm-notify\", \"pid\": 4182, \"owned\": false}, {\"name\": \"gjs\", \"pid\": 4451, \"owned\": false}, {\"name\": \"xdg-desktop-portal-gtk\", \"pid\": 4602, \"owned\": false}, {\"name\": \"update-notifier\", \"pid\": 8168, \"owned\": false}, {\"name\": \"check-new-release-gtk\", \"pid\": 8201, \"owned\": false}, {\"name\": \"update-manager\", \"pid\": 8532, \"owned\": false}, {\"name\": \"gsd-xsettings\", \"pid\": 3949540, \"owned\": false}, {\"name\": \"ibus-x11\", \"pid\": 3949570, \"owned\": false}, {\"name\": \"mutter-x11-frames\", \"pid\": 3949577, \"owned\": false}, {\"name\": \"check-new-release-gtk\", \"pid\": 1699754, \"owned\": false}, {\"name\": \"apport-gtk\", \"pid\": 2545191, \"owned\": false}, {\"name\": \"apport-gtk\", \"pid\": 2553907, \"owned\": false}, {\"name\": \"apport-gtk\", \"pid\": 2557865, \"owned\": false}, {\"name\": \"apport-gtk\", \"pid\": 2638015, \"owned\": false}, {\"name\": \"xdg-desktop-portal-gnome\", \"pid\": 2719682, \"owned\": false}]}\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:39:45)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/1fb419a6-a416-45c6-8358-b20215462fb9/results.json",
+        "sha256": "6f0cd97031fbe11f3ade3b527fb3e97a1afeb6045ad8d379fcbb0fb4dd550ef2",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/1fb419a6-a416-45c6-8358-b20215462fb9/linux-source-monitor.py --pid=2807668 --title=Owned Linux Capture AV f09a4342ea467c1e\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/1fb419a6-a416-45c6-8358-b20215462fb9/linux-source-monitor.py\", line 64, in <module>\n    assert frame is not None, 'The explicitly owned Chrome source is not active'\n           ^^^^^^^^^^^^^^^^^\nAssertionError: The explicitly owned Chrome source is not active\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:39:45)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/5029576e-c086-44e3-ae2b-f5c6bfc3b1da/results.json",
+        "sha256": "aa879617f6338793aa27430aff908ededc29968a570e567989bf90de91595b1a",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n800 !== 1440\n\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:48:106)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/50c8817a-c725-4cdc-8bfc-bb4735aa83ab/results.json",
+        "sha256": "747af77f22a963b041f44eb972366867df5ea3144f2c2753c581967ef4651f33",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/50c8817a-c725-4cdc-8bfc-bb4735aa83ab/linux-source-monitor.py --pid=2807361 --title=Owned Linux Capture AV 8fa138b8b8484ab3\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/50c8817a-c725-4cdc-8bfc-bb4735aa83ab/linux-source-monitor.py\", line 25, in <module>\n    assert len(profiles)==1 and profiles[0].name.startswith('playwright_chromiumdev_profile-'), f'Unexpected owned Chrome profiles: {profiles}; argument count: {len(command)}'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Unexpected owned Chrome profiles: []; argument count: 2\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:39:45)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/61425236-b8bc-484c-bf48-48f017a0c7a7/results.json",
+        "sha256": "b36724a6fc352c552264eff8f0a9f7fc0472c6e5ec4dc2c0514bc02d60755f54",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n800 !== 1440\n\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:52:106)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/6d07eda8-30ee-43a7-8ae7-32af9f70e71f/results.json",
+        "sha256": "b6d98e51f9d52ee819c6960dfc89eadf448bc8616f1a9114fd195acf09724890",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n1 !== null\n\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:32:82\n    at waitFor (/home/ubuntu/code/game-capture/native-qt/e2e/macos-media-receiver.js:32:55)\n    at async Object.create (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:32:5)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:38:32"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/d7859c2e-ae27-4417-84b9-a95f0a5b2c21/results.json",
+        "sha256": "012d6882f8e12ab87186e1db97081125cf1d9bac10743afd5afdefd0615b0e05",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/d7859c2e-ae27-4417-84b9-a95f0a5b2c21/linux-source-monitor.py --pid=2806960 --title=Owned Linux Capture AV 2fa03655c5a2c6f4\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/d7859c2e-ae27-4417-84b9-a95f0a5b2c21/linux-source-monitor.py\", line 25, in <module>\n    assert len(profiles)==1 and profiles[0].name.startswith('playwright_chromiumdev_profile-')\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:39:45)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      },
+      {
+        "report": "native-qt/qa/reports/linux-av-wayland/ea619a81-5c93-4ff6-b3fd-72bb93d04bfa/results.json",
+        "sha256": "f0c8cee97ed69b461aa55f00afa4c95aed311c4dd62667b7fd7f5992ae0be49b",
+        "classification": "Pre-publisher fixture failure; no packaged application testing occurred.",
+        "error": "Error: Command failed: python3 /home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/ea619a81-5c93-4ff6-b3fd-72bb93d04bfa/linux-source-monitor.py --pid=2808035 --title=Owned Linux Capture AV 33931200f8b072f6\nTraceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/qa/reports/linux-av-wayland/ea619a81-5c93-4ff6-b3fd-72bb93d04bfa/linux-source-monitor.py\", line 68, in <module>\n    assert frame is not None, 'The explicitly owned Chrome source is not active: '+json.dumps(observed)\n           ^^^^^^^^^^^^^^^^^\nAssertionError: The explicitly owned Chrome source is not active: []\n\n    at genericNodeError (node:internal/errors:983:15)\n    at wrappedFn (node:internal/errors:537:14)\n    at checkExecSyncError (node:child_process:916:11)\n    at execFileSync (node:child_process:952:15)\n    at Object.placeSource (/home/ubuntu/code/game-capture/native-qt/e2e/linux-av-wayland.js:39:45)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-av-sync.js:63:16"
+      }
+    ],
+    "setupResolution": "Corrected the existing keyboard-server directory contract; parsed Chrome process-title argv without execution; enabled accessibility only for owned Chrome; kept exact PID/profile/title/focus checks; verified and fitted the full source using owned monitor pixels. Failed attempts were terminal and their reports retained before corrected reruns. None launched the publisher.",
+    "gates": {
+      "report": "native-qt/build-linux/av-endurance-diagnostic-gates.json",
+      "sha256": "51662e4a54aa81e271d33847afd242c3da91e81fe24edc0fe2beeb362ec530a1",
+      "classification": "Syntax, whitespace and package/source-integrity gates only; not application testing. No production changes or rebuild. Windows/macOS runtime regression is not qualified by these gates."
+    },
+    "cleanup": {
+      "report": "native-qt/qa/reports/linux-av-wayland/2923768c-1766-4065-872e-cf1ffb6c6c08/host-cleanup.json",
+      "sha256": "dd74b7ea4ae24879937f65e870a249cbbdbe7d57b6ee1b61648dbd3e7a182331",
+      "passed": true
+    },
+    "remaining": "Reproduce the large X11 cadence dip with native stage attribution or independently isolate the polling/compositor phase cycle; fix and repeat >=30-minute package qualification. Establish a native Wayland source/portal baseline and fix or isolate the 47\u201349 fps limitation before long-run qualification. Absolute A/V calibration, physical inputs, OBS, high-motion and other output combinations remain open."
   }
 }

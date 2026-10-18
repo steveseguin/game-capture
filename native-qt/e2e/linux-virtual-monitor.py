@@ -2,8 +2,9 @@
 """Own a temporary GNOME virtual monitor; retire it on stdin EOF.
 
 QA only, using the host Mutter ScreenCast v4 API and PipeWire. Does not call
-ApplyMonitorsConfig or persist a monitor layout. The physical HDMI source stays
-on the original monitor while the camera GUI runs on the virtual monitor.
+ApplyMonitorsConfig or persist a monitor layout. The default size keeps the
+physical HDMI source on the original monitor and the camera GUI on the virtual
+monitor; larger explicit sizes can contain a full-resolution window fixture.
 """
 import argparse
 import json
@@ -18,15 +19,18 @@ from gi.repository import GLib
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--report', required=True, type=Path)
+parser.add_argument('--width', type=int, default=1280)
+parser.add_argument('--height', type=int, default=900)
 args = parser.parse_args()
 assert args.report.is_dir()
+assert 640 <= args.width <= 1920 and 480 <= args.height <= 1080
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 bus = dbus.SessionBus()
 display = dbus.Interface(bus.get_object('org.gnome.Mutter.DisplayConfig', '/org/gnome/Mutter/DisplayConfig'), 'org.gnome.Mutter.DisplayConfig')
 before = display.GetCurrentState()
 assert len(before[1]) == len(before[2]) == 1, 'This HDMI fixture requires one original monitor'
 assert list(before[2][0][:5]) == [0, 0, 1.0, 0, 1], 'Unexpected original layout'
-result = {'before': before, 'passed': False}
+result = {'before': before, 'requestedSize': [args.width, args.height], 'passed': False}
 session = process = None
 try:
     cast = dbus.Interface(bus.get_object('org.gnome.Mutter.ScreenCast', '/org/gnome/Mutter/ScreenCast'), 'org.gnome.Mutter.ScreenCast')
@@ -42,7 +46,8 @@ try:
         time.sleep(.05)
     assert len(nodes)==1, 'No owned PipeWire node'
     with (args.report/'virtual-monitor-gstreamer.log').open('wb') as log:
-        process = subprocess.Popen(['gst-launch-1.0','-q','pipewiresrc','path='+str(nodes[0]),'!','video/x-raw,width=1280,height=900,format=BGRx,framerate=0/1','!','fakesink','sync=false'],stdout=log,stderr=log)
+        caps=f'video/x-raw,width={args.width},height={args.height},format=BGRx,framerate=0/1'
+        process = subprocess.Popen(['gst-launch-1.0','-q','pipewiresrc','path='+str(nodes[0]),'!',caps,'!','fakesink','sync=false'],stdout=log,stderr=log)
         deadline=time.monotonic()+10
         while time.monotonic()<deadline:
             assert process.poll() is None, 'Virtual monitor consumer exited'
@@ -53,7 +58,7 @@ try:
         assert active[1][0]==before[1][0] and active[2][0]==before[2][0], 'Original monitor changed'
         assert list(active[2][1][:5])==[800,0,1.0,0,0], 'Owned virtual monitor must be on the right'
         result.update(active=active,node=nodes[0],session=str(session_path),stream=str(stream))
-        print(json.dumps({'ready':True,'node':nodes[0],'bounds':[800,0,1280,900]}),flush=True)
+        print(json.dumps({'ready':True,'node':nodes[0],'bounds':[800,0,args.width,args.height]}),flush=True)
         while True:
             assert process.poll() is None, 'Virtual monitor consumer exited'
             if select.select([sys.stdin],[],[],.2)[0] and not sys.stdin.buffer.read(1): break
