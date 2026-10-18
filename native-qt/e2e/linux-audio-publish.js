@@ -12,7 +12,9 @@ const opts = Object.fromEntries(process.argv.slice(2).map(arg => {
 assert.equal(process.platform, 'linux');
 const matrix = opts.matrix || 'routes';
 const wayland = opts.backend === 'wayland', automaticApp = matrix === 'apps-auto';
-const gui = matrix === 'gui' || matrix === 'apps-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto'].includes(matrix));
+const communications = matrix === 'communications-gui' || matrix === 'communications-cli';
+const communicationsMix = opts['communications-mix'] === 'true';
+const gui = matrix === 'gui' || matrix === 'apps-gui' || matrix === 'communications-gui', apps = automaticApp || matrix === 'apps' || matrix === 'apps-gui'; assert(['routes', 'codecs', 'gui', 'apps', 'apps-gui', 'apps-auto', 'communications-gui', 'communications-cli'].includes(matrix));
 assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -27,7 +29,7 @@ for (const item of manifest.payload.files) {
 }
 const report = path.resolve(opts.reports, crypto.randomUUID()); fs.mkdirSync(report, {recursive:true});
 for (const name of ['linux-audio-publish.js', 'macos-media-receiver.js', 'audio-settings-packaged-e2e.js', 'linux-ui-control.py', 'linux-app-audio-source.py', 'linux-portal-select.py']) fs.copyFileSync(path.join(__dirname, name), path.join(report, name));
-const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : 'default system output and owned virtual microphone'}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.`,
+const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : (communications ? 'explicit communications output and owned virtual microphone' : 'default system output and owned virtual microphone')}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.`,
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
   codecReceiverSha256:sha(path.join(__dirname, 'audio-settings-packaged-e2e.js')),
@@ -52,6 +54,7 @@ async function api(route, body) {
 function tone(device, label) {
   const child = spawn('paplay', ['--raw', '--format=float32le', '--rate=48000', '--channels=2', '--latency-msec=20',
     '--device=' + device, '--property=application.name=Game Capture owned audio QA', '--property=media.name=' + label], {stdio:['pipe', 'ignore', 'pipe']});
+  child.closed = new Promise(resolve => child.once('close', resolve));
   const state = {child, frequencies:[440, 880], silent:false, frames:0, blocked:false, error:null};
   child.on('error', e => { state.error = String(e); }); child.stderr.on('data', data => { state.error = String(data); });
   child.stdin.on('error', e => { state.error = String(e); }); child.stdin.on('drain', () => { state.blocked = false; });
@@ -143,6 +146,17 @@ function barriers() {
       modules.push(id); return id;
     };
     let inputModule = createInput();
+    const communicationsSink = sinkName + '_communications';
+    const createCommunicationsOutput = () => {
+      const id = pactl('load-module', 'module-null-sink', 'sink_name=' + communicationsSink, 'sink_properties=device.description=GameCaptureOwnedQACommunications', 'rate=48000', 'channels=2');
+      modules.push(id); return id;
+    };
+    let communicationsModule, communicationsTone;
+    if (communications) { communicationsModule = createCommunicationsOutput(); communicationsTone = tone(communicationsSink, 'owned communications'); }
+    const requireCommunicationsLoss = observation => {
+      if (!communicationsMix) requireAudio(observation, 'Removed communications output', {silent:true});
+      else assert(observation.spectra.filter(sample => sample.microphone1200 > -55 && sample.tone440 < sample.microphone1200 - 25 && sample.tone880 < sample.microphone1200 - 25 && sample.excluded2000 < sample.microphone1200 - 25).length >= 25, 'Output loss did not leave only the selected microphone');
+    };
     const systemTone = tone(defaultSink, 'owned system'), inputTone = tone(sinkName, 'owned microphone');
     const browser = opts.browser || '/usr/bin/google-chrome';
     sourceBrowser = await chromium.launch({executablePath:browser, headless:false, env, args:[...(wayland ? ['--ozone-platform=wayland', '--window-position=10,10', '--window-size=720,560'] : []), '--autoplay-policy=no-user-gesture-required', '--disable-background-timer-throttling', '--disable-renderer-backgrounding']});
@@ -164,7 +178,7 @@ function barriers() {
     });
 
     viewerBrowser = await chromium.launch({executablePath:browser, headless:true, env, args:['--autoplay-policy=no-user-gesture-required', '--mute-audio']});
-    const cases = apps ? [{name:'selected-app', mode:'selected-window'}] : matrix === 'codecs' ? ['opus', 'pcm', 'red'].flatMap(codec => [1, 2].map(channels => ({
+    const cases = communications ? [{name:'communications', mode:'communications-output', input:communicationsMix, mix:communicationsMix}] : apps ? [{name:'selected-app', mode:'selected-window'}] : matrix === 'codecs' ? ['opus', 'pcm', 'red'].flatMap(codec => [1, 2].map(channels => ({
       name:codec + '-' + channels, mode:'default-output', codec:codec === 'pcm' ? 'pcm' : 'opus', red:codec === 'red', channels, bitrate:128
     }))) : [
       {name:'system', mode:'default-output'},
@@ -177,6 +191,7 @@ function barriers() {
       systemTone.frequencies = fixture.name === 'microphone' ? [2000, 2000] : [440, 880];
       inputTone.frequencies = fixture.name === 'microphone' ? [440, 880] : [1200, 1200];
       systemTone.silent = inputTone.silent = false;
+      if (communications) systemTone.frequencies = [2000, 2000];
       if (apps) {
         systemTone.frequencies = inputTone.frequencies = [2000, 2000];
         if (!automaticApp) appSource = await startApp(defaultSink);
@@ -191,6 +206,7 @@ function barriers() {
         '--audio-bitrate-kbps=' + (fixture.bitrate || 128), '--duration-ms=180000', '--local-control', '--local-control-port=0', '--local-control-discovery=' + discovery];
       if (matrix === 'codecs') args.push('--remote-control', '--remote-token=' + remoteToken);
       if (apps && !automaticApp) args.push('--audio-process=' + appSource.child.pid);
+      if (communications) args.push('--communications-output-device=pulse-output:' + communicationsSink);
       if (fixture.input) args.push('--microphone-device=pulse:' + sourceName);
       if (fixture.mix) args.push('--include-microphone');
       log = fs.createWriteStream(path.join(report, fixture.name + '-private-publisher.log'));
@@ -229,7 +245,14 @@ function barriers() {
         if (fixture.input) ui('choose-prefix', 'No microphone', 'GameCaptureOwnedQAInput');
         const audioMode = JSON.parse(ui('dump')).find(row => row.role === 'combo box' && ['No audio', 'Selected window/app audio'].includes(row.name))?.name;
         assert(audioMode, 'Initial audio choice missing');
-        ui('choose', audioMode, apps ? 'Selected window/app audio' : fixture.mode === 'default-output' ? 'System audio (all apps)' : 'Selected microphone/input');
+        ui('choose', audioMode, communications ? 'Communications output (selected device)' : apps ? 'Selected window/app audio' : fixture.mode === 'default-output' ? 'System audio (all apps)' : 'Selected microphone/input');
+        if (communications) {
+          ui('press', 'Go live');
+          const missing = await api('/diagnostics'); assert(!missing.app.capturing && !missing.app.live); assert.equal(missing.video.frames_captured, 0);
+          assert(JSON.parse(ui('dump')).some(row => row.name === 'Choose a communications output before streaming'));
+          entry.missingOutputBlockedBeforeCapture = true;
+          ui('choose', 'Choose a communications output', 'GameCaptureOwnedQACommunications');
+        }
         if (apps) ui('choose', wayland ? 'Choose an audio app' : 'Selected X11 window (automatic)', 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
         ui('press', 'Audio encoding');
         // The shared UI defaults to RED. Select plain Opus for the route/mute
@@ -237,7 +260,10 @@ function barriers() {
         const controls = JSON.parse(ui('dump'));
         if (controls.find(row => row.name === 'Packet-loss protection (RED, experimental)').states.includes('checked')) ui('press', 'Packet-loss protection (RED, experimental)');
         if (fixture.mix) { ui('value', 'Game Audio Gain', '50'); ui('value', 'Mic Gain', '50'); }
-        fs.writeFileSync(path.join(report, fixture.name + '-ui-before-live.json'), ui('dump'));
+        const beforeLive = ui('dump');
+        const communicationsLabel = JSON.parse(beforeLive).find(row => row.role === 'label' && row.name === 'Communications device' && row.states.includes('visible'));
+        assert.equal(!!communicationsLabel, communications, 'Communications device row visibility differs from the selected audio mode');
+        fs.writeFileSync(path.join(report, fixture.name + '-ui-before-live.json'), beforeLive);
         await goLive();
       }
       if (wayland && !gui) await selectedPortal();
@@ -265,9 +291,10 @@ function barriers() {
       }
       const viewer = await receiver(viewerBrowser, stream, publisher);
       entry.video = await observe(viewer, 3000); requireMoving(entry.video, fixture.name + ' video');
-      entry.audio = await observeAudio(viewer); requireAudio(entry.audio, fixture.name, {microphone:fixture.mix, excluded:apps || fixture.name === 'microphone'}); save();
+      entry.audio = await observeAudio(viewer); requireAudio(entry.audio, fixture.name, {microphone:fixture.mix, excluded:communications || apps || fixture.name === 'microphone'}); save();
       const diagnostics = await api('/diagnostics'); entry.audioDiagnostics = diagnostics.audio;
       assert.equal(diagnostics.audio.source_mode, fixture.mode);
+      if (communications) assert.equal(diagnostics.audio.communications_output_device, 'pulse-output:' + communicationsSink);
       assert.equal(diagnostics.audio.configured_opus_bitrate_kbps, 128);
       if (fixture.input) assert(diagnostics.audio.active_microphone_source.includes('GameCaptureOwnedQAInput'));
       if (apps) {
@@ -322,11 +349,22 @@ function barriers() {
         entry.mixedRmsAtHalfGain = median(entry.audio.spectra.map(sample => sample.rms));
         assert(entry.mixedRmsAtHalfGain > .025 && entry.mixedRmsAtHalfGain < .095, 'Decoded half-gain mix level is outside fixture bounds');
       }
-      systemTone.silent = inputTone.silent = true; await sleep(1000);
+      systemTone.silent = inputTone.silent = true; if (communicationsTone) communicationsTone.silent = true; await sleep(1000);
       entry.silence = await observeAudio(viewer); requireAudio(entry.silence, fixture.name + ' silence', {silent:true});
-      systemTone.silent = inputTone.silent = false; await sleep(1000);
+      systemTone.silent = inputTone.silent = false; if (communicationsTone) communicationsTone.silent = false; await sleep(1000);
       const late = await receiver(viewerBrowser, stream, publisher);
-      entry.lateAudio = await observeAudio(late); requireAudio(entry.lateAudio, fixture.name + ' late viewer', {microphone:fixture.mix, excluded:fixture.name === 'microphone'});
+      entry.lateAudio = await observeAudio(late); requireAudio(entry.lateAudio, fixture.name + ' late viewer', {microphone:fixture.mix, excluded:communications || fixture.name === 'microphone'});
+      if (communications && gui) {
+        clearInterval(communicationsTone.timer); communicationsTone.retired = true; communicationsTone.child.stdin.destroy(); communicationsTone.child.kill(); await communicationsTone.child.closed;
+        pactl('unload-module', communicationsModule); modules.splice(modules.indexOf(communicationsModule), 1);
+        await sleep(2000);
+        entry.afterOutputLoss = await observeAudio(viewer); requireCommunicationsLoss(entry.afterOutputLoss);
+        entry.videoAfterOutputLoss = await observe(viewer, 3000); requireMoving(entry.videoAfterOutputLoss, 'Video continues after communications output loss');
+        communicationsModule = createCommunicationsOutput(); communicationsTone = tone(communicationsSink, 'owned replacement communications');
+        await sleep(1500);
+        entry.afterOutputRecreation = await observeAudio(viewer); requireCommunicationsLoss(entry.afterOutputRecreation);
+        entry.noSilentOutputReplacement = true;
+      }
       if (fixture.name === 'microphone') {
         pactl('unload-module', inputModule); modules.splice(modules.indexOf(inputModule), 1);
         await waitFor(async () => (await api('/diagnostics')).audio.active_microphone_source === 'none', 6000, 'Removed microphone stayed active');
@@ -348,6 +386,14 @@ function barriers() {
         fs.writeFileSync(path.join(report, fixture.name + '-ui-stopped.json'), ui('dump'));
         if (wayland) execFileSync('gnome-screenshot', ['-f', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
         else execFileSync('python3', ['-c', 'from PIL import ImageGrab; import sys; ImageGrab.grab().save(sys.argv[1])', path.join(report, fixture.name + '-gui.png')], {env, timeout:10000});
+      }
+      if (gui && communications) {
+        ui('press', 'Refresh outputs');
+        await goLive();
+        const restarted = await receiver(viewerBrowser, stream, publisher);
+        entry.afterExplicitOutputRestart = await observeAudio(restarted); requireAudio(entry.afterExplicitOutputRestart, 'Explicit communications output restart', {microphone:fixture.mix, excluded:true});
+        await restarted.close(); ui('press', 'Stop streaming');
+        await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Communications restart stop did not finish');
       }
       if (gui && apps) {
         appSource = await startApp(defaultSink);
@@ -371,7 +417,7 @@ function barriers() {
         await appSource.stop(); appSource = null;
       }
       await quit();
-      if (gui && fixture.mix) {
+      if (gui && (fixture.mix || communications)) {
         log = fs.createWriteStream(path.join(report, fixture.name + '-relaunch-private-publisher.log'));
         publisher = spawn(exe, args, {cwd:bundle, env, stdio:['ignore', 'pipe', 'pipe']});
         publisher.stdout.pipe(log, {end:false}); publisher.stderr.pipe(log, {end:false});
@@ -379,9 +425,10 @@ function barriers() {
         await waitFor(() => { assert.equal(publisher.exitCode, null); return fs.existsSync(discovery); }, 10000, 'GUI relaunch did not publish discovery');
         control = JSON.parse(fs.readFileSync(discovery)); assert.equal(control.pid, publisher.pid);
         const restored = JSON.parse(ui('dump'));
-        assert(restored.some(row => row.role === 'combo box' && row.name === 'System audio (all apps)'));
-        assert(restored.some(row => row.role === 'combo box' && row.name.startsWith('GameCaptureOwnedQAInput')));
-        for (const name of ['Game Audio Gain', 'Mic Gain']) assert.equal(restored.find(row => row.role === 'spin button' && row.name === name).value, 50);
+        assert(restored.some(row => row.role === 'combo box' && row.name === (communications ? 'Communications output (selected device)' : 'System audio (all apps)')));
+        if (communications) assert(restored.some(row => row.role === 'combo box' && row.name === 'GameCaptureOwnedQACommunications'));
+        if (fixture.input) assert(restored.some(row => row.role === 'combo box' && row.name.startsWith('GameCaptureOwnedQAInput')));
+        if (fixture.mix) for (const name of ['Game Audio Gain', 'Mic Gain']) assert.equal(restored.find(row => row.role === 'spin button' && row.name === name).value, 50);
         const idle = await api('/diagnostics'); assert(!idle.app.live && !idle.app.capturing);
         assert.equal(idle.audio.active_microphone_source, 'none'); assert.equal(idle.metrics.audio_packets_sent, 0);
         fs.writeFileSync(path.join(report, 'mix-ui-restored.json'), JSON.stringify(restored, null, 2));
@@ -389,7 +436,7 @@ function barriers() {
       }
       entry.passed = true; save();
     }
-    for (const source of tones) { assert.equal(source.child.exitCode, null); assert(!source.error, source.error); }
+    for (const source of tones.filter(source => !source.retired)) { assert.equal(source.child.exitCode, null); assert(!source.error, source.error); }
     result.passed = true;
   } catch (error) { result.error = String(error.stack || error); process.exitCode = 1; }
   finally {

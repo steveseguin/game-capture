@@ -78,6 +78,8 @@ class WindowAudioCaptureCore {
     CaptureResult StartCapture(uint32_t processId);
     CaptureResult StartStreamCapture(uint32_t processId, StreamCallback callback);
 #ifdef __linux__
+    std::vector<AudioDeviceInfo> GetOutputDevices();
+    CaptureResult StartOutputDeviceStreamCapture(const std::string &deviceId, StreamCallback callback);
     CaptureResult StartProcessStreamCapture(uint32_t processId, uint64_t processStartTime, StreamCallback callback);
 #endif
     CaptureResult StartDefaultEndpointCapture(DefaultAudioEndpoint endpoint);

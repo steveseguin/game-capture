@@ -207,6 +207,8 @@ class VersusApp {
     void setAudioSourceMode(AudioSourceMode mode);
 #ifdef __linux__
     void setAudioProcess(uint32_t processId, uint64_t processStartTime = 0);
+    void setCommunicationsOutputDeviceId(const std::string &deviceId);
+    std::vector<versus::audio::AudioDeviceInfo> listAudioOutputDevices();
 #endif
     void setIncludeMicrophone(bool enabled);
     void setMicrophoneMuted(bool muted);
@@ -309,6 +311,7 @@ class VersusApp {
         bool includeMicrophone = false;
         std::string microphoneDeviceId;
 #ifdef __linux__
+        std::string communicationsOutputDeviceId;
         uint32_t audioProcessId = 0;
         uint64_t audioProcessStartTime = 0;
 #endif
@@ -909,6 +912,7 @@ class VersusApp {
     bool includeMicrophone_ = false;
     std::string microphoneDeviceId_;
 #ifdef __linux__
+    std::string communicationsOutputDeviceId_;
     uint32_t audioProcessId_ = 0;
     uint64_t audioProcessStartTime_ = 0;
 #endif

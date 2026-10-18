@@ -356,12 +356,17 @@ struct WindowAudioCaptureCore::LinuxImpl {
         if (!devices.serverKnown || !devices.sourcesKnown) { fail("Could not enumerate desktop audio devices."); return; }
         std::string selected;
         if (kind == Kind::Output) {
+            if (!id.empty() && (!id.starts_with("pulse-output:") || id.size() <= 13)) {
+                fail("Invalid Linux output ID. Select an available communications output."); return;
+            }
+            const auto output = id.empty() ? devices.defaultOutput : id.substr(13);
             struct Monitor { std::string name; } monitor;
-            if (devices.defaultOutput.empty() || !server.finish(pa_context_get_sink_info_by_name(server.context, devices.defaultOutput.c_str(),
+            if (output.empty() || !server.finish(pa_context_get_sink_info_by_name(server.context, output.c_str(),
                     [](pa_context *, const pa_sink_info *info, int end, void *data) {
                         if (!end && info && info->monitor_source_name) static_cast<Monitor *>(data)->name = info->monitor_source_name;
                     }, &monitor), running) || monitor.name.empty()) {
-                fail("The default output has no available monitor source."); return;
+                fail(id.empty() ? "The default output has no available monitor source." :
+                    "Selected communications output is unavailable. No replacement output was opened."); return;
             }
             selected = monitor.name;
         } else {
@@ -513,6 +518,28 @@ std::vector<AudioDeviceInfo> WindowAudioCaptureCore::GetInputDevices() {
         result.push_back(std::move(device));
     }
     return result;
+}
+std::vector<AudioDeviceInfo> WindowAudioCaptureCore::GetOutputDevices() {
+    std::atomic<bool> active{true}; Server server;
+    if (!server.connect(active)) return {};
+    struct Outputs { std::vector<AudioDeviceInfo> devices; bool complete = false; } outputs;
+    const bool done = server.finish(pa_context_get_sink_info_list(server.context,
+        [](pa_context *, const pa_sink_info *info, int end, void *data) {
+            auto &out = *static_cast<Outputs *>(data);
+            if (end) { out.complete = end > 0; return; }
+            if (!info || !info->name || !info->monitor_source_name || out.devices.size() >= 1024) return;
+            AudioDeviceInfo device;
+            device.id = "pulse-output:" + std::string(info->name);
+            device.name = info->description ? info->description : info->name;
+            device.sampleRate = info->sample_spec.rate; device.channels = info->sample_spec.channels;
+            out.devices.push_back(std::move(device));
+        }, &outputs), active);
+    return done && outputs.complete ? std::move(outputs.devices) : std::vector<AudioDeviceInfo>{};
+}
+CaptureResult WindowAudioCaptureCore::StartOutputDeviceStreamCapture(const std::string &id, StreamCallback callback) {
+    // An unset communications choice must never fall back to the system mix.
+    if (id.empty()) { StopCapture(); return {false, false, 0, 0, "Choose a communications output before streaming."}; }
+    return linux_->start(LinuxImpl::Kind::Output, id, std::move(callback));
 }
 CaptureResult WindowAudioCaptureCore::StartCapture(uint32_t pid) { return StartStreamCapture(pid, {}); }
 CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t pid, StreamCallback callback) {

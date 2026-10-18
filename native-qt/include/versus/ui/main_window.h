@@ -83,6 +83,9 @@ class MainWindow : public QMainWindow {
     void refreshMicrophoneDevices(const QString &preferredDeviceId = QString());
 #ifdef __linux__
     void refreshAudioApplications();
+    void refreshCommunicationsOutputs(const QString &preferredId = QString());
+    QComboBox *communicationsOutputSelect_ = nullptr;
+    QPushButton *communicationsOutputRefresh_ = nullptr;
     QComboBox *audioApplicationSelect_ = nullptr;
     QPushButton *audioApplicationRefresh_ = nullptr;
 #endif

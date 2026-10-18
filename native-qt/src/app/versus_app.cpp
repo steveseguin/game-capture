@@ -1329,6 +1329,14 @@ void VersusApp::setAudioSourceMode(AudioSourceMode mode) {
 }
 
 #ifdef __linux__
+std::vector<versus::audio::AudioDeviceInfo> VersusApp::listAudioOutputDevices() {
+    audio::WindowAudioCaptureCore capture;
+    return capture.GetOutputDevices();
+}
+void VersusApp::setCommunicationsOutputDeviceId(const std::string &id) {
+    std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
+    communicationsOutputDeviceId_ = id;
+}
 void VersusApp::setAudioProcess(uint32_t pid, uint64_t birth) {
     std::lock_guard<std::mutex> lock(lifecycleStateMutex_);
     audioProcessId_ = pid;
@@ -2370,6 +2378,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
     }
     root["audio"] = {
         {"source_mode", audioSourceModeName(diagnosticsAudioSourceMode)},
+#ifdef __linux__
+        {"communications_output_device", lifecycleStateSnapshot().communicationsOutputDeviceId},
+#endif
         {"include_microphone", diagnosticsIncludeMicrophone},
         {"microphone_muted", microphoneMuted_.load(std::memory_order_relaxed)},
         {"active_microphone_source", diagnosticsMicrophoneSource},
@@ -2882,8 +2893,12 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                 audio::DefaultAudioEndpoint::MultimediaOutput, primaryCallback);
             break;
         case AudioSourceMode::CommunicationsOutput:
+#ifdef __linux__
+            result = audioCapture_.StartOutputDeviceStreamCapture(lifecycleState.communicationsOutputDeviceId, primaryCallback);
+#else
             result = audioCapture_.StartDefaultEndpointStreamCapture(
                 audio::DefaultAudioEndpoint::CommunicationsOutput, primaryCallback);
+#endif
             break;
         case AudioSourceMode::DefaultMicrophone:
             startMicrophoneAsPrimary();
@@ -8465,6 +8480,7 @@ VersusApp::LifecycleStateSnapshot VersusApp::lifecycleStateSnapshot() const {
     snapshot.includeMicrophone = includeMicrophone_;
     snapshot.microphoneDeviceId = microphoneDeviceId_;
 #ifdef __linux__
+    snapshot.communicationsOutputDeviceId = communicationsOutputDeviceId_;
     snapshot.audioProcessId = audioProcessId_;
     snapshot.audioProcessStartTime = audioProcessStartTime_;
 #endif

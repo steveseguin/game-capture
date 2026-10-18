@@ -241,6 +241,7 @@ int main(int argc, char *argv[]) {
     bool includeMicrophone = false;
     std::string microphoneDeviceId;
 #ifdef __linux__
+    std::string communicationsOutputDeviceId;
     uint32_t audioProcessId = 0;
 #endif
     std::string diagnosticsOutArg;
@@ -468,6 +469,11 @@ int main(int argc, char *argv[]) {
         } else if (arg == "--include-microphone" || arg == "--include-mic") {
             includeMicrophone = true;
 #ifdef __linux__
+        } else if (arg.starts_with("--communications-output-device=")) {
+            communicationsOutputDeviceId = arg.substr(std::string("--communications-output-device=").size());
+            if (!communicationsOutputDeviceId.starts_with("pulse-output:") || communicationsOutputDeviceId.size() <= 13) {
+                spdlog::error("--communications-output-device requires pulse-output:<output name>"); return 2;
+            }
         } else if (arg.find("--audio-process=") == 0) {
             const std::string value = arg.substr(16);
             try {
@@ -917,6 +923,7 @@ int main(int argc, char *argv[]) {
     core.setAudioSourceMode(audioSourceMode);
 #ifdef __linux__
     core.setAudioProcess(audioProcessId);
+    core.setCommunicationsOutputDeviceId(communicationsOutputDeviceId);
 #endif
     // Protect ordinary Opus publishing against isolated loss. External
     // protocols and PCM retain their own transport/negotiation contracts.

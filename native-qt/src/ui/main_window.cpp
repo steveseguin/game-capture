@@ -1104,6 +1104,9 @@ void MainWindow::loadPersistedSettings() {
             sourceModeSelect_->currentData().toString() == "camera");
     }
     restoreComboByData(audioSourceSelect_, settings.value("audio/source", "selected-window"));
+#ifdef __linux__
+    refreshCommunicationsOutputs(settings.value("audio/communicationsOutputDeviceId", "").toString());
+#endif
     if (sourceModeSelect_ && audioSourceSelect_) {
         const QString sourceMode = sourceModeSelect_->currentData().toString();
         const QString audioMode = audioSourceSelect_->currentData().toString();
@@ -1224,6 +1227,9 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("network/iceMode", iceModeSelect_ ? iceModeSelect_->currentData().toString() : QString("all"));
     settings.setValue("audio/source", audioSourceSelect_ ? audioSourceSelect_->currentData().toString() : QString("selected-window"));
     settings.setValue("audio/windowSource", preferredWindowAudioSource_);
+#ifdef __linux__
+    settings.setValue("audio/communicationsOutputDeviceId", communicationsOutputSelect_ ? communicationsOutputSelect_->currentData().toString() : QString());
+#endif
     settings.setValue("audio/microphoneMuted", microphoneMuteButton_ && microphoneMuteButton_->isChecked());
     settings.setValue("audio/includeMicrophone", includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false);
     settings.setValue("audio/microphoneDeviceId", microphoneDeviceSelect_ ? microphoneDeviceSelect_->currentData().toString() : QString());
@@ -1441,6 +1447,9 @@ void MainWindow::connectPersistedSettingSignals() {
                 saveNow();
             });
     }
+#ifdef __linux__
+    connect(communicationsOutputSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+#endif
     if (includeMicrophoneCheck_) {
         connect(includeMicrophoneCheck_, &QCheckBox::toggled, this, saveNow);
     }
@@ -2065,9 +2074,14 @@ void MainWindow::setupUI() {
     audioSourceSelect_->setObjectName("audioSourceSelect");
     if (platform::capabilities().audioCapture) {
         audioSourceSelect_->addItem("Selected window/app audio", QVariant("selected-window"));
+#ifdef __linux__
+        audioSourceSelect_->addItem("System audio (all apps)", QVariant("default-output"));
+        audioSourceSelect_->addItem("Communications output (selected device)", QVariant("communications-output"));
+#else
         audioSourceSelect_->addItem(platform::capabilities().communicationsAudioCapture ? "Default output mix" : "System audio (all apps)", QVariant("default-output"));
         if (platform::capabilities().communicationsAudioCapture)
             audioSourceSelect_->addItem("Communications output (VOIP)", QVariant("communications-output"));
+#endif
         if (platform::capabilities().microphoneCapture)
             audioSourceSelect_->addItem("Selected microphone/input", QVariant("default-microphone"));
     }
@@ -2095,6 +2109,28 @@ void MainWindow::setupUI() {
         audioApplicationPanel->setVisible(audioSourceSelect_->currentData().toString() == "selected-window");
     });
     refreshAudioApplications();
+    auto *communicationsPanel = new QWidget(this);
+    auto *communicationsLayout = new QHBoxLayout(communicationsPanel);
+    communicationsLayout->setContentsMargins(0, 0, 0, 0);
+    communicationsOutputSelect_ = new QComboBox(communicationsPanel);
+    communicationsOutputSelect_->setAccessibleName("Communications output device");
+    communicationsOutputSelect_->setToolTip("Select the output used by your voice-chat apps. All sound playing through that output is shared. Configure your voice-chat app to play through the same output.");
+    installComboWheelGuard(communicationsOutputSelect_);
+    communicationsOutputRefresh_ = new QPushButton("Refresh outputs", communicationsPanel);
+    communicationsLayout->addWidget(communicationsOutputSelect_, 1);
+    communicationsLayout->addWidget(communicationsOutputRefresh_);
+    auto *communicationsLabel = new QLabel("Communications device", this);
+    communicationsLabel->setBuddy(communicationsOutputSelect_);
+    advancedForm->addRow(communicationsLabel, communicationsPanel);
+    connect(communicationsOutputRefresh_, &QPushButton::clicked, this, [this] { refreshCommunicationsOutputs(); });
+    connect(audioSourceSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, communicationsPanel, communicationsLabel] {
+        const bool visible = audioSourceSelect_->currentData().toString() == "communications-output";
+        communicationsPanel->setVisible(visible);
+        communicationsLabel->setVisible(visible);
+    });
+    communicationsPanel->setVisible(audioSourceSelect_->currentData().toString() == "communications-output");
+    communicationsLabel->setVisible(communicationsPanel->isVisible());
+    refreshCommunicationsOutputs();
 #endif
 
 
@@ -3027,6 +3063,21 @@ void MainWindow::refreshWindowList() {
 }
 
 #ifdef __linux__
+void MainWindow::refreshCommunicationsOutputs(const QString &preferredId) {
+    if (!communicationsOutputSelect_) return;
+    const auto selected = preferredId.isNull() ? communicationsOutputSelect_->currentData().toString() : preferredId;
+    QSignalBlocker blocker(communicationsOutputSelect_);
+    communicationsOutputSelect_->clear();
+    communicationsOutputSelect_->addItem("Choose a communications output", QString());
+    if (core_) for (const auto &device : core_->listAudioOutputDevices())
+        communicationsOutputSelect_->addItem(QString::fromStdString(device.name), QString::fromStdString(device.id));
+    int index = communicationsOutputSelect_->findData(selected);
+    if (index < 0 && !selected.isEmpty()) {
+        communicationsOutputSelect_->addItem("Selected output unavailable; choose again", selected);
+        index = communicationsOutputSelect_->count() - 1;
+    }
+    communicationsOutputSelect_->setCurrentIndex(index >= 0 ? index : 0);
+}
 void MainWindow::refreshAudioApplications() {
     if (!audioApplicationSelect_) return;
     const auto selected = audioApplicationSelect_->currentData().toUInt();
@@ -3405,6 +3456,11 @@ void MainWindow::onGoLiveClicked() {
             : QString("selected-window");
         const bool includeMicrophone = includeMicrophoneCheck_ ? includeMicrophoneCheck_->isChecked() : false;
 #ifdef __linux__
+        const QString communicationsOutputDeviceId = communicationsOutputSelect_->currentData().toString();
+        if (audioSourceValue == "communications-output" && communicationsOutputDeviceId.isEmpty()) {
+            updateStatus("Choose a communications output before streaming", "error");
+            return;
+        }
         const uint32_t audioProcessId = audioApplicationSelect_ ? audioApplicationSelect_->currentData().toUInt() : 0;
         const uint64_t audioProcessStartTime = audioApplicationSelect_ ? audioApplicationSelect_->currentData(Qt::UserRole + 1).toULongLong() : 0;
 #endif
@@ -3514,6 +3570,7 @@ void MainWindow::onGoLiveClicked() {
                                            includeMicrophone,
                                            microphoneDeviceId,
 #ifdef __linux__
+                                           communicationsOutputDeviceId,
                                            audioProcessId,
                                            audioProcessStartTime,
 #endif
@@ -3572,6 +3629,7 @@ void MainWindow::onGoLiveClicked() {
                     core->setAudioSourceMode(audioSourceModeFromUiValue(audioSourceValue));
 #ifdef __linux__
                     core->setAudioProcess(audioProcessId, audioProcessStartTime);
+                    core->setCommunicationsOutputDeviceId(communicationsOutputDeviceId.toStdString());
 #endif
                     core->setIncludeMicrophone(includeMicrophone);
                     core->setMicrophoneDeviceId(microphoneDeviceId.toStdString());
@@ -4656,6 +4714,8 @@ void MainWindow::setConfigControlsEnabled(bool enabled) {
     if (audioSourceSelect_) {
         audioSourceSelect_->setEnabled(enabled && platform::capabilities().audioCapture);
 #ifdef __linux__
+        if (communicationsOutputSelect_) communicationsOutputSelect_->setEnabled(enabled);
+        if (communicationsOutputRefresh_) communicationsOutputRefresh_->setEnabled(enabled);
         if (audioApplicationSelect_) audioApplicationSelect_->setEnabled(enabled);
         if (audioApplicationRefresh_) audioApplicationRefresh_->setEnabled(enabled);
 #endif
