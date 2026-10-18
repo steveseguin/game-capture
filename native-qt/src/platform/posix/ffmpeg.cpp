@@ -40,6 +40,11 @@ std::filesystem::path resolvePosixFfmpeg(const std::string &configured) {
     // Linux packages declare a versioned distribution FFmpeg dependency.
     for (auto name : {"FFMPEG_PATH", "FFMPEG_EXE"})
         if (auto override = qEnvironmentVariable(name); !override.isEmpty()) return candidate(override);
+#ifdef __linux__
+    // Use the distribution dependency before unrelated tools placed on PATH.
+    // Explicit UI/CLI/environment overrides above remain authoritative.
+    if (auto system = candidate(QStringLiteral("/usr/bin/ffmpeg")); !system.empty()) return system;
+#endif
     return candidate(QStandardPaths::findExecutable("ffmpeg"));
 }
 bool isBundledPosixFfmpeg(const std::filesystem::path &path) {

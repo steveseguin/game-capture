@@ -13,6 +13,7 @@
 #include <QRegularExpression>
 #include <QTimer>
 #include <QUrl>
+#include <QUrlQuery>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -401,7 +402,24 @@ struct Session::Impl {
             }
             if (config.protocol == Protocol::Rist)
                 args << "-rist_profile" << "main" << "-buffer_size" << QString::number(config.latencyMs) << "-pkt_size" << "1316";
-            args << QString::fromStdString(destinationUrl(config));
+            auto destination = QString::fromStdString(destinationUrl(config));
+#ifdef __linux__
+            if (config.protocol == Protocol::Srt) {
+                // FFmpeg 6.1 does not URL-decode SRT string options. Pass them
+                // as literal argv entries, preserving colons, +, %, & and spaces
+                // without changing Windows/macOS destination serialization.
+                QUrl url(destination);
+                QUrlQuery query(url);
+                const auto streamKey = query.hasQueryItem("streamid") ? QStringLiteral("streamid") : QStringLiteral("srt_streamid");
+                if (query.hasQueryItem(streamKey)) args << "-srt_streamid" << query.queryItemValue(streamKey, QUrl::FullyDecoded);
+                if (query.hasQueryItem("passphrase")) args << "-passphrase" << query.queryItemValue("passphrase", QUrl::FullyDecoded);
+                query.removeAllQueryItems("streamid"); query.removeAllQueryItems("srt_streamid");
+                query.removeAllQueryItems("passphrase");
+                url.setQuery(query);
+                destination = url.toString(QUrl::FullyEncoded);
+            }
+#endif
+            args << destination;
             const auto muxStarted = Clock::now();
             process.start(QString::fromStdString(media.ffmpegPath), args, QIODevice::ReadWrite);
             if (!process.waitForStarted(2000)) throw OutputError("Output FFmpeg could not start. Check the FFmpeg path.", true);
@@ -448,6 +466,15 @@ struct Session::Impl {
             auto lastProgress = Clock::now(), lastVideoInput = Clock::now();
             bool checkedStartup = false;
             qint64 lastFrame = 0, lastOutputTime = -1;
+            bool frameProgressReported = false;
+#ifdef __linux__
+            // Ubuntu FFmpeg 6.1 omits frame= for stream-copy video. Its
+            // advancing output clock still proves mux progress. The separate
+            // video-input watchdog below continues to detect a stalled encoder.
+            constexpr bool allowTimestampOnlyProgress = true;
+#else
+            constexpr bool allowTimestampOnlyProgress = false;
+#endif
             QByteArray progress;
             while (!stopping.load()) {
                 // This worker has no Qt event loop. Pump the child's output
@@ -460,15 +487,18 @@ struct Session::Impl {
                     const auto line = progress.left(end).trimmed(); progress.remove(0, end + 1);
                     bool advanced = false;
                     if (line.startsWith("frame=")) {
+                        frameProgressReported = true;
                         const auto frame = line.mid(6).toLongLong();
                         advanced = frame > lastFrame; lastFrame = std::max(lastFrame, frame);
                     } else if (line.startsWith("out_time_us=")) {
                         bool valid = false;
                         const auto time = line.mid(12).toLongLong(&valid);
-                        advanced = valid && time > lastOutputTime && lastFrame > 0;
+                        advanced = valid && time > lastOutputTime &&
+                            (lastFrame > 0 || (allowTimestampOnlyProgress && !frameProgressReported));
                         if (valid) lastOutputTime = std::max(lastOutputTime, time);
                     }
-                    if (!checkedStartup && line.startsWith("progress=") && lastFrame > 0 && lastOutputTime >= 0) {
+                    if (!checkedStartup && line.startsWith("progress=") &&
+                        (lastFrame > 0 || (allowTimestampOnlyProgress && !frameProgressReported)) && lastOutputTime >= 0) {
                         checkedStartup = true;
                         const auto ageMs = (webrtc::mediaTime100ns() - epoch - lastOutputTime*10)/10000;
                         const auto startupMs = std::chrono::duration_cast<std::chrono::milliseconds>(Clock::now()-muxStarted).count();
