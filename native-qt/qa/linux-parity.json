@@ -138,7 +138,7 @@
       "id": "endurance",
       "required": true,
       "status": "e2e-failed",
-      "remaining": "Final Linux audio behavior has changed again to retain healthy direct monitors and react to playback events. The current bounded A/V results are in linux_app_monitor_retention_checkpoint; they do not establish absolute software-reference calibration or endurance. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but failed initial A/V skew; it does not qualify current behavior. Prior native Wayland delivery was 47\u201349 fps with source cadence also below target in three windows; isolate source/compositor/PipeWire throughput. Higher profiles and high-motion content require separate evidence. See linux_av_receiver_rtp_checkpoint: unmuted playback still fails recorded startup skew. Exact incoming RTP/source identity evidence is stable, while receiver recording adds changing skew. Separate actual presentation from recording and establish calibration before final endurance qualification."
+      "remaining": "Final Linux audio behavior has changed again to retain healthy direct monitors and react to playback events. The current bounded A/V results are in linux_app_monitor_retention_checkpoint; they do not establish absolute software-reference calibration or endurance. Required: separate >=30-minute final-package X11 and native Wayland default-profile workflows with decoded identities, continuous PCM, calibrated skew/drift, resources and cleanup. The prior 120 ms audio/DAMAGE package passed 372 cadence/PCM intervals in one 31-minute X11 run but failed initial A/V skew; it does not qualify current behavior. Prior native Wayland delivery was 47\u201349 fps with source cadence also below target in three windows; isolate source/compositor/PipeWire throughput. Higher profiles and high-motion content require separate evidence. See linux_av_receiver_rtp_checkpoint: unmuted playback still fails recorded startup skew. Exact incoming RTP/source identity evidence is stable, while receiver recording adds changing skew. Separate actual presentation from recording and establish calibration before final endurance qualification. See linux_visible_receiver_av_checkpoint: two bounded actual visible-output/Pulse comparisons stay within 50 ms while MediaRecorder adds roughly 16.5-29 ms. Original statuses and independent-calibration requirement remain; neither bounded run proves endurance or native Wayland throughput."
     },
     {
       "id": "arm-portability",
@@ -24943,6 +24943,191 @@
         "sha256": "078d54a3b5373c52c25ecd41e6bcea13d65ba621ff2f7d0832800a73025f3f7a",
         "passed": true
       }
+    },
+    {
+      "case": "presentation",
+      "report": "native-qt/qa/reports/linux-av-presentation-owned-sink/d3b2894e-3509-4297-a9a7-652faf3fd0c0/results.json",
+      "reportSha256": "4e5900400c1aca491689eaec42ce2dfb67369adb618c2d6519487e61d043bd07",
+      "passed": false,
+      "diagnosticPassed": false,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "cadencePcmSamplesPassed": 6,
+      "visibleReceiverComparison": {
+        "report": "native-qt/qa/reports/linux-av-presentation-owned-sink/d3b2894e-3509-4297-a9a7-652faf3fd0c0/playback-comparison.json",
+        "sha256": "0c815da2776b2e8aeaa3a65889941d856c41f9d0a272e0f958d440993636fa54",
+        "summary": {
+          "desktopAdditionalOffsetMs": {
+            "minimum": -3.0000000000036664,
+            "median": -2.000000000000668,
+            "maximum": 31.000000000000135
+          },
+          "recordedAdditionalOffsetMs": {
+            "minimum": 18.499999999995964,
+            "median": 25.500000000000966,
+            "maximum": 56.50000000000022
+          },
+          "recordedMinusDesktopMs": {
+            "minimum": 18.499999999999517,
+            "median": 24.00000000000091,
+            "maximum": 28.50000000000108
+          }
+        },
+        "matchedPulses": 14,
+        "desktopSkewWithin50ms": true,
+        "calibrated": false
+      },
+      "windowGeometry": {
+        "source": {
+          "x": 0,
+          "y": 0,
+          "width": 1288,
+          "height": 805,
+          "desktopWidth": 2880,
+          "desktopHeight": 1000
+        },
+        "receiver": {
+          "x": 1440,
+          "y": 0,
+          "width": 1400,
+          "height": 900,
+          "desktopWidth": 2880,
+          "desktopHeight": 1000
+        }
+      },
+      "recordings": {
+        "source": {
+          "path": "initial-source.mkv",
+          "sha256": "408521e689e9c22c581ff98daa6ca4610cfce4b7f60f4b62e5a302f157d00815",
+          "bytes": 21645156
+        },
+        "receiverDesktop": {
+          "path": "initial-receiverDesktop.mkv",
+          "sha256": "2549dbd9227b180edb3d6b5f1c26568d63a46a15808c1b2902f9ea8e20edcc55",
+          "bytes": 26395293
+        },
+        "browserSource": {
+          "path": "initial-browserSource.webm",
+          "sha256": "e2fd7d105d6a41871f4be4528fb3666de1c36cb8195e0a8b48335400840d6fbd",
+          "bytes": 2988826
+        },
+        "receiver": {
+          "path": "initial-receiver.webm",
+          "sha256": "7737fce40b088bdfa005f597083c6fdcde0e96625adabd58d3278f88b124c1d9",
+          "bytes": 4032469
+        }
+      },
+      "rtpAnalysis": {
+        "report": "native-qt/qa/reports/linux-av-presentation-owned-sink/d3b2894e-3509-4297-a9a7-652faf3fd0c0/rtp-av-analysis.json",
+        "sha256": "a6fa6b8c8a3948cbbbefc8504ebdf4f9b511aff141bd247514378606aad5938f",
+        "summary": {
+          "rtpOffsetMs": {
+            "minimum": -3.005555598065257,
+            "median": -3.005555598065257,
+            "maximum": -0.7944444660097361
+          },
+          "rtpMinusSourceRecordedMs": {
+            "minimum": -26.294444466009814,
+            "median": -11.505555598066763,
+            "maximum": -11.494444454090313
+          },
+          "receiverRecordedMinusRtpMs": {
+            "minimum": 29.994444454086278,
+            "median": 37.00555559806684,
+            "maximum": 82.79444446601003
+          }
+        },
+        "exactJoinedFrames": 1737,
+        "presentedFrames": 1761
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-presentation-owned-sink/d3b2894e-3509-4297-a9a7-652faf3fd0c0/host-cleanup.json",
+        "sha256": "b7e56c320007b3714d65b1361c02cb3170673057c68b02d585fc064e0f08efd5",
+        "passed": true
+      }
+    },
+    {
+      "case": "lean",
+      "report": "native-qt/qa/reports/linux-av-presentation-lean-owned-sink/253c760b-3e25-41fb-ba01-b3e65364cbd8/results.json",
+      "reportSha256": "1c02b02c8bfde5d9073bf6185f96be75c8319e2fbb8cb22bbf1c05ed0bccf030",
+      "passed": false,
+      "diagnosticPassed": true,
+      "scope": "Exact Ubuntu DEB, owned X11 window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "cadencePcmSamplesPassed": 6,
+      "visibleReceiverComparison": {
+        "report": "native-qt/qa/reports/linux-av-presentation-lean-owned-sink/253c760b-3e25-41fb-ba01-b3e65364cbd8/playback-comparison.json",
+        "sha256": "c21ec95b6940131b62e1c44c33288028f140ec678a8b636605937a0e3a764ab4",
+        "summary": {
+          "desktopAdditionalOffsetMs": {
+            "minimum": -17.499999999998295,
+            "median": -1.7499999999999183,
+            "maximum": 15.000000000000568
+          },
+          "recordedAdditionalOffsetMs": {
+            "minimum": 1.5000000000036096,
+            "median": 18.500000000001293,
+            "maximum": 35.50000000000075
+          },
+          "recordedMinusDesktopMs": {
+            "minimum": 16.50000000000018,
+            "median": 21.50000000000052,
+            "maximum": 28.999999999999915
+          }
+        },
+        "matchedPulses": 14,
+        "desktopSkewWithin50ms": true,
+        "calibrated": false
+      },
+      "windowGeometry": {
+        "source": {
+          "x": 0,
+          "y": 0,
+          "width": 1288,
+          "height": 805,
+          "desktopWidth": 2880,
+          "desktopHeight": 1000
+        },
+        "receiver": {
+          "x": 1440,
+          "y": 0,
+          "width": 1400,
+          "height": 900,
+          "desktopWidth": 2880,
+          "desktopHeight": 1000
+        }
+      },
+      "recordings": {
+        "source": {
+          "path": "initial-source.mkv",
+          "sha256": "8f5a064697644315811c27d237fa379ca072de7f0668ffc3bf1581b893aaea82",
+          "bytes": 21970625
+        },
+        "receiverDesktop": {
+          "path": "initial-receiverDesktop.mkv",
+          "sha256": "44a3ad44b73a407c54b5d0e921e3c676f8b006452d3cbcb1f0595ccc4dca0674",
+          "bytes": 25564345
+        },
+        "browserSource": {
+          "path": "initial-browserSource.webm",
+          "sha256": "b5d6a04866b6cb088ec24c55bcf7b694f19cb68327dbb26b34a04222f9a88c59",
+          "bytes": 2817812
+        },
+        "receiver": {
+          "path": "initial-receiver.webm",
+          "sha256": "1d184cff4642767d14e526b1c1eeecc14be7e7e3df1e1df89ecdc6a04dcb8ab3",
+          "bytes": 3940055
+        }
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-av-presentation-lean-owned-sink/253c760b-3e25-41fb-ba01-b3e65364cbd8/host-cleanup.json",
+        "sha256": "ba70ce69dc3f13ed6cc55052c616074832beee76056ba21eb1a25e1ff577765d",
+        "passed": true
+      }
     }
   ],
   "host_environment": {
@@ -25017,7 +25202,8 @@
     "With --continuous-app-audio=true, --app-snapshot-context=persistent reuses a snapshot observer created before startup settling; fresh remains the default. --app-resume-snapshot-delay-ms=2200 delays only the resume snapshot; 1200 is default. --app-resume-reference=true records bounded independent PCM from the owned playback stream through parec and analyzes 10 ms levels/channel isolation. Native opt-in traces add RMS/hole metadata; the analyzer accepts both trace schemas.",
     "With --continuous-app-audio=true, --app-resume-recording=true retains a bounded received-track MediaRecorder WebM plus frame-PTS-aware PCM analysis; --app-encoded-audio=true copies incoming Opus with RTCRtpScriptTransform, forwards original frames unchanged, and decodes copies with libopus. Both preserve existing continuous checks and failed results. Linux continuous PCM capture retains up to sixteen bad 100 ms windows per drain; shared default remains two.",
     "With --continuous-app-audio=true, --app-playout-reference=true launches an unmuted receiver into its own null sink and independently records bounded pre-pause/resume playback; --app-playout-headed=true makes that receiver visible. Sink ownership, playing unmuted media, routing and cleanup are recorded. Raw evidence budgets exclude fully silent windows only; all 10 ms/100 ms summaries, phase clocks and acceptance thresholds remain. --app-resume-recording=true prepares MediaRecorder before draining the intentional-silence phase.",
-    "linux-av-sync.js --receiver-playback=owned-sink removes Chrome mute and verifies receiver-only sink routing; muted remains the diagnostic default. --rtp-timing=true on a bounded desktop-reference run copies Opus and records presentation RTP metadata. Combine with --trace-capture=true for exact submitted-video-RTP/source-frame joins and rtp-av-analysis.json. --output-dir on linux-av-rtp-report.py preserves corrected offline reanalysis separately. All qualification thresholds and historical failures remain intact."
+    "linux-av-sync.js --receiver-playback=owned-sink removes Chrome mute and verifies receiver-only sink routing; muted remains the diagnostic default. --rtp-timing=true on a bounded desktop-reference run copies Opus and records presentation RTP metadata. Combine with --trace-capture=true for exact submitted-video-RTP/source-frame joins and rtp-av-analysis.json. --output-dir on linux-av-rtp-report.py preserves corrected offline reanalysis separately. All qualification thresholds and historical failures remain intact.",
+    "linux-av-sync.js --receiver-desktop-reference=true requires --source-reference=desktop --receiver-playback=owned-sink and a wide owned X11 desktop (2880x1000). It places the receiver beside the source, records both drawables/Pulse sinks with guarded identities and checks non-overlap. linux-av-compare-playback.py preserves original MediaRecorder results. linux-av-playback-controls.py runs +/-150 ms copies as offline measurement/rejection controls, not packaged testing or absolute calibration."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -29813,5 +29999,63 @@
     "ownedProcessesRemaining": [],
     "next": "Measure actual receiver video presentation and owned-sink audio on a common timeline, alongside MediaRecorder and RTP, to separate recording timestamps from playback. Prefer a visible receiver captured through the existing desktop/Pulse reference with exact owned-window/sink guards and original source reference retained. Do not change publisher timestamps to compensate for browser recording/buffering without evidence.",
     "protocolReference": "https://wicg.github.io/video-rvfc/#dom-videoframecallbackmetadata-rtptimestamp"
+  },
+  "linux_visible_receiver_av_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20.deb",
+      "sha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16"
+    },
+    "productionChange": "None. Linux diagnostic helper adds an explicit receiver role with exact title/PID/module/sink guards. Source and receiver use separate owned Pulse sinks and fully visible non-overlapping windows. Concurrent desktop/Pulse recordings retain original input PTS and separate common wall-clock origins, alongside original MediaRecorder references.",
+    "evidence": [
+      {
+        "case": "presentation",
+        "report": "native-qt/qa/reports/linux-av-presentation-owned-sink/d3b2894e-3509-4297-a9a7-652faf3fd0c0/results.json",
+        "sha256": "4e5900400c1aca491689eaec42ce2dfb67369adb618c2d6519487e61d043bd07",
+        "passed": false,
+        "diagnosticPassed": false
+      },
+      {
+        "case": "lean",
+        "report": "native-qt/qa/reports/linux-av-presentation-lean-owned-sink/253c760b-3e25-41fb-ba01-b3e65364cbd8/results.json",
+        "sha256": "1c02b02c8bfde5d9073bf6185f96be75c8319e2fbb8cb22bbf1c05ed0bccf030",
+        "passed": false,
+        "diagnosticPassed": true
+      }
+    ],
+    "findings": "Both 30-second packaged workflows pass all six cadence/continuous-PCM intervals and bounded visible-receiver desktop skew checks. Additional visible-output skew ranges -3..31 ms with RTP/native traces, and -17.5..15 ms without them, against unchanged 50 ms. MediaRecorder reports 18.5..28.5 ms and 16.5..29 ms more offset than visible output respectively. The first original MediaRecorder check fails at 56.5 ms; the second passes at 35.5 ms. Both preserve unqualified overall status because independent absolute calibration and endurance are outstanding. Native/RTP analysis now executes successfully inside the traced workflow.",
+    "offlineControls": {
+      "report": "native-qt/qa/reports/linux-av-playback-controls/c23ee435-2c77-4465-b8d5-b86a47891a2f/controls.json",
+      "sha256": "e77b304cae9c4d57b6eb09be7e2e679c23c03401992b1d2d76f0d202a1767be2",
+      "scope": "Offline +/-150 ms receiver-output controls using a real paired recording.\n\nThese are rejection/measurement controls, not packaged application passes and\nnot absolute reference calibration. Original recordings remain unchanged.\n",
+      "cases": [
+        {
+          "injectedAudioOffsetMs": -150,
+          "minimumMeasuredDeltaMs": -150.00000000000037,
+          "maximumMeasuredDeltaMs": -149.99999999999858,
+          "matchedPulses": 14,
+          "outOfLimitRejected": true,
+          "shiftedRecordingSha256": "b99c44c155c6113e46f43189f9fd77816c42a3559bccb27a26eaa161fc3e7bcb",
+          "comparisonSha256": "11037f1493be9d0104967428c30fd5b31186dd37d565ee912b4609949b168bb9",
+          "passed": true
+        },
+        {
+          "injectedAudioOffsetMs": 150,
+          "minimumMeasuredDeltaMs": 149.99999999999858,
+          "maximumMeasuredDeltaMs": 150.00000000000037,
+          "matchedPulses": 14,
+          "outOfLimitRejected": true,
+          "shiftedRecordingSha256": "e9445fcc6aa14b3413b2b7fbc052a19cf96aafd397679ed14cf0afc1dd7776bd",
+          "comparisonSha256": "c728598676ce833bdd9ff9e2941f767f03f8e50663d6d5f692b11822d21a07b7",
+          "passed": true
+        }
+      ],
+      "absoluteTimingCalibrated": false
+    },
+    "limits": "These are virtual X11 drawable/Pulse-monitor output measurements, not physical display/speaker latency. Known +/-150 ms shifts validate measurement and rejection, not the absolute origin of either reference. Browser buffering and recording both contribute different timing; their precise internals remain unproven. The two runs do not qualify native Wayland or final-package endurance. No production timestamp, threshold or historical result was changed. Existing analyzer first/last two-second recording-edge exclusions remain; paired matched-pulse evidence is not first-frame playback latency qualification.",
+    "gates": "Syntax/AST, archive hashes, window bounds/ownership, pulse arithmetic and offline offset controls are sanity/integrity or analyzer checks, not additional application testing. Two packaged E2E workflows provide testing. Final source-bounds guard is verified from captured geometry; final source/receiver hash guards are exercised by offline controls. Shared Windows/macOS production is unchanged; runtime remains unqualified.",
+    "ownedProcessesRemaining": [],
+    "next": "Establish independent reference calibration and then final-package X11/Wayland skew/drift endurance using actual output alongside recorded-media evidence. The native Wayland 47-49 fps throughput failure remains a separate concrete delivery gap worth isolating next; software source/compositor cadence must be measured before changing capture code."
   }
 }

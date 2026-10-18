@@ -14,6 +14,8 @@ const sourceReference=opts['source-reference']||'canvas';assert(['canvas','deskt
 const receiverPlayback=opts['receiver-playback']||'muted';assert(['muted','owned-sink'].includes(receiverPlayback));
 const audibleReceiver=receiverPlayback==='owned-sink';
 const desktopReference=sourceReference==='desktop';
+const receiverDesktop=opts['receiver-desktop-reference']==='true';
+if(receiverDesktop)assert(desktopReference&&audibleReceiver,'Receiver desktop reference requires desktop source reference and owned receiver playback');
 const rtpTiming=opts['rtp-timing']==='true';
 if(rtpTiming)assert(desktopReference&&hold===0&&seconds<=60,'RTP timing copy requires a bounded desktop diagnostic');
 if(desktopReference)assert(!wayland&&hold===0&&seconds<=60,'Uncalibrated desktop reference is limited to a bounded X11 diagnostic');
@@ -37,8 +39,9 @@ if(traceCapture){const name='linux-av-trace-report.js';fs.copyFileSync(path.join
 if(desktopReference)for(const name of ['linux-av-desktop-reference.js','linux-av-compare-references.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(traceAudio){const name='linux-audio-timing-report.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(rtpTiming)for(const name of ['linux-encoded-audio.js','linux-decode-opus-report.py','linux-av-rtp-report.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
+if(receiverDesktop){const name='linux-av-compare-playback.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 const result={backend,traceCapture,traceAudio,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
-  sourceReference,receiverPlayback,rtpTiming,diagnosticOnly:desktopReference,fixtureTimingControl,
+  sourceReference,receiverPlayback,receiverDesktop,rtpTiming,diagnosticOnly:desktopReference,fixtureTimingControl,
   executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
 const pactl=(...a)=>execFileSync('pactl',a,{encoding:'utf8',timeout:5000}).trim();
@@ -108,10 +111,10 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
       const name=sink+'_receiver',moduleId=pactl('load-module','module-null-sink','sink_name='+name,'rate=48000','channels=2');
       modules.push(moduleId);receiverSink={name,moduleId};result.receiverSink=receiverSink;save();
     }
-    const viewer=await chromium.launch({executablePath:browserPath,headless:true,
+    const viewer=await chromium.launch({executablePath:browserPath,headless:!receiverDesktop,
       env:receiverSink?{...env,PULSE_SINK:receiverSink.name}:env,
       ...(audibleReceiver?{ignoreDefaultArgs:['--mute-audio']}:{}),
-      args:['--autoplay-policy=no-user-gesture-required',...(audibleReceiver?[]:['--mute-audio'])]});browsers.push(viewer);result.browserVersion=viewer.version();
+      args:['--autoplay-policy=no-user-gesture-required',...(audibleReceiver?[]:['--mute-audio']),...(receiverDesktop?['--window-position=1440,0','--window-size=1400,900']:[])]});browsers.push(viewer);result.browserVersion=viewer.version();
     const stream='gclinuxav'+crypto.randomBytes(12).toString('hex');discovery=path.join(report,'private-control.json');
     child=spawn(exe,['--headless','--source=window','--window='+(wayland?'Choose a window':title),'--stream='+stream,'--password=false','--video-encoder=software','--video-codec=h264','--resolution=1280x720','--fps=60','--bitrate-kbps=4000','--audio-source=selected-window','--audio-process='+sourcePid,'--audio-codec=opus','--no-audio-red','--audio-channels=2','--audio-bitrate-kbps=128','--duration-ms='+((seconds*(hold?2:1)+hold+180)*1000),'--local-control','--local-control-port=0','--local-control-discovery='+discovery],{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
     child.on('error',e=>launchError=String(e));log=fs.createWriteStream(path.join(report,'private-publisher.log'));log.on('error',e=>logError=String(e));child.stdout.pipe(log,{end:false});child.stderr.pipe(log,{end:false});child.closed=new Promise(resolve=>child.once('close',()=>log.end(resolve)));
@@ -122,6 +125,16 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     page=await receiver(viewer,stream,child,rtpTiming?async p=>{encodedAudio=await require('./linux-encoded-audio').install(p,report);}:undefined);
     if(encodedAudio){result.encodedAudioSelectedId=await encodedAudio.select();save();}
     await sleep(3000);
+    let receiverIdentity;
+    if(receiverDesktop){
+      const title='Owned Linux Receiver AV '+suffix;
+      await page.evaluate(title=>{document.title=title;},title);
+      const cdp=await viewer.newBrowserCDPSession(),info=await cdp.send('SystemInfo.getProcessInfo');
+      const pid=info.processInfo.find(p=>p.type==='browser').id;await cdp.detach();
+      const session=await page.context().newCDPSession(page),window=await session.send('Browser.getWindowForTarget');
+      await session.send('Browser.setWindowBounds',{windowId:window.windowId,bounds:{left:1440,top:0,width:1400,height:900}});await session.detach();
+      receiverIdentity={pid,title,sink:receiverSink.name,moduleId:receiverSink.moduleId};result.receiverIdentity=receiverIdentity;save();
+    }
     if(audibleReceiver){
       const owned=JSON.parse(pactl('--format=json','list','sinks')).find(s=>s.name===receiverSink.name);
       assert(owned&&String(owned.owner_module)===receiverSink.moduleId,'Receiver sink ownership changed');
@@ -153,7 +166,17 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     }
     async function phase(name){
       const entry={name,started:Date.now()};result.phases.push(entry);save();const pair=[];
-      if(desktopReference){
+      if(receiverDesktop){
+        const targets=[['source',{pid:sourcePid,title,sink,moduleId:modules[0],env}],['receiverDesktop',{...receiverIdentity,env,role:'receiver'}]];
+        const attempts=await Promise.allSettled(targets.map(async([kind,settings])=>{
+          const r=await require('./linux-av-desktop-reference').record(path.join(report,name+'-'+kind+'.mkv'),settings);
+          pair.push(r);recordings.add(r);entry[kind]=r.metadata;save();
+        }));
+        for(const attempt of attempts)if(attempt.status==='rejected')throw attempt.reason;
+        const a=entry.source.geometry,b=entry.receiverDesktop.geometry;
+        for(const g of [a,b])assert(g.x>=0&&g.y>=0&&g.x+g.width<=g.desktopWidth&&g.y+g.height<=g.desktopHeight,'Owned drawable is outside the desktop');
+        assert(a.x+a.width<=b.x||b.x+b.width<=a.x||a.y+a.height<=b.y||b.y+b.height<=a.y,'Owned source and receiver windows overlap');
+      }else if(desktopReference){
         const r=await require('./linux-av-desktop-reference').record(path.join(report,name+'-source.mkv'),{pid:sourcePid,title,sink,moduleId:modules[0],env});
         pair.push(r);recordings.add(r);entry.source=r.metadata;save();
       }
@@ -175,6 +198,14 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
       result.referenceComparisonExitCode=await new Promise(resolve=>comparison.once('close',resolve));result.referenceComparisonErrors=comparisonErrors;
       result.referenceComparison=JSON.parse(fs.readFileSync(path.join(report,'reference-comparison.json')));
       result.diagnosticPassed&&=result.referenceComparisonExitCode===0&&result.referenceComparison.comparisonComplete;
+      if(receiverDesktop){
+        const playback=spawn(analysisPython,[path.join(report,'linux-av-compare-playback.py'),report,'--ffmpeg','/usr/bin/ffmpeg'],{stdio:['ignore','ignore','pipe']});
+        let playbackErrors='';playback.stderr.on('data',d=>playbackErrors+=d);
+        result.playbackComparisonExitCode=await new Promise(resolve=>playback.once('close',resolve));result.playbackComparisonErrors=playbackErrors;
+        result.playbackComparison=JSON.parse(fs.readFileSync(path.join(report,'playback-comparison.json')));
+        result.receiverDesktopSkewPassed=result.playbackComparison.phases.length>0&&result.playbackComparison.phases.every(p=>p.desktopSkewWithinLimit);
+        result.diagnosticPassed&&=result.playbackComparisonExitCode===0&&result.playbackComparison.comparisonComplete&&result.receiverDesktopSkewPassed;
+      }
     }
     result.passed=observedPass&&!desktopReference;
   }catch(error){result.error=String(error.stack||error);}

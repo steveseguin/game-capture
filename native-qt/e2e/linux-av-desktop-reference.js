@@ -11,14 +11,21 @@ const {spawn, execFileSync} = require('child_process');
 const digest = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-async function record(file, {pid, title, sink, moduleId, env}) {
+async function record(file, {pid, title, sink, moduleId, env, role='source'}) {
   assert.equal(process.platform, 'linux');
   assert(env.GC_QA_PRIVATE_DESKTOP && env.DISPLAY, 'Requires owned X11 desktop');
   assert(Number.isSafeInteger(pid) && pid > 1);
   assert.equal(fs.statSync('/proc/' + pid).uid, process.getuid());
-  assert(/^Owned Linux Capture AV [a-f0-9]{16}$/.test(title));
-  assert(/^gc_av_[a-f0-9]{16}$/.test(sink));
-  assert.equal(sink.slice(6), title.slice(-16));
+  assert(['source','receiver'].includes(role));
+  if(role==='source'){
+    assert(/^Owned Linux Capture AV [a-f0-9]{16}$/.test(title));
+    assert(/^gc_av_[a-f0-9]{16}$/.test(sink));
+    assert.equal(sink.slice(6), title.slice(-16));
+  }else{
+    assert(/^Owned Linux Receiver AV [a-f0-9]{16}$/.test(title));
+    assert(/^gc_av_[a-f0-9]{16}_receiver$/.test(sink));
+    assert.equal(sink.slice(6,-9),title.slice(-16));
+  }
   const run = (exe, args) => execFileSync(exe, args, {env, encoding:'utf8', timeout:5000}).trim();
   // The pactl JSON module inventory can omit indices. The short inventory
   // includes the explicit ID returned by load-module, name and argument fields.
@@ -37,7 +44,7 @@ async function record(file, {pid, title, sink, moduleId, env}) {
     const name = run('xdotool', ['getwindowname', id]);
     return name === title || name === title + ' - Google Chrome';
   });
-  assert.equal(windows.length, 1, 'Need one exact owned source window');
+  assert.equal(windows.length, 1, 'Need one exact owned '+role+' window');
   const windowId = windows[0];
   assert.equal(Number(run('xdotool', ['getwindowpid', windowId])), pid);
   const geometry = Object.fromEntries(run('xdotool', ['getwindowgeometry', '--shell', windowId])
@@ -45,6 +52,8 @@ async function record(file, {pid, title, sink, moduleId, env}) {
   const width = Number(geometry.WIDTH), height = Number(geometry.HEIGHT);
   assert(Number.isInteger(width) && width >= 1280 && width <= 1920);
   assert(Number.isInteger(height) && height >= 720 && height <= 1080);
+  const [desktopWidth,desktopHeight]=run('xdotool',['getdisplaygeometry']).split(/\s+/).map(Number);
+  if(role==='receiver')assert(Number(geometry.X)>=0&&Number(geometry.Y)>=0&&Number(geometry.X)+width<=desktopWidth&&Number(geometry.Y)+height<=desktopHeight,'Receiver drawable must be fully on the owned desktop');
   assert(!fs.existsSync(file));
   const ffmpeg = '/usr/bin/ffmpeg';
   const version = run(ffmpeg, ['-version']).split('\n')[0];
@@ -69,7 +78,8 @@ async function record(file, {pid, title, sink, moduleId, env}) {
     '-output_ts_offset', (-anchorMs / 1000).toFixed(3),
     '-progress', 'pipe:1', '-nostats', '-f', 'matroska', file];
   const metadata = {path:path.basename(file), scope:'Uncalibrated diagnostic X11 drawable/Pulse sink-monitor reference; lossless H264/PCM, common wall-clock origin; excludes physical display/speaker latency',
-    calibrated:false, started:anchorMs, anchorMs, windowId, width, height, sourcePid:pid,
+    calibrated:false, started:anchorMs, anchorMs, windowId, width, height, sourcePid:pid,role,
+    geometry:{x:Number(geometry.X),y:Number(geometry.Y),width,height,desktopWidth,desktopHeight},
     sink, moduleId:String(moduleId), ffmpegVersion:version, ffmpegSha256, args};
   const logFile = file + '.ffmpeg.log';
   const fd = fs.openSync(logFile, 'wx', 0o600);
