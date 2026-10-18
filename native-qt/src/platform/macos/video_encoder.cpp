@@ -28,6 +28,14 @@ int keyframeInterval(const EncoderConfig &config) {
                              : std::max(1, config.gopSize);
 }
 
+// Experimental comparison branch: isolate H.264 rate control while preserving
+// the released profile, conversion, pacing and HEVC behavior. Do not promote
+// this policy without matched native-app receiver and live-bitrate evidence.
+CFStringRef bitrateProperty(const EncoderConfig &config) {
+    return config.codec == VideoCodec::H264 ? kVTCompressionPropertyKey_ConstantBitRate
+                                           : kVTCompressionPropertyKey_AverageBitRate;
+}
+
 bool setInteger(VTCompressionSessionRef session, CFStringRef property, int value, bool required = true) {
     CFNumberRef number = CFNumberCreate(nullptr, kCFNumberIntType, &value);
     const auto result = VTSessionSetProperty(session, property, number);
@@ -168,7 +176,7 @@ struct MacVideoEncoder::State {
                 hevc ? kVTProfileLevel_HEVC_Main_AutoLevel : kVTProfileLevel_H264_ConstrainedBaseline_AutoLevel) &&
             setInteger(session, kVTCompressionPropertyKey_ExpectedFrameRate, config.frameRate) &&
             setInteger(session, kVTCompressionPropertyKey_MaxKeyFrameInterval, keyframeInterval(config)) &&
-            setInteger(session, kVTCompressionPropertyKey_AverageBitRate, config.bitrate * 1000) &&
+            setInteger(session, bitrateProperty(config), config.bitrate * 1000) &&
             setProperty(session, kVTCompressionPropertyKey_ColorPrimaries, kCVImageBufferColorPrimaries_ITU_R_709_2) &&
             setProperty(session, kVTCompressionPropertyKey_TransferFunction, kCVImageBufferTransferFunction_sRGB) &&
             setProperty(session, kVTCompressionPropertyKey_YCbCrMatrix, kCVImageBufferYCbCrMatrix_ITU_R_601_4);
@@ -407,7 +415,7 @@ void MacVideoEncoder::setBitrate(int kbps) {
     if (!state_->initialized || kbps < 1 || kbps > 200000) return;
     if (state_->ffmpeg) { state_->ffmpeg->setBitrate(kbps); state_->config.bitrate = kbps; return; }
     bool ok = false;
-    if (state_->session) ok = setInteger(state_->session, kVTCompressionPropertyKey_AverageBitRate, kbps * 1000);
+    if (state_->session) ok = setInteger(state_->session, bitrateProperty(state_->config), kbps * 1000);
     else if (state_->software) {
         x264_param_t param;
         x264_encoder_parameters(state_->software, &param);
