@@ -41,5 +41,6 @@ function analyze(batch,{silent=false,transition=false}={}) {
     gaps:full.gaps,clippedSamples:full.clippedSamples,missingChannelFrames:full.missingChannelFrames,
     invalidSamples:full.invalidSamples,errors};
 }
-// Retain enough bounded PCM to include a delayed dip after intentional silence.
-module.exports={start:page=>audio.start(page,{shortWindowRmsFloor,badWindowPcmBudget:16}),drain:audio.drain,stop:audio.stop,analyze};
+// Keep all summaries, but reserve raw PCM for non-silent bad windows so long
+// intentional silence cannot exhaust the budget or delay the next command.
+module.exports={start:page=>audio.start(page,{shortWindowRmsFloor,badWindowPcmBudget:4,includeSilentPcm:false}),drain:audio.drain,stop:audio.stop,analyze};

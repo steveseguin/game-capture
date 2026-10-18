@@ -35,6 +35,10 @@ const resumeRecording=opts['app-resume-recording']==='true';
 assert(!resumeRecording||continuousApps,'Receiver recording requires continuous app diagnostics');
 const encodedCapture=opts['app-encoded-audio']==='true';
 assert(!encodedCapture||continuousApps,'Encoded audio copy requires continuous app diagnostics');
+const playoutReference=opts['app-playout-reference']==='true';
+assert(!playoutReference||continuousApps,'Receiver playout requires continuous app diagnostics');
+const playoutHeaded=opts['app-playout-headed']==='true';
+assert(!playoutHeaded||playoutReference,'Visible receiver control requires owned playout');
 assert(!wayland || gui || (apps && !automaticApp), 'Wayland qualification supports GUI routes/apps and explicit CLI app selection');
 for (const key of ['publisher', 'reports', 'manifest-sha256']) assert(opts[key], key);
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
@@ -53,6 +57,7 @@ if(continuousApps)for(const name of ['linux-app-audio-continuity.js','macos-cont
 if(resumeReference)for(const name of ['linux-app-audio-reference.js','linux-audio-reference-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 if(resumeRecording)fs.copyFileSync(path.join(__dirname,'linux-received-audio-report.py'),path.join(report,'linux-received-audio-report.py'));
 if(encodedCapture)for(const name of ['linux-encoded-audio.js','linux-decode-opus-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+if(playoutReference)for(const name of ['linux-app-audio-reference.js','linux-playout-audio-report.py'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
 const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal' : 'X11'} H264 and audio via ${apps ? 'selected application playback' : (communications ? 'explicit communications output and owned virtual microphone' : 'default system output and owned virtual microphone')}; ${matrix} workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.`,
   executableSha256:sha(exe), manifestSha256:sha(manifestFile), harnessSha256:sha(__filename),
   receiverHarnessSha256:sha(path.join(__dirname, 'macos-media-receiver.js')),
@@ -65,6 +70,7 @@ if(continuousApps)result.snapshotObserver={context:snapshotContext,resumeDelayMs
 if(resumeReference)result.sourceReferenceHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-audio-reference-report.py'].map(n=>[n,sha(path.join(report,n))]));
 if(resumeRecording)result.receiverRecordingAnalyzerSha256=sha(path.join(report,'linux-received-audio-report.py'));
 if(encodedCapture)result.encodedAudioHarnesses=Object.fromEntries(['linux-encoded-audio.js','linux-decode-opus-report.py'].map(n=>[n,sha(path.join(report,n))]));
+if(playoutReference)result.playoutHarnesses=Object.fromEntries(['linux-app-audio-reference.js','linux-playout-audio-report.py'].map(n=>[n,sha(path.join(report,n))]));
 const save = () => fs.writeFileSync(path.join(report, 'results.json'), JSON.stringify(result, null, 2) + '\n');
 const pactl = (...args) => execFileSync('pactl', args, {encoding:'utf8', timeout:5000}).trim();
 const modules = [], tones = []; let sourceBrowser, viewerBrowser, publisher, log, control, discovery, appSource, portalSelector, keyboardServer, keyboardDirectory, portalOwner;
@@ -73,6 +79,7 @@ let snapshotPage=null;
 let sourceReference=null;
 let receiverRecording=null;
 let encodedAudio=null;
+let playout=null;
 const startedAtSeconds = Math.floor(Date.now() / 1000);
 const checkPortalOwner = () => {
   const owner = execFileSync('gdbus', ['call', '--session', '--dest', 'org.freedesktop.DBus', '--object-path', '/org/freedesktop/DBus', '--method', 'org.freedesktop.DBus.GetNameOwner', 'org.freedesktop.impl.portal.desktop.gnome'], {encoding:'utf8', timeout:5000, stdio:['ignore', 'pipe', 'pipe']}).trim();
@@ -212,7 +219,17 @@ function barriers() {
       await audioFixture.resume();
     });
 
-    viewerBrowser = await chromium.launch({executablePath:browser, headless:true, env, args:['--autoplay-policy=no-user-gesture-required', '--mute-audio']});
+    let receiverSink;
+    if(playoutReference){
+      const name=sinkName+'_receiver';
+      const moduleId=pactl('load-module','module-null-sink','sink_name='+name,'sink_properties=device.description=GameCaptureOwnedQAReceiver','rate=48000','channels=2');
+      modules.push(moduleId);receiverSink={name,moduleId};result.receiverSink={...receiverSink,headless:!playoutHeaded,muted:false};save();
+    }
+    viewerBrowser = await chromium.launch({executablePath:browser, headless:!playoutHeaded,
+      env:receiverSink?{...env,PULSE_SINK:receiverSink.name}:env,
+      ...(playoutReference?{ignoreDefaultArgs:['--mute-audio']}:{}),
+      args:['--autoplay-policy=no-user-gesture-required',...(playoutReference?[]:['--mute-audio']),
+        ...(playoutHeaded?['--window-position=850,10','--window-size=550,700']:[])]});
     const cases = communications ? [{name:'communications', mode:'communications-output', input:communicationsMix, mix:communicationsMix}] : apps ? [{name:'selected-app', mode:'selected-window'}] : matrix === 'codecs' ? ['opus', 'pcm', 'red'].flatMap(codec => [1, 2].map(channels => ({
       name:codec + '-' + channels, mode:'default-output', codec:codec === 'pcm' ? 'pcm' : 'opus', red:codec === 'red', channels, bitrate:128
     }))) : [
@@ -340,9 +357,11 @@ function barriers() {
       if(continuousApps){entry.continuousObserver=await continuity.start(viewer);continuousPage=viewer;entry.continuous=[];}
       const continuousSample=async(label,settings={})=>{
         if(!continuousApps)return;
+        const drainRequestedAtMs=Date.now();
         const batch=await continuity.drain(viewer),file=label+'-continuous.json.gz';
+        const drainCompletedAtMs=Date.now();
         fs.writeFileSync(path.join(report,file),require('zlib').gzipSync(JSON.stringify(batch)),{flag:'wx'});
-        entry.continuous.push({label,file,sha256:sha(path.join(report,file)),...continuity.analyze(batch,settings)});save();
+        entry.continuous.push({label,file,sha256:sha(path.join(report,file)),...continuity.analyze(batch,settings),drainRequestedAtMs,drainCompletedAtMs,evidenceSavedAtMs:Date.now()});save();
       };
       entry.video = await observe(viewer, 3000); requireMoving(entry.video, fixture.name + ' video');
       entry.audio = await observeAudio(viewer,null,{reuseContext:persistentSnapshot,traceObserver:continuousApps}); requireAudio(entry.audio, fixture.name, {microphone:fixture.mix, excluded:communications || apps || fixture.name === 'microphone'}); save();
@@ -359,6 +378,9 @@ function barriers() {
           if (automaticApp) { entry[label + 'SourceClock'] = await source.evaluate(() => ({state:audioFixture.state, time:audioFixture.currentTime, baseLatency:audioFixture.baseLatency, outputLatency:audioFixture.outputLatency})); save(); }
           const observation = await observeAudio(viewer,null,{reuseContext:persistentSnapshot,traceObserver:continuousApps});
           entry[label] = observation; requireAudio(observation, label, {excluded:true, ...checks}); save();
+          // Prepare recording while the source is intentionally silent, before
+          // the drain starts the resume phase. All continuous rows are retained.
+          if(label==='noStreams'&&resumeRecording){receiverRecording=await require('./macos-continuous-audio').record(viewer,path.join(report,'resume-receiver.webm'));result.resumeReceiverRecording=receiverRecording.metadata;save();}
           await continuousSample(label,{silent:!!checks.silent,transition:label==='noStreams'||label==='streamRecreated'});
         };
         if (automaticApp) {
@@ -371,12 +393,27 @@ function barriers() {
         await appSource.command({child:true}); await sample('childJoined', {microphone:true});
         await appSource.command({child:false}); await sample('childRemoved', {microphoneOff:true});
         await appSource.command({extra:true}); await sample('secondStreamSameProcess', {microphone:true});
-        await appSource.command({extra:false}); await sample('secondStreamRemoved', {microphoneOff:true});
-        await appSource.command({primary:false}); await sample('noStreams', {silent:true});
-        if(resumeRecording){receiverRecording=await require('./macos-continuous-audio').record(viewer,path.join(report,'resume-receiver.webm'));result.resumeReceiverRecording=receiverRecording.metadata;save();}
+        await appSource.command({extra:false});
+        if(playoutReference){
+          result.receiverMediaElements=await viewer.evaluate(()=>[...document.querySelectorAll('video,audio')].map(e=>({tag:e.tagName,muted:e.muted,volume:e.volume,paused:e.paused,readyState:e.readyState,audioTracks:e.srcObject?.getAudioTracks().map(t=>({enabled:t.enabled,muted:t.muted,readyState:t.readyState}))})));
+          assert(result.receiverMediaElements.some(e=>!e.muted&&!e.paused&&e.volume>0&&e.audioTracks?.some(t=>t.enabled&&t.readyState==='live')),'Receiver has no playing unmuted media element');
+          playout=await require('./linux-app-audio-reference').startPlayout(report,receiverSink);save();
+        }
+        await sample('secondStreamRemoved', {microphoneOff:true});
+        if(playoutReference)result.sourcePause={requestedAtMs:Date.now()};
+        await appSource.command({primary:false});
+        if(playoutReference){result.sourcePause.completedAtMs=Date.now();save();}
+        await sample('noStreams', {silent:true});
+        if(playoutReference)result.sourceResume={requestedAtMs:Date.now()};
         await appSource.command({primary:true});
+        if(playoutReference){result.sourceResume.completedAtMs=Date.now();save();}
         if(resumeReference)sourceReference=await appReference.start(report,appSource.child.pid);
         await sample('streamRecreated', {microphoneOff:true});
+        if(playout){
+          result.receiverPlayout=await playout.stop();playout=null;save();
+          execFileSync('python3',[path.join(report,'linux-playout-audio-report.py'),report],{encoding:'utf8',timeout:30000});
+          result.receiverPlayoutAnalysis={path:'receiver-playout-analysis.json',sha256:sha(path.join(report,'receiver-playout-analysis.json'))};save();
+        }
         if(receiverRecording){await receiverRecording.stop();receiverRecording=null;save();}
         if(sourceReference){
           result.resumeSource=await sourceReference.stop();sourceReference=null;
@@ -590,6 +627,7 @@ function barriers() {
         await quit();
       }
       if(continuousApps)assert(entry.continuous.every(c=>c.passed),'Continuous received app audio failed; inspect every recorded phase');
+      if(playoutReference)assert(JSON.parse(fs.readFileSync(path.join(report,'receiver-playout-analysis.json'))).passedAfterTransitions,'Receiver playout content failed');
       entry.passed = true; save();
     }
     for (const source of tones.filter(source => !source.retired)) { assert.equal(source.child.exitCode, null); assert(!source.error, source.error); }
@@ -601,6 +639,7 @@ function barriers() {
     if(sourceReference)try{await sourceReference.stop();sourceReference=null;}catch(error){result.sourceReferenceCleanupError=String(error);result.passed=false;process.exitCode=1;}
     if(receiverRecording)try{await receiverRecording.stop();receiverRecording=null;}catch(error){result.receiverRecordingCleanupError=String(error);result.passed=false;process.exitCode=1;}
     if(encodedAudio)try{result.encodedAudio=await encodedAudio.stop();encodedAudio=null;}catch(error){result.encodedAudioCleanupError=String(error);result.passed=false;process.exitCode=1;}
+    if(playout)try{result.receiverPlayout=await playout.stop();playout=null;}catch(error){result.playoutCleanupError=String(error);result.passed=false;process.exitCode=1;}
     if (publisher) { try { await quit(); } catch { publisher?.kill(); if (publisher) await publisher.closed; } }
     if (portalSelector && portalSelector.exitCode === null) portalSelector.kill();
     if (appSource) { try { await appSource.stop(); } catch (error) { result.fixtureCleanupError = String(error); result.passed = false; process.exitCode = 1; } }

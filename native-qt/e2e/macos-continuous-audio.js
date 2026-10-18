@@ -6,11 +6,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 
-async function start(page, {shortWindowRmsFloor=null,badWindowPcmBudget=2} = {}) {
+async function start(page, {shortWindowRmsFloor=null,badWindowPcmBudget=2,includeSilentPcm=true} = {}) {
   assert(shortWindowRmsFloor===null || (Number.isFinite(shortWindowRmsFloor) && shortWindowRmsFloor>=0 && shortWindowRmsFloor<=1));
   assert(Number.isInteger(badWindowPcmBudget) && badWindowPcmBudget>=0 && badWindowPcmBudget<=16);
+  assert.equal(typeof includeSilentPcm,'boolean');
   const inspectShortWindows=shortWindowRmsFloor!==null;
-  return page.evaluate(async ({inspectShortWindows,shortWindowRmsFloor,badWindowPcmBudget}) => {
+  return page.evaluate(async ({inspectShortWindows,shortWindowRmsFloor,badWindowPcmBudget,includeSilentPcm}) => {
     if (window.macContinuousAudio) throw Error('Continuous audio observer already installed');
     const track = window.reviewPCs.filter(p => p.connectionState === 'connected')
       .flatMap(p => p.getReceivers()).map(r => r.track).find(t => t?.kind === 'audio' && t.readyState === 'live');
@@ -66,7 +67,8 @@ async function start(page, {shortWindowRmsFloor=null,badWindowPcmBudget=2} = {})
               clipped:this.clipped,missing:this.missing,invalid:this.invalid};
             if(this.inspectShortWindows) {row.shortWindowFrames=this.shortN;row.shortRms=this.shortRms;}
             const shortBad=this.inspectShortWindows && this.shortRms.some(ch=>ch.some(v=>v<this.shortFloor));
-            if((bad||shortBad)&&this.budget>0) {row.pcm=Array.from(this.pcm);this.budget--;}
+            const retainPcm=${includeSilentPcm}||rms.some(v=>v>=.0005);
+            if((bad||shortBad)&&this.budget>0&&retainPcm) {row.pcm=Array.from(this.pcm);this.budget--;}
             this.port.postMessage(row);
             this.pos=0;this.reset();
           }
@@ -111,12 +113,12 @@ async function start(page, {shortWindowRmsFloor=null,badWindowPcmBudget=2} = {})
         async close() {input.disconnect();node.disconnect();node.port.close();await context.close();delete window.macContinuousAudio;}
       };
       return {sampleRate:context.sampleRate,windowFrames:4800,startupSettlingMs:500,
-        ...(inspectShortWindows?{shortWindowFrames:480,shortWindowRmsFloor,badWindowPcmBudget,shortWindowScope:'10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss'}:{}),
+        ...(inspectShortWindows?{shortWindowFrames:480,shortWindowRmsFloor,badWindowPcmBudget,includeSilentPcm,shortWindowScope:'10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss'}:{}),
         scope:'Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization'};
     } catch(error) {
       input?.disconnect();node?.disconnect();node?.port.close();await context.close();throw error;
     } finally {URL.revokeObjectURL(url);}
-  }, {inspectShortWindows,shortWindowRmsFloor,badWindowPcmBudget});
+  }, {inspectShortWindows,shortWindowRmsFloor,badWindowPcmBudget,includeSilentPcm});
 }
 
 async function drain(page) {return page.evaluate(()=>window.macContinuousAudio.drain());}

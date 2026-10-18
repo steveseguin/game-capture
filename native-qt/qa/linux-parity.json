@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged CLI and GUI selection/lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Finer 10 ms receiver levels expose a delayed dip after full stream recreation; continuous qualification is incomplete. Healthy direct monitors now survive output moves, with targeted repeated-move evidence in linux_app_monitor_retention_checkpoint. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_audio_observer_controls_checkpoint: observer-lifecycle controls reproduce the delayed restart dip, while independent source PCM and native input/output level envelopes stay stable. Encoder/send/receiver and waveform-level investigation remain required; the failure is not waived. See linux_audio_received_waveform_checkpoint: encoded Opus continuity/post-onset levels are clean, while retained Web Audio has at least 448 exact-zero frames. Actual receiver playout and browser processing remain to be isolated; the failure remains open."
+      "remaining": "Packaged CLI/GUI selection and lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Healthy direct monitors survive output moves, including repeated-move evidence. See linux_receiver_playout_checkpoint: normal visible and headless unmuted receiver workflows pass all nine continuous phases and actual owned-sink restart playback checks. The older muted headless Web Audio control still contains a 10 ms zero interval despite clean encoded audio; historical failures remain recorded and its precise browser-internal cause is unproven. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance."
     },
     {
       "id": "system-audio",
@@ -24030,6 +24030,684 @@
         "sha256": "d899937e91153be85c997c256db6e89bb62f4eb498b624b9f348c7e3ef314971",
         "passed": true
       }
+    },
+    {
+      "case": "playout",
+      "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/results.json",
+      "reportSha256": "3329c0cde5985b548ed2cf9d06fda4c8a16572506cafff8ea88378cb5f3d4b74",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "continuousPassed": 8,
+      "continuousPhases": 9,
+      "restartFailures": [
+        {
+          "frame": 1420864,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1421344,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1421824,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1422304,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1422784,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1423264,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1423744,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1424224,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1424704,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1425184,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1425664,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1426144,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1426624,
+          "rms": [
+            0,
+            0
+          ]
+        }
+      ],
+      "restartFailureOffsetsMs": [
+        500.0,
+        510.0,
+        520.0,
+        530.0,
+        540.0,
+        550.0,
+        560.0,
+        570.0,
+        580.0,
+        590.0,
+        600.0,
+        610.0,
+        620.0
+      ],
+      "observer": {
+        "sampleRate": 48000,
+        "windowFrames": 4800,
+        "startupSettlingMs": 500,
+        "shortWindowFrames": 480,
+        "shortWindowRmsFloor": 0.05,
+        "badWindowPcmBudget": 16,
+        "shortWindowScope": "10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss",
+        "scope": "Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization"
+      },
+      "resumeCommandFromPhaseStartMs": {
+        "requestedAtMs": 495.5,
+        "completedAtMs": 695.5
+      },
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/resume-source-analysis.json",
+        "sha256": "f200817d111dd627820e3eb4281cb1ae0f2dd477f99280723850185c66dc7f8e",
+        "rawSha256": "5d4492f8c38a411a03e2a6c8a1e50611facff5f4dadf15229724a280f1f9399e",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10496056494604585
+      },
+      "resumeReceiverAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/resume-receiver-analysis.json",
+        "sha256": "58e2f504250106836b6f06c9546e4f297b6aba0945c4f52ac457b58b21046d07",
+        "rawSha256": "0e007e7c05f92d32688b1fdcf330b71d15e6d2dc2798819c41900938571b9530",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10424101670120893,
+        "maximumFramePtsDiscontinuityMs": 11.0
+      },
+      "receiverPlayoutAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/receiver-playout-analysis.json",
+        "sha256": "3d26cd7728a2059084f750a686177919686799894a797db2c277064db4f5f5a4",
+        "rawSha256": "a4fea9c665c378810a7edc7896aad43e39491b111fe68f313c57ee22f90cb3d8",
+        "clippedSamples": 0,
+        "seconds": 14.25,
+        "passedAfterTransitions": true,
+        "segments": {
+          "beforePause": {
+            "beginFrame": 24000,
+            "endFrame": 195360,
+            "checked10msWindows": 357,
+            "minimum10msRms": 0.10467345843218281,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          },
+          "afterResume": {
+            "beginFrame": 481920,
+            "endFrame": 684000,
+            "checked10msWindows": 421,
+            "minimum10msRms": 0.10490258114838386,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          }
+        },
+        "receiverSink": {
+          "name": "gc_qa_5e3f04389230_receiver",
+          "moduleId": "536870914"
+        }
+      },
+      "encodedAudio": {
+        "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/received-opus-analysis.json",
+        "sha256": "991065a9b76dca03886f728529acde9ce729c13268a438f798da1c36ea2f8598",
+        "resumeLevelChecksPassed": false,
+        "resumeMinimumRms": 2.0345869483764863e-34,
+        "rtpDiscontinuities": 0
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/host-cleanup.json",
+        "sha256": "98ee8b97398bbc472d1f6df1782bc19b14ba0dac3aa87afc24805822f81345ae",
+        "passed": true
+      }
+    },
+    {
+      "case": "headed",
+      "report": "native-qt/qa/reports/linux-audio-playout-headed/1588672a-cc08-421b-9cc6-1e0f9a80c7e5/results.json",
+      "reportSha256": "580a3a62cf765285d7bbc807bdce76345dd0eda53959c2430732c26251909968",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "continuousPassed": 8,
+      "continuousPhases": 9,
+      "restartFailures": [
+        {
+          "frame": 1420352,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1420832,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1421312,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1421792,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1422272,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1422752,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1423232,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1423712,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1424192,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1424672,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1425152,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1425632,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1426112,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1426592,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1427072,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1427552,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1428032,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1428512,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1428992,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1429472,
+          "rms": [
+            0,
+            0
+          ]
+        },
+        {
+          "frame": 1429952,
+          "rms": [
+            1.7619637763995676e-05,
+            4.4465532419933176e-05
+          ]
+        }
+      ],
+      "restartFailureOffsetsMs": [
+        500.0,
+        510.0,
+        520.0,
+        530.0,
+        540.0,
+        550.0,
+        560.0,
+        570.0,
+        580.0,
+        590.0,
+        600.0,
+        610.0,
+        620.0,
+        630.0,
+        640.0,
+        650.0,
+        660.0,
+        670.0,
+        680.0,
+        690.0,
+        700.0
+      ],
+      "observer": {
+        "sampleRate": 48000,
+        "windowFrames": 4800,
+        "startupSettlingMs": 500,
+        "shortWindowFrames": 480,
+        "shortWindowRmsFloor": 0.05,
+        "badWindowPcmBudget": 16,
+        "shortWindowScope": "10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss",
+        "scope": "Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization"
+      },
+      "resumeCommandFromPhaseStartMs": {
+        "requestedAtMs": 510.099853515625,
+        "completedAtMs": 710.099853515625
+      },
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-headed/1588672a-cc08-421b-9cc6-1e0f9a80c7e5/resume-source-analysis.json",
+        "sha256": "01083e1b7460a359d245822ed11ab331ad63597af9b9c2a3426df0c1f853ba61",
+        "rawSha256": "f15499ff61a8b858a37d8681c556c53d8923b1af3e1fc20a84959a3e78c5d38d",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10496056494604585
+      },
+      "receiverPlayoutAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-headed/1588672a-cc08-421b-9cc6-1e0f9a80c7e5/receiver-playout-analysis.json",
+        "sha256": "d0ae672433e1a04ab9eb9cff1d6fa55c8bd57076a994c6c67cb228e36efaf9c7",
+        "rawSha256": "5ebf6b0e173b0b82d94ad127a477531b9c38e812d83e8864492a094db5d31d59",
+        "clippedSamples": 0,
+        "seconds": 14.25,
+        "passedAfterTransitions": true,
+        "segments": {
+          "beforePause": {
+            "beginFrame": 24000,
+            "endFrame": 196800,
+            "checked10msWindows": 360,
+            "minimum10msRms": 0.10492770237142884,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          },
+          "afterResume": {
+            "beginFrame": 483360,
+            "endFrame": 684000,
+            "checked10msWindows": 418,
+            "minimum10msRms": 0.10447305275502031,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          }
+        },
+        "receiverSink": {
+          "name": "gc_qa_45bdbea92978_receiver",
+          "moduleId": "536870914",
+          "headless": false,
+          "muted": false
+        }
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-playout-headed/1588672a-cc08-421b-9cc6-1e0f9a80c7e5/host-cleanup.json",
+        "sha256": "a13d7100983ccebc94c3376dfe259d01df2002c8627a3108952375196b85619d",
+        "passed": true
+      }
+    },
+    {
+      "case": "lean",
+      "report": "native-qt/qa/reports/linux-audio-playout-lean/4d566e02-60f1-42d0-9539-ab8627e33554/results.json",
+      "reportSha256": "f31069ea7ec69c907c6700cb1826c13fdef57bfc9433c3398dc38c5853c516e0",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "continuousPassed": 9,
+      "continuousPhases": 9,
+      "restartFailures": [],
+      "restartFailureOffsetsMs": [],
+      "observer": {
+        "sampleRate": 48000,
+        "windowFrames": 4800,
+        "startupSettlingMs": 500,
+        "shortWindowFrames": 480,
+        "shortWindowRmsFloor": 0.05,
+        "badWindowPcmBudget": 4,
+        "includeSilentPcm": false,
+        "shortWindowScope": "10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss",
+        "scope": "Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization"
+      },
+      "resumeCommandFromPhaseStartMs": {
+        "requestedAtMs": 78.300048828125,
+        "completedAtMs": 278.300048828125
+      },
+      "silenceEvidenceDrainMs": 76,
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-lean/4d566e02-60f1-42d0-9539-ab8627e33554/resume-source-analysis.json",
+        "sha256": "d532bb6c477d71d9616ac4463a6cdb0eac1918ab445d4d65535c6aa18072d299",
+        "rawSha256": "c014b69a71ac34ed598317005ccfb38417403686decb78201628c8a6eec7f98b",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.1051059791717749
+      },
+      "receiverPlayoutAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-lean/4d566e02-60f1-42d0-9539-ab8627e33554/receiver-playout-analysis.json",
+        "sha256": "1a99487f26e6a88fe002f302a21d4c7c489c9f7e55fe80152e18cadfe2649ea7",
+        "rawSha256": "ab3e19e9b35165be3c59828d657d35dd01653d533695c1513cadf42dfb7cb73d",
+        "clippedSamples": 0,
+        "seconds": 13.72,
+        "passedAfterTransitions": true,
+        "segments": {
+          "beforePause": {
+            "beginFrame": 24000,
+            "endFrame": 195840,
+            "checked10msWindows": 358,
+            "minimum10msRms": 0.10437769767412149,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          },
+          "afterResume": {
+            "beginFrame": 462720,
+            "endFrame": 658560,
+            "checked10msWindows": 408,
+            "minimum10msRms": 0.10481955834475848,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          }
+        },
+        "receiverSink": {
+          "name": "gc_qa_a34ec785fe21_receiver",
+          "moduleId": "536870914",
+          "headless": false,
+          "muted": false
+        }
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-playout-lean/4d566e02-60f1-42d0-9539-ab8627e33554/host-cleanup.json",
+        "sha256": "921b34eb6e80d8045e242cd4a4777c7697447607ca1b9a247aad04c1236de58e",
+        "passed": true
+      }
+    },
+    {
+      "case": "combined",
+      "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/results.json",
+      "reportSha256": "09b103ae05f8cfb7052ab2f5f893fa6a1091386ae4f63dd39aff7661790d412e",
+      "passed": true,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "continuousPassed": 9,
+      "continuousPhases": 9,
+      "restartFailures": [],
+      "restartFailureOffsetsMs": [],
+      "observer": {
+        "sampleRate": 48000,
+        "windowFrames": 4800,
+        "startupSettlingMs": 500,
+        "shortWindowFrames": 480,
+        "shortWindowRmsFloor": 0.05,
+        "badWindowPcmBudget": 4,
+        "includeSilentPcm": false,
+        "shortWindowScope": "10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss",
+        "scope": "Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization"
+      },
+      "resumeCommandFromPhaseStartMs": {
+        "requestedAtMs": 72.400146484375,
+        "completedAtMs": 273.400146484375
+      },
+      "silenceEvidenceDrainMs": 67,
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/resume-source-analysis.json",
+        "sha256": "0d5bc2ec183940bf3fbb676516916412dcef359a68a998b3378a4f044986a14b",
+        "rawSha256": "baa2c66fd077d21bd64296f92b13a19b660b50c3a685cbc9086c90b31ad7b2cf",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10500537896917254
+      },
+      "resumeReceiverAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/resume-receiver-analysis.json",
+        "sha256": "714af40306972f18c4dd8b080b1d62f496917f44837d6980e1e903a7706d3932",
+        "rawSha256": "de3aab362c838cb8a765042f807b140e496f45304efae87cd4dab536b8f201ca",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10442429777328062,
+        "maximumFramePtsDiscontinuityMs": 7.0
+      },
+      "receiverPlayoutAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/receiver-playout-analysis.json",
+        "sha256": "425da137e13bb4cf6635ce93c6f2418813c3f2473087dc5e12895e2585eb114c",
+        "rawSha256": "e076a27e4f74645ce9b1255b81f0bcc4ea88ff358934716d9b9b205436e68c3f",
+        "clippedSamples": 0,
+        "seconds": 13.69,
+        "passedAfterTransitions": true,
+        "segments": {
+          "beforePause": {
+            "beginFrame": 24000,
+            "endFrame": 194880,
+            "checked10msWindows": 356,
+            "minimum10msRms": 0.10521290603916754,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          },
+          "afterResume": {
+            "beginFrame": 461760,
+            "endFrame": 657120,
+            "checked10msWindows": 407,
+            "minimum10msRms": 0.10457948794363317,
+            "lowWindows": [],
+            "routingPassed": true,
+            "exactZeroRunsBothChannels": []
+          }
+        },
+        "receiverSink": {
+          "name": "gc_qa_400fe1f31491_receiver",
+          "moduleId": "536870914",
+          "headless": true,
+          "muted": false
+        }
+      },
+      "encodedAudio": {
+        "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/received-opus-analysis.json",
+        "sha256": "ad82ddbad072e44debec471b138cbab90645dee1e2a237347908482e7f558083",
+        "resumeLevelChecksPassed": true,
+        "resumeMinimumRms": 0.10451306510175276,
+        "rtpDiscontinuities": 0
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/host-cleanup.json",
+        "sha256": "8d9917c01ccca79c5188acfdc6d0eeb409176e30e59b2cfb6f5d635ff457dc2c",
+        "passed": true
+      }
+    },
+    {
+      "case": "muted-control",
+      "report": "native-qt/qa/reports/linux-audio-playout-muted-control/3f8f30c5-f158-4862-89d8-d80b5dad1986/results.json",
+      "reportSha256": "983bcc124ef8d0e1101aa8341eba70f9f5dd2df185852b93b2fa85ea459a8b13",
+      "passed": false,
+      "scope": "Extracted Ubuntu DEB; bounded X11 H264 and audio via selected application playback; apps workflow. Physical microphones, native PipeWire/JACK app streams, endurance and A/V drift excluded.",
+      "packageSha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16",
+      "executableSha256": "443f28db3d8e0c1de3582244871bd4d8cddb224e0feea50eb46afb63f2b79a29",
+      "continuousPassed": 8,
+      "continuousPhases": 9,
+      "restartFailures": [
+        {
+          "frame": 1444384,
+          "rms": [
+            0.03959574770016414,
+            0.04024390310032336
+          ]
+        }
+      ],
+      "restartFailureOffsetsMs": [
+        1290.0
+      ],
+      "observer": {
+        "sampleRate": 48000,
+        "windowFrames": 4800,
+        "startupSettlingMs": 500,
+        "shortWindowFrames": 480,
+        "shortWindowRmsFloor": 0.05,
+        "badWindowPcmBudget": 4,
+        "includeSilentPcm": false,
+        "shortWindowScope": "10 ms RMS on every sample; not a proof against shorter glitches or concealed packet loss",
+        "scope": "Continuous received-track Web Audio PCM, 100 ms summaries; not physical playback or A/V synchronization"
+      },
+      "silenceEvidenceDrainMs": 47,
+      "resumeSourceAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-muted-control/3f8f30c5-f158-4862-89d8-d80b5dad1986/resume-source-analysis.json",
+        "sha256": "fff30b2d02ee1533c7603fdee356e4e5116cce7524e83cf51e72d4bcf7dd9d2c",
+        "rawSha256": "c0b7022d4013e24092237654971eabeacb4042a1d38a15f424442a7818824504",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10493867403051475
+      },
+      "resumeReceiverAnalysis": {
+        "report": "native-qt/qa/reports/linux-audio-playout-muted-control/3f8f30c5-f158-4862-89d8-d80b5dad1986/resume-receiver-analysis.json",
+        "sha256": "fbecc1f7898bf6791b308df2a048d623b8120f0ae12a1726606faeb4056b4fef",
+        "rawSha256": "5c04ccd60a69b5169c3b4876668735687318000a0d4d1e567d2899ac1a578d6c",
+        "clippedSamples": 0,
+        "minimum10msRmsAfterSettling": 0.10463125684384762,
+        "maximumFramePtsDiscontinuityMs": 7.0
+      },
+      "encodedAudio": {
+        "report": "native-qt/qa/reports/linux-audio-playout-muted-control/3f8f30c5-f158-4862-89d8-d80b5dad1986/received-opus-analysis.json",
+        "sha256": "0e82788d4ddadd850f663c50fea872a97567c310b1e6ecd641a93dabed397dec",
+        "resumeLevelChecksPassed": true,
+        "resumeMinimumRms": 0.1046275572412537,
+        "rtpDiscontinuities": 0
+      },
+      "cleanup": {
+        "report": "native-qt/qa/reports/linux-audio-playout-muted-control/3f8f30c5-f158-4862-89d8-d80b5dad1986/host-cleanup.json",
+        "sha256": "6da11487b6f4fef55400f7e465a662f5924a12ff90693b86a660bcd2b1a68d2c",
+        "passed": true
+      },
+      "waveform": {
+        "exactZeroRunsBothChannels": [
+          {
+            "firstFrame": 1444320,
+            "frames": 480,
+            "touchesRowStart": false,
+            "touchesRowEnd": false
+          }
+        ],
+        "scope": "Complete 480-frame (10 ms) zero run in retained Web Audio PCM; muted control only. Encoded resume levels and RTP continuity pass."
+      }
     }
   ],
   "host_environment": {
@@ -24102,7 +24780,8 @@
     "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true records continuous received PCM summaries across app-stream transitions plus opt-in native timing metadata. All clock/integrity windows are checked; only intentional full-source pause/resume has 500 ms content settling. 100 ms tone-window success does not exclude sub-window glitches. Original raw batches and helper hashes are retained.",
     "linux-audio-publish.js --matrix=apps --backend=x11 --continuous-app-audio=true --app-output-moves=3 alternates the selected owned app between its original output and the owned fixture output. Each transition retains continuous 10 ms RMS and 100 ms tone evidence, native timing, and request/completion timestamps. Range 1..5; repeats require the continuous diagnostic. Only full-source pause/resume has 500 ms content settling.",
     "With --continuous-app-audio=true, --app-snapshot-context=persistent reuses a snapshot observer created before startup settling; fresh remains the default. --app-resume-snapshot-delay-ms=2200 delays only the resume snapshot; 1200 is default. --app-resume-reference=true records bounded independent PCM from the owned playback stream through parec and analyzes 10 ms levels/channel isolation. Native opt-in traces add RMS/hole metadata; the analyzer accepts both trace schemas.",
-    "With --continuous-app-audio=true, --app-resume-recording=true retains a bounded received-track MediaRecorder WebM plus frame-PTS-aware PCM analysis; --app-encoded-audio=true copies incoming Opus with RTCRtpScriptTransform, forwards original frames unchanged, and decodes copies with libopus. Both preserve existing continuous checks and failed results. Linux continuous PCM capture retains up to sixteen bad 100 ms windows per drain; shared default remains two."
+    "With --continuous-app-audio=true, --app-resume-recording=true retains a bounded received-track MediaRecorder WebM plus frame-PTS-aware PCM analysis; --app-encoded-audio=true copies incoming Opus with RTCRtpScriptTransform, forwards original frames unchanged, and decodes copies with libopus. Both preserve existing continuous checks and failed results. Linux continuous PCM capture retains up to sixteen bad 100 ms windows per drain; shared default remains two.",
+    "With --continuous-app-audio=true, --app-playout-reference=true launches an unmuted receiver into its own null sink and independently records bounded pre-pause/resume playback; --app-playout-headed=true makes that receiver visible. Sink ownership, playing unmuted media, routing and cleanup are recorded. Raw evidence budgets exclude fully silent windows only; all 10 ms/100 ms summaries, phase clocks and acceptance thresholds remain. --app-resume-recording=true prepares MediaRecorder before draining the intentional-silence phase."
   ],
   "regression_gates": {
     "classification": "Gates only; these do not constitute application testing.",
@@ -28779,5 +29458,53 @@
     "ownedProcessesRemaining": [],
     "gates": "JavaScript syntax, Python AST, source diff and archived evidence/hash checks are sanity/integrity gates, not application testing. The three packaged E2E workflows are testing and remain failed. Final setup-error file-descriptor cleanup is inspection/syntax-gated only; the exercised success path is unchanged.",
     "next": "Measure normal receiver playback through an owned null sink with mute removed, compare continuous Web Audio, decoded Opus and playout PCM without feeding it back into capture. Verify element audio state and actual sink routing. Investigate browser pull/resampling/pacing only from evidence; keep existing failures and all parity gaps open."
+  },
+  "linux_receiver_playout_checkpoint": {
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20.deb",
+      "sha256": "00c89b676841511ea944b80dbb8a91c6a6b5eddb7dc273404a53cddbf306642d",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.1-amd64-443f28db3d8e-03a58ad7ee20",
+      "manifestSha256": "d9880d9d381fd551aefe9a3dad70832cf5fe9df83607282bea64a1bb4eacea16"
+    },
+    "productionChange": "None. Linux diagnostic receiver can play into a uniquely owned null sink, with its Chrome mute default explicitly removed. Reused bounded Pulse recorder for sink output. Shared continuous observer defaults unchanged; Linux diagnostics retain four non-silent bad-window PCM blocks instead of sixteen silence blocks, preserving every level/clock summary and all original thresholds.",
+    "evidence": [
+      {
+        "case": "playout",
+        "report": "native-qt/qa/reports/linux-audio-playout/35acc50a-3a47-448d-9078-ebb300980b20/results.json",
+        "sha256": "3329c0cde5985b548ed2cf9d06fda4c8a16572506cafff8ea88378cb5f3d4b74",
+        "passed": false
+      },
+      {
+        "case": "headed",
+        "report": "native-qt/qa/reports/linux-audio-playout-headed/1588672a-cc08-421b-9cc6-1e0f9a80c7e5/results.json",
+        "sha256": "580a3a62cf765285d7bbc807bdce76345dd0eda53959c2430732c26251909968",
+        "passed": false
+      },
+      {
+        "case": "lean",
+        "report": "native-qt/qa/reports/linux-audio-playout-lean/4d566e02-60f1-42d0-9539-ab8627e33554/results.json",
+        "sha256": "f31069ea7ec69c907c6700cb1826c13fdef57bfc9433c3398dc38c5853c516e0",
+        "passed": true
+      },
+      {
+        "case": "combined",
+        "report": "native-qt/qa/reports/linux-audio-playout-combined/6278e7f6-9312-4b33-9d42-ea0b9b9ff5d3/results.json",
+        "sha256": "09b103ae05f8cfb7052ab2f5f893fa6a1091386ae4f63dd39aff7661790d412e",
+        "passed": true
+      },
+      {
+        "case": "muted-control",
+        "report": "native-qt/qa/reports/linux-audio-playout-muted-control/3f8f30c5-f158-4862-89d8-d80b5dad1986/results.json",
+        "sha256": "983bcc124ef8d0e1101aa8341eba70f9f5dd2df185852b93b2fa85ea459a8b13",
+        "passed": false
+      }
+    ],
+    "normalPlayback": "Visible receiver with source reference, and headless unmuted receiver with source reference/MediaRecorder/encoded Opus copy, both pass all nine continuous lifecycle phases and packaged application termination/recovery checks. Both owned playback recordings have no low 10 ms windows, clipping, routing/isolation errors or exact-zero runs longer than two frames in checked tone segments. Combined run also passes original encoded restart level check with no RTP discontinuities. Physical speaker timing remains outside this evidence.",
+    "earlierFailures": "First two unmuted runs retain original failed results: copying sixteen silent PCM rows delays the resume command until 495.5/510.1 ms after the phase begins, beyond nearly all of its existing 500 ms allowance. Those runs have clean actual playback and no later dip. Lower raw evidence volume reduces command offset to 78.3/72.4 ms; thresholds stay unchanged. MediaRecorder preparation now occurs while still in the intentional-silence phase, before the resume drain; no continuous summaries are discarded.",
+    "mutedControl": "With the improved evidence collection, the old muted headless receiver still fails at 1290 ms after restart. Retained PCM contains a complete 480-frame exact-zero run on both channels, while Opus timestamp and level checks pass. The noStreams drain takes only 47 ms. This distinguishes the muted diagnostic path from normal playback; it does not establish the precise browser-internal cause or prove all other receiver implementations.",
+    "qualification": "Bounded normal receiver playback/restart and continuous lifecycle workflow now pass on the same package. Historical muted diagnostic failures remain visible and are not rewritten as passes. Application audio remains partial because physical devices, load/server faults, PulseAudio recovery and final-package endurance are unqualified.",
+    "ownedProcessesRemaining": [],
+    "gates": "JavaScript syntax, Python AST, diff checks, archived harness hashes and independent PCM level recomputation are sanity/integrity gates, not application testing. Five packaged E2E runs supply testing: two pass, three retained diagnostic failures. Windows/macOS runtime remains unqualified; shared observer default result shape and retention behavior are preserved by inspection.",
+    "next": "Revisit A/V startup evidence with an unmuted receiver routed into an owned sink: linux-av-sync.js currently also launches headless with --mute-audio. Preserve browser/desktop references and all thresholds; actual playback clocks may matter, but no A/V outcome is assumed. Absolute calibration, final X11/Wayland endurance and Wayland throughput remain required."
   }
 }
