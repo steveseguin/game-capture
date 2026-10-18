@@ -2367,3 +2367,10 @@ VDO.Ninja API changed.
 preserve the earlier lower presentation counts. The new observations establish
 bounded steady-state delivery, not the cause of prior startup variation,
 physical display cadence, long-run camera performance or production readiness.
+
+
+### Released Beta 2 two-minute camera-to-WHIP follow-up — October 18, 2026
+
+The unchanged public-downloaded Beta 2 executable (`2a6354f12b92ac1d8ef2a415c76316ea8452b040503087c1b8ec716be69ad1b0`) completed another GUI workflow with each encoder. Twelve paired ten-second 1080p30 observations per encoder delivered 29.97–30.09 decoded images/s for VT and 29.89–30.10 for x264, with no missing/repeated decoded identities within windows and no new native dropped frames, encode failures/timeouts or send failures. Both complete the saved-profile relaunch, stereo/silence, held-image, late-viewer, server-restart recovery and cleanup workflow.
+
+Image observations have short gaps between windows; audio is sampled in the functional phases. This is bounded virtual-camera coverage, not continuous physical-device/gameplay/thermal qualification. Earlier startup-presentation findings remain unresolved. Seven controlled-input auditor gates and owned-resource cleanup checks passed. No runtime, Windows behavior or VDO.Ninja API changed; Mac remains experimental. [Evidence and limits](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-whip-two-minute).
