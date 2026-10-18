@@ -63,17 +63,17 @@
     <h1>Game Capture on Mac</h1>
     <p class="intro">Share an app window or camera through VDO.Ninja, then watch it in a browser or bring it into OBS.</p>
     <div class="actions">
-      <a class="button" href="https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.64-beta.2/game-capture-macos-arm64-0.2.64-beta.2.zip">Download Mac Beta 2</a>
-      <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2">Release notes, source &amp; checksums</a>
+      <a class="button" href="https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.65-beta.1/game-capture-macos-arm64-0.2.65-beta.1.zip">Download Mac 0.2.65 Beta 1</a>
+      <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.1">Release notes, source &amp; checksums</a>
     </div>
-    <p class="note">Requires an Apple Silicon (M-series) Mac; Intel Macs are not supported. Built for macOS 14.2+. The current beta was tested on macOS 26.4.1; minimum-OS and fresh-machine compatibility remain unverified. Windows remains the stable production version.</p>
+    <p class="note">Requires an Apple Silicon (M-series) Mac; Intel Macs are not supported. Built for macOS 14.2+. Packaged workflows passed on an M1 with macOS 26.4.1, with bounded startup/x264 workflows on fresh macOS 14.8.9 ARM64 VMs. Physical minimum-OS and device/privacy qualification remain open. Windows remains the stable production version.</p>
   </header>
   <nav aria-label="Guide sections">
     <a href="#install">Install</a><a href="#first-stream">First stream</a><a href="#audio">Audio</a><a href="#encoders">Encoders</a><a href="#rooms-obs">Rooms &amp; OBS</a><a href="#troubleshooting">Troubleshooting</a><a href="#updates">Updates</a>
   </nav>
   <figure>
     <a href="./macos-app-screenshot.png" aria-label="Open full-size Mac app screenshot"><img src="./macos-app-screenshot.png" alt="Game Capture on macOS with the Neon Orbit demo window selected, a local preview, and Go Live controls" width="1800" height="1358" decoding="async" /></a>
-    <figcaption>Actual Mac Beta 2 app, with the repository’s demo scene selected. Publishing is off.</figcaption>
+    <figcaption>Earlier macOS 0.2.64 Beta 2 app with the repository’s demo scene selected. Publishing is off.</figcaption>
   </figure>
   <section id="install">
     <h2>1. Install and allow access</h2>
@@ -122,7 +122,7 @@
       <article class="card"><h3>x264 software</h3><p>Select <strong>H.264</strong> with <strong>Software (x264 / VP9 / AV1)</strong>. This uses the CPU and is useful when comparing a hardware-encoder problem. Lower resolution or FPS if the Mac cannot keep up.</p></article>
     </div>
     <p><strong>Auto</strong> tries hardware and then software. The software menu lists other codecs, but H.264 is the straightforward starting point for this guide.</p>
-    <p class="note">1080p60 is not yet production-qualified across machines and workloads. Start at 720p30, verify received video and audio, and increase settings gradually. See the <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-beta2-validation-2026-10-17.md">qualification record</a> for measured results and remaining limits.</p>
+    <p class="note">1080p60 is not yet production-qualified across machines and workloads. Start at 720p30, verify received video and audio, and increase settings gradually. See the <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md">qualification record</a> for measured results and remaining limits.</p>
   </section>
   <section id="rooms-obs">
     <h2>5. Use a room or OBS</h2>
@@ -138,16 +138,16 @@
     <h2>Troubleshooting</h2>
     <details><summary>My window is missing, or the preview is blank</summary><p>Check Screen Recording permission, reopen Game Capture if macOS requested it, and click Refresh. Clear the source filter and select the window again. Restore a minimized or hidden source window. Closing the source app requires choosing an available source before starting again.</p></details>
     <details><summary>Video pauses when I minimize the source</summary><p>Restore the source window. The Mac app pauses video delivery while the captured window is suspended and resumes when fresh frames return; audio may continue. Keep the source visible during a stream.</p></details>
-    <details><summary>I have picture but no sound</summary><p>Check Audio Source, microphone selection and mute state, and the source app’s own volume. Selected app audio needs Window capture. Check macOS audio/microphone permissions as appropriate, then stop and start again after permission or device changes. Verify the viewer’s playback and volume controls too.</p></details>
+    <details><summary>I have picture but no sound</summary><p>Check Audio Source, microphone selection and mute state, and the source app’s own volume. Selected app audio needs Window capture. Check macOS audio/microphone permissions as appropriate, then stop and start again after permission or device changes. The microphone-off warning means the requested input is not capturing; reconnect or reselect it, then stop and start streaming again. Verify the viewer’s playback and volume controls too.</p></details>
     <details><summary>The camera or microphone is unavailable</summary><p>Check its Privacy &amp; Security permission, connect the device, and close other software that may hold it. Refresh and select it again. After a permission prompt, retry Go Live. Physical-device hotplug and busy-device coverage is still incomplete in this beta.</p></details>
     <details><summary>The stream stutters or falls behind</summary><p>Try H.264 with Apple VideoToolbox at 720p30, close unnecessary receivers on the publishing Mac, and check available upload bandwidth. Compare with a viewer on another machine. Stop before changing resolution, FPS, or encoder settings.</p></details>
     <details><summary>macOS says the app is damaged or cannot be verified</summary><p>Download a fresh copy from the official Mac release and compare its checksum with the release’s checksum file. Keep macOS security checks enabled. If the official copy still fails, report the exact message and your macOS version.</p></details>
   </section>
   <section id="updates">
     <h2>Updates and support</h2>
-    <p>Update Mac betas manually from the <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2">Mac release page</a>: stop streaming, quit the app, and replace the copy in Applications. The stable update check excludes prereleases. Beta 1 and Beta 2 both show the internal app version <strong>0.2.64</strong>; use the ZIP’s beta number to identify the download.</p>
+    <p>Update Mac betas manually from the <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.1">Mac release page</a>: stop streaming, quit the app, and replace the copy in Applications. The stable update check excludes prereleases. The current beta reports app version <strong>0.2.65</strong>. Include the ZIP’s beta number when reporting an issue.</p>
     <p>For a problem report, use <strong>Help → Open Log Folder</strong> and include the Mac model, macOS version, beta download, video/audio source, encoder, and steps to reproduce. Remove credentials from logs before sharing them.</p>
-    <p><a href="https://github.com/steveseguin/game-capture/issues">Report an issue</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-beta2-validation-2026-10-17.md">Testing status and open findings</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-frame-timer-2026-10-17.md">Unreleased candidate results</a></p>
+    <p><a href="https://github.com/steveseguin/game-capture/issues">Report an issue</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta1-validation-2026-10-18.md">Testing status and open findings</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-frame-timer-2026-10-17.md">Unreleased candidate results</a></p>
   </section>
   <footer>Game Capture · <a href="./gamecapture.html">All downloads</a> · <a href="https://github.com/steveseguin/game-capture">Source on GitHub</a></footer>
 </main>
