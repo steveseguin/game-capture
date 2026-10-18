@@ -11,6 +11,10 @@ const turnDiscovery=opts['turn-discovery']||'none';
 const unresponsiveStun=opts['unresponsive-stun']==='true';
 const cadenceSeconds=Number(opts['cadence-seconds']||0);
 if(!Number.isInteger(cadenceSeconds)||cadenceSeconds<0||cadenceSeconds>120||cadenceSeconds%10)throw Error('--cadence-seconds must be 0 or a multiple of 10 up to 120');
+const bitrateLabels=new Map([[2500,'Economy (2500 kbps)'],[3000,'Low (3000 kbps)'],[4000,'Standard (4000 kbps)'],[6000,'Medium (6000 kbps)'],[12000,'High (12000 kbps)'],[20000,'Ultra (20000 kbps)']]);
+const guiBitrateSteps=opts['gui-bitrate-steps']?.split(',').map(Number)||[];
+if(opts['gui-bitrate-steps']&&(!opts.gui||!guiBitrateSteps.length||guiBitrateSteps.some(rate=>!bitrateLabels.has(rate))||cadenceSeconds!==guiBitrateSteps.length*10))
+  throw Error('--gui-bitrate-steps requires GUI preset bitrates and one ten-second cadence interval per step');
 const restartCycles=opts['restart-cycles']===undefined?null:Number(opts['restart-cycles']);
 if(restartCycles!==null&&(!Number.isInteger(restartCycles)||restartCycles<1||restartCycles>5))throw Error('--restart-cycles must be an integer from 1 to 5');
 if(unresponsiveStun&&(turnDiscovery!=='none'||opts.gui))throw Error('Unresponsive STUN workflow requires headless publishing without TURN discovery');
@@ -33,6 +37,7 @@ const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiver
 result.turnDiscovery=turnDiscovery;
 result.restartCycles=restartCycles;
 result.cadenceSeconds=cadenceSeconds;
+result.guiBitrateSteps=guiBitrateSteps;
 result.cameraFixtureSha256=hash(path.resolve(opts['camera-helper']));
 result.toneFixtureSha256=hash(path.resolve(opts['tone-helper']));
 if(opts['browser-executable'])result.browserExecutableSha256=hash(path.resolve(opts['browser-executable']));
@@ -172,7 +177,7 @@ function audioCheck(value,silent=false){
         const tracks=[];
         for(const pc of window.reviewPCs)if(pc.connectionState==='connected'){
           const stats=await pc.getStats();
-          for(const item of stats.values())if(item.type==='inbound-rtp'&&item.kind==='video')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType});
+          for(const item of stats.values())if(item.type==='inbound-rtp'&&item.kind==='video')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType,codecFmtpLine:stats.get(item.codecId)?.sdpFmtpLine});
         }
         const video=[...document.querySelectorAll('video')].find(v=>v.videoWidth&&!v.paused);
         if(!video)throw Error('No playing cadence receiver');
@@ -183,8 +188,23 @@ function audioCheck(value,silent=false){
       });
       const appState=async()=>{const d=await api(control,'/diagnostics');return {epochMs:Date.now(),video:d.video,output:d.output};};
       for(let index=0;index<cadenceSeconds/10;index++){
+        if(guiBitrateSteps.length){
+          const requested=guiBitrateSteps[index],change={index,requestedKbps:requested,before:await appState(),started:Date.now()};
+          (entry.bitrateChanges??=[]).push(change);
+          // These are the existing user-facing controls, not a new control or
+          // VDO.Ninja command. Each mutating action is attempted exactly once.
+          ui('press','bitrateSelect');ui('press',bitrateLabels.get(requested));
+          await waitFor(async()=>{
+            const state=await appState();
+            if(state.video.configured_bitrate_kbps!==requested||state.output.state!==2)return false;
+            change.after=state;return true;
+          },10000,'Live bitrate selection did not apply');
+          change.completed=Date.now();
+          change.scope='Actual GUI update followed by sampled media; no gap-free decoded observation during the selection';
+        }
         const before=await Promise.all([fixtureState(),appState(),browserState()]);
         const row={index,sourceBefore:before[0],publisherBefore:before[1],receiverBefore:before[2]};entry.cadence.push(row);
+        if(guiBitrateSteps.length)row.requestedBitrateKbps=guiBitrateSteps[index];
         const measured=await Promise.all([observe(page,10000),observeDecoded(page,10000,null,'camera',true)]);
         row.presentation=measured[0];row.decoded=measured[1];
         requireMoving(row.presentation,'Cadence presentation');requireMoving(row.decoded,'Cadence decoded track');
