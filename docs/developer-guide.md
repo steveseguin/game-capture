@@ -174,11 +174,42 @@ playback through PipeWire into system-output capture. Direct JACK DSP applicatio
 capture remains unsupported. Nest `linux-private-audio.py --reports=... --`
 inside the X11 desktop wrapper to avoid host audio changes. Audio diagnostics
 can be retained with `--capture-audio-diagnostics=true`; timing metadata does
-not qualify endurance or calibrated A/V timing.
+not qualify endurance or calibrated A/V timing. Explicit app workflows accept
+`--app-output-moves=20` to alternate the selected playback between two owned
+outputs twenty times, checking decoded stereo and unrelated-app exclusion after
+each move. This exercises route recovery independently of the continuous-audio
+diagnostic.
 
-The evidence ledger retains failures, including the Chrome/Wayland resize
-stall and an intermittent native PipeWire output-move silence. A passing native
-GTK workflow does not establish that the browser capture failure is fixed.
+On a failed native GUI output move, audio diagnostics also retain the owned
+PipeWire graph and a separate two-second recording of the owned destination
+output. This compares source-output audio with the app's monitor input.
+These private recordings do not establish continuous timing or physical audio
+quality; a failed receiver check still fails the workflow.
+
+`linux-pipewire-route-diagnostic.py --reports=...` runs native playback and
+twenty output moves without Game Capture under the private desktop/audio
+wrappers. It checks independent owned-output PCM and retains a graph snapshot
+on failure. Add `--direct-monitor` for a standalone `parec` stream-specific
+monitor alongside playback. These are source/audio-graph diagnostics, not
+application testing; a passing diagnostic does not waive an application failure.
+
+For browser visibility comparisons, `linux-window-publish.js` accepts
+`--foreground-source=true --capture-diagnostics=true` inside the owned Wayland
+GUI wrapper. `--source-browser=/path/to/chrome` changes only the source browser.
+Add `--occlusion-diagnostic=true` to maximize the owned app over the source,
+check received identities after twenty seconds of coverage, uncover it and
+check recovery. Native accessibility state, window bounds and screenshots
+verify coverage; browser `document.hasFocus()` alone is insufficient under
+automation. A failed covered phase remains a failure even if recovery, resize
+and restart subsequently pass.
+
+The evidence ledger retains failures, including the reproduced Chrome/Wayland
+covered-window freeze and intermittent native PipeWire output-move silence.
+A passing native GTK or foreground-browser workflow does not establish that
+covered browser capture is fixed. Chromium's
+[Wayland tab-capture change](https://github.com/chromium/chromium/commit/de4b707490acca3612e077adaa35679231ee4b35)
+documents a related frame-callback throttling mechanism; it is an investigation
+lead, not a confirmed fix for external portal capture.
 
 ## Releases
 

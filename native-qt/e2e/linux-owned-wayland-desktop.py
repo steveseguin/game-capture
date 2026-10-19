@@ -25,7 +25,7 @@ import dbus
 
 
 KEYS = {
-    'ESCAPE': [1], 'ALT_F': [56, 33], 'ALT_F7': [56, 65],
+    'ESCAPE': [1], 'ALT_F': [56, 33], 'ALT_F7': [56, 65], 'ALT_F10': [56, 68],
     'ALT_TAB': [56, 15], 'ALT_F4': [56, 62], 'CTRL_A': [29, 30],
     'CTRL_V': [29, 47], 'CTRL_C': [29, 46], 'SUPER_SHIFT_RIGHT': [125, 42, 106],
     'LEFT': [105], 'RIGHT': [106], 'UP': [103], 'DOWN': [108],

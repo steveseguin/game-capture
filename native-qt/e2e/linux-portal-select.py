@@ -17,7 +17,7 @@ import sys
 import time
 
 
-ALLOWED_KEYS = {"SUPER_SHIFT_RIGHT", "ALT_F", "ALT_F7", "LEFT", "RIGHT", "UP", "HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
+ALLOWED_KEYS = {"SUPER_SHIFT_RIGHT", "ALT_F", "ALT_F7", "ALT_F10", "LEFT", "RIGHT", "UP", "HOME", "DOWN", "SPACE", "TAB", "ENTER", "ALT_TAB", "ALT_F4", "CTRL_A", "CTRL_V", "CTRL_C"}
 
 
 def emit_keys(device, keys):
@@ -32,7 +32,7 @@ def emit_keys(device, keys):
             for code in reversed(chord): device.write(ec.EV_KEY, code, 0)
             device.syn();time.sleep(.25)
             continue
-        chords = {"ALT_F": (ec.KEY_LEFTALT, ec.KEY_F), "ALT_F7": (ec.KEY_LEFTALT, ec.KEY_F7), "ALT_TAB": (ec.KEY_LEFTALT, ec.KEY_TAB), "ALT_F4": (ec.KEY_LEFTALT, ec.KEY_F4),
+        chords = {"ALT_F": (ec.KEY_LEFTALT, ec.KEY_F), "ALT_F7": (ec.KEY_LEFTALT, ec.KEY_F7), "ALT_F10": (ec.KEY_LEFTALT, ec.KEY_F10), "ALT_TAB": (ec.KEY_LEFTALT, ec.KEY_TAB), "ALT_F4": (ec.KEY_LEFTALT, ec.KEY_F4),
                   "CTRL_A": (ec.KEY_LEFTCTRL, ec.KEY_A), "CTRL_V": (ec.KEY_LEFTCTRL, ec.KEY_V), "CTRL_C": (ec.KEY_LEFTCTRL, ec.KEY_C)}
         if key in chords:
             modifier, button = chords[key]

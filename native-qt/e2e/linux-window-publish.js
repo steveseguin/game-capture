@@ -11,6 +11,8 @@ assert(['software','nvenc'].includes(encoder),'Unsupported encoder workflow');
 const captureDiagnostics=opts['capture-diagnostics']==='true';
 const foregroundSource=opts['foreground-source']==='true';
 assert(!foregroundSource||(opts.gui==='true'&&opts.backend==='wayland'&&process.env.GC_QA_OWNED_WAYLAND),'Foreground diagnostic requires the owned Wayland GUI');
+const occlusionDiagnostic=opts['occlusion-diagnostic']==='true';
+assert(!occlusionDiagnostic||(foregroundSource&&captureDiagnostics),'Occlusion diagnostic requires verified foreground and capture diagnostics');
 const idleSource=opts['idle-source']==='true';assert(!idleSource||opts.backend==='x11','Idle readback qualification requires X11');
 const noTray=opts['no-tray']==='true';assert(!noTray||(opts.gui==='true'&&opts.backend==='x11'),'No-tray fixture requires private X11 GUI');
 const tray=opts.tray==='true';assert(!tray||(opts.gui==='true'&&opts.backend==='wayland'),'Tray fixture requires native GNOME Wayland GUI');
@@ -150,6 +152,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     ui('activate');
     execFileSync('python3',[path.join(__dirname,'linux-portal-select.py'),'--keys','ALT_TAB'],{env,timeout:10000});
     await waitFor(()=>source.evaluate(()=>document.hasFocus()),5000,'Owned keyboard did not focus the source');
+    assert(!JSON.parse(ui('dump')).some(row=>row.role==='frame'&&row.name==='Game Capture - Powered by VDO.Ninja'&&row.states.includes('active')),'Publisher retained native focus');
     execFileSync('gnome-screenshot',['-f',path.join(report,'source-foreground-'+label+'.png')],{env,timeout:10000});
     result.foregroundSourceVerified=true;save();
   };
@@ -384,6 +387,27 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     assert(restored.kbps>reduced.kbps*1.5,'Received video bitrate did not recover');
     assert(restored.kbps>baseline.kbps*.65,'Restored video bitrate remains below baseline');save();
   }
+  if(occlusionDiagnostic){
+    result.occlusion={};
+    ui('activate');
+    execFileSync('python3',[path.join(__dirname,'linux-portal-select.py'),'--keys','ALT_F10'],{env,timeout:10000});
+    await sleep(1000);
+    const coveredWindow=JSON.parse(ui('dump')).find(row=>row.role==='frame'&&row.name==='Game Capture - Powered by VDO.Ninja');
+    const screenSize=await source.evaluate(()=>({width:screen.width,height:screen.height}));
+    assert(coveredWindow?.states.includes('active')&&coveredWindow.bounds[2]>=screenSize.width*.95&&coveredWindow.bounds[3]>=screenSize.height*.9,'Owned cover is not active and maximized');
+    result.occlusion.coveredWindow=coveredWindow;
+    execFileSync('gnome-screenshot',['-f',path.join(report,'source-covered.png')],{env,timeout:10000});
+    await sleep(12000);
+    result.phases.covered=await observeCapture(viewer,8000,'covered');
+    try{result.occlusion.coveredDistinct=requireMoving(result.phases.covered,'Covered source',expectedCodec);result.occlusion.coveredPassed=true;}
+    catch(error){result.occlusion.coveredPassed=false;result.occlusion.coveredError=String(error);}
+    save();
+    execFileSync('python3',[path.join(__dirname,'linux-portal-select.py'),'--keys','ALT_F10'],{env,timeout:10000});
+    await focusSource('uncovered');await sleep(1000);
+    result.phases.uncovered=await observeCapture(viewer,8000,'uncovered');save();
+    result.occlusion.uncoveredDistinct=requireMoving(result.phases.uncovered,'Uncovered source recovery',expectedCodec);
+    result.occlusion.uncoveredPassed=true;save();
+  }
   if(idleSource)await source.click('canvas',{position:{x:10,y:10}});
   const staticId=await source.evaluate(idle=>{fixture.paused=true;if(idle){cancelAnimationFrame(fixture.raf);fixture.id=(fixture.id+1)%65536;fixture.draw();cancelAnimationFrame(fixture.raf);}return fixture.id;},idleSource);await sleep(1000);
   const idleBefore=idleSource?await api('/diagnostics'):null;
@@ -482,6 +506,7 @@ async function api(route,body){const r=await fetch(control.base_url+route,{metho
     await waitFor(()=>[...result.helperProcesses,...result.helpersBeforeStop].every(p=>processStart(p.pid)!==p.startTimeTicks),5000,'Owned FFmpeg helper survived shutdown');
     result.helpersRetired=true;
   }
+  if(occlusionDiagnostic)assert(result.occlusion.coveredPassed,result.occlusion.coveredError);
 }catch(error){result.passed=false;result.error=String(error.stack||error);process.exitCode=1;if(captureDiagnostics&&sourceBrowser){try{await source.screenshot({path:path.join(report,'source-after-failure.png')});result.sourceAfterFailure=await source.evaluate(()=>({fixture,visibility:document.visibilityState}));}catch{}}if(gui&&opts.backend==='wayland'&&publisher?.exitCode===null){try{fs.writeFileSync(path.join(report,'ui-failure.json'),execFileSync('python3',[path.join(__dirname,'linux-ui-control.py'),String(publisher.pid),'dump'],{env:{...process.env,QT_QPA_PLATFORM:'wayland'},timeout:10000}));execFileSync('gnome-screenshot',['-f',path.join(report,'desktop-failure.png')],{env:{...process.env,WAYLAND_DISPLAY:process.env.WAYLAND_DISPLAY||'wayland-0'},timeout:10000});}catch{}}}finally{
   if(previewPortalPending&&publisher?.exitCode===null){
     if(portalSelector&&portalSelector.exitCode===null){portalSelector.kill();await new Promise(resolve=>portalSelector.once('close',resolve));}

@@ -51,8 +51,8 @@ assert(appPlaybackBackend==='pulse'||((['apps','apps-gui'].includes(matrix)||jac
 const selectedAppPid=source=>nativeDirectSelection?source.playbackPid:source.child.pid;
 assert(!continuousApps||(matrix==='apps'&&!wayland),'Continuous app diagnostic currently requires explicit X11 CLI apps');
 const appOutputMoves=Number(opts['app-output-moves']||1);
-assert(Number.isInteger(appOutputMoves)&&appOutputMoves>=1&&appOutputMoves<=5,'App output moves must be 1..5');
-assert(appOutputMoves===1||continuousApps,'Repeated output moves require the continuous app diagnostic');
+assert(Number.isInteger(appOutputMoves)&&appOutputMoves>=1&&appOutputMoves<=20,'App output moves must be 1..20');
+assert(appOutputMoves===1||['apps','apps-gui'].includes(matrix),'Repeated output moves require explicit app capture');
 const continuity=continuousApps?require('./linux-app-audio-continuity'):null;
 const snapshotContext=opts['app-snapshot-context']||'fresh';
 const resumeSnapshotDelayMs=Number(opts['app-resume-snapshot-delay-ms']||1200);
@@ -653,7 +653,41 @@ function barriers() {
           if(opts['capture-audio-diagnostics']==='true'){
             entry[label+'Diagnostic']={atMs:Date.now(),diagnostics:await api('/diagnostics'),playback:JSON.parse(pactl('-f','json','list','sink-inputs')),clients:JSON.parse(pactl('-f','json','list','clients'))};
           }
-          save();requireAudio(observation, label, {excluded:true, ...checks});
+          save();
+          try{requireAudio(observation, label, {excluded:true, ...checks});}
+          catch(error){
+            // Inspect the owned source output before retiring the failed app.
+            // A direct monitor can return valid zero PCM after a native stream
+            // moves; this separate sink recording distinguishes that from a
+            // source/graph outage. Never open a host desktop monitor here.
+            if(nativeDirectSelection&&label.startsWith('outputMoved')&&opts['capture-audio-diagnostics']==='true'&&process.env.GC_QA_AUDIO_SOCKET){
+              try{
+                const destination=entry.outputMoves.at(-1).destination;
+                assert(destination===sinkName||destination==='gc_audio_default');
+                const graph=path.join(report,label+'-pipewire-graph.json');
+                fs.writeFileSync(graph,execFileSync('pw-dump',[],{timeout:5000,maxBuffer:16*1024*1024}),{flag:'wx',mode:0o600});
+                entry[label+'PipeWireGraph']={path:path.basename(graph),sha256:sha(graph)};
+                const raw=execFileSync('/usr/bin/ffmpeg',['-hide_banner','-loglevel','error','-f','pulse','-i',destination+'.monitor','-t','2','-ar','48000','-ac','2','-c:a','pcm_f32le','-f','f32le','pipe:1'],{timeout:10000,maxBuffer:4*1024*1024});
+                assert(raw.length>=48000*8&&raw.length%8===0);
+                const file=path.join(report,label+'-owned-output.f32le');fs.writeFileSync(file,raw,{flag:'wx',mode:0o600});
+                const frames=raw.length/8,channels=[];
+                for(let channel=0;channel<2;channel++){
+                  let power=0;const tones={};
+                  for(let n=0;n<frames;n++)power+=raw.readFloatLE(n*8+channel*4)**2;
+                  for(const hz of [440,880,2000]){
+                    let re=0,im=0;
+                    for(let n=0;n<frames;n++){const value=raw.readFloatLE(n*8+channel*4),angle=2*Math.PI*hz*n/48000;re+=value*Math.cos(angle);im+=value*Math.sin(angle);}
+                    tones[hz]=2*Math.hypot(re,im)/frames;
+                  }
+                  channels.push({rms:Math.sqrt(power/frames),toneAmplitudes:tones});
+                }
+                entry[label+'SourceOutput']={path:path.basename(file),sha256:sha(file),destination,frames,channels,scope:'Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence.'};
+                entry[label+'AfterReferenceDiagnostic']=await api('/diagnostics');
+              }catch(referenceError){entry[label+'SourceOutputError']=String(referenceError);}
+              save();
+            }
+            throw error;
+          }
           // Prepare recording while the source is intentionally silent, before
           // the drain starts the resume phase. All continuous rows are retained.
           if(label==='noStreams'&&resumeRecording){receiverRecording=await require('./macos-continuous-audio').record(viewer,path.join(report,'resume-receiver.webm'));result.resumeReceiverRecording=receiverRecording.metadata;save();}

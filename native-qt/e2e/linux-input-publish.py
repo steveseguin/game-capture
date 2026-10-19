@@ -173,8 +173,10 @@ def main():
         if args.camera_id: ui('choose', 'Window', 'Camera / Webcam')
         ui('choose', 'VDO.Ninja (default)', 'UDP / MPEG-TS (LAN)'); ui('text', 'Output URL', destination)
         ui('choose', 'Auto (Hardware, then Software)', 'NVIDIA NVENC' if args.encoder=='nvenc' else 'Software (x264 / VP9 / AV1 / HEVC)')
-        ui('choose', '1280x720', '960x540'); ui('choose', '60', '30')
-        if args.camera_id: ui('choose', '1920x1080', '1280x720')
+        if args.camera_id:
+            ui('choose', '1920x1080', '1280x720')
+        else:
+            ui('choose', '1280x720', '960x540'); ui('choose', '60', '30')
         rows = json.loads(ui('dump'))
         selected_audio = next(r['name'] for r in rows if r['role']=='combo box' and r['name'] in ['Selected window/app audio','Selected microphone/input','No audio'])
         if selected_audio != 'No audio': ui('choose', selected_audio, 'No audio')
