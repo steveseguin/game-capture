@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Explicit-permission preview before publishing now passed the bounded workflows in linux_local_window_preview_checkpoint. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Explicit-permission preview before publishing now passed the bounded workflows in linux_local_window_preview_checkpoint. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_nvenc_750ti_checkpoint: NVIDIA 580 driver now works and an owned-software-compositor H.264 NVENC lifecycle passes, but NVIDIA-backed headless capture delivers about one fresh image per second with both encoders; the full surfaceless resize/late-viewer workflow also fails with capture stalling after resize. Physical GNOME/NVIDIA and these failures remain unqualified."
     },
     {
       "id": "x11-window",
@@ -71,8 +71,8 @@
     {
       "id": "hardware-encoding",
       "required": true,
-      "status": "unqualified",
-      "remaining": "NVIDIA path requires working accessible driver. NVENC probe currently fails CUDA_ERROR_NO_DEVICE. Future hardware backends remain extensible; never claim unavailable devices qualified."
+      "status": "bounded-e2e-passed",
+      "remaining": "See linux_nvenc_750ti_checkpoint: incompatible NVIDIA 595-open replaced with proprietary 580.178.04 and rebooted. The accessible GTX 750 Ti now passes packaged H.264 NVENC GUI workflows at 960x540/30: full X11 moving/static/resize/late-viewer/Stop and dedicated owned-Wayland moving/late-viewer/Stop/fresh-grant/restart/Stop. Physical desktops, full Wayland resize (failed), NVIDIA-backed compositor capture cadence (failed with both software and NVENC), higher rates/resolutions, audio/external outputs, rate control, failures and endurance remain unqualified. No HEVC/AV1 or unavailable hardware is qualified. Future device/backend extensibility remains required. See linux_encoder_portability_checkpoint: Linux ARM first-run defaults now use 720p30; native ARM testing, per-device/per-codec runtime discovery and additional VA-API/Intel/V4L2/vendor backends remain open. This policy change qualifies no additional hardware."
     },
     {
       "id": "vdo-direct",
@@ -34226,5 +34226,531 @@
       "temporaryDirectoryRemoved": true
     },
     "remaining": "Windows/macOS build and packaged regression evidence for this combined candidate remains required before merge. Existing Mac hosted jobs pin older release assets. Mac PR #7 is a dependency. Linux stays experimental with all existing hardware, physical desktop/portal, timing/endurance and wider workflow gaps retained."
+  },
+  "linux_nvenc_750ti_checkpoint": {
+    "recordedAtUtc": "2026-10-19T05:04:26.974218+00:00",
+    "scope": "Bounded packaged H.264 NVENC functional workflows on the accessible GTX 750 Ti. This is not complete hardware or Linux parity qualification.",
+    "hardware": {
+      "gpu": "NVIDIA GeForce GTX 750 Ti",
+      "pciId": "10de:1380",
+      "driver": "580.178.04 proprietary",
+      "previousDriver": "595.99.02 open (incompatible)",
+      "kernel": "6.8.0-147-generic",
+      "bootId": "6ae014e0-9eac-4fa5-8e3b-9a92500d54bb"
+    },
+    "driverChange": "Ubuntu nvidia-driver-580 and matching libnvidia-encode-580 installed; DKMS modules installed for both 6.8.0-146 and 6.8.0-147; reboot completed. nvidia-smi and kernel driver binding now succeed.",
+    "package": {
+      "package": "/home/ubuntu/code/game-capture-linux-integration/native-qt/dist/game-capture-0.2.65~linux.2-amd64-288cb28e6002-382001ac9700.deb",
+      "sha256": "6f2bbf16d25505b39252ac90289ae1fdc1fa9280fb161eb9f50ae7b5d35ab1ee",
+      "payload": "/home/ubuntu/code/game-capture-linux-integration/native-qt/dist/game-capture-0.2.65~linux.2-amd64-288cb28e6002-382001ac9700",
+      "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3"
+    },
+    "probe": {
+      "classification": "FFmpeg NVENC availability probe, not application testing",
+      "passed": true,
+      "log": "/home/ubuntu/.local/state/game-capture-nvidia-580/nvenc-probe.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "x11": {
+      "application": {
+        "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/x11-nvenc/application/ef0108e2-9297-4349-892c-7d6aed174dd8/results.json",
+        "sha256": "4d0739a3fc4b481659713f2d9f97cfed366e9c4399158b1376e0b711203512cf",
+        "passed": true,
+        "harnessSha256": "49a3e8d161f0d481202174dcb03e0287643d1fc9d576769a417e05e3656cce13",
+        "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+        "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+        "activeEncoder": "h264_nvenc",
+        "hardwareEncoder": true,
+        "guiStopSettled": true,
+        "exitCode": 0,
+        "distinctDecodedIdentities": {
+          "moving": 179,
+          "static": 1,
+          "resized": 119,
+          "late": 90
+        },
+        "configured": {
+          "codec": "h264",
+          "encoder": "nvenc",
+          "width": 960,
+          "height": 540,
+          "fps": 30,
+          "bitrateKbps": 4000
+        },
+        "encoderCounters": {
+          "framesCaptured": 284,
+          "framesSent": 231,
+          "encodeFailures": 0,
+          "encodeTimeouts": 0
+        }
+      },
+      "desktop": {
+        "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/x11-nvenc/desktop/2be18a88-e989-4217-bb13-6f2707db54f7/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "passed": true,
+        "harnessSha256": "76c1b99026a2bf6e02c445cfd8e6afabd44412ae60ac1b840b02c118d4d270c0",
+        "exitCode": 0
+      }
+    },
+    "wayland": {
+      "application": {
+        "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/wayland-nvenc-lifecycle/application/8ce30616-aab0-4537-9bb1-478974d705f9/results.json",
+        "sha256": "2ef0c0f8e93d9cf0132b1766cc20a06e4918600590b7a6725eba14b021417a21",
+        "passed": true,
+        "harnessSha256": "5c2f4348b961c730aac7beaaa8bb71f3f5c56340c50e74cc8188aeeee45ade65",
+        "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+        "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+        "activeEncoder": "h264_nvenc",
+        "hardwareEncoder": true,
+        "guiStopSettled": true,
+        "guiRestartPassed": true,
+        "restartEncoderVerified": true,
+        "exitCode": 0,
+        "distinctDecodedIdentities": {
+          "moving": 180,
+          "late": 87,
+          "restarted": 120
+        },
+        "configured": {
+          "codec": "h264",
+          "encoder": "nvenc",
+          "width": 960,
+          "height": 540,
+          "fps": 30,
+          "bitrateKbps": 4000
+        },
+        "encoderCounters": {
+          "framesCaptured": 284,
+          "framesSent": 228,
+          "encodeFailures": 0,
+          "encodeTimeouts": 0
+        }
+      },
+      "compositor": {
+        "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/wayland-nvenc-lifecycle/compositor/14707dc3-910d-4e04-baaa-7f8d29de6c00/results.json",
+        "sha256": "0c4abee453c649faa7cac01203ecee486c40f2f74164e2a61a05cb2d59729ea7",
+        "passed": true,
+        "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+        "ownedProcessesRetired": true,
+        "temporaryDirectoryRemoved": true,
+        "compositorSurvived": true,
+        "exitCode": 0
+      },
+      "keyring": {
+        "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/wayland-nvenc-lifecycle/keyring/95cee9cd-d1fd-4985-9082-4ba8eb0565d5/results.json",
+        "sha256": "c742f673056141db496e17fac149b8c93c6b58a4e72f81e6c38ff807aec34350",
+        "passed": true,
+        "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+        "ownedProcessesRetired": true,
+        "exitCode": 0
+      }
+    },
+    "workflow": "Actual packaged Qt GUI selects NVIDIA NVENC and H.264, captures a real browser window, publishes to a real VDO.Ninja browser receiver, verifies decoded changing barcode identities and explicit hardware encoder diagnostics. X11 additionally covers static pacing, resize, late viewer, Stop and clean exit. Dedicated Wayland lifecycle covers late viewer, Stop, fresh portal grant, decoded restart on h264_nvenc, final Stop and clean exit.",
+    "fixtureLimits": "X11 uses Xvfb/xfwm4. Wayland uses an owned surfaceless GNOME compositor: bwrap hides only /dev/dri from the fixture; Mesa EGL and llvmpipe are selected while /dev/nvidia* remain available for real hardware NVENC. This is not physical desktop qualification. Commands and harness snapshots are retained with reports.",
+    "failures": {
+      "reports": {
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/reports/application/29203240-dd34-47b0-b63d-a230c0c200b6/results.json",
+          "sha256": "45ad7a85b07144be7703e8d51a0cdee05997e89e11dc90dd6271892f9810a122",
+          "passed": false,
+          "error": "Error: Initial Linux NVENC stream: only 7 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/.local/state/game-capture-nvidia-580/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/.local/state/game-capture-nvidia-580/e2e/linux-window-publish.js:285:74",
+          "harnessSha256": "2243c5d4d7519068702c8feb6da306cb007a5295063bf5a340be497060b8dfbb",
+          "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+          "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+          "exitCode": 0,
+          "distinctDecodedIdentities": {
+            "moving": 7
+          },
+          "configured": {
+            "codec": "h264",
+            "encoder": "nvenc",
+            "width": 960,
+            "height": 540,
+            "fps": 30,
+            "bitrateKbps": 4000
+          },
+          "encoderCounters": null
+        },
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/reports/compositor/4745f2fc-2171-449a-8e76-20a5e88718c9/results.json",
+          "sha256": "8c2a980c784ccdb6dc9fa7a56086b723dd44a1100d5ca7d86edb3dd6155b76f5",
+          "passed": false,
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true,
+          "compositorSurvived": true,
+          "exitCode": 1
+        },
+        "keyring": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/reports/keyring/f33219f7-0932-4911-8838-e5e6fc75f52c/results.json",
+          "sha256": "e714fe8b4923c0c662e7ad32f0abe9c8fab0dd2a1ca03ddfcac5b2f963d9a871",
+          "passed": false,
+          "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+          "ownedProcessesRetired": true,
+          "exitCode": 1
+        }
+      },
+      "software-control": {
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/software-control/application/f66d3385-3a32-45e8-8b65-4e9bd999d215/results.json",
+          "sha256": "84477b0f14234342b02d9af306b927026e90832b2e946f4133d648e517206cd4",
+          "passed": false,
+          "error": "Error: Initial Linux software stream: only 7 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/.local/state/game-capture-nvidia-580/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/.local/state/game-capture-nvidia-580/e2e/linux-window-software-control.js:285:395",
+          "harnessSha256": "bc32a87d87b29d3910cd0151810bcf66c6f8631a4521c3b74609922078eb1a87",
+          "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+          "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+          "exitCode": 0,
+          "distinctDecodedIdentities": {
+            "moving": 7
+          },
+          "configured": {
+            "codec": "h264",
+            "encoder": "software",
+            "width": 960,
+            "height": 540,
+            "fps": 30,
+            "bitrateKbps": 4000
+          },
+          "encoderCounters": null
+        },
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/software-control/compositor/a2f396d6-b602-44b5-bd77-a8b5cca21035/results.json",
+          "sha256": "b2fa575859963e01f62fb9dd7d7fbb62ca61c4e2228312e12aa72a9007a568e8",
+          "passed": false,
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true,
+          "compositorSurvived": true,
+          "exitCode": 1
+        },
+        "keyring": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/software-control/keyring/d4dc5b13-b713-4e6c-a4b4-300a0f3dcaf1/results.json",
+          "sha256": "4a5a3147ba3947c72b255a9c9a0856a8631687ef5862b11296930ee08b8f2c0c",
+          "passed": false,
+          "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+          "ownedProcessesRetired": true,
+          "exitCode": 1
+        }
+      },
+      "foreground-nvenc": {
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/foreground-nvenc/application/ef357764-2b9f-40e3-9259-0c73b133dc80/results.json",
+          "sha256": "340f5f5bfe63ac6ea852eb99ca06c24cc60b098c7b20048ca51b7729b23af17b",
+          "passed": false,
+          "error": "Error: Initial Linux NVENC stream: only 7 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/.local/state/game-capture-nvidia-580/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/.local/state/game-capture-nvidia-580/e2e/linux-window-publish.js:285:441",
+          "harnessSha256": "b0b312337dac59620a49c532b190149b60241d9ec8835fb03616e1684686f703",
+          "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+          "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+          "exitCode": 0,
+          "distinctDecodedIdentities": {
+            "moving": 7
+          },
+          "configured": {
+            "codec": "h264",
+            "encoder": "nvenc",
+            "width": 960,
+            "height": 540,
+            "fps": 30,
+            "bitrateKbps": 4000
+          },
+          "encoderCounters": null
+        },
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/foreground-nvenc/compositor/7fe759f6-da53-470f-9431-150397eeb1cb/results.json",
+          "sha256": "f4ca293bc6679388f23f056e7c093f5ebc3b82b030dfde3424aa94ba7d719a2a",
+          "passed": false,
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true,
+          "compositorSurvived": true,
+          "exitCode": 1
+        },
+        "keyring": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/foreground-nvenc/keyring/1be24abe-692b-416f-9d63-ec9557cb0704/results.json",
+          "sha256": "5ea7d7ed1102028c92c6ebd7aa69c796387c558fbcfcc3b5b883e2282487f82f",
+          "passed": false,
+          "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+          "ownedProcessesRetired": true,
+          "exitCode": 1
+        }
+      },
+      "mesa-compositor-nvenc": {
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/mesa-compositor-nvenc/compositor/f723b203-9d78-4552-b099-ed5c32b756bb/results.json",
+          "sha256": "3e2ddff9640916b18aef25c7308019aa8b3f86a83023e8758a6e2be47c584798",
+          "passed": false,
+          "error": "AssertionError('Owned desktop service exited')",
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true
+        }
+      },
+      "isolated-mesa-nvenc": {
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/isolated-mesa-nvenc/application/57870a94-c26c-494e-9527-e05c06f3b2e2/results.json",
+          "sha256": "f6fb3383dcf219bc567f8856e65445b691958d2e57f02e4fd4d2b2802c944b05",
+          "passed": false,
+          "error": "Error: Late Linux receiver: only 1 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/.local/state/game-capture-nvidia-580/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/.local/state/game-capture-nvidia-580/e2e/linux-window-publish.js:366:105",
+          "harnessSha256": "b0b312337dac59620a49c532b190149b60241d9ec8835fb03616e1684686f703",
+          "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+          "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+          "activeEncoder": "h264_nvenc",
+          "hardwareEncoder": true,
+          "exitCode": 0,
+          "distinctDecodedIdentities": {
+            "moving": 179,
+            "static": 1,
+            "resized": 75,
+            "late": 1
+          },
+          "configured": {
+            "codec": "h264",
+            "encoder": "nvenc",
+            "width": 960,
+            "height": 540,
+            "fps": 30,
+            "bitrateKbps": 4000
+          },
+          "encoderCounters": {
+            "framesCaptured": 283,
+            "framesSent": 231,
+            "encodeFailures": 0,
+            "encodeTimeouts": 0
+          }
+        },
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/isolated-mesa-nvenc/compositor/e986ab04-d429-477c-8e53-819e303025f4/results.json",
+          "sha256": "5209ac5a223f4c33883fa13769ca5a97dada62b64b7248376e40bc60dbacfdc7",
+          "passed": false,
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true,
+          "compositorSurvived": true,
+          "exitCode": 1
+        },
+        "keyring": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/isolated-mesa-nvenc/keyring/21d33aee-7a70-48f6-b0f7-a2dd064cabaf/results.json",
+          "sha256": "369452c99648d7bd727344224bc03d4392b0c16d014a9834bf956948f0c7e24d",
+          "passed": false,
+          "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+          "ownedProcessesRetired": true,
+          "exitCode": 1
+        }
+      },
+      "isolated-mesa-nvenc-visible": {
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/isolated-mesa-nvenc-visible/application/c64a4ae2-3773-47ea-84e4-a566b4fc803c/results.json",
+          "sha256": "a610f77ffcc03901313820ba262140ba2d1be8bffa434b083291d66f28423bb3",
+          "passed": false,
+          "error": "Error: Late Linux receiver: only 1 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/.local/state/game-capture-nvidia-580/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/.local/state/game-capture-nvidia-580/e2e/linux-window-publish.js:366:264\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)",
+          "harnessSha256": "49a3e8d161f0d481202174dcb03e0287643d1fc9d576769a417e05e3656cce13",
+          "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+          "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+          "activeEncoder": "h264_nvenc",
+          "hardwareEncoder": true,
+          "exitCode": 0,
+          "distinctDecodedIdentities": {
+            "moving": 179,
+            "static": 1,
+            "resized": 59,
+            "late": 1
+          },
+          "configured": {
+            "codec": "h264",
+            "encoder": "nvenc",
+            "width": 960,
+            "height": 540,
+            "fps": 30,
+            "bitrateKbps": 4000
+          },
+          "encoderCounters": {
+            "framesCaptured": 283,
+            "framesSent": 233,
+            "encodeFailures": 0,
+            "encodeTimeouts": 0
+          }
+        },
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/isolated-mesa-nvenc-visible/compositor/d9a853bf-86e0-4200-a57c-e6ad9f716f90/results.json",
+          "sha256": "05fc1ff1b8536e552b0e8a92fb24b49f80371f15897b691f37c9569345e8ad8a",
+          "passed": false,
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true,
+          "compositorSurvived": true,
+          "exitCode": 1
+        },
+        "keyring": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/isolated-mesa-nvenc-visible/keyring/96ea0690-97b1-421f-bd46-0e7f32c22c4d/results.json",
+          "sha256": "da3c8b9f59bc2a30953865c721936412b5f5b0c9cb4c6d7be5d68d59b29e792e",
+          "passed": false,
+          "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+          "ownedProcessesRetired": true,
+          "exitCode": 1
+        }
+      },
+      "software-source-nvenc": {
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/software-source-nvenc/application/5fead52c-7212-42e9-a11c-ff45016bb0ea/results.json",
+          "sha256": "262b470d2381b5ad325d8096dcd5d9ac5a8916b59eccc0e2b9c8b9bf4049d037",
+          "passed": false,
+          "error": "Error: Initial Linux NVENC stream: only 1 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/.local/state/game-capture-nvidia-580/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/.local/state/game-capture-nvidia-580/e2e/linux-window-publish.js:285:441",
+          "harnessSha256": "1348f0742e2f93803cc681b6c1cf4507f2a9f9f543112897f9291b77b61d72dc",
+          "executableSha256": "288cb28e6002e70d08974c8dfa6ff3b70086573a77f65d362334b5cd61e31d66",
+          "manifestSha256": "ea3ff8eeb89d68db074e7608016c19d7e1a7e66edd50c369ed0fd0459bbdc3e3",
+          "exitCode": 0,
+          "distinctDecodedIdentities": {
+            "moving": 1
+          },
+          "configured": {
+            "codec": "h264",
+            "encoder": "nvenc",
+            "width": 960,
+            "height": 540,
+            "fps": 30,
+            "bitrateKbps": 4000
+          },
+          "encoderCounters": null
+        },
+        "compositor": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/software-source-nvenc/compositor/f0542cc7-f21d-43ec-af0a-625cf8b8c58d/results.json",
+          "sha256": "87edb6426d6d42e487232702460e5b3b1718c0f0cc24abef467dafada88bd700",
+          "passed": false,
+          "harnessSha256": "8f5f633b242884ee9a110e1077ef6451f2b11e659ca62099a861b74635b5d85e",
+          "ownedProcessesRetired": true,
+          "temporaryDirectoryRemoved": true,
+          "compositorSurvived": true,
+          "exitCode": 1
+        },
+        "keyring": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/software-source-nvenc/keyring/b09ab126-5248-4e21-8cf3-7d0150ff8304/results.json",
+          "sha256": "d515cde298f5e466a47f70f3e57694292dd6432b391289a646950a362a51f953",
+          "passed": false,
+          "harnessSha256": "0825a4c8ed229af094de5f853c1947125a39bc9b79ee01e52d9b0b5c00659957",
+          "ownedProcessesRetired": true,
+          "exitCode": 1
+        }
+      }
+    },
+    "failureAnalysis": "With the newly working NVIDIA driver, the supposedly software headless compositor selects NVIDIA GBM despite LIBGL_ALWAYS_SOFTWARE; both NVENC and software capture get about one fresh image per second. Isolating /dev/dri restores the initial 30fps capture/encode workflow, but full Wayland resizing later leaves roughly one fresh captured image per second while the fixture JavaScript animation continues. Foregrounding and browser occlusion flags do not resolve it. Disabling browser GPU rendering also failed. The dedicated unresized lifecycle passes. Keep the failed resize and NVIDIA-backed compositor cases open; no threshold was lowered and no full-workflow pass is claimed.",
+    "remaining": "Physical Xorg/GNOME Wayland capture with NVIDIA 580, the failed Wayland resize/cadence workflow, higher resolutions/frame rates, audio with NVENC, external outputs, rate control, device/encoder failures, endurance and calibrated A/V remain unqualified. HEVC/AV1 and unavailable hardware are not qualified by this H.264 evidence.",
+    "cleanup": "All runs terminal. Passing workflow fixtures report clean retirement. One-time startup verification service disabled and removed; no recurring job remains."
+  },
+  "linux_encoder_portability_checkpoint": {
+    "recordedAtUtc": "2026-10-19T05:17:53.280804+00:00",
+    "scope": "Conservative first-run Linux ARM policy and documented broad encoding requirements; no new hardware backend or ARM package delivered.",
+    "policy": "Linux ARM32/ARM64 first-run window encoding uses H.264, 1280x720 at 30 fps, 4000 kbps and existing Auto/software-fallback behavior. Shared GUI/CLI/core defaults agree. Existing profiles and explicit settings take precedence. Other platform defaults remain unchanged.",
+    "productionChange": "native-qt/include/versus/media_defaults.h; Linux ARM-only VideoFps conditional",
+    "documentation": "docs/streaming-defaults.md: Linux encoding coverage and ARM defaults",
+    "gates": {
+      "policyBranchCompilation": {
+        "classification": "Header policy compilation gates only; architecture macros select policy branches in the host compiler. Not ARM/Windows/macOS builds or application testing.",
+        "results": [
+          {
+            "name": "linux-x86",
+            "expectedFps": 60,
+            "passed": true,
+            "stderr": ""
+          },
+          {
+            "name": "linux-arm64-policy",
+            "expectedFps": 30,
+            "passed": true,
+            "stderr": ""
+          },
+          {
+            "name": "linux-arm32-policy",
+            "expectedFps": 30,
+            "passed": true,
+            "stderr": ""
+          },
+          {
+            "name": "mac-arm64-policy",
+            "expectedFps": 60,
+            "passed": true,
+            "stderr": ""
+          },
+          {
+            "name": "windows-policy",
+            "expectedFps": 60,
+            "passed": true,
+            "stderr": ""
+          }
+        ]
+      },
+      "releaseBuild": {
+        "passed": true,
+        "log": "/tmp/game-capture-encoder-defaults-build.log",
+        "sha256": "81f2e72cf02497d412826ae97ca821771c146eeac5d4d83a07508df8a3f979ad"
+      },
+      "platformCapabilities": {
+        "passed": true,
+        "log": "/tmp/game-capture-encoder-defaults-gates.log",
+        "sha256": "e192bb73d0a0e06250db08733b74a092a88b1c7e5012b95678636a22b81cb075"
+      }
+    },
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-64fd58d01163-a9235e93e1ea.deb",
+      "sha256": "f6e5f12448025c89c9545f0cae7bc910e4a8283a9e7200e34eb7de6697673874",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-64fd58d01163-a9235e93e1ea",
+      "manifestSha256": "43617759a6d05b4b62deea396bad52f26b3c22c3827342cd1d9557355a4af2c0"
+    },
+    "applicationTesting": {
+      "scope": "Actual x86-64 packaged Qt GUI in owned X11 desktop: existing 1280x720/60 controls selected, explicit NVENC/H.264 at 960x540/30, received moving/static/resized/late-viewer media, GUI Stop and clean exit. The unchanged default is verified by selecting the original 60-fps combo before changing to 30. No ARM runtime or performance qualification.",
+      "reports": {
+        "desktop": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/x11-encoder-defaults/desktop/040a67bb-f5b3-4698-ad0d-655cd67aaaee/results.json",
+          "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+          "passed": true
+        },
+        "application": {
+          "file": "/home/ubuntu/.local/state/game-capture-nvidia-580/x11-encoder-defaults/application/bace5143-7aff-4e84-9510-446811684b4f/results.json",
+          "sha256": "3c27f7acfcdb03bd0fe5053f3a7145979ba6f8bdd844c303a1576f2635fc94ba",
+          "passed": true,
+          "activeEncoder": "h264_nvenc",
+          "hardwareEncoder": true,
+          "configured": {
+            "noTray": false,
+            "tray": false,
+            "trayCopyFocus": false,
+            "trayCopy": "tray",
+            "preview": false,
+            "backend": "x11",
+            "encoder": "nvenc",
+            "codec": "h264",
+            "width": 960,
+            "height": 540,
+            "external": false,
+            "gui": true,
+            "rateControl": false,
+            "portalCancel": false,
+            "pendingQuit": false,
+            "pendingStop": false,
+            "sourceLoss": false,
+            "targetBitrateKbps": null,
+            "noiseGrid": null,
+            "fps": 30,
+            "bitrateKbps": 4000,
+            "audio": "none",
+            "previewBeforeLive": false,
+            "previewQuit": false,
+            "idleSource": false
+          },
+          "distinctDecodedIdentities": {
+            "moving": 179,
+            "static": 1,
+            "resized": 120,
+            "late": 90
+          }
+        }
+      }
+    },
+    "remaining": [
+      "Native ARM64 build/package and packaged default/persistence/live-media workflows require the target board and distribution; no ARM testing has been completed.",
+      "Linux encoder discovery currently uses an NVIDIA device-node hint in the GUI and initialization at start. Per-device/per-codec bounded runtime discovery, refresh and actionable unavailable reasons remain to implement.",
+      "VA-API/Intel and suitable V4L2/vendor ARM hardware backends are not integrated. Choose and qualify against accessible hardware, not the architecture name.",
+      "Keep explicit selections strict, portable software H.264 fallback, shared UI/core and accurate active-encoder/fallback diagnostics as new backends are added.",
+      "The previous NVIDIA-backed compositor and Wayland resize failures remain open. No broader hardware, timing, endurance or platform parity claim is made."
+    ]
   }
 }

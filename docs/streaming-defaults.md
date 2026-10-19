@@ -77,6 +77,48 @@ migration. The initial failed foreground-activation attempt remains recorded;
 the accepted PID-scoped preference workflow does not qualify activation or add
 new live-media coverage. [Review evidence and retained attempt](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-defaults-review).
 
+## Linux encoding coverage and ARM defaults
+
+Linux ARM starts at **1280 x 720, 30 fps, 4,000 kbps**, H.264 and
+128 kbps Opus. Linux x86-64 retains 720p60. The shared defaults apply to the
+GUI, CLI and core; saved preferences and explicit choices take precedence.
+30 fps reduces the initial workload, but is not a performance guarantee for
+every ARM board. Software HEVC, AV1 and VP9 remain deliberate codec choices,
+not automatic first-run upgrades. ARM packaging and native device qualification
+are still outstanding.
+
+The Linux backend currently integrates libx264, libx265, libvpx/VP9 and libaom,
+subject to the installed libavcodec build, and NVIDIA NVENC. A compiled encoder,
+a device node or a successful initialization is not sufficient to claim that a
+particular codec, size and frame rate works. For example, qualifying H.264 on
+the GTX 750 Ti does not qualify HEVC or AV1 on that card.
+
+The expansion policy is:
+
+- Keep H.264 as the compatibility default and software H.264 as the portable
+  fallback. Auto may choose working hardware; an explicit hardware selection
+  must fail clearly rather than silently becoming a CPU encoder.
+- Discover codec support per backend and device. Keep compiled availability,
+  runtime availability and packaged workflow qualification separate. Startup
+  must still validate the actual requested configuration, because drivers,
+  permissions, resource limits and connected devices can change.
+- Add Linux VA-API/Intel support and board-specific ARM paths through the
+  existing encoder/packet interface. V4L2 and vendor multimedia interfaces are
+  candidates, not assumptions that all ARM boards expose an encoder. These
+  backends are not yet integrated or qualified by this policy.
+- Retain one shared UI and core. New choices should describe usable codecs and
+  show the active encoder and fallback reason. Do not silently change an
+  explicitly selected codec, resolution, frame rate or bitrate to make a
+  capability check pass.
+- Qualify each available device with packaged capture, received media,
+  Stop/restart and failure/recovery workflows, then establish its sustained
+  resolution/frame-rate limits. Keep unavailable hardware unqualified.
+
+See `native-qt/qa/linux-parity.json`, including `linux_nvenc_750ti_checkpoint`,
+for current evidence and failures. The ARM default is a conservative policy;
+x86 tests do not establish ARM performance or hardware support. Windows and
+macOS defaults are unchanged.
+
 ## Resolution and bandwidth choices
 
 The bitrate selector stays explicit: changing resolution does **not** silently increase upload bandwidth. Portrait and landscape with the same pixel count use the same starting budget.
