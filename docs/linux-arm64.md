@@ -102,7 +102,41 @@ GPU enumeration alone do not establish working capture or hardware encoding.
   encodes media that an independent receiver decodes. No NEON or default-profile
   changes are introduced.
 
-Changes should be reviewed in a draft PR into `linux-parity`. Do not merge or
-publish releases as part of bring-up. Full ARM parity, physical desktop/device
-coverage, Raspberry Pi measurements and other-platform regressions remain work
-for subsequent milestones.
+The initial ARM64 and portable-package work was merged into `linux-parity`.
+Full ARM parity, physical desktop/device coverage, Raspberry Pi measurements
+and other-platform regressions remain work for subsequent milestones.
+
+## Physical USB capture on ARM64
+
+[Camera evidence](../native-qt/qa/linux-arm-camera.json) records the separate
+physical-device milestone and retains failures. The connected MacroSilicon
+534d:2109 adapter supplies MJPEG at 1080p/30, but raw YUYV at that size is limited
+to 5 fps (720p YUYV is limited to 10 fps). The previous format preference chose
+raw video and the packaged app captured only about 5 fps, even though its
+encoded stream advertised 30 fps.
+
+Linux format selection now checks the driver's frame intervals for each format
+at the negotiated size. It preserves the closest resolution, prefers modes
+that meet the requested frame rate, and retains raw video when rates are equal
+or enumeration is unavailable. Fractional 29.97 fps counts as meeting a 30 fps
+request. MJPEG is considered only when its decoder is available; the actual
+negotiated interval is logged and known shortfalls produce a warning. This
+reuses the V4L2 backend on both ARM and amd64. Windows and Mac are unaffected.
+See the [V4L2 interval contract](https://docs.kernel.org/userspace-api/media/v4l/vidioc-enum-frameintervals.html).
+
+The packaged physical-device observer is `e2e/linux-camera-device.py`. Run it
+under `e2e/linux-private-desktop.py` with the package executable and exact
+manifest hash, plus `--camera-label='UVC Camera'` and optionally
+`--audio-label='2109 Analog Stereo'`. `--camera-resolution=1280x720` selects a
+smaller camera profile; the default exercises the app's 1920x1080/30 camera
+settings. It independently receives/decodes software H.264 and AAC, measures
+actual captured frames, checks rejection while an owned FFmpeg process uses
+the camera, verifies that owner's continued reception, then retries, restarts,
+quits and relaunches with saved settings. It also verifies camera FD and output
+helper retirement. The existing empty-camera observer accepts portable archives.
+
+The current physical HDMI input is black and silent. Successful transport,
+capture cadence and lifecycle results do not qualify moving HDMI content,
+color accuracy, audible input, A/V synchronization or sustained performance.
+The separate moving-window and mixed-tone workflow remains the content oracle;
+it accepts `--resolution=1280x720` to exercise the ARM first-run window profile.

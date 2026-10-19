@@ -1,4 +1,5 @@
 #include "versus/video/camera_capture.h"
+#include "versus/platform/linux_camera_format.h"
 #include "versus/webrtc/media_clock.h"
 #include <QDir>
 #include <QFileInfo>
@@ -52,6 +53,26 @@ AVPixelFormat pixelFormat(uint32_t code) {
 }
 bool jpeg(uint32_t code) { return code == V4L2_PIX_FMT_MJPEG || code == V4L2_PIX_FMT_JPEG; }
 bool validSize(uint32_t width, uint32_t height) { return width && height && width <= 8192 && height <= 8192; }
+
+double maximumFrameRate(int fd, const v4l2_pix_format &format) {
+    double maximum = 0;
+    // Enumeration is read-only and happens after acquiring this device's
+    // exclusive streaming handle. Some drivers do not implement it.
+    for (uint32_t index = 0; index < 256; ++index) {
+        v4l2_frmivalenum interval{};
+        interval.index = index; interval.pixel_format = format.pixelformat;
+        interval.width = format.width; interval.height = format.height;
+        if (control(fd, VIDIOC_ENUM_FRAMEINTERVALS, &interval) < 0) break;
+        v4l2_fract fastest{};
+        if (interval.type == V4L2_FRMIVAL_TYPE_DISCRETE) fastest = interval.discrete;
+        else if (interval.type == V4L2_FRMIVAL_TYPE_CONTINUOUS || interval.type == V4L2_FRMIVAL_TYPE_STEPWISE)
+            fastest = interval.stepwise.min;
+        if (fastest.numerator && fastest.denominator)
+            maximum = std::max(maximum, double(fastest.denominator) / fastest.numerator);
+        if (interval.type != V4L2_FRMIVAL_TYPE_DISCRETE) break;
+    }
+    return maximum;
+}
 
 // Resources belong exclusively to the capture worker. Stop requests never close
 // an fd underneath an ioctl or a frame callback.
@@ -115,7 +136,8 @@ struct CameraCapture::Impl {
             deviceError("Could not acquire the selected camera"); return;
         }
         v4l2_format selected{};
-        int64_t best = std::numeric_limits<int64_t>::max();
+        std::tuple<int64_t, double, bool> best{std::numeric_limits<int64_t>::max(), 0, false};
+        const auto *mjpegDecoder = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
         for (uint32_t index = 0; running; ++index) {
             v4l2_fmtdesc description{}; description.type = V4L2_BUF_TYPE_VIDEO_CAPTURE; description.index = index;
             if (control(fd, VIDIOC_ENUM_FMT, &description) < 0) break;
@@ -125,10 +147,11 @@ struct CameraCapture::Impl {
             candidate.fmt.pix.pixelformat = description.pixelformat; candidate.fmt.pix.field = V4L2_FIELD_NONE;
             if (control(fd, VIDIOC_TRY_FMT, &candidate) < 0 || !validSize(candidate.fmt.pix.width, candidate.fmt.pix.height)) continue;
             if (pixelFormat(candidate.fmt.pix.pixelformat) == AV_PIX_FMT_NONE && !jpeg(candidate.fmt.pix.pixelformat)) continue;
+            if (jpeg(candidate.fmt.pix.pixelformat) && !mjpegDecoder) continue;
             if (candidate.fmt.pix.field != V4L2_FIELD_NONE) continue;
-            const int64_t score = (std::abs(int64_t(candidate.fmt.pix.width) - width) +
-                                   std::abs(int64_t(candidate.fmt.pix.height) - height)) * 100 +
-                                   (jpeg(candidate.fmt.pix.pixelformat) ? 10 : 0);
+            const double maximumFps = maximumFrameRate(fd, candidate.fmt.pix);
+            const auto score = detail::linuxCameraFormatRank(candidate.fmt.pix.width, candidate.fmt.pix.height,
+                width, height, fps, maximumFps, jpeg(candidate.fmt.pix.pixelformat));
             if (score < best) { best = score; selected = candidate; }
         }
         if (!selected.type) { fail("No supported progressive RGB, YUV, or MJPEG camera format is available."); return; }
@@ -141,14 +164,18 @@ struct CameraCapture::Impl {
         v4l2_streamparm parameters{}; parameters.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         parameters.parm.capture.timeperframe = {1, uint32_t(fps)};
         // Fixed-rate devices may reject S_PARM. Always report the actual rate.
-        control(fd, VIDIOC_S_PARM, &parameters);
-        control(fd, VIDIOC_G_PARM, &parameters);
-        const auto interval = parameters.parm.capture.timeperframe;
+        const bool setInterval = control(fd, VIDIOC_S_PARM, &parameters) == 0;
+        v4l2_streamparm actual{}; actual.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+        const bool readInterval = control(fd, VIDIOC_G_PARM, &actual) == 0;
+        const auto interval = readInterval ? actual.parm.capture.timeperframe :
+            setInterval ? parameters.parm.capture.timeperframe : v4l2_fract{};
         const std::string fourcc{char(pix.pixelformat), char(pix.pixelformat >> 8), char(pix.pixelformat >> 16), char(pix.pixelformat >> 24)};
         spdlog::info("[V4L2] Negotiated {} {}x{}, interval {}/{}, colorspace {}, YCbCr {}, range {}",
             fourcc, pix.width, pix.height, interval.numerator, interval.denominator, pix.colorspace, pix.ycbcr_enc, pix.quantization);
+        if (interval.numerator && interval.denominator && double(interval.denominator) / interval.numerator < fps * 0.99)
+            spdlog::warn("[V4L2] Device supplies {:.2f} fps for requested {} fps", double(interval.denominator) / interval.numerator, fps);
         if (jpeg(pix.pixelformat)) {
-            const auto *codec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
+            const auto *codec = mjpegDecoder;
             session.decoder = codec ? avcodec_alloc_context3(codec) : nullptr;
             session.decoded = av_frame_alloc(); session.packet = av_packet_alloc();
             if (!session.decoder || !session.decoded || !session.packet || avcodec_open2(session.decoder, codec, nullptr) < 0) {

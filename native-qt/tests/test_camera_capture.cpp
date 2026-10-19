@@ -9,6 +9,9 @@
 #include <iterator>
 
 #include "versus/video/camera_capture.h"
+#ifdef __linux__
+#include "versus/platform/linux_camera_format.h"
+#endif
 
 class TestCameraCapture : public QObject {
     Q_OBJECT
@@ -16,8 +19,27 @@ class TestCameraCapture : public QObject {
   private slots:
     void testCameraEnumerationReturnsUniqueUsableIds();
     void testInvalidCameraIdRejected();
+#ifdef __linux__
+    void testLinuxCameraFormatCadencePreference();
+#endif
     void testOptInCameraLifecycleStress();
 };
+
+#ifdef __linux__
+void TestCameraCapture::testLinuxCameraFormatCadencePreference() {
+    const auto rank = [](double maximumFps, bool compressed, int width = 1920, int height = 1080) {
+        return versus::video::detail::linuxCameraFormatRank(width, height, 1920, 1080, 30, maximumFps, compressed);
+    };
+    // USB2 capture adapters can expose 1080p YUYV at 5 fps and MJPEG at 30.
+    QVERIFY(rank(30, true) < rank(5, false));
+    QVERIFY(rank(30, false) < rank(30, true));
+    QVERIFY(rank(30000.0 / 1001, false) < rank(30, true));
+    QVERIFY(rank(25, true) < rank(5, false));
+    QVERIFY(rank(0, false) < rank(0, true)); // No interval enumeration.
+    QVERIFY(rank(0, false) < rank(30, true)); // Preserve an unknown raw mode.
+    QVERIFY(rank(30, true) < rank(60, false, 1280, 720)); // Preserve requested size.
+}
+#endif
 
 void TestCameraCapture::testCameraEnumerationReturnsUniqueUsableIds() {
     versus::video::CameraCapture capture;

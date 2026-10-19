@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--publisher', required=True, type=Path)
     parser.add_argument('--manifest-sha256', required=True)
     parser.add_argument('--reports', required=True, type=Path)
+    parser.add_argument('--resolution', choices=['960x540', '1280x720'], default='960x540')
     args = parser.parse_args()
     assert os.getuid() != 0 and os.environ.get('GC_QA_PRIVATE_DESKTOP')
     assert os.environ.get('QT_QPA_PLATFORM') == 'xcb'
@@ -54,7 +55,7 @@ def main():
     result = {'scope':__doc__, 'passed':False, 'architecture':manifest['architecture'],
               'kernel':platform.release(), 'packageManifestSha256':sha(manifest_path),
               'executableSha256':sha(exe), 'sourceTreeSha256':manifest['sourceTreeSha256'],
-              'profile':{'resolution':'960x540', 'fps':30, 'bitrateKbps':4000, 'encoder':'software libx264',
+              'profile':{'resolution':args.resolution, 'fps':30, 'bitrateKbps':4000, 'encoder':'software libx264',
                          'transport':'loopback UDP/MPEG-TS', 'audio':'system + microphone, AAC stereo'},
               'phases':[], 'harnesses':{}}
     for name in [Path(__file__).name, 'linux-ui-control.py', 'linux-installed-desktop.py']:
@@ -114,7 +115,7 @@ def main():
             ui('press', 'Show advanced settings')
         if restore:
             controls = rows()
-            for name in ['Software (x264 / VP9 / AV1 / HEVC)', '960x540', '30',
+            for name in ['Software (x264 / VP9 / AV1 / HEVC)', args.resolution, '30',
                          'System audio (all apps)', result['microphoneLabel'], 'UDP / MPEG-TS (LAN)']:
                 assert any(r['role']=='combo box' and r['name']==name for r in controls), 'Saved setting missing: '+name
             assert json.loads(ui('read-text', 'Output URL')) == destination
@@ -130,7 +131,11 @@ def main():
             ui('press', 'Audio encoding')
             ui('text', 'Output URL', destination)
             ui('choose', 'Auto (Hardware, then Software)', 'Software (x264 / VP9 / AV1 / HEVC)')
-            ui('choose', '1280x720', '960x540'); ui('choose', '60', '30')
+            expected_fps = '30' if manifest['architecture'] == 'arm64' else '60'
+            assert any(r['role']=='combo box' and r['name']==expected_fps for r in rows()), 'Incorrect first-run frame rate'
+            result['initialWindowFps'] = int(expected_fps)
+            if args.resolution != '1280x720': ui('choose', '1280x720', args.resolution)
+            if expected_fps != '30': ui('choose', expected_fps, '30')
             audio = next(r['name'] for r in rows() if r['role']=='combo box' and r['name'] in ['No audio', 'Selected window/app audio'])
             ui('choose', audio, 'System audio (all apps)')
             ui('choose-prefix', 'No microphone', 'ARMBringupMicrophone')
@@ -188,7 +193,7 @@ def main():
         probe = json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(transport)], text=True))
         video = next(s for s in probe['streams'] if s['codec_type']=='video')
         audio = next(s for s in probe['streams'] if s['codec_type']=='audio')
-        assert video['codec_name']=='h264' and (video['width'],video['height'])==(960,540)
+        assert video['codec_name']=='h264' and (video['width'],video['height'])==tuple(map(int,args.resolution.split('x')))
         assert audio['codec_name']=='aac' and audio['channels']==2
         raw = report/(label+'.rgb'); pcm = report/(label+'.f32')
         subprocess.run(['ffmpeg','-v','error','-threads','2','-filter_threads','1','-i',str(transport),

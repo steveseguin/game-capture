@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "scope": "Bounded physical UVC capture on native ARM64; shared Linux format negotiation and portable package robustness",
+  "status": "preview physical camera lifecycle passed; final exact-artifact matrix pending",
+  "recordedAtUtc": "2026-10-19T06:09:30.860047+00:00",
+  "parentLedgers": [
+    "linux-parity.json",
+    "linux-arm64.json",
+    "linux-portable.json"
+  ],
+  "hardware": {
+    "report": "reports/linux-arm-camera/hardware-inventory.json",
+    "sha256": "ef4dafdcf432c8cc3eb64a9fa5a9ac45d6b6fad41a43273869e770bf47de481f"
+  },
+  "deviceIntervals": {
+    "report": "reports/linux-arm-camera/device-intervals.json",
+    "sha256": "51c91c14ed1ff002737d81ad8392d0fd8322fdced8a6b1e3088ddfa3f3292aee"
+  },
+  "independentReference": {
+    "video": {
+      "report": "reports/linux-arm-camera/reference-mjpeg.mkv",
+      "sha256": "2abd216a97a92900d64d9a9606a3d5be337437f70931c31ce83402957dbb6180"
+    },
+    "log": {
+      "report": "reports/linux-arm-camera/reference-mjpeg.log",
+      "sha256": "7c202984a28fb0f0f1cade3930dd7253dbd9dba90a3781732da7faa3c8c2f363"
+    },
+    "observation": "MJPEG 1280x720 at 30 fps; image is black. No moving-input fidelity claim."
+  },
+  "productionChange": "Rank same-size V4L2 formats by known frame-rate shortfall before raw/MJPEG preference; preserve raw ties and unknown-rate fallback; skip unavailable MJPEG decoder; log actual interval without fabricating unsupported values. Linux only, including ARM and amd64.",
+  "preservedFailures": [
+    {
+      "report": "reports/arm-camera-baseline/84b2be2e-10e5-488b-bb6e-08bcfa92347e/results.json",
+      "sha256": "4284ae6d03a9156377cb8274fc6aa4f130c4692dc3eacf9abdf23e658cfb1c26",
+      "error": "AssertionError()",
+      "passed": false,
+      "phases": []
+    },
+    {
+      "report": "reports/arm-camera-baseline/a79cb39c-a389-45f9-9237-edf603f4f555/results.json",
+      "sha256": "4904c34f56ed08a8ec91b77c2f3babdb3176c802b5945fb7107e3ffe96b63afb",
+      "error": "AssertionError('Camera delivers only 5.06 fps')",
+      "passed": false,
+      "phases": [
+        {
+          "name": "initial",
+          "decodedFrames": 150,
+          "capturedFrames": 33,
+          "elapsedSeconds": 6.516038087000197,
+          "captureFps": 5.0644271195769335,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 0.0,
+          "decodedMax": 0,
+          "transportSha256": "a153ee19560790ad76b0032c12897b9af1db44297efd003ff24b4a348f89a83d",
+          "decodedVideoSha256": "f1f0ddec595a344791958b16d499901fecb5c1aa02e10f5e87222ba035dacdc9",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
+        }
+      ]
+    }
+  ],
+  "previewPackage": {
+    "package": "/workspace/native-qt/dist/camera-preview/game-capture-0.2.65~linux.2-arm64-8769adb956b6-058025e9739f-portable.tar.gz",
+    "sha256": "f7f313c226d3f1c729ffe941d72748a559de13fa799aa64f259ca67db63a5393",
+    "payload": "/workspace/native-qt/dist/camera-preview/game-capture-0.2.65~linux.2-arm64-8769adb956b6-058025e9739f-portable",
+    "manifestSha256": "58a54465b997693a2252b3d7b5b5311e06bc919447abc2d4fefaa74055bc1b19"
+  },
+  "previewTesting": {
+    "report": "reports/arm-camera-preview-host/4a51bb7f-2561-4aac-a5f4-2dafa06e2448/results.json",
+    "sha256": "ea17980f26358c2ae1567c665d3fb85500cd9fa0a741bc950551267817bf3a47",
+    "passed": true,
+    "scope": "Real Qt GUI, physical UVC/USB audio, independent received H264/AAC; three 1080p phases, busy retry, Stop/restart, saved settings and two File-menu Quits",
+    "phases": [
+      {
+        "name": "initial",
+        "decodedFrames": 149,
+        "capturedFrames": 192,
+        "elapsedSeconds": 6.403520279993245,
+        "captureFps": 29.98350775898574,
+        "uniqueDecodedFrames": 1,
+        "decodedMean": 5.0,
+        "decodedMax": 5,
+        "transportSha256": "1e2237df3d66467925a5dcec747bdb199572b9371a2bb41620682d6bf7e079f0",
+        "decodedVideoSha256": "c9f8c8dbb48bddaf8f0f2745d5b9a7c9d66982883f1c849a5139cd2ebcf5303a",
+        "audioSamplesPerChannel": 240640,
+        "audioRms": 0.0,
+        "audioPeak": 0.0,
+        "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
+      },
+      {
+        "name": "busy-retry",
+        "decodedFrames": 149,
+        "capturedFrames": 191,
+        "elapsedSeconds": 6.364487984006701,
+        "captureFps": 30.010269558205348,
+        "uniqueDecodedFrames": 1,
+        "decodedMean": 5.0,
+        "decodedMax": 5,
+        "transportSha256": "a6701eeff4a34facf2cc24f531528e2303ff685ee20298828cffdad6abf6473b",
+        "decodedVideoSha256": "c9f8c8dbb48bddaf8f0f2745d5b9a7c9d66982883f1c849a5139cd2ebcf5303a",
+        "audioSamplesPerChannel": 240640,
+        "audioRms": 0.0,
+        "audioPeak": 0.0,
+        "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
+      },
+      {
+        "name": "restarted",
+        "decodedFrames": 150,
+        "capturedFrames": 235,
+        "elapsedSeconds": 7.811032744997647,
+        "captureFps": 30.085650345083888,
+        "uniqueDecodedFrames": 1,
+        "decodedMean": 5.0,
+        "decodedMax": 5,
+        "transportSha256": "2f7a5af65e00cc3ec21e875dbf17b278abd686ff5513e0a5c257d73c9e451403",
+        "decodedVideoSha256": "7e66b44ab6e2d7dcfd2dfc40b44fea21ad959935c3620afdcc59595b6106494d",
+        "audioSamplesPerChannel": 169984,
+        "audioRms": 0.0,
+        "audioPeak": 0.0,
+        "decodedAudioSha256": "01a40f3a3bd8f567d2d440873966c2fab1d9a45fe9bf284fc95316c235a26c96"
+      }
+    ],
+    "initialWindowFps": 30
+  },
+  "gates": [
+    {
+      "scope": "Native release build",
+      "report": "reports/linux-arm-camera/merged-build.log",
+      "sha256": "07d3345de2198f16edacf5704991210fca0a19ffd1a8ca900154b48b312279a6"
+    },
+    {
+      "scope": "Camera fix and camera gate build",
+      "report": "reports/linux-arm-camera/camera-fix-build.log",
+      "sha256": "bc20ff39545dffc6ca352e6ad58380663d6ace9438fbfaa1840bcd363dab1993"
+    },
+    {
+      "scope": "Initial gate invocation: audio-clock and updater pass; three gates lacked dev-only FFmpeg library search path",
+      "report": "reports/linux-arm-camera/native-gates.log",
+      "sha256": "c77d100927f1b457091d92eebad1bc65c2704054fc8870c38b3877f05da1043f"
+    },
+    {
+      "scope": "Corrected development library path: platform, POSIX FFmpeg and camera gates pass; no camera stress gate enabled",
+      "report": "reports/linux-arm-camera/native-gates-library-path.log",
+      "sha256": "3827bc67511c38451d98b810fdf84064e862904ae3ee555b08f185d14686febe"
+    }
+  ],
+  "finalPackage": null,
+  "finalTesting": [],
+  "remaining": [
+    "Current HDMI input is black and silent: moving-image/color/audio fidelity, mute with audible HDMI, A/V sync and sustained performance unqualified",
+    "Physical desktop/Wayland portals, unplug/replug, permission denial, other cameras/formats/drivers and Raspberry Pi unqualified",
+    "amd64 packaged camera regression and hardware encoders unqualified; Windows/macOS production code unchanged"
+  ],
+  "services": "No host desktop/audio restarts, driver replacements or camera permission changes. Private GUI desktop; explicit existing host Pulse USB input for camera workflow."
+}

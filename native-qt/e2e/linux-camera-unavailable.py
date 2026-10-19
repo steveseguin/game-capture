@@ -36,6 +36,8 @@ def main():
     manifest_path = bundle / 'release-artifact-manifest.json'
     assert sha(manifest_path) == args.manifest_sha256
     manifest = json.loads(manifest_path.read_text()); assert sha(exe) == manifest['artifact']['sha256']
+    launcher = (bundle / manifest.get('launcher', manifest['artifact']['path'])).resolve()
+    assert launcher.is_relative_to(bundle)
     for entry in manifest['payload']['files']:
         file = (bundle / entry['relativePath']).resolve()
         assert file.is_relative_to(bundle) and file.stat().st_size == entry['size'] and sha(file) == entry['sha256']
@@ -44,7 +46,7 @@ def main():
     (report / Path(__file__).name).write_bytes(Path(__file__).read_bytes())
     devices = sorted(Path('/dev').glob('video*')); assert devices and all(p.is_char_device() for p in devices)
     identities = {str(p): p.stat().st_rdev for p in devices}
-    result = {'scope': 'Extracted Ubuntu DEB, actual X11 camera selection with V4L2 nodes masked only in the owned publisher mount namespace. Visible Linux empty-camera guidance, unavailable Go live, no capture, clean quit. Not physical disconnect or permission-denied qualification.',
+    result = {'scope': 'Extracted Linux package, actual X11 camera selection with V4L2 nodes masked only in the owned publisher mount namespace. Visible Linux empty-camera guidance, unavailable Go live, no capture, clean quit. Not physical disconnect or permission-denied qualification.',
               'executableSha256': sha(exe), 'manifestSha256': sha(manifest_path), 'harnessSha256': sha(__file__), 'guiHelperSha256': sha(helper), 'maskedDevices': list(identities), 'passed': False}
     control = None; publisher = None
     discovery = report / 'private-control.json'
@@ -58,7 +60,7 @@ def main():
             command = ['bwrap', '--die-with-parent', '--unshare-user', '--bind', '/', '/']
             for device in devices:
                 command += ['--ro-bind', '/dev/null', str(device)]
-            command += ['--', str(exe), '--settings-dir=' + str(report / 'private-settings'), '--local-control', '--local-control-port=0', '--local-control-discovery=' + str(discovery)]
+            command += ['--', str(launcher), '--settings-dir=' + str(report / 'private-settings'), '--local-control', '--local-control-port=0', '--local-control-discovery=' + str(discovery)]
             publisher = subprocess.Popen(command, stdout=log, stderr=log)
             wait(discovery.exists, 'No owned publisher discovery')
             control = json.loads(discovery.read_text()); pid = control['pid']
