@@ -141,7 +141,7 @@ color accuracy, audible input, A/V synchronization or sustained performance.
 The separate moving-window and mixed-tone workflow remains the content oracle;
 it accepts `--resolution=1280x720` to exercise the ARM first-run window profile.
 
-The current camera development artifact is
+The first camera milestone artifact is
 `game-capture-0.2.65~linux.2-arm64-8769adb956b6-d16a9b442b76-portable.tar.gz`
 in `native-qt/dist/`, built from commit
 `230ab696d2d78eef61c18898f35da58d143b09e0`. Its SHA-256 is
@@ -172,3 +172,44 @@ The observer now preserves application logs before relaunch, and counts decoded
 frames from the independent camera owner instead of parsing FFmpeg's
 version-dependent console progress. Production sources still match the archive;
 later commits update observers, documentation and evidence only.
+
+## Linux recovery and diagnostics
+
+The next development package preserves Linux diagnostic logs across restarts:
+`game-capture-debug.log` rotates on launch or at 5 MiB, with up to three backups
+(`game-capture-debug.1.log` through `.3.log`). The existing per-publisher lock
+still separates concurrent instances. Windows and Mac logging are unchanged.
+Password-store failures log fixed operation, stage and reason categories,
+without destination URLs, credentials, item references or server error text.
+Storage deadlines and preservation rules remain unchanged. This improves
+diagnosis of the unresolved intermittent first-save failure; it does not claim
+to fix its cause.
+
+Add `--failure-recovery --resolution=1280x720` to the packaged moving-window
+workflow to exercise an abruptly killed output helper, Stop with a frozen
+helper, source-window loss and explicit replacement. Each recovered stream
+is independently received and decoded for moving video and mixed audio.
+The physical-camera workflow also accepts `--camera-resolution=640x480` to
+exercise this adapter's raw YUYV mode at 30 fps.
+
+Run `e2e/linux-output-profiles.py` with `--expect-failure-diagnostics` to verify
+actual GUI saves/relaunches, preserved log history, classified storage errors
+and credential exclusion using a private GNOME keyring. Clearing its default
+alias still permits saving through the provider's collection lookup; that
+scenario does not simulate an absent collection. The portable packager now
+hashes the copied source snapshot, so edits during packaging cannot make the
+source archive disagree with its recorded tree hash.
+
+Exact package hashes, workflow results and retained failures are recorded in
+[the ARM recovery ledger](../native-qt/qa/linux-arm-robustness.json). These bounded
+X11/private-audio workflows do not qualify physical Wayland, other keyrings,
+live HDMI content, other boards or sustained performance.
+
+The combined development artifact is
+`game-capture-0.2.65~linux.2-arm64-f43f75191068-1c549f92f9bf-portable.tar.gz`
+in `native-qt/dist/`; extract it and run `./AppRun`. SHA-256:
+`b7ff6be60824f01840c5873c41d6fd0d5caa425178f58519fdec4dab8b51be0d`.
+It includes the intervening `linux-parity` native PipeWire audio change from
+`f761c66`, whose existing Linux evidence is preserved. The source archive records
+the exact production and observer sources; the later evidence ledger and final
+documentation are in the repository.

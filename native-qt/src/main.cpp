@@ -26,6 +26,9 @@
 
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
+#ifdef __linux__
+#include <spdlog/sinks/rotating_file_sink.h>
+#endif
 #include <spdlog/sinks/stdout_sinks.h>
 #include <rtc/rtc.hpp>
 
@@ -572,7 +575,15 @@ int main(int argc, char *argv[]) {
     }
     try {
         std::vector<spdlog::sink_ptr> sinks;
+#ifdef __linux__
+        // Recovery often requires a relaunch (for example after unlocking the
+        // desktop password store). Preserve the previous failure's evidence,
+        // while bounding disk use for long-running publishers.
+        sinks.push_back(std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+            logPath, 5 * 1024 * 1024, 3, true));
+#else
         sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logPath, true));
+#endif
         if (headless) {
             sinks.push_back(std::make_shared<spdlog::sinks::stdout_sink_mt>());
         }

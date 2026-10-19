@@ -4,6 +4,7 @@
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QUuid>
+#include <spdlog/spdlog.h>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
@@ -83,18 +84,37 @@ OutputProfileResult access(Operation operation, const QByteArray &existing, cons
     const QByteArray reference = existing.isEmpty()
         ? QByteArray(prefix) + QUuid::createUuid().toString(QUuid::WithoutBraces).toLatin1() : existing;
     Request request;
+    auto fail = [&](const char *stage, const char *reason = nullptr) {
+        // Log only our own fixed categories: server messages and attributes
+        // may include credentials, item identifiers or destination URLs.
+        if (!reason) {
+            if (g_cancellable_is_cancelled(request.cancel) ||
+                g_error_matches(request.error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT) ||
+                g_error_matches(request.error, G_DBUS_ERROR, G_DBUS_ERROR_NO_REPLY))
+                reason = "timeout";
+            else if (g_error_matches(request.error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED) ||
+                     g_error_matches(request.error, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED))
+                reason = "access-denied";
+            else reason = "request-failed";
+        }
+        const char *name = operation == Operation::Load ? "load" : operation == Operation::Save ? "save" : "delete";
+        spdlog::warn("[OutputProfiles] {} failed (stage={}, reason={})", name, stage, reason);
+        return failure();
+    };
     g_autoptr(SecretService) service = secret_service_open_sync(profile_secret_service_get_type(), nullptr,
         SECRET_SERVICE_OPEN_SESSION, request.cancel, &request.error);
-    if (!service || request.error) return failure();
+    if (!service || request.error) return fail("open-session");
     g_autoptr(GHashTable) attributes = secret_attributes_build(&schema, "reference", reference.constData(), nullptr);
     if (existing.isEmpty()) {
         g_autoptr(SecretCollection) collection = secret_collection_for_alias_sync(service, SECRET_COLLECTION_DEFAULT,
             SECRET_COLLECTION_NONE, request.cancel, &request.error);
-        if (!collection || request.error || secret_collection_get_locked(collection)) return failure();
+        if (request.error) return fail("default-collection");
+        if (!collection) return fail("default-collection", "missing");
+        if (secret_collection_get_locked(collection)) return fail("default-collection", "locked");
         g_autoptr(SecretValue) value = secret_value_new(data.constData(), data.size(), "application/json");
         g_autoptr(SecretItem) item = secret_item_create_sync(collection, &schema, attributes,
             "Game Capture output destinations", value, SECRET_ITEM_CREATE_NONE, request.cancel, &request.error);
-        return item && !request.error ? OutputProfileResult{reference, {}} : failure();
+        return item && !request.error ? OutputProfileResult{reference, {}} : fail("create-item");
     }
     // Search without SECRET_SEARCH_UNLOCK or automatic secret loading. A
     // missing or ambiguous existing entry is never silently recreated.
@@ -102,26 +122,27 @@ OutputProfileResult access(Operation operation, const QByteArray &existing, cons
     const unsigned count = g_list_length(items);
     g_autoptr(SecretItem) item = count == 1 ? SECRET_ITEM(g_object_ref(items->data)) : nullptr;
     g_list_free_full(items, g_object_unref);
-    if (request.error) return failure();
+    if (request.error) return fail("search-item");
     if (!count && operation == Operation::Delete) return {};
-    if (!item || secret_item_get_locked(item)) return failure();
+    if (!item) return fail("search-item", count ? "ambiguous" : "missing");
+    if (secret_item_get_locked(item)) return fail("access-item", "locked");
     if (operation == Operation::Delete) {
         return secret_item_delete_sync(item, request.cancel, &request.error) && !request.error
-            ? OutputProfileResult{} : failure();
+            ? OutputProfileResult{} : fail("delete-item");
     }
     if (operation == Operation::Save) {
         g_autoptr(SecretValue) value = secret_value_new(data.constData(), data.size(), "application/json");
         return secret_item_set_secret_sync(item, value, request.cancel, &request.error) && !request.error
-            ? OutputProfileResult{reference, {}} : failure();
+            ? OutputProfileResult{reference, {}} : fail("update-item");
     }
-    if (!secret_item_load_secret_sync(item, request.cancel, &request.error) || request.error) return failure();
+    if (!secret_item_load_secret_sync(item, request.cancel, &request.error) || request.error) return fail("load-item");
     g_autoptr(SecretValue) value = secret_item_get_secret(item);
-    if (!value) return failure();
+    if (!value) return fail("read-item", "missing-value");
     gsize size = 0;
     const char *bytes = secret_value_get(value, &size);
-    if (!bytes || size > 1024 * 1024) return failure();
+    if (!bytes || size > 1024 * 1024) return fail("read-item", "invalid-data");
     QByteArray result(bytes, qsizetype(size));
-    return validData(result) ? OutputProfileResult{result, {}} : failure();
+    return validData(result) ? OutputProfileResult{result, {}} : fail("read-item", "invalid-data");
 }
 }
 OutputProfileResult loadOutputProfiles(const QByteArray &reference) { return access(Operation::Load, reference); }

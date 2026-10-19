@@ -35,7 +35,7 @@ def main():
     p.add_argument('--camera-label', required=True)
     p.add_argument('--camera-device', default='/dev/video0', type=Path)
     p.add_argument('--audio-label')
-    p.add_argument('--camera-resolution', choices=['1920x1080','1280x720'], default='1920x1080')
+    p.add_argument('--camera-resolution', choices=['1920x1080','1280x720','640x480'], default='1920x1080')
     p.add_argument('--minimum-capture-fps', type=float, default=24)
     p.add_argument('--baseline', action='store_true')
     a = p.parse_args()
@@ -85,6 +85,9 @@ def main():
             fields=Path(f'/proc/{pid}/stat').read_text().rsplit(') ',1)[1].split()
             return int(fields[1]),fields[19]
         except FileNotFoundError:return None
+    def same_process(pid,identity):
+        current=process_identity(pid)
+        return current is not None and current[1]==identity[1]
     def shot(label):ImageGrab.grab().save(report/(label+'.png'))
     def launch(label,restore=False):
         nonlocal app,control
@@ -123,7 +126,7 @@ def main():
                 except FileNotFoundError:pass
             return False
         wait(lambda:not holds_camera(),'Camera descriptor leaked after Stop')
-        wait(lambda:all(process_identity(pid)!=identity for pid,identity in helper_pids.items()),'Output helper survived Stop')
+        wait(lambda:all(not same_process(pid,identity) for pid,identity in helper_pids.items()),'Output helper survived Stop')
         helper_pids.clear()
     def quit_app():
         nonlocal app

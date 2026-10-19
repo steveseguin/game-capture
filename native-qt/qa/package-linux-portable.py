@@ -67,10 +67,7 @@ def main():
     version = re.search(r'project\(game-capture-native-qt VERSION ([0-9.]+)', (native/'CMakeLists.txt').read_text())[1]+'~linux.2'
     source_files = sorted(set(output('git', '-C', str(root), 'ls-files', '-z', '--cached', '--others', '--exclude-standard').split('\0')))
     source_files = [p for p in source_files if p and (root/p).is_file()]
-    source_digest = hashlib.sha256()
-    for name in source_files:
-        source_digest.update(name.encode()+b'\0'+bytes.fromhex(sha(root/name)))
-    source_identity = source_digest.hexdigest()
+    source_revision = output('git', '-C', str(root), 'rev-parse', 'HEAD')
     environment = dict(os.environ, LD_LIBRARY_PATH=str(ffmpeg/'lib'))
     ffmpeg_version = output(str(ffmpeg/'bin/ffmpeg'), '-version', env=environment)
     if '--enable-nonfree' in ffmpeg_version:
@@ -80,6 +77,16 @@ def main():
             raise SystemExit('Rebuild the pinned portable FFmpeg: missing '+feature)
     with tempfile.TemporaryDirectory(prefix='gc-portable-') as temporary:
         work = Path(temporary); stage = work/'payload'
+        # Hash the exact bytes we archive. Packaging may take several minutes;
+        # rereading the working tree later can silently mislabel the source.
+        source = work/'source'
+        source_digest = hashlib.sha256()
+        for name in source_files:
+            data = (root/name).read_bytes()
+            target = source/name; target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data); shutil.copystat(root/name, target)
+            source_digest.update(name.encode()+b'\0'+hashlib.sha256(data).digest())
+        source_identity = source_digest.hexdigest()
         libraries = stage/'usr/lib/game-capture'
         libraries.mkdir(parents=True)
         notices = stage/'usr/share/doc/game-capture'; notices.mkdir(parents=True)
@@ -209,13 +216,10 @@ exec "$base/usr/bin/game-capture" "$@"
         final = destination/name
         archive = destination/(name+'.tar.gz')
         if final.exists() or archive.exists(): raise SystemExit('Refusing to overwrite '+str(final))
-        source = work/'source'
-        for entry in source_files:
-            target = source/entry; target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(root/entry, target)
         source_archive = destination/(name+'-source.tar.gz')
         subprocess.run(['tar', '-czf', str(source_archive), '-C', str(source), '.'], check=True)
         manifest = {'schema': 1, 'version': version, 'architecture': architecture, 'packageFormat': 'portable-tar',
-            'launcher': 'AppRun', 'sourceRevision': output('git', '-C', str(root), 'rev-parse', 'HEAD'),
+            'launcher': 'AppRun', 'sourceRevision': source_revision,
             'sourceTreeSha256': source_identity, 'sourceArchive': source_archive.name, 'sourceSha256': sha(source_archive),
             'artifact': {'path': 'usr/bin/game-capture', 'sha256': sha(executable)},
             'buildDirectory': str(build), 'buildOS': Path('/etc/os-release').read_text(),

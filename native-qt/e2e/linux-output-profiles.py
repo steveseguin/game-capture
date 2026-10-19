@@ -44,6 +44,8 @@ def main():
     parser.add_argument('--isolated-report', type=Path)
     parser.add_argument('--first-save-cycles', type=int, default=0,
                         help='Run only repeated fresh-settings save/relaunch workflows')
+    parser.add_argument('--expect-failure-diagnostics', action='store_true',
+                        help='Require bounded Linux log history and safe storage failure categories')
     args = parser.parse_args()
     if not args.isolated_report:
         report = args.reports.resolve() / str(uuid.uuid4())
@@ -114,6 +116,7 @@ def main():
     settings = report / 'private-settings'
     sensitive = []
     expected = {}
+    previous_log_sha = None
 
     def start_keyring():
         nonlocal keyring
@@ -153,11 +156,16 @@ def main():
         # Discovery precedes GUI construction and native capability probing.
         wait(lambda: subprocess.run(['xdotool', 'search', '--onlyvisible', '--pid', str(publisher.pid), '--name', '^Game Capture - Powered by VDO.Ninja$'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0, 20)
         wait(lambda: bool(json.loads(ui('dump'))))
+        if args.expect_failure_diagnostics and previous_log_sha:
+            directory = Path(os.environ['XDG_STATE_HOME']) / 'GameCapture/logs'
+            assert sha(directory / 'game-capture-debug.1.log') == previous_log_sha, 'Relaunch lost the previous diagnostic log'
+            history = list(directory.glob('game-capture-debug.*.log'))
+            assert len(history) <= 3 and all(f.stat().st_size <= 5*1024*1024 for f in history)
         assert not api('/diagnostics')['app']['capturing']
         return discovery
 
     def stop():
-        nonlocal publisher
+        nonlocal publisher, previous_log_sha
         if publisher and publisher.poll() is None:
             api('/commands', {'command': 'quit'})
             assert publisher.wait(timeout=10) == 0
@@ -165,6 +173,7 @@ def main():
         debug = Path(os.environ['XDG_STATE_HOME']) / 'GameCapture/logs/game-capture-debug.log'
         if debug.exists():
             shutil.copy2(debug, report / f'private-debug-{count}.log')
+            previous_log_sha = sha(debug)
         publisher = None
 
     def config():
@@ -205,7 +214,7 @@ def main():
         return any(r['role'] == 'label' and ('desktop password store' in r['name'] or 'unsupported secret-store reference' in r['name']) and 'showing' in r['states'] for r in json.loads(ui('dump')))
 
     def check_plaintext():
-        files = list(report.glob('private-app-*.log'))
+        files = list(report.glob('private-app-*.log')) + list(report.glob('private-debug-*.log'))
         for directory in [settings, report / 'private-state', report / 'private-config', report / 'private-data']:
             files.extend(file for file in directory.rglob('*') if file.is_file())
         for file in files:
@@ -251,6 +260,30 @@ def main():
         start()
         baseline_startup = time.monotonic() - started
         record('ordinary-startup', startupSeconds=baseline_startup)
+        stop()
+        # Exercise clearing the default alias in our private real keyring.
+        # GNOME's collection proxy still resolves to the login collection even
+        # when ReadAlias returns '/'; this is not a missing-collection fixture.
+        secret_api = dbus.Interface(bus.get_object('org.freedesktop.secrets', '/org/freedesktop/secrets'),
+                                    'org.freedesktop.Secret.Service')
+        secret_api.SetAlias('default', dbus.ObjectPath('/'))
+        alias_cleared = str(secret_api.ReadAlias('default')) == '/'
+        original_settings = settings
+        settings = report / 'private-no-default-collection'
+        start()
+        ui('press', 'Show advanced settings')
+        select('UDP / MPEG-TS (LAN)')
+        ui('text', 'Output URL', 'udp://127.0.0.1:47001')
+        assert not visible_error(), 'Keyring default fallback could not save'
+        saved_reference = reference()
+        assert saved_reference.startswith('linux-secret-service-v1:')
+        assert read_saved()['udp']['url'] == 'udp://127.0.0.1:47001'
+        stop()
+        secret_api.SetAlias('default', collection.get_object_path())
+        settings = original_settings
+        record('cleared-default-alias-save', aliasCleared=alias_cleared,
+               savedThroughProviderFallback=True)
+        start()
         ui('press', 'Show advanced settings')
         (report / 'private-initial-ui.json').write_text(ui('dump'))
         assert not reference(), 'Ordinary startup created a secret-store item'
@@ -420,6 +453,23 @@ def main():
         stop()
         check_plaintext()
         record('no-plaintext-credentials-in-settings-logs-or-keyring-files')
+        if args.expect_failure_diagnostics:
+            logs = '\n'.join(f.read_text() for f in report.glob('private-debug-*.log'))
+            expected_diagnostics = [
+                'save failed (stage=access-item, reason=locked)',
+                'load failed (stage=access-item, reason=locked)',
+                'delete failed (stage=access-item, reason=locked)',
+                'save failed (stage=search-item, reason=missing)',
+                'load failed (stage=read-item, reason=invalid-data)',
+                'load failed (stage=search-item, reason=ambiguous)',
+                'load failed (stage=open-session, reason=request-failed)',
+                'save failed (stage=open-session, reason=request-failed)',
+                'load failed (stage=open-session, reason=timeout)',
+                'save failed (stage=open-session, reason=timeout)',
+            ]
+            for message in expected_diagnostics:
+                assert '[OutputProfiles] ' + message in logs, 'Missing safe failure diagnostic: ' + message
+            record('failure-diagnostics-and-bounded-history', messages=expected_diagnostics)
         result['passed'] = True
     except Exception:
         result['error'] = traceback.format_exc()

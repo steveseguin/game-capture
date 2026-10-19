@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import platform
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -36,6 +37,8 @@ def main():
     parser.add_argument('--manifest-sha256', required=True)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--resolution', choices=['960x540', '1280x720'], default='960x540')
+    parser.add_argument('--failure-recovery', action='store_true',
+                        help='Also exercise output-helper death/stall and source-window loss')
     args = parser.parse_args()
     assert os.getuid() != 0 and os.environ.get('GC_QA_PRIVATE_DESKTOP')
     assert os.environ.get('QT_QPA_PLATFORM') == 'xcb'
@@ -98,6 +101,10 @@ def main():
             fields = Path(f'/proc/{pid}/stat').read_text().rsplit(') ',1)[1].split()
             return int(fields[1]), fields[19]  # parent PID, start time ticks
         except FileNotFoundError: return None
+    def same_process(pid, identity):
+        current = process_identity(pid)
+        # An orphaned helper keeps its start time even if its parent changes.
+        return current is not None and current[1] == identity[1]
     def idle():
         d = diagnostics()
         assert not d['app']['live'] and not d['app']['capturing']
@@ -151,7 +158,7 @@ def main():
         # Require restoration of that baseline, with no application captures.
         wait(lambda:{s['index'] for s in json.loads(pactl('--format=json','list','source-outputs'))} == audio_baseline,
              'Audio capture leaked after Stop')
-        wait(lambda:all(process_identity(pid) != identity for pid, identity in helper_pids.items()),
+        wait(lambda:all(not same_process(pid, identity) for pid, identity in helper_pids.items()),
              'Encoder/output helper survived Stop')
         helper_pids.clear()
         screenshot('stopped')
@@ -159,7 +166,19 @@ def main():
         nonlocal app
         child = app; ui('quit-menu'); child.wait(timeout=15)
         assert child.returncode == 0 and not discovery.exists(), 'Quit/discovery cleanup failed'
+        debug = Path(os.environ['XDG_STATE_HOME'])/'GameCapture/logs/game-capture-debug.log'
+        if debug.exists(): shutil.copy2(debug, report/f'publisher-{child.pid}-debug.log')
         app = None
+    def interrupt_output(sig):
+        d = diagnostics()
+        pid = d['output']['muxer_pid']
+        identity = process_identity(pid)
+        assert identity and identity[0] == app.pid, 'Output helper is not owned by this publisher'
+        assert Path(f'/proc/{pid}/exe').resolve() == bundle/'usr/lib/game-capture/ffmpeg'
+        # Keep an identity for cleanup even if this helper never reaches receive().
+        helper_pids[pid] = identity
+        os.kill(pid, sig)
+        return pid, d
     def receive(label, microphone=True):
         # Join an already-running publisher, independently receive, then decode.
         transport = report/(label+'.ts')
@@ -187,7 +206,8 @@ def main():
                 paths = sorted({path for path in mappings if Path(path).name.startswith(library)})
                 assert paths and all(Path(path).is_relative_to(bundle) for path in paths), 'Foreign or missing runtime library: '+library
                 loaded[library] = paths
-            for pid in helper_pids:
+            for pid, identity in helper_pids.items():
+                if not same_process(pid, identity): continue  # A deliberate helper failure already retired it.
                 assert Path(f'/proc/{pid}/exe').resolve() == bundle/'usr/lib/game-capture/ffmpeg', 'Unbundled output helper'
             result.setdefault('portableRuntimeLibraries', {})[label] = loaded
         probe = json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(transport)], text=True))
@@ -281,6 +301,46 @@ def main():
             receive('muted',microphone=False)
             ui('press','Unmute microphone'); time.sleep(1)
             receive('unmuted')
+            if args.failure_recovery:
+                old_pid, before = interrupt_output(signal.SIGKILL)
+                wait(lambda:diagnostics()['output']['reconnects'] > before['output']['reconnects'],
+                     'Killed output helper did not trigger reconnection')
+                wait(lambda:diagnostics()['output']['muxer_pid'] not in (0, old_pid),
+                     'Output helper was not replaced')
+                receive('output-helper-recovered')
+                assert diagnostics()['app']['capturing'], 'Output recovery lost the source'
+                _, before = interrupt_output(signal.SIGSTOP)
+                started = time.monotonic()
+                stop()
+                elapsed = time.monotonic()-started
+                assert elapsed < 10, 'Stop blocked on a stalled output helper'
+                result['stalledOutputStopSeconds'] = elapsed
+                ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Restart after stalled output failed')
+                receive('stalled-output-restarted')
+                source.terminate(); source.wait(timeout=5)
+                wait(lambda:not diagnostics()['app']['capturing'], 'Lost window left capture active')
+                idle()
+                wait(lambda:{s['index'] for s in json.loads(pactl('--format=json','list','source-outputs'))} == audio_baseline,
+                     'Lost window leaked audio recording')
+                wait(lambda:all(not same_process(pid,identity) for pid,identity in helper_pids.items()),
+                     'Lost window left output helpers running')
+                helper_pids.clear()
+                failure_ui = rows()
+                assert any('Window capture stopped' in r['name'] for r in failure_ui), 'No visible source-loss explanation'
+                (report/'source-loss-ui.json').write_text(json.dumps(failure_ui,indent=2)+'\n')
+                screenshot('source-loss')
+                result['sourceLossRetiredCaptureAudioAndOutput'] = True
+                source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source'],'replacement-source')
+                # Tk does not consistently set _NET_WM_PID on X11. This title
+                # is unique on our private display, and the old source exited.
+                wait(lambda:source.poll() is None and subprocess.run(
+                     ['xdotool','search','--onlyvisible','--name','^Game Capture Installed Source$'],
+                     stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode == 0,'Replacement window missing')
+                # Explicit selection is required; source replacement must never publish automatically.
+                time.sleep(2); idle()
+                ui('source','Game Capture Installed Source')
+                ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Replacement source failed')
+                receive('replacement-source')
             stop(); ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Restart failed')
             receive('restarted'); stop(); quit_app()
             launch('relaunched',restore=True); quit_app()
