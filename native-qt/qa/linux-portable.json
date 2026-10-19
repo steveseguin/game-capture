@@ -1,0 +1,213 @@
+{
+  "schema": 1,
+  "objective": "One portable native ARM64 Linux package using a glibc 2.35 baseline and bundled Qt/FFmpeg; reuse Linux backends and retain DEB behavior",
+  "parentLedgers": [
+    "linux-parity.json",
+    "linux-arm64.json"
+  ],
+  "status": "preview host media and Ubuntu 24.04 updater passed; final artifact matrix pending",
+  "recordedAtUtc": "2026-10-19T05:31:47.782068+00:00",
+  "completionPolicy": "Build, syntax, isolated logic and linkage checks are gates. Testing requires the exact shipped archive through real GUI workflows with independent received-media decoding.",
+  "build": {
+    "distribution": "Ubuntu 22.04.5 ARM64, user-owned Ubuntu Base via Bubblewrap on native Jetson CPU",
+    "cpu": "NVIDIA Jetson Orin Nano, six Cortex-A78AE cores",
+    "ramGiB": 7.4,
+    "kernel": "5.15.148-tegra",
+    "qt": "6.2.4",
+    "ffmpeg": "6.1.6",
+    "compiler": "GCC 11.4.0",
+    "cmake": "3.28.4",
+    "pipewire": "0.3.48",
+    "ubuntuBaseSha256": "075d4abd2817a5023ab0a82f5cb314c5ec0aa64a9c0b40fd3154ca3bfdae979f",
+    "abiRequirements": {
+      "GLIBC": "2.35",
+      "GLIBCXX": "3.4.30"
+    },
+    "inventory": {
+      "report": "reports/linux-portable/build-inventory.json",
+      "sha256": "afa7186a815e6e67f6007681be9791a4d54f4c86d75246b5c36f2bfa306aa348"
+    },
+    "packages": {
+      "report": "reports/linux-portable/build-packages.txt",
+      "sha256": "f5d84b4d18ac11856493d1b6db3b109a88561dc54fdbeeb48c6b7869db693a9b"
+    }
+  },
+  "distribution": {
+    "format": "extract-and-run tar.gz with AppRun; no installation or FUSE",
+    "bundled": "Qt plugins, FFmpeg helper and media libraries, Pulse/PipeWire clients and modules, application dependencies; per-file hashes and dependency notices",
+    "host": "loader, glibc, C++/GCC runtimes, graphics drivers, desktop/portal, audio and Secret Service daemons",
+    "policy": "GPL-enabled portable Linux bundle supported; nonfree bundle rejected. Existing DEB, Windows and Mac policy retained. Architecture and package format both gate update selection."
+  },
+  "profile": {
+    "resolution": "960x540",
+    "fps": 30,
+    "video": "native libx264 software H.264 at 4000 kbps",
+    "audio": "mixed system and microphone stereo, AAC 128 kbps",
+    "transport": "loopback UDP/MPEG-TS",
+    "qualification": "owned Xvfb/xfwm4, virtual Pulse sources, independent host FFmpeg decoding; not physical desktop/device or performance qualification"
+  },
+  "previewPackage": {
+    "package": "/workspace/native-qt/dist/portable-preview/game-capture-0.2.65~linux.2-arm64-e30595472239-8e4815ff5481-portable.tar.gz",
+    "sha256": "e66634367cc5eb94aace004d0785eefb012a5866adffa3b410029933b17365a6",
+    "payload": "/workspace/native-qt/dist/portable-preview/game-capture-0.2.65~linux.2-arm64-e30595472239-8e4815ff5481-portable",
+    "manifestSha256": "4aa9c1c1e2b938168e28723e711039bc8133906c0c6d2fb512ed3e5c8f058dfb"
+  },
+  "previewSource": {
+    "sourceRevision": "184fae80b3c46de508ebf8c23139f9d4204c28ff",
+    "sourceTreeSha256": "8e4815ff5481b03dd9da7decf5f90e226daa49e9b92c2e44585699055de5e05e",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-e30595472239-8e4815ff5481-portable-source.tar.gz",
+    "sourceSha256": "5b629c1ca9ee5a32315d09d9667af7ae7c002ef60e65c6a3625aab5c7b8a02d0"
+  },
+  "preservedFailures": [
+    {
+      "report": "reports/portable-host-preview-media/6a1432cf-8724-4c39-af10-d230deea747f/results.json",
+      "sha256": "52ecd05f506bddb07378f8c17b59e3cf2a561295dbd2ffaca42a694d874aefbb",
+      "passed": false,
+      "executableSha256": "bb40d81cfcea6f8d4fa5e818eb272af4d64571f7abef10e8546a75c2296b8536",
+      "manifestSha256": "ba0a264290e611b5cf76a7e339ac3e9b88e910a6e19335aa9965b1931cb5db65",
+      "phases": [],
+      "audioFormRowsFollowOutputMode": false,
+      "settingsRestoredWithoutCapture": false,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "error": "RuntimeError('Incorrect initial audio form rows')",
+      "diagnosis": "Observer checked bitrate rows before expanding Audio encoding. Corrected fixture action; no media attempted."
+    },
+    {
+      "report": "reports/portable-host-preview-media/cb74f670-d3f2-4aaf-b405-0d9120fb77e6/results.json",
+      "sha256": "5e10ec69a2a5ea92b1eef02469b15f305c311b2d85551d169260f31f820bbd3c",
+      "passed": false,
+      "executableSha256": "bb40d81cfcea6f8d4fa5e818eb272af4d64571f7abef10e8546a75c2296b8536",
+      "manifestSha256": "ba0a264290e611b5cf76a7e339ac3e9b88e910a6e19335aa9965b1931cb5db65",
+      "phases": [],
+      "audioFormRowsFollowOutputMode": true,
+      "settingsRestoredWithoutCapture": false,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "error": "RuntimeError('Go live failed')",
+      "diagnosis": "Application preflight inherited the GPL-free bundled-helper policy. Explicit portable Linux policy now permits GPL while retaining nonfree rejection; DEB/Windows/Mac policy is unchanged."
+    }
+  ],
+  "previewTesting": [
+    {
+      "environment": "Direct Ubuntu 22.04 Jetson host; extracted archive relocated to a path containing spaces",
+      "report": "reports/portable-policy-host-media/cd74ef32-f12e-4b04-8d4c-9447157614c2/results.json",
+      "sha256": "3d1350492a509a3e9fbede2257c21b273f5e2fb6a5936fc7e05440fdf709833d",
+      "passed": true,
+      "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+      "manifestSha256": "4aa9c1c1e2b938168e28723e711039bc8133906c0c6d2fb512ed3e5c8f058dfb",
+      "phases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 120
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 142
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 125
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123
+        }
+      ],
+      "audioFormRowsFollowOutputMode": true,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true
+    },
+    {
+      "environment": "Ubuntu 24.04 ARM64 userland on the same native kernel/CPU",
+      "kind": "packaged update/cache GUI workflows",
+      "report": "reports/portable-policy-noble-updates/e125c0dc-ca6a-4fb4-9c29-2cff8736b663/results.json",
+      "sha256": "210d62a344ba1571fc586204984e5d62c8d71226b90c5327da3bb2ae5411ff38",
+      "passed": true,
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "wrong-package-format",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "scope": "Four selected native ARM64 gates",
+      "report": "reports/linux-portable/portable-gates.log",
+      "sha256": "b9ed768ca5f9728b3b2daa13279b24a99cc1ad90bd1aed1ac1667317e7372a4a"
+    },
+    {
+      "scope": "46 updater cases under Qt 6.4; architecture and package-format rejection",
+      "report": "reports/linux-portable/deb-update-gate.log",
+      "sha256": "d25a52116e17e3fc706e1907e6b7d5a24c922a78e642713a2e69c3ba6ea167c9"
+    },
+    {
+      "scope": "Portable bundle policy/probe gates",
+      "report": "reports/linux-portable/bundle-policy-table-gate.log",
+      "sha256": "60caea50d82b62983d5256ddf1d28a4c0b37aba23e602f11014e56f70cab4ccb"
+    },
+    {
+      "scope": "Retained DEB bundle policy/probe gates",
+      "report": "reports/linux-portable/deb-bundle-policy-gate.log",
+      "sha256": "29fa8da9c2da850e2f0d4699ef213f884df68cb96fe37aef763f497e9e16f26b"
+    },
+    {
+      "scope": "Native ELF/package architecture gate",
+      "report": "reports/linux-portable/package-architecture-gate.log",
+      "sha256": "089d0839d954b9a44fdc2dd1b8565fcc1fa1a84d3c547561f4019d04b6674324"
+    },
+    {
+      "scope": "ABI floor and driver-exclusion policy sanity gate",
+      "report": "reports/linux-portable/baseline-policy-gate.json",
+      "sha256": "d60b77c9a22b410fa246710dc2a3aea28a633cb8cbe58311e74c53d432b2976f"
+    },
+    {
+      "scope": "DEB packager rejects portable update configuration",
+      "report": "reports/linux-portable/package-format-gate.json",
+      "sha256": "0105ec9f58d6eb535871728a935362b5d337d59bc5d2b714663b0be4e9c5a2b4"
+    },
+    {
+      "scope": "Qt 6.4 / PipeWire 1.0 regression build gate",
+      "report": "reports/linux-portable/noble-regression-build.log",
+      "sha256": "025187034971bd1bffc992570ac5b70bd4848c44c2ae77264ba51fa961ce99f9"
+    },
+    {
+      "scope": "Final default-policy application and helper gate build",
+      "report": "reports/linux-portable/deb-bundle-policy-build.log",
+      "sha256": "8b366205f25f640b5bec73154d8994080dfeeb82528df2e863ebcdf3783604d7"
+    }
+  ],
+  "retainedBuildAttempts": [
+    "reports/linux-portable/apt-codecs.log (Jammy lacks librist-dev; reused pinned source build)",
+    "reports/linux-portable/configure.log (missing OpenGL headers in isolated baseline)",
+    "reports/linux-portable/build.log (Qt 6.2 lacks setRowVisible)",
+    "reports/linux-portable/build-qt62-final.log (older SPA header location)",
+    "reports/linux-portable/ffmpeg-build-retry.log (initial no-RIST build and edited running shell script; superseded by clean complete pinned recipe)",
+    "reports/linux-portable/build-qt62-retry.log (overlapping retry stopped before resuming a single build)",
+    "reports/linux-portable/oldest-baseline-launch-gate.log (--help is unsupported; offscreen dev launch terminated, not counted as testing)",
+    "reports/portable-host-observer-gate (private QA window-manager defaults needed a local path; two setup failures retained)"
+  ],
+  "remaining": [
+    "Raspberry Pi OS, Debian and other distributions; amd64 portable execution",
+    "Physical X11/Wayland, portal/PipeWire capture and physical devices",
+    "Hardware encoder initialization and independently decoded output before qualification",
+    "WebRTC/WHIP, other external transports, higher profiles, timing/endurance",
+    "Public release corresponding-source assembly and release automation",
+    "Windows/macOS and amd64 packaged regression qualification; no backend/default changes outside the explicit portable policy"
+  ],
+  "finalPackage": null,
+  "finalTesting": []
+}

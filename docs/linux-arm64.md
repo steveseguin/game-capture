@@ -45,6 +45,10 @@ package uses distribution libraries and requires FFmpeg 6.1 or newer. It is not
 a portable bundle for Ubuntu 22.04/JetPack or arbitrary Raspberry Pi OS releases.
 Use a 64-bit Ubuntu 24.04 userland on a Pi for this initial target.
 
+For the additional extract-and-run archive built against Ubuntu 22.04, see
+[portable Linux packaging](linux-portable.md). Its separate package-format and
+distribution evidence does not replace or broaden the DEB results below.
+
 The first development host is a Jetson Orin Nano on Ubuntu 22.04. Its CMake
 3.22.1 fails the existing 3.24 minimum, Qt development libraries are absent, and
 its FFmpeg 4.4 is older than the package requirement. Bring-up uses a user-owned

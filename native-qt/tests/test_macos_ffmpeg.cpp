@@ -7,6 +7,7 @@
 #include <cerrno>
 #include "versus/platform/macos_ffmpeg.h"
 #include "versus/video/video_encoder.h"
+#include "versus/video/ffmpeg_bundle_policy.h"
 
 class MacFfmpegGate : public QObject {
     Q_OBJECT
@@ -19,6 +20,27 @@ class MacFfmpegGate : public QObject {
         return path;
     }
 private slots:
+    void bundledDistributionPolicy_data() {
+        QTest::addColumn<bool>("bundled");
+        QTest::addColumn<bool>("gpl");
+        QTest::addColumn<bool>("nonfree");
+        QTest::addColumn<bool>("rejected");
+        QTest::newRow("plain-bundle") << true << false << false << false;
+        QTest::newRow("nonfree-bundle") << true << false << true << true;
+        QTest::newRow("gpl-nonfree-bundle") << true << true << true << true;
+        QTest::newRow("external-gpl") << false << true << false << false;
+        QTest::newRow("external-nonfree") << false << false << true << false;
+        QTest::newRow("external-gpl-nonfree") << false << true << true << false;
+#if defined(__linux__) && defined(VERSUS_LINUX_PORTABLE)
+        QTest::newRow("portable-gpl-bundle") << true << true << false << false;
+#else
+        QTest::newRow("legacy-gpl-bundle") << true << true << false << true;
+#endif
+    }
+    void bundledDistributionPolicy() {
+        QFETCH(bool, bundled); QFETCH(bool, gpl); QFETCH(bool, nonfree); QFETCH(bool, rejected);
+        QCOMPARE(versus::video::rejectBundledFfmpeg(bundled, gpl, nonfree), rejected);
+    }
     void explicitPathsAndArgumentsAreLiteral() {
         QTemporaryDir directory(QDir::tempPath() + "/game-capture-probe space-XXXXXX");
         QVERIFY(directory.isValid());

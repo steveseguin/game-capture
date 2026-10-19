@@ -47,6 +47,8 @@ def main():
     for entry in manifest['payload']['files']:
         file = (bundle/entry['relativePath']).resolve()
         assert file.is_relative_to(bundle) and file.stat().st_size == entry['size'] and sha(file) == entry['sha256']
+    launcher = (bundle/manifest.get('launcher', manifest['artifact']['path'])).resolve()
+    assert launcher.is_relative_to(bundle)
     report = args.reports.resolve()/str(uuid.uuid4()); report.mkdir(parents=True, mode=0o700)
     helpers = Path(__file__).parent
     result = {'scope':__doc__, 'passed':False, 'architecture':manifest['architecture'],
@@ -80,6 +82,10 @@ def main():
         return subprocess.check_output([sys.executable, str(helpers/'linux-ui-control.py'), str(app.pid), *values],
                                        env=env, text=True, timeout=20)
     def rows(): return json.loads(ui('dump'))
+    def bitrate_row_visible(expected, hidden):
+        labels = [r for r in rows() if r['role'] == 'label']
+        return (any(r['name'] == expected and 'visible' in r['states'] for r in labels)
+                and not any(r['name'] == hidden and 'visible' in r['states'] for r in labels))
     def diagnostics():
         request = urllib.request.Request(control['base_url']+'/diagnostics',
                                          headers={'Authorization':'Bearer '+control['token']})
@@ -98,7 +104,7 @@ def main():
         return d
     def launch(label, restore=False):
         nonlocal app, control
-        app = start([str(exe), '--settings-dir='+str(settings), '--local-control',
+        app = start([str(launcher), '--settings-dir='+str(settings), '--local-control',
                      '--local-control-port=0', '--local-control-discovery='+str(discovery)], label+'-app')
         wait(discovery.exists, 'Missing local control discovery'); control = json.loads(discovery.read_text())
         assert control['pid'] == app.pid
@@ -114,7 +120,14 @@ def main():
             assert json.loads(ui('read-text', 'Output URL')) == destination
             result['settingsRestoredWithoutCapture'] = True
         else:
+            ui('press', 'Audio encoding')
+            wait(lambda:bitrate_row_visible('Opus bitrate', 'AAC bitrate'), 'Incorrect initial audio form rows')
+            (report/'opus-form-ui.json').write_text(json.dumps(rows(), indent=2)+'\n')
             ui('choose', 'VDO.Ninja (default)', 'UDP / MPEG-TS (LAN)')
+            wait(lambda:bitrate_row_visible('AAC bitrate', 'Opus bitrate'), 'Audio form rows did not follow output mode')
+            (report/'aac-form-ui.json').write_text(json.dumps(rows(), indent=2)+'\n')
+            result['audioFormRowsFollowOutputMode'] = True
+            ui('press', 'Audio encoding')
             ui('text', 'Output URL', destination)
             ui('choose', 'Auto (Hardware, then Software)', 'Software (x264 / VP9 / AV1 / HEVC)')
             ui('choose', '1280x720', '960x540'); ui('choose', '60', '30')
@@ -159,6 +172,19 @@ def main():
                     if (process/'exe').resolve(strict=True).name == 'ffmpeg': helper_pids[int(process.name)] = identity
                 except FileNotFoundError: pass
         assert helper_pids, 'No output helper observed during live MPEG-TS publication'
+        if manifest.get('packageFormat') == 'portable-tar':
+            # Prove the shipped libraries/helper are in use, even on a host
+            # with other Qt/FFmpeg versions installed. Preserve spaces in paths.
+            mappings = [line.split(maxsplit=5)[5] for line in Path(f'/proc/{app.pid}/maps').read_text().splitlines()
+                        if len(line.split(maxsplit=5)) == 6 and line.split(maxsplit=5)[5].startswith('/')]
+            loaded = {}
+            for library in ('libQt6Core.so', 'libavcodec.so', 'libavutil.so', 'libswscale.so', 'libpulse.so', 'libpipewire-0.3.so'):
+                paths = sorted({path for path in mappings if Path(path).name.startswith(library)})
+                assert paths and all(Path(path).is_relative_to(bundle) for path in paths), 'Foreign or missing runtime library: '+library
+                loaded[library] = paths
+            for pid in helper_pids:
+                assert Path(f'/proc/{pid}/exe').resolve() == bundle/'usr/lib/game-capture/ffmpeg', 'Unbundled output helper'
+            result.setdefault('portableRuntimeLibraries', {})[label] = loaded
         probe = json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(transport)], text=True))
         video = next(s for s in probe['streams'] if s['codec_type']=='video')
         audio = next(s for s in probe['streams'] if s['codec_type']=='audio')
@@ -257,6 +283,8 @@ def main():
         except Exception as error:
             result['error'] = repr(error)
             result['traceback'] = traceback.format_exc()
+            try: (report/'failure-ui.json').write_text(ui('dump'))
+            except Exception: pass
             try: screenshot('failure')
             except Exception: pass
         finally:

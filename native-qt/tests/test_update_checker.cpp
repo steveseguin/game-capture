@@ -86,21 +86,33 @@ class UpdateCheckerTest : public QObject {
     }
     void linuxDownloadsAndCache_data() {
         QTest::addColumn<QString>("architecture");
-        QTest::newRow("amd64") << QStringLiteral("amd64");
-        QTest::newRow("arm64") << QStringLiteral("arm64");
+        QTest::addColumn<bool>("portable");
+        QTest::newRow("amd64-deb") << QStringLiteral("amd64") << false;
+        QTest::newRow("arm64-deb") << QStringLiteral("arm64") << false;
+        QTest::newRow("amd64-portable") << QStringLiteral("amd64") << true;
+        QTest::newRow("arm64-portable") << QStringLiteral("arm64") << true;
     }
     void linuxDownloadsAndCache() {
         QFETCH(QString, architecture);
-        const auto platform = architecture == "arm64" ? UpdatePlatform::LinuxArm64 : UpdatePlatform::LinuxAmd64;
-        const auto otherPlatform = architecture == "arm64" ? UpdatePlatform::LinuxAmd64 : UpdatePlatform::LinuxArm64;
+        QFETCH(bool, portable);
+        const auto deb = architecture == "arm64" ? UpdatePlatform::LinuxArm64 : UpdatePlatform::LinuxAmd64;
+        const auto archive = architecture == "arm64" ? UpdatePlatform::LinuxPortableArm64 : UpdatePlatform::LinuxPortableAmd64;
+        const auto platform = portable ? archive : deb;
+        const auto otherFormat = portable ? deb : archive;
+        const auto otherPlatform = portable
+            ? (architecture == "arm64" ? UpdatePlatform::LinuxPortableAmd64 : UpdatePlatform::LinuxPortableArm64)
+            : (architecture == "arm64" ? UpdatePlatform::LinuxAmd64 : UpdatePlatform::LinuxArm64);
         const auto otherArchitecture = architecture == "arm64" ? "amd64" : "arm64";
-        const QString name = "game-capture-0.2.59~linux.2-" + architecture + "-0123456789ab-abcdef012345.deb";
+        const QString name = "game-capture-0.2.59~linux.2-" + architecture + "-0123456789ab-abcdef012345" +
+                             (portable ? "-portable.tar.gz" : ".deb");
         const auto url = "https://github.com/steveseguin/game-capture/releases/download/v0.2.59/" + name;
         const QJsonObject asset{{"name", name}, {"state", "uploaded"}, {"size", 1000},
                                {"browser_download_url", url}};
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", platform).status, UpdateStatus::Available);
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.59", platform).status, UpdateStatus::UpToDate);
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", otherPlatform).status,
+                 UpdateStatus::NoCompatibleDownload);
+        QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", otherFormat).status,
                  UpdateStatus::NoCompatibleDownload);
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", UpdatePlatform::LinuxUnsupported).status,
                  UpdateStatus::NoCompatibleDownload);
@@ -146,6 +158,8 @@ class UpdateCheckerTest : public QObject {
             // that architecture's package, even before its next refresh.
             UpdateChecker foreign("0.2.58", path, nullptr, &network, otherPlatform);
             QCOMPARE(foreign.result().status, UpdateStatus::NoCompatibleDownload);
+            UpdateChecker differentFormat("0.2.58", path, nullptr, &network, otherFormat);
+            QCOMPARE(differentFormat.result().status, UpdateStatus::NoCompatibleDownload);
         }
         // Existing Linux caches were version-only. Never keep advertising a
         // download without asset evidence while waiting for the next refresh.
@@ -162,7 +176,11 @@ class UpdateCheckerTest : public QObject {
         QCOMPARE(network.requests, 1);
     }
     void nativeLinuxArchitecture() {
-#if defined(__linux__) && defined(__aarch64__)
+#if defined(__linux__) && defined(__aarch64__) && defined(VERSUS_LINUX_PORTABLE)
+        QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxPortableArm64);
+#elif defined(__linux__) && defined(__x86_64__) && defined(VERSUS_LINUX_PORTABLE)
+        QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxPortableAmd64);
+#elif defined(__linux__) && defined(__aarch64__)
         QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxArm64);
 #elif defined(__linux__) && defined(__x86_64__)
         QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxAmd64);

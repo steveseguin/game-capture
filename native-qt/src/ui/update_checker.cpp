@@ -152,20 +152,24 @@ QJsonObject compatibleAsset(const QJsonObject &release, UpdatePlatform platform)
     const auto tag = release["tag_name"].toString();
     const auto version = tag.startsWith('v') ? tag.mid(1) : tag;
     const auto macStem = QStringLiteral("game-capture-macos-arm64-") + version;
-    // package-linux.py emits immutable, revisioned DEBs with executable/source
-    // identity suffixes. Keep this contract synchronized with that packager.
-    const auto linuxArchitecture = platform == UpdatePlatform::LinuxArm64
+    // Keep architecture and installation format separate: a portable install
+    // must never advertise a distribution-dependent DEB (or vice versa).
+    const bool portable = platform == UpdatePlatform::LinuxPortableArm64 ||
+                          platform == UpdatePlatform::LinuxPortableAmd64;
+    const auto linuxArchitecture = platform == UpdatePlatform::LinuxArm64 ||
+                                   platform == UpdatePlatform::LinuxPortableArm64
         ? QStringLiteral("arm64") : QStringLiteral("amd64");
     const QRegularExpression linuxName(QStringLiteral(
-        "^game-capture-%1~linux\\.[1-9][0-9]*-%2-[0-9a-f]{12}-[0-9a-f]{12}\\.deb\\z")
-        .arg(QRegularExpression::escape(version), linuxArchitecture));
+        "^game-capture-%1~linux\\.[1-9][0-9]*-%2-[0-9a-f]{12}-[0-9a-f]{12}%3\\z")
+        .arg(QRegularExpression::escape(version), linuxArchitecture,
+             portable ? QStringLiteral("-portable\\.tar\\.gz") : QStringLiteral("\\.deb")));
     const QString prefix = QStringLiteral("/steveseguin/game-capture/releases/download/");
     for (const auto &value : release["assets"].toArray()) {
         const auto asset = value.toObject();
         const auto name = asset["name"].toString();
         const bool matches = platform == UpdatePlatform::MacArm64
             ? name == macStem + ".dmg" || name == macStem + ".zip"
-            : (platform == UpdatePlatform::LinuxAmd64 || platform == UpdatePlatform::LinuxArm64)
+            : (platform == UpdatePlatform::LinuxAmd64 || platform == UpdatePlatform::LinuxArm64 || portable)
                 && linuxName.match(name).hasMatch();
         if (!matches || asset["state"].toString() != "uploaded" ||
             asset["size"].toDouble() <= 0) continue;

@@ -47,6 +47,9 @@ def main():
     root = Path(__file__).resolve().parents[2]
     native = root / "native-qt"
     build = args.build.resolve()
+    cache = build / 'CMakeCache.txt'
+    if cache.is_file() and 'VERSUS_LINUX_PORTABLE:BOOL=ON' in cache.read_text():
+        raise SystemExit('Portable builds must use package-linux-portable.py so updates match the installed format')
     binary = build / "bin/game-capture"
     if not binary.is_file():
         raise SystemExit("Build game-capture first")

@@ -66,6 +66,8 @@ def main():
     for entry in manifest['payload']['files']:
         file = (bundle / entry['relativePath']).resolve()
         assert file.is_relative_to(bundle) and file.stat().st_size == entry['size'] and sha(file) == entry['sha256']
+    launcher = (bundle/manifest.get('launcher', manifest['artifact']['path'])).resolve()
+    assert launcher.is_relative_to(bundle)
     report = args.reports.resolve() / str(uuid.uuid4()); report.mkdir(parents=True, mode=0o700)
     helper = Path(__file__).with_name('linux-ui-control.py')
     for source in [Path(__file__), helper]: shutil.copyfile(source, report/source.name)
@@ -117,7 +119,7 @@ def main():
             address = f'http://127.0.0.1:{proxy.server_port}'
             child_env.update(http_proxy=address, https_proxy=address, HTTP_PROXY=address, HTTPS_PROXY=address)
         log = (report/(label+'.log')).open('w'); logs.append(log)
-        process = subprocess.Popen([str(exe), '--settings-dir='+str(settings), '--local-control',
+        process = subprocess.Popen([str(launcher), '--settings-dir='+str(settings), '--local-control',
             '--local-control-port=0', '--local-control-discovery='+str(discovery)], env=child_env,
             stdout=log, stderr=log)
         wait(discovery.exists, 'Missing local-control discovery')
@@ -158,7 +160,10 @@ def main():
         original = sha(cache)
         observe('old-version-only-cache', MISSING, hold=6)
         assert sha(cache) == original; stop()
-        name = f'game-capture-99.0.0~linux.2-{architecture}-0123456789ab-abcdef012345.deb'
+        portable = manifest.get('packageFormat') == 'portable-tar'
+        suffix = '-portable.tar.gz' if portable else '.deb'
+        other_suffix = '.deb' if portable else '-portable.tar.gz'
+        name = f'game-capture-99.0.0~linux.2-{architecture}-0123456789ab-abcdef012345{suffix}'
         asset = {'name': name, 'size': 1000, 'state': 'uploaded',
                  'browser_download_url': 'https://github.com/steveseguin/game-capture/releases/download/v99.0.0/'+name}
         release['assets'] = [asset]; seed(release)
@@ -167,7 +172,10 @@ def main():
             assert read_cache(cache)['release'] == release; stop()
         foreign = {key: value.replace(architecture, other_architecture) if isinstance(value, str) else value
                    for key, value in asset.items()}
+        other_format = {key: value.replace(suffix, other_suffix) if isinstance(value, str) else value
+                        for key, value in asset.items()}
         for label, altered in [('wrong-architecture', foreign),
+                               ('wrong-package-format', other_format),
                                ('untrusted-asset-url', {**asset, 'browser_download_url': 'https://example.com/'+name})]:
             seed({**release, 'assets': [altered]}); launch(label)
             observe(label, MISSING); stop()
@@ -179,7 +187,7 @@ def main():
             result['oracle'] = {'url': response.url, 'etag': response.headers.get('ETag'), 'sha256': hashlib.sha256(body).hexdigest()}
         (report/'public-release.json').write_bytes(body)
         public = json.loads(body)
-        assert not any(a['name'].endswith('.deb') for a in public['assets']), 'Public Linux release changed; update cold-release oracle'
+        assert not any(a['name'].endswith(suffix) for a in public['assets']), 'Public Linux release changed; update cold-release oracle'
         launch('cold-online'); wait(cache.exists, 'No update cache')
         wait(lambda: read_cache(cache)['succeeded'] if 'Release="@ByteArray({' in cache.read_text() else False,
              'No successful release lookup')

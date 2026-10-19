@@ -40,6 +40,8 @@ The Linux port targets Ubuntu 24.04 on x86-64 and is still under development. It
 
 Experimental **ARM64 Linux** bring-up reuses these backends on the `linux-arm64` branch. See the [native ARM64 build/package instructions and workflow scope](docs/linux-arm64.md) and the separate [ARM evidence ledger](native-qt/qa/linux-arm64.json). Raspberry Pi, hardware encoding and full ARM parity remain unqualified.
 
+An additional [portable Linux archive](docs/linux-portable.md) builds against Ubuntu 22.04 and bundles Qt/FFmpeg to reduce distribution dependencies. Extract the archive and run `AppRun`; it requires no installation or FUSE. It retains host desktop/audio services and GPU drivers. This does not change the Ubuntu 24.04 DEB's requirements.
+
 When your desktop provides a system tray, closing the window keeps streaming. Use the tray’s **Show** action to reopen it, or **Quit** to stop and exit. On Wayland, the tray’s **Copy Share Link** action brings the window forward and completes the copy once it gains focus.
 
 On Wayland, select **Preview window** and choose a window in the desktop permission dialog for a local video preview. Preview does not start audio capture or publishing. **Go live** uses that same capture session to start streaming; **Stop preview** releases it without going live. You can also select **Go live** directly and choose a window when prompted. The preview clears when streaming stops. X11 also shows a selected-window thumbnail before streaming.

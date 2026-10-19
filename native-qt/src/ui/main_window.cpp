@@ -1,6 +1,7 @@
 ﻿#include "versus/ui/main_window.h"
 
 #include "versus/ui/update_checker.h"
+#include "versus/video/ffmpeg_bundle_policy.h"
 #include "versus/platform/capabilities.h"
 #if defined(__APPLE__) || defined(__linux__)
 #include "versus/platform/app_paths.h"
@@ -140,7 +141,15 @@ static void setFormRowVisible(QFormLayout *form, QWidget *field, bool visible) {
         if (!item) item = form->itemAt(row, QFormLayout::SpanningRole);
         auto *widget = item ? item->widget() : nullptr;
         if (widget && (widget == field || widget->isAncestorOf(field))) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 4, 0)
             form->setRowVisible(row, visible);
+#else
+            // Qt 6.2 (Ubuntu 22.04) predates row visibility. Our form rows
+            // use widget fields, including containers for compound controls.
+            widget->setVisible(visible);
+            if (auto *label = form->labelForField(widget)) label->setVisible(visible);
+            form->invalidate();
+#endif
             return;
         }
     }
@@ -2192,7 +2201,7 @@ void MainWindow::setupUI() {
     aacBitrateSpin_->setRange(32, 320); aacBitrateSpin_->setValue(versus::defaults::AudioBitrateKbps); aacBitrateSpin_->setSuffix(" kbps");
     installSpinWheelGuard(aacBitrateSpin_);
     audioEncodingForm->addRow("AAC bitrate", aacBitrateSpin_);
-    audioEncodingForm->setRowVisible(aacBitrateSpin_, false);
+    setFormRowVisible(audioEncodingForm, aacBitrateSpin_, false);
 
     audioChannelsSelect_ = new QComboBox(this);
     audioChannelsSelect_->setObjectName("audioChannelsSelect");
@@ -3678,7 +3687,7 @@ void MainWindow::onGoLiveClicked() {
                     if (!info.resolved || !info.error.empty()) {
                         failureStatus = QString("FFmpeg unavailable: %1. Choose a working FFmpeg path or repair the bundled installation.")
                             .arg(QString::fromStdString(info.error));
-                    } else if (info.bundled && (info.gplEnabled || info.nonfreeEnabled)) {
+                    } else if (versus::video::rejectBundledFfmpeg(info.bundled, info.gplEnabled, info.nonfreeEnabled)) {
                         failureStatus = "Bundled FFmpeg rejected (GPL/nonfree flags). Repair the installation.";
                     } else if ((config.codec == versus::video::VideoCodec::VP9 ||
                                 (config.enableAlpha && config.codec == versus::video::VideoCodec::H264)) &&
