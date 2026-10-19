@@ -38,6 +38,13 @@ const includeMic = opts['include-microphone'] === 'true';
 const usesMic = includeMic || audioMode === 'default-microphone';
 const mixedMic = includeMic && ['selected-window','default-output'].includes(audioMode);
 const performanceSeconds = Number(opts['performance-seconds'] || 0);
+const controlPressure = opts['control-pressure'] === 'true';
+const controlSeed = Number(opts['control-seed'] || 20261018);
+if (opts['control-pressure'] && !['true','false'].includes(opts['control-pressure']))
+  throw Error('--control-pressure must be true or false');
+if ((controlPressure && (audioMode !== 'selected-window' || usesMic || opts.gui)) ||
+    !Number.isInteger(controlSeed) || controlSeed < 0 || controlSeed > 0xffffffff)
+  throw Error('Control pressure requires selected-window audio without GUI/microphone and a uint32 seed');
 const loadRecovery=opts['load-recovery']==='true';
 const encodedEvidence=opts['encoded-evidence']==='true';
 if(opts['encoded-evidence']&&(!['true','false'].includes(opts['encoded-evidence'])||!loadRecovery))
@@ -80,6 +87,11 @@ const result = {receiverHarnessSha256:crypto.createHash('sha256').update(fs.read
   executableSha256:crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'), cases:[], passed:false};
 result.requested = {codec,width,height,fps,bitrateKbps:bitrate,performanceSeconds,windowSuspension};
 result.requested.motionPattern = motionPattern;
+if(controlPressure) {
+  result.requested.controlPressure=true;result.requested.controlSeed=controlSeed;
+  for(const name of ['macos-control-pressure.js','macos-live-control-fuzz.js'])
+    fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
+}
 if(loadRecovery)result.requested.loadRecovery=true;
 if(encodedEvidence) {
   result.requested.encodedEvidence=true;
@@ -307,6 +319,49 @@ function saveReport() {
         entry.initialAfterDiagnostics = await api(control,'/diagnostics').catch(error=>({observationError:String(error)}));
       }
       entry.distinctFrames = requireMoving(entry.moving, encoder);
+      if(controlPressure) {
+        const pressure=entry.controlPressure={passed:false,intervals:[],faults:{}};
+        pressure.before=await api(control,'/diagnostics');
+        pressure.audioObserver=await continuousAudio.start(page);
+        let recording;
+        try {
+          recording=await continuousAudio.record(page,path.join(report,encoder+'-control-pressure-audio.webm'));
+          audioRecordings.add(recording);pressure.recording=recording.metadata;
+          const operations=await Promise.allSettled([
+            require('./macos-control-pressure')(control,controlSeed,pressure.faults),
+            (async()=>{
+              for(let index=0;index<5;index++) {
+                const row={index};pressure.intervals.push(row);
+                row.video=await observeDecoded(page,5000,null,'camera',true);
+                row.audio=await continuousAudio.drain(page);
+                row.audioCheck=continuousAudio.analyze(row.audio,4.65);
+                row.distinctFrames=requireMoving(row.video,'Control pressure '+index);
+                const frames=row.video.observations;
+                row.maximumMediaGapMs=Math.max(0,...frames.slice(1).map((f,i)=>(f.mediaTime-frames[i].mediaTime)*1000));
+                const times=frames.map(f=>row.video.clock.timeOrigin+f.receivedTime);
+                const previous=pressure.intervals.at(-2)?.video;
+                row.maximumArrivalGapMs=Math.max(times[0]-row.video.started,row.video.ended-times.at(-1),
+                  ...times.slice(1).map((t,i)=>t-times[i]),previous?
+                    times[0]-(previous.clock.timeOrigin+previous.observations.at(-1).receivedTime):0);
+                row.passed=row.audioCheck.passed&&row.maximumMediaGapMs<=500&&row.maximumArrivalGapMs<=500;
+                saveReport();
+              }
+            })()
+          ]);
+          pressure.operations=operations.map(item=>({status:item.status,...(item.status==='rejected'?{error:String(item.reason)}:{})}));
+          pressure.after=await api(control,'/diagnostics');
+          pressure.passed=operations.every(item=>item.status==='fulfilled')&&pressure.faults.passed&&
+            pressure.faults.durationMs<24000&&
+            pressure.intervals.length===5&&pressure.intervals.every(row=>row.passed)&&
+            pressure.after.video.encode_failures===pressure.before.video.encode_failures&&
+            pressure.after.video.encode_timeouts===pressure.before.video.encode_timeouts;
+          if(!pressure.passed)throw Error('Control pressure/media workflow failed; retain interval evidence');
+        } finally {
+          await continuousAudio.stop(page);
+          if(recording){await recording.stop();audioRecordings.delete(recording);}
+          saveReport();
+        }
+      }
       if (performanceSeconds) {
         entry.performance = {scope:'Local controlled window and browser on the same Mac; not calibrated latency/A-V or release qualification',chunks:[],samples:[],meetsTarget:true};
         entry.performance.presentationScope='Callback timing only during sustained observation; decoded-track pixels verify content. Initial and functional-control presentation checks still inspect pixels.';
@@ -524,8 +579,19 @@ function saveReport() {
       await sleep(800);
       entry.resized = await observe(page, 4000);
       requireMoving(entry.resized, 'Resized ' + encoder);
-      const lateViewer = await receiver(viewerBrowser, stream, child);
-      entry.lateViewer = await observe(lateViewer, 3000);
+      // Retain source progress and publisher counters even when late-viewer
+      // motion fails. Decoded frame rate alone cannot distinguish repeated
+      // source content from capture or encoder stalls on a loaded host.
+      entry.lateBeforeDiagnostics = await api(control,'/diagnostics');
+      await source.evaluate(()=>{fixture.trace=[];fixture.record=true;});
+      let lateViewer;
+      try {
+        lateViewer = await receiver(viewerBrowser, stream, child);
+        entry.lateViewer = await observe(lateViewer, 3000);
+      } finally {
+        entry.lateSourceTrace = await source.evaluate(()=>{fixture.record=false;return fixture.trace;});
+        entry.lateAfterDiagnostics = await api(control,'/diagnostics');
+      }
       requireMoving(entry.lateViewer, 'Late viewer ' + encoder);
       if (audioMode !== 'none' || usesMic) { entry.lateAudio = await observeAudio(lateViewer); requireAudio(entry.lateAudio); }
       await page.screenshot({path:path.join(report,encoder + '-receiver.png')});

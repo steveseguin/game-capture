@@ -8,6 +8,8 @@ const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=
 assert.equal(process.platform,'darwin');
 for(const key of ['app','fixture','receiver','plugin','reports'])assert(opts[key],'Missing --'+key);
 const syphon=opts.source==='syphon',association=opts['syphon-alpha']||'straight';
+const fixtureSource=opts['fixture-source']?path.resolve(opts['fixture-source']):path.join(__dirname,syphon?'macos-syphon-fixture.mm':'macos-alpha-fixture.mm');
+assert(fs.statSync(fixtureSource).isFile(),'Fixture source must be retained with its binary');
 assert(['straight','premultiplied'].includes(association));
 const gui=opts.gui==='true';if(gui)assert(opts['ui-helper'],'GUI requires --ui-helper');
 const cycles=Number(opts.cycles||1);assert(Number.isInteger(cycles)&&cycles>=1&&cycles<=5);assert(gui||cycles===1);
@@ -24,7 +26,7 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 const exe=path.resolve(opts.app,'Contents/MacOS/game-capture'),fixture=path.resolve(opts.fixture),receiver=path.resolve(opts.receiver),plugin=path.resolve(opts.plugin);
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const result={scope:'Packaged transparent window or Syphon -> OBS/plugin paired BGRA and black/white scene composition; OBS frontend excluded',
-  source:syphon?'syphon':'window',association,codec,encoder,gui,selectionRefreshes,filterSources,checkIdempotent,closeSelected,cycles:[],analyzerSha256:hash(path.join(__dirname,'macos-alpha-analyzer.js')),executableSha256:hash(exe),fixtureSha256:hash(fixture),receiverSha256:hash(receiver),pluginSha256:hash(plugin),harnessSha256:hash(__filename),passed:false};
+  source:syphon?'syphon':'window',association,codec,encoder,gui,selectionRefreshes,filterSources,checkIdempotent,closeSelected,cycles:[],analyzerSha256:hash(path.join(__dirname,'macos-alpha-analyzer.js')),executableSha256:hash(exe),fixtureSha256:hash(fixture),fixtureSourceSha256:hash(fixtureSource),receiverSha256:hash(receiver),pluginSha256:hash(plugin),harnessSha256:hash(__filename),passed:false};
 if(gui)result.uiHelperSha256=hash(path.resolve(opts['ui-helper']));
 result.qtCocoaSha256=hash(path.resolve(opts.app,'Contents/PlugIns/platforms/libqcocoa.dylib'));
 for(const name of ['macos-alpha-publish.js','macos-alpha-analyzer.js','macos-alpha-fixture.mm','macos-obs-alpha-receiver.cpp','macos-ui-control.mm'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
@@ -54,7 +56,7 @@ const {analyze,analyzeComposition}=require('./macos-alpha-analyzer');
   await waitFor(()=>{assert(source.exitCode===null&&!source.signalCode,'Fixture exited');return source.output.includes(syphon?'uuid':'windowId');},10000,'Fixture not ready');
   result.fixture=JSON.parse(source.output.split('\n').find(s=>s.startsWith('{')));
   const sourceId=String(syphon?result.fixture.uuid:result.fixture.windowId);
-  if(syphon)fs.copyFileSync(path.join(__dirname,'macos-syphon-fixture.mm'),path.join(report,'macos-syphon-fixture.mm'));
+  fs.copyFileSync(fixtureSource,path.join(report,path.basename(fixtureSource)));
   const discovery=path.join(report,'control.json');
   let publisherArgs;
   if(gui){

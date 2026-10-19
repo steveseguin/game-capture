@@ -5,7 +5,7 @@ const fs=require('fs'),path=require('path'),crypto=require('crypto'),assert=requ
 const {spawn}=require('child_process');
 const {sleep,waitFor}=require('./macos-media-receiver');
 const {analyzeGeometry}=require('./macos-alpha-geometry-analyzer');
-const {compressRecordings}=require('./macos-report-recordings');
+const {compressRecording,compressRecordings}=require('./macos-report-recordings');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 assert.equal(process.platform,'darwin');for(const k of ['app','fixture','receiver','plugin','plugin-data','reports'])assert(opts[k],'Missing --'+k);
 const codec=opts.codec||'h264',encoder=opts.encoder||'videotoolbox',scene=opts.scene!=='false',syphon=opts.source==='syphon';
@@ -29,7 +29,8 @@ function launch(command,args,label){
 async function api(route,body){const r=await fetch(control.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok,'HTTP '+r.status);return r.json();}
 async function command(value){native.output='';native.stdin.write(value+'\n');await waitFor(()=>{assert(native.exitCode===null&&!native.signalCode);return native.output.includes('ACK '+value);},5000,'Receiver command incomplete: '+value);}
 const peerIdentity=d=>d.peers.map(p=>({uuid:p.uuid,created:p.created_steady_ms,wire:p.active_wire_session})).sort((a,b)=>a.uuid.localeCompare(b.uuid));
-async function samples(label,composition){await command('snapshot '+label);const d=JSON.parse(fs.readFileSync(path.join(output,label+'.json')));assert.equal(d.sourceCreations,1);
+async function samples(label,composition){await command('snapshot '+label);const file=path.join(output,label+'.json');const d=JSON.parse(fs.readFileSync(file));
+ compressRecording(report,path.relative(report,file));assert.equal(d.sourceCreations,1);
  const frames=(composition==='raw'?d.samples:d[composition+'Composition']).filter(f=>f.segment===label);
  assert(frames.length>=60,'Too few frames in '+label);for(let i=1;i<frames.length;i++)assert(BigInt(frames[i].timestamp)>BigInt(frames[i-1].timestamp),'Non-advancing output timestamp');return frames;
 }
@@ -81,6 +82,7 @@ async function samples(label,composition){await command('snapshot '+label);const
 }catch(error){result.error=String(error.stack||error);console.error(result.error);process.exitCode=1;if(control){try{result.failureDiagnostics=await api('/diagnostics');}catch{}}
 }finally{
  for(const child of children)child.kill('SIGTERM');await Promise.all([...children].map(async child=>{await Promise.race([child.closed,sleep(3000)]);if(child.exitCode===null&&!child.signalCode)child.kill('SIGKILL');await child.closed;}));
- result.recordingStorage=compressRecordings(report);
+ try{result.recordingStorage=compressRecordings(report);}
+ catch(error){result.recordingStorageError=String(error.stack||error);result.passed=false;process.exitCode=1;console.error(error);}
  save();console.log(JSON.stringify({report,passed:result.passed}));
 }})();

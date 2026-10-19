@@ -12,7 +12,7 @@ def clean(value):
     return value[:4000]
 export={'scope':__doc__,'media':[],'diagnostics':[]}
 if (raw/'result.json').exists():
-    r=read(raw/'result.json');export['campaign']={k:r.get(k) for k in ['scope','sourceRevision','steps','passed','archiveSha256','executableSha256','manifestSha256','session','videoControllers','endedUtc']}
+    r=read(raw/'result.json');export['campaign']={k:r.get(k) for k in ['scope','sourceRevision','requestedVersion','steps','passed','archiveSha256','executableSha256','manifestSha256','session','videoControllers','endedUtc']}
     export['campaign']['error']=clean(r.get('error',''));export['rawCampaignSha256']=sha(raw/'result.json')
 for file in raw.glob('media/*/results.json'):
     r=read(file);e={k:r.get(k) for k in ['scope','passed','executableSha256','manifestSha256','harnessSha256','receiverHarnessSha256',
