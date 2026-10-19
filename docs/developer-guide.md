@@ -160,6 +160,13 @@ late reception and Stop/restart. Add `--camera-id=v4l2:/dev/videoN` and the exac
 and screenshots stay in the private ignored report directory; uncontrolled
 camera scenes do not establish frame cadence or optical motion fidelity.
 
+For the owned Wayland window workflow, `--expected-cursor=excluded` adds a
+controlled native cursor and a desktop screenshot that proves it is present.
+Decoded video must omit that cursor during moving/static pictures, late
+reception and Stop/restart. This mode keeps the source maximized and does not
+qualify resizing. `--expected-cursor=included` is the positive control for an
+older package that requests an embedded cursor.
+
 For X11, run it under `xvfb-run -a -s '-screen 0 1600x1000x24'`, then
 `linux-private-desktop.py --window-manager --reports=... --`. For Wayland,
 nest `linux-owned-wayland-desktop.py --reports=... --`, then
@@ -181,8 +188,12 @@ each move. This exercises route recovery independently of the continuous-audio
 diagnostic.
 
 On a failed native GUI output move, audio diagnostics also retain the owned
-PipeWire graph and a separate two-second recording of the owned destination
-output. This compares source-output audio with the app's monitor input.
+PipeWire graph, source-writer progress and separate two-second recordings of
+the owned destination before and after Game Capture exits. Recording runs
+asynchronously so unrelated fixture playback keeps running. Add
+`--capture-native-source=true` to retain the native client's stream-state log
+and verbose buffer/clock diagnostics. This compares source-output audio with
+the app's monitor input and checks whether stopping capture restores playback.
 These private recordings do not establish continuous timing or physical audio
 quality; a failed receiver check still fails the workflow.
 
@@ -190,7 +201,9 @@ quality; a failed receiver check still fails the workflow.
 twenty output moves without Game Capture under the private desktop/audio
 wrappers. It checks independent owned-output PCM and retains a graph snapshot
 on failure. Add `--direct-monitor` for a standalone `parec` stream-specific
-monitor alongside playback. These are source/audio-graph diagnostics, not
+monitor alongside playback. `--busy-outputs` adds unrelated 2 kHz playback on
+both owned sinks and a virtual input; the independent recording checks the
+native source's distinct 440/880 Hz tones. These are source/audio-graph diagnostics, not
 application testing; a passing diagnostic does not waive an application failure.
 
 For browser visibility comparisons, `linux-window-publish.js` accepts

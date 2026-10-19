@@ -394,7 +394,9 @@ struct WindowCapture::Impl {
         session = handle.canConvert<QDBusObjectPath>() ? qvariant_cast<QDBusObjectPath>(handle).path() : handle.toString();
         if (session.isEmpty()) return false;
         const auto object = QVariant::fromValue(QDBusObjectPath(session));
-        if (!portalRequest("SelectSources", {object}, {{"types", uint(2)}, {"multiple", false}, {"cursor_mode", uint(2)}}, result, running, startCancelled)) return false;
+        // Match Windows Graphics Capture and ScreenCaptureKit: exclude the
+        // cursor. Hidden is also the portal's default on older backends.
+        if (!portalRequest("SelectSources", {object}, {{"types", uint(2)}, {"multiple", false}}, result, running, startCancelled)) return false;
         if (!portalRequest("Start", {object, QString()}, {}, result, running, startCancelled)) return false;
         const auto streams = qvariant_cast<QDBusArgument>(result.value("streams"));
         uint node = PW_ID_ANY;

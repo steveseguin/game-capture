@@ -295,7 +295,22 @@ def main():
                                 response = {'passed':False, 'error':repr(error)}
                             client.sendall((json.dumps(response)+'\n').encode())
                         else:
-                            keys(json.loads(data)); client.sendall(b'ok')
+                            request = json.loads(data)
+                            if isinstance(request, dict):
+                                # Pointer injection is confined to this verified
+                                # owned compositor, never the physical desktop.
+                                assert set(request) == {'pointer'}
+                                x, y = request['pointer']
+                                assert type(x) is int and type(y) is int and 0 <= x < 1440 and 0 <= y < 1000
+                                # Avoid GNOME's upper-left overview hot corner.
+                                session.NotifyPointerMotionRelative(dbus.Double(10000), dbus.Double(10000))
+                                # Let Mutter apply the corner clamp before it
+                                # coalesces the next relative motion event.
+                                time.sleep(.2)
+                                session.NotifyPointerMotionRelative(dbus.Double(x-1439), dbus.Double(y-999))
+                            else:
+                                keys(request)
+                            client.sendall(b'ok')
                 result['exitCode'] = child.wait()
                 result['compositorSurvived'] = shell.poll() is None and str(daemon.GetNameOwner('org.gnome.Shell')) == owner
                 result['passed'] = result['exitCode'] == 0 and result['compositorSurvived']

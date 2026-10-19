@@ -38,8 +38,10 @@ def main():
     parser.add_argument('--encoder', choices=['software', 'nvenc'], default='software')
     parser.add_argument('--camera-label')
     parser.add_argument('--camera-id')
+    parser.add_argument('--expected-cursor', choices=['included', 'excluded'])
     args = parser.parse_args()
     assert bool(args.camera_label) == bool(args.camera_id)
+    assert not args.expected_cursor or (not args.camera_id and args.backend == 'wayland')
     assert os.environ.get('GC_QA_PRIVATE_DESKTOP') if args.backend == 'x11' else os.environ.get('GC_QA_OWNED_WAYLAND')
     exe = args.publisher.resolve(); bundle = exe.parent.parent.parent
     manifest_path = bundle/'release-artifact-manifest.json'
@@ -53,6 +55,8 @@ def main():
     helpers = Path(__file__).parent
     result = dict(scope=__doc__, passed=False, manifestSha256=sha(manifest_path),
                   executableSha256=sha(exe), requested=vars(args).copy(), phases=[], harnesses={})
+    if args.expected_cursor:
+        result['scope'] = 'Packaged native Wayland GUI window capture with a controlled native cursor, positive desktop screenshot, independently decoded moving/static/late/restarted video and clean Stop/Quit. Owned software GNOME only; no resize, physical desktop or other compositor qualification.'
     result['requested'] = {k:str(v) if isinstance(v, Path) else v for k,v in result['requested'].items()}
     for name in (Path(__file__).name, 'linux-gtk-source.py', 'linux-ui-control.py', 'linux-portal-select.py'):
         shutil.copy2(helpers/name, report/name); result['harnesses'][name] = sha(helpers/name)
@@ -111,6 +115,26 @@ def main():
         before = api(); time.sleep(.6); after = api()
         assert not after['app']['live'] and not after['app']['primary_audio_capturing'] and not after['app']['microphone_capturing']
         assert before['video']['frames_captured'] == after['video']['frames_captured']
+    def position_cursor(label):
+        def input_event(value):
+            with socket.socket(socket.AF_UNIX) as pointer:
+                pointer.settimeout(5); pointer.connect(os.environ['GC_QA_KEYBOARD_SOCKET'])
+                pointer.sendall(json.dumps(value).encode()+b'\n')
+                assert pointer.recv(32) == b'ok'
+        command('present'); time.sleep(.5)
+        if not command('state')['focused']:
+            input_event(['ALT_TAB']); time.sleep(.5)
+        assert command('state')['focused'], 'Native source did not gain focus'
+        input_event({'pointer':[720,150]}); time.sleep(1)
+        state = command('state')
+        shot = report/(label+'-cursor-desktop.png')
+        subprocess.run(['gnome-screenshot','--include-pointer','-f',str(shot)],env=env,check=True,timeout=10)
+        pixels = np.array(Image.open(shot).convert('RGB'))
+        positive_pixels = int(((pixels[:,:,0]>200)&(pixels[:,:,1]>180)&(pixels[:,:,2]<60)).sum())
+        result.setdefault('controlledCursor', []).append(dict(phase=label, source=state, desktopCursorPixels=positive_pixels, screenshotSha256=sha(shot)))
+        save()
+        assert state['pointer']['inside'] and 0 <= state['pointer']['x'] < state['width'] and 0 <= state['pointer']['y'] < state['height']*.25
+        assert positive_pixels >= 300, 'Native cursor positive control missing'
     def receive(label, static=False):
         before = api(); source_before = command('state') if source else None
         transport = report/(label+'.ts')
@@ -133,6 +157,19 @@ def main():
                      before=before, after=api(), sourceBefore=source_before, sourceAfter=command('state') if source else None)
         result['phases'].append(phase); save()
         assert len(frames)>=120, 'Insufficient decoded video'
+        if args.expected_cursor:
+            for snapshot in (phase['sourceBefore'], phase['sourceAfter']):
+                pointer = snapshot['pointer']
+                assert pointer['inside'] and 0 <= pointer['x'] < snapshot['width'] and 0 <= pointer['y'] < snapshot['height']*.25, 'Cursor left its controlled source region'
+            # The controlled cursor lies in this otherwise uniform blue strip,
+            # above the barcode and below the title. The baseline's embedded
+            # cursor has red/blue swapped relative to the desktop screenshot;
+            # count bright pixels without assuming its channel order.
+            probe = frames[:,12:45,80:240,:]
+            bright = ((probe[:,:,:,1] > 170) & ((probe[:,:,:,0] > 170) | (probe[:,:,:,2] > 170))).sum(axis=(1,2))
+            phase['cursorPixels'] = dict(minimum=int(bright.min()), maximum=int(bright.max()), region=[80,12,160,33])
+            save()
+            assert bright.min() >= 30 if args.expected_cursor == 'included' else bright.max() == 0, 'Received cursor differs from expected Windows/macOS behavior'
         if source:
             identities = []
             for frame in frames:
@@ -183,13 +220,19 @@ def main():
         if not any(r['role']=='combo box' and r['name']=='No microphone' for r in rows):
             ui('choose', 'Linux default microphone/input', 'No microphone')
         ui('source', args.camera_label or ('Choose a window' if args.backend=='wayland' else 'Owned Linux Capture Native GTK Source'))
-        go_live('initial'); receive('moving')
+        go_live('initial')
+        if args.expected_cursor:
+            command('cursor'); time.sleep(1); position_cursor('initial')
+        receive('moving')
         if source:
             command('pause'); time.sleep(1); receive('static', True)
-            command('resume'); command('resize', width=600, height=400); time.sleep(1)
-            resized = command('state'); result['resizedSource'] = resized
-            assert (resized['width'],resized['height']) != (result['initialSource']['width'],result['initialSource']['height'])
-            receive('resized'); time.sleep(4); receive('late')
+            command('resume')
+            if not args.expected_cursor:
+                command('resize', width=600, height=400); time.sleep(1)
+                resized = command('state'); result['resizedSource'] = resized
+                assert (resized['width'],resized['height']) != (result['initialSource']['width'],result['initialSource']['height'])
+                receive('resized')
+            time.sleep(4); receive('late')
         else:
             ui('activate')
             result['livePreview'] = json.loads(ui('preview'))
@@ -208,7 +251,10 @@ def main():
             assert result['livePreview']['centerStandardDeviation'] > 5 and result['livePreview']['uniqueCenterColors'] > 100, 'Camera preview is blank'
             receive('late')
         stop(); result['stopPassed'] = True
-        go_live('restart'); receive('restarted'); stop(); result['restartPassed'] = True
+        go_live('restart')
+        if args.expected_cursor: position_cursor('restart')
+        receive('restarted'); stop(); result['restartPassed'] = True
+        if args.expected_cursor: ui('activate')
         ui('quit-menu'); app.wait(timeout=15)
         assert app.returncode == 0 and not discovery.exists()
         result['passed'] = True

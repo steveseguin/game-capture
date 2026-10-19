@@ -44,7 +44,7 @@ An additional [portable Linux archive](docs/linux-portable.md) builds against Ub
 
 When your desktop provides a system tray, closing the window keeps streaming. Use the tray’s **Show** action to reopen it, or **Quit** to stop and exit. On Wayland, the tray’s **Copy Share Link** action brings the window forward and completes the copy once it gains focus.
 
-On Wayland, select **Preview window** and choose a window in the desktop permission dialog for a local video preview. Preview does not start audio capture or publishing. **Go live** uses that same capture session to start streaming; **Stop preview** releases it without going live. You can also select **Go live** directly and choose a window when prompted. The preview clears when streaming stops. X11 also shows a selected-window thumbnail before streaming.
+On Wayland, select **Preview window** and choose a window in the desktop permission dialog for a local video preview. Preview does not start audio capture or publishing. **Go live** uses that same capture session to start streaming; **Stop preview** releases it without going live. You can also select **Go live** directly and choose a window when prompted. The preview clears when streaming stops. Window capture excludes the mouse pointer, matching Windows and macOS. X11 also shows a selected-window thumbnail before streaming.
 
 Keep a captured browser window visible while using the experimental Wayland port. In the owned GNOME workflow, fully covering Chrome 143 or Chromium 145 freezes the captured picture; uncovering restores it. Foreground capture passes motion, resize and restart checks, but covered-window capture remains an open parity gap.
 

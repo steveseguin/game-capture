@@ -5,7 +5,7 @@ import sys
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import GLib, Gtk
+from gi.repository import GLib, Gtk, Gdk, GdkPixbuf
 
 
 def main():
@@ -13,7 +13,13 @@ def main():
     window.set_default_size(720, 480)
     area = Gtk.DrawingArea()
     window.add(area)
-    state = {'id': 0, 'draws': 0, 'paused': False}
+    state = {'id': 0, 'draws': 0, 'paused': False, 'pointerInside': False}
+    area.add_events(Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK | Gdk.EventMask.POINTER_MOTION_MASK)
+    def pointer_event(widget, event):
+        state['pointerInside'] = event.type != Gdk.EventType.LEAVE_NOTIFY
+        return False
+    for signal in ('enter-notify-event', 'leave-notify-event', 'motion-notify-event'):
+        area.connect(signal, pointer_event)
 
     def draw(widget, context):
         state['draws'] += 1
@@ -44,7 +50,19 @@ def main():
         elif action == 'resume': state['paused'] = False
         elif action == 'resize': window.resize(request['width'], request['height'])
         elif action == 'present': window.present()
+        elif action == 'cursor':
+            # A large yellow cursor is distinct from every fixture pixel.
+            pixels = GdkPixbuf.Pixbuf.new(GdkPixbuf.Colorspace.RGB, True, 8, 64, 64)
+            pixels.fill(0xffef00ff)
+            area.get_window().set_cursor(Gdk.Cursor.new_from_pixbuf(window.get_display(), pixels, 0, 0))
+            window.maximize(); window.present()
         else: assert action == 'state'
+        pointer = window.get_display().get_default_seat().get_pointer()
+        _, x, y, _ = area.get_window().get_device_position(pointer)
+        # get_device_position returns a child window, which can be None even
+        # when the pointer is over this DrawingArea itself. Use crossing events.
+        state['pointer'] = dict(inside=state['pointerInside'], x=x, y=y)
+        state['focused'] = window.is_active()
         print(json.dumps(state), flush=True)
         return True
 

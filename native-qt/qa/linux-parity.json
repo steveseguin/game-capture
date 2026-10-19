@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "See linux_native_inputs_checkpoint.followupWorkflows: Chrome 143/Chromium 145 foreground workflows pass, but controlled complete occlusion freezes capture and uncovering recovers. Covered-window parity remains failed. Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Explicit-permission preview before publishing now passed the bounded workflows in linux_local_window_preview_checkpoint. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_nvenc_750ti_checkpoint: NVIDIA 580 driver now works and an owned-software-compositor H.264 NVENC lifecycle passes, but NVIDIA-backed headless capture delivers about one fresh image per second with both encoders; the full surfaceless resize/late-viewer workflow also fails with capture stalling after resize. Physical GNOME/NVIDIA and these failures remain unqualified. See linux_native_inputs_checkpoint: native GTK capture through an owned software GNOME compositor and NVENC passes moving/static/resized/late/restarted decoding. The Chrome resize stall remains unresolved; no physical-desktop or60fps qualification is inferred."
+      "remaining": "See linux_native_inputs_checkpoint.followupWorkflows: Chrome 143/Chromium 145 foreground workflows pass, but controlled complete occlusion freezes capture and uncovering recovers. Covered-window parity remains failed. Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Explicit-permission preview before publishing now passed the bounded workflows in linux_local_window_preview_checkpoint. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_nvenc_750ti_checkpoint: NVIDIA 580 driver now works and an owned-software-compositor H.264 NVENC lifecycle passes, but NVIDIA-backed headless capture delivers about one fresh image per second with both encoders; the full surfaceless resize/late-viewer workflow also fails with capture stalling after resize. Physical GNOME/NVIDIA and these failures remain unqualified. See linux_native_inputs_checkpoint: native GTK capture through an owned software GNOME compositor and NVENC passes moving/static/resized/late/restarted decoding. The Chrome resize stall remains unresolved; no physical-desktop or60fps qualification is inferred. See linux_cursor_parity_checkpoint for packaged cursor exclusion aligned with Windows/macOS; owned GNOME only. Covered-browser freezes and wider capture qualification remain open."
     },
     {
       "id": "x11-window",
@@ -35,7 +35,7 @@
       "id": "application-audio",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "See linux_native_inputs_checkpoint.followupWorkflows: native PipeWire app discovery/capture works, but repeated output moves intermittently produce silence; independent destination output is also silent in one retained failure. Source/graph/monitor interaction is unresolved. Packaged CLI/GUI selection and lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Healthy direct monitors survive output moves, including repeated-move evidence. See linux_receiver_playout_checkpoint: normal visible and headless unmuted receiver workflows pass all nine continuous phases and actual owned-sink restart playback checks. The older muted headless Web Audio control still contains a 10 ms zero interval despite clean encoded audio; historical failures remain recorded and its precise browser-internal cause is unproven. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_native_inputs_checkpoint: native PipeWire client identity fix passes real selected-app CLI and GUI workflows, descendants, exclusion, output moves and stale-instance reselection. An intermittent GUI output-move silence remains unresolved despite subsequent passing traces. JACK DSP per-client capture remains unsupported; PipeWire system-output capture of actual JACK playback passes."
+      "remaining": "See linux_native_inputs_checkpoint.followupWorkflows: native PipeWire app discovery/capture works, but repeated output moves intermittently produce silence; independent destination output is also silent in one retained failure. Source/graph/monitor interaction is unresolved. Packaged CLI/GUI selection and lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Healthy direct monitors survive output moves, including repeated-move evidence. See linux_receiver_playout_checkpoint: normal visible and headless unmuted receiver workflows pass all nine continuous phases and actual owned-sink restart playback checks. The older muted headless Web Audio control still contains a 10 ms zero interval despite clean encoded audio; historical failures remain recorded and its precise browser-internal cause is unproven. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_native_inputs_checkpoint: native PipeWire client identity fix passes real selected-app CLI and GUI workflows, descendants, exclusion, output moves and stale-instance reselection. An intermittent GUI output-move silence remains unresolved despite subsequent passing traces. JACK DSP per-client capture remains unsupported; PipeWire system-output capture of actual JACK playback passes. See linux_native_audio_stall_checkpoint for source progress and independent output recordings around capture shutdown. Native-client output-move stalls remain unresolved."
     },
     {
       "id": "system-audio",
@@ -36003,5 +36003,1163 @@
       "scope": "Targeted x86 packaged regression after logging/storage integration. Eight-input matrix, camera repeats, browser visibility diagnostics and 31-minute endurance above remain bound to the preceding 3e5038 package; no new-package endurance claim."
     },
     "followupCleanup": "Owned compositor/audio wrapper reports confirm process retirement for retained visibility/route failures and standalone diagnostics; no failure is waived by cleanup."
+  },
+  "linux_cursor_parity_checkpoint": {
+    "date": "2026-10-19",
+    "change": "Wayland now uses the portal default Hidden cursor mode, matching Windows Graphics Capture IsCursorCaptureEnabled(false), ScreenCaptureKit showsCursor=NO, and the existing X11 image capture. No compositor or host service changes.",
+    "source": {
+      "native-qt/src/platform/linux/window_capture.cpp": "e3917b0ee268bfb12843e8b53fbcc824b67df7403a8a1d8393521763e81154b9",
+      "native-qt/e2e/linux-input-publish.py": "e5c66a168f8378f4a7bc3376d5400fbbe53d7e37ac328a00f0bd128024662128",
+      "native-qt/e2e/linux-gtk-source.py": "575ad6b6a3f46218ee1b5e597965722ffa168dd7220d8d22662dbb5e0ffe62fa",
+      "native-qt/e2e/linux-owned-wayland-desktop.py": "957be86239e119b1a713f0d596af3e675a759962bf1b019f8236315543b323da"
+    },
+    "baselinePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-adfbaa62aa4a-08a6b8c40611.deb",
+      "sha256": "4873378647d08cbdc7a0d7bb37db8efb838ab8d2a8c80a50cb233fa5ed8bbdc9",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-adfbaa62aa4a-08a6b8c40611",
+      "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e"
+    },
+    "candidatePackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-7b1bfb376ee6.deb",
+      "sha256": "b39050272ac06a54120ec3392c15ca0e4af122d057ab1cac7380daa73631dd99",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-7b1bfb376ee6",
+      "manifestSha256": "9b12d64ddd6d0e1d1e998f79e2a16e48bd9f110e31604e59d00d65196a6273d5"
+    },
+    "applicationWorkflows": [
+      {
+        "name": "cursor-baseline-complete",
+        "path": "native-qt/qa/reports/cursor-baseline-complete/2b8e8edf-797d-44bb-86a5-6e233d808bc1/results.json",
+        "sha256": "c3c0938682dd24818b587f2a4281c6f213383cc7dbffd6e03f6f9a45eeaf703d",
+        "passed": true,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": [
+          {
+            "phase": "initial",
+            "source": {
+              "id": 1651,
+              "draws": 1651,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "ae5b1a9ca731e8f9e246c1613525a9c302ee1fcdf635321a8822bb88d73f9e8c"
+          },
+          {
+            "phase": "restart",
+            "source": {
+              "id": 2863,
+              "draws": 3244,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "f5b409bbe18cb14be06bb39f6d32162ef499a6efaaf4857e84012051f233efdf"
+          }
+        ],
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 143,
+            "uniqueIdentities": 143,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 124,
+            "uniqueIdentities": 1,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 135,
+            "uniqueIdentities": 135,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 150,
+            "uniqueIdentities": 150,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "cursor-excluded-nvenc",
+        "path": "native-qt/qa/reports/cursor-excluded-nvenc/ed9ad3df-5319-4eee-81ec-f8b68f1e9cd8/results.json",
+        "sha256": "b79cd93b1aa6e444f9e250c69aa1f8c28c3e5538332507a3a3a3d45a7a7458bc",
+        "passed": true,
+        "manifestSha256": "9b12d64ddd6d0e1d1e998f79e2a16e48bd9f110e31604e59d00d65196a6273d5",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": [
+          {
+            "phase": "initial",
+            "source": {
+              "id": 1649,
+              "draws": 1649,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "7af45438ae1fb93bce5036a107b11bd0884f376bc1b830fecc2bc312763f3373"
+          },
+          {
+            "phase": "restart",
+            "source": {
+              "id": 2859,
+              "draws": 3241,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "b1f50929730e8a9d5218a0af7c6d2117452ad5263083eb70f43edc282a760893"
+          }
+        ],
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 143,
+            "uniqueIdentities": 143,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 125,
+            "uniqueIdentities": 1,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 137,
+            "uniqueIdentities": 137,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 121,
+            "uniqueIdentities": 121,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "cursor-excluded-software",
+        "path": "native-qt/qa/reports/cursor-excluded-software/99315135-036c-4bb9-bef8-dc690aa3efda/results.json",
+        "sha256": "a6b61d9f89ee099361cbe692e99e8be2c60a78e951768217e585541ab6cff2ca",
+        "passed": true,
+        "manifestSha256": "9b12d64ddd6d0e1d1e998f79e2a16e48bd9f110e31604e59d00d65196a6273d5",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": [
+          {
+            "phase": "initial",
+            "source": {
+              "id": 1663,
+              "draws": 1663,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "5ef4419eeb8cc8bc99f900c97b5ae5726d6e1a059cc1484bb274bb5713351c33"
+          },
+          {
+            "phase": "restart",
+            "source": {
+              "id": 2851,
+              "draws": 3233,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "9ff1c0b605505978f7f0261ae916d5fed0fee871b8e5cd24ec96a059e51fb106"
+          }
+        ],
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 144,
+            "uniqueIdentities": 144,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 125,
+            "uniqueIdentities": 1,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 136,
+            "uniqueIdentities": 136,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151,
+            "uniqueIdentities": 151,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "cursor-native-resize-regression",
+        "path": "native-qt/qa/reports/cursor-native-resize-regression/7183a59e-2369-4491-a67a-f6d927cc8762/results.json",
+        "sha256": "104aa7a35d9ef04bd98b2b7868dbb8f0a1ce6bff7180f942d0ae6589e969edd1",
+        "passed": true,
+        "manifestSha256": "9b12d64ddd6d0e1d1e998f79e2a16e48bd9f110e31604e59d00d65196a6273d5",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 150,
+            "uniqueIdentities": 150
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 133,
+            "uniqueIdentities": 1
+          },
+          {
+            "name": "resized",
+            "passed": true,
+            "decodedFrames": 146,
+            "uniqueIdentities": 146
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 128,
+            "uniqueIdentities": 128
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151,
+            "uniqueIdentities": 151
+          }
+        ]
+      }
+    ],
+    "desktopCleanup": [
+      {
+        "name": "cursor-baseline-complete-compositor",
+        "path": "native-qt/qa/reports/cursor-baseline-complete-compositor/9081898e-7fd4-4dfd-a469-36400425ce89/results.json",
+        "sha256": "49631eb47ff8b0343dc09abf9ab8ed5742f5f5f1c31b5d01f93f396813c660bb",
+        "passed": true,
+        "ownedProcessesRetired": true,
+        "compositorSurvived": true
+      },
+      {
+        "name": "cursor-excluded-nvenc-compositor",
+        "path": "native-qt/qa/reports/cursor-excluded-nvenc-compositor/77a74c26-3cd1-45b8-ad4b-3c4ae9b3ab24/results.json",
+        "sha256": "3612a8d923df85cbd25d41b85d438b99934d849362996feef0aa609d8e825096",
+        "passed": true,
+        "ownedProcessesRetired": true,
+        "compositorSurvived": true
+      },
+      {
+        "name": "cursor-excluded-software-compositor",
+        "path": "native-qt/qa/reports/cursor-excluded-software-compositor/0af8c3f9-35f7-437d-87e2-af1eb5b66584/results.json",
+        "sha256": "2f9681040b9c18e7a211372fcbfec3be392bb62d939cad51ddbcc4bf2bac0e6b",
+        "passed": true,
+        "ownedProcessesRetired": true,
+        "compositorSurvived": true
+      },
+      {
+        "name": "cursor-native-resize-regression-compositor",
+        "path": "native-qt/qa/reports/cursor-native-resize-regression-compositor/6e437961-caef-45f0-a80b-bb5bfdff4fa6/results.json",
+        "sha256": "b4552684c6549be705879a3139a09c019e31f69a71525117abe762e8de57731d",
+        "passed": true,
+        "ownedProcessesRetired": true,
+        "compositorSurvived": true
+      }
+    ],
+    "fixtureFailuresRetained": [
+      {
+        "name": "wayland-cursor-baseline",
+        "path": "native-qt/qa/reports/wayland-cursor-baseline/9caa7a26-f844-4538-b6f0-ed762bcdc5ac/results.json",
+        "sha256": "1d6f580e8f1de9190e5afac9a6155ed8233ec7c2934139c703f716b1111c9eb7",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 199, in main\n    assert pointer.recv(32) == b'ok'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": false,
+        "phases": []
+      },
+      {
+        "name": "wayland-cursor-baseline-verified",
+        "path": "native-qt/qa/reports/wayland-cursor-baseline-verified/711fb117-7d60-4ee2-bc15-1ba6fe225ca7/results.json",
+        "sha256": "49f6cbd3e0a6a4cc99cc110d4ee98f8672e6c4436e658f50d7f4f04b2af9b3d9",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 201, in main\n    assert state['pointer']['inside'] and 0 <= state['pointer']['x'] < state['width'] and 0 <= state['pointer']['y'] < state['height']*.25\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": {
+          "id": 1537,
+          "draws": 1537,
+          "paused": false,
+          "width": 1440,
+          "height": 931,
+          "pointer": {
+            "inside": false,
+            "x": 0,
+            "y": -37
+          }
+        },
+        "phases": []
+      },
+      {
+        "name": "wayland-cursor-positive-control",
+        "path": "native-qt/qa/reports/wayland-cursor-positive-control/e766ab6b-461e-4225-88b9-cb1934539b53/results.json",
+        "sha256": "f37fc42c772fb0b365deeb57c9c0db9f8b98685daf248294abf575d08e38cab4",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 201, in main\n    assert state['pointer']['inside'] and 0 <= state['pointer']['x'] < state['width'] and 0 <= state['pointer']['y'] < state['height']*.25\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": {
+          "id": 1564,
+          "draws": 1564,
+          "paused": false,
+          "width": 1440,
+          "height": 931,
+          "pointer": {
+            "inside": false,
+            "x": 0,
+            "y": -37
+          }
+        },
+        "phases": []
+      },
+      {
+        "name": "wayland-cursor-baseline-final",
+        "path": "native-qt/qa/reports/wayland-cursor-baseline-final/10d8844d-4410-4042-aebb-01208fcf5d69/results.json",
+        "sha256": "692c0f8d5092bdc49f9bb20a3aa94df5a2163ef6fccd4d93353922efa50d48b5",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 206, in main\n    assert state['pointer']['inside'] and 0 <= state['pointer']['x'] < state['width'] and 0 <= state['pointer']['y'] < state['height']*.25\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": {
+          "id": 1573,
+          "draws": 1573,
+          "paused": false,
+          "width": 1440,
+          "height": 931,
+          "pointer": {
+            "inside": false,
+            "x": 0,
+            "y": -37
+          }
+        },
+        "phases": []
+      },
+      {
+        "name": "wayland-cursor-baseline-controlled",
+        "path": "native-qt/qa/reports/wayland-cursor-baseline-controlled/87691f20-5bef-453d-865f-6285229c45fe/results.json",
+        "sha256": "3c39f21cfbaa4449285d8154ed171db856f99ebc2e86d53b9d25edb247ca1479",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 206, in main\n    assert state['pointer']['inside'] and 0 <= state['pointer']['x'] < state['width'] and 0 <= state['pointer']['y'] < state['height']*.25\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": {
+          "id": 1566,
+          "draws": 1566,
+          "paused": false,
+          "pointerInside": false,
+          "width": 1440,
+          "height": 931,
+          "pointer": {
+            "inside": false,
+            "x": 0,
+            "y": -37
+          }
+        },
+        "phases": []
+      },
+      {
+        "name": "wayland-cursor-baseline-focused",
+        "path": "native-qt/qa/reports/wayland-cursor-baseline-focused/e96c4c29-5e84-450b-9c0e-1a4e4b81f647/results.json",
+        "sha256": "f003ebc43a1fa43c85c3d0c3fb3001a61474182154a76a8cd98951e2fe487e55",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 221, in main\n    receive('moving')\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 167, in receive\n    assert yellow.min() >= 30 if args.expected_cursor == 'included' else yellow.max() == 0, 'Received cursor differs from expected Windows/macOS behavior'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: Received cursor differs from expected Windows/macOS behavior\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": [
+          {
+            "phase": "initial",
+            "source": {
+              "id": 1638,
+              "draws": 1638,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "265778ac3746db09b9c4e2e8fe6454eb37a31f1d4ee43fb0815460ba5e4b45f3"
+          }
+        ],
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 143,
+            "cursorPixels": {
+              "minimum": 0,
+              "maximum": 0
+            }
+          }
+        ]
+      },
+      {
+        "name": "wayland-cursor-positive",
+        "path": "native-qt/qa/reports/wayland-cursor-positive/a2fd13c5-6b67-4523-b455-065f977af8d2/results.json",
+        "sha256": "8631e03e610a96d80853be7096a1e2931d5d2717532ad66bb508696e0ef15cf3",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 257, in main\n    ui('quit-menu'); app.wait(timeout=15)\n    ^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 86, in ui\n    return subprocess.check_output([sys.executable, str(helpers/'linux-ui-control.py'), str(app.pid), *argv],\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 466, in check_output\n    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['/usr/bin/python3', '/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py', '185079', 'quit-menu']' returned non-zero exit status 1.\n",
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "controlledCursor": [
+          {
+            "phase": "initial",
+            "source": {
+              "id": 1649,
+              "draws": 1649,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "0ebcccfbb3ab2113fd35c7768c1cfb5f6d6dc52ca9d93f49d25647c21dae11f2"
+          },
+          {
+            "phase": "restart",
+            "source": {
+              "id": 2875,
+              "draws": 3237,
+              "paused": false,
+              "pointerInside": true,
+              "width": 1440,
+              "height": 931,
+              "pointer": {
+                "inside": true,
+                "x": 720,
+                "y": 81
+              },
+              "focused": true
+            },
+            "desktopCursorPixels": 4096,
+            "screenshotSha256": "2aed6e5348135c938ed46316955510b8ab8b4a2f45218320d91ed1a3330d7782"
+          }
+        ],
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 143,
+            "uniqueIdentities": 143,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 125,
+            "uniqueIdentities": 1,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 137,
+            "uniqueIdentities": 137,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151,
+            "uniqueIdentities": 151,
+            "cursorPixels": {
+              "minimum": 143,
+              "maximum": 143,
+              "region": [
+                80,
+                12,
+                160,
+                33
+              ]
+            }
+          }
+        ]
+      }
+    ],
+    "fixtureCorrections": "Used the Mutter relative-pointer method, avoided the overview hot corner, verified source focus and pointer crossing events, and activated the publisher before its Quit menu. The baseline embedded cursor has red/blue reversed relative to the desktop screenshot; the receiver counts bright pixels in an otherwise uniform background region, while the desktop screenshot independently proves the controlled cursor is present. All failed development attempts remain failed.",
+    "gates": {
+      "build": "cmake --build native-qt/build-linux --target game-capture -j 4 passed; /tmp/linux-cursor-build.log",
+      "syntax": "Python AST parsing and node --check passed; gates only",
+      "diff": "git diff --check passed"
+    },
+    "scope": "Owned GNOME software compositor, Ubuntu 24.04 x86-64 extracted DEB. Cursor workflows cover moving/static/late/restarted local UDP video, explicit Stop and GUI Quit. Separate ordinary native-window workflow covers resize. No physical desktop, other compositor, Windows/macOS runtime or ARM runtime claim. All 23 parity rows remain required."
+  },
+  "linux_native_audio_stall_checkpoint": {
+    "date": "2026-10-19",
+    "applicationWorkflows": [
+      {
+        "name": "native-audio-progress-1",
+        "path": "native-qt/qa/reports/native-audio-progress-1/4a4ebbda-7c06-4817-90c3-9d6eb8640985/results.json",
+        "sha256": "4674247177e41905e1254faeea7c93da421bd58c4c4f4164fd826bc8e893f386",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "AssertionError [ERR_ASSERTION]: outputMoved9: decoded stereo tone/silence/routing differs from the fixture (0/30)\n    at requireAudio (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:181:3)\n    at sample (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:658:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:764:11",
+        "outputMoves": 9,
+        "references": {
+          "outputMoved9SourceOutput": {
+            "sourceBefore": {
+              "id": 17,
+              "child": null,
+              "playbackPid": 177356,
+              "primaryProgress": {
+                "frames": 3157920,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null
+              },
+              "monotonicSeconds": 67867.674163348
+            },
+            "sourceAfter": {
+              "id": 18,
+              "child": null,
+              "playbackPid": 177356,
+              "primaryProgress": {
+                "frames": 3157920,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null
+              },
+              "monotonicSeconds": 67870.083930923
+            },
+            "path": "outputMoved9-owned-output.f32le",
+            "sha256": "7007f1d4ff4d97fc213418695d1b3c30554d36cddbb9b3357f466e1af116970a",
+            "destination": "gc_qa_a0ad38e5a819",
+            "frames": 96206,
+            "channels": [
+              {
+                "rms": 0.10579197300826336,
+                "toneAmplitudes": {
+                  "440": 1.7193709604841527e-05,
+                  "880": 2.626862754133902e-05,
+                  "2000": 0.025211601008226517
+                }
+              },
+              {
+                "rms": 0.10579197300826336,
+                "toneAmplitudes": {
+                  "440": 1.7193709604841527e-05,
+                  "880": 2.626862754133902e-05,
+                  "2000": 0.025211601008226517
+                }
+              }
+            ],
+            "scope": "Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence."
+          },
+          "outputMoved9CaptureRetiredAtMs": 1792452742194,
+          "outputMoved9AfterCaptureQuitSourceOutput": {
+            "sourceBefore": {
+              "id": 19,
+              "child": null,
+              "playbackPid": 177356,
+              "primaryProgress": {
+                "frames": 3157920,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null
+              },
+              "monotonicSeconds": 67871.958818772
+            },
+            "sourceAfter": {
+              "id": 20,
+              "child": null,
+              "playbackPid": 177356,
+              "primaryProgress": {
+                "frames": 3157920,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null
+              },
+              "monotonicSeconds": 67874.366605373
+            },
+            "path": "outputMoved9AfterCaptureQuit-owned-output.f32le",
+            "sha256": "c8bf606a056675cfaff5727499e46c9b2f650096dbf1b6adaaad2ef5a7fd0430",
+            "destination": "gc_qa_a0ad38e5a819",
+            "frames": 96141,
+            "channels": [
+              {
+                "rms": 0.10593019381098716,
+                "toneAmplitudes": {
+                  "440": 9.511634256849304e-06,
+                  "880": 3.537502747069126e-05,
+                  "2000": 0.05379648076369166
+                }
+              },
+              {
+                "rms": 0.10593019381098716,
+                "toneAmplitudes": {
+                  "440": 9.511634256849304e-06,
+                  "880": 3.537502747069126e-05,
+                  "2000": 0.05379648076369166
+                }
+              }
+            ],
+            "scope": "Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence."
+          }
+        }
+      },
+      {
+        "name": "native-audio-progress-trace-2",
+        "path": "native-qt/qa/reports/native-audio-progress-trace-2/eaeac9fd-e4e3-434a-b86c-da9d28252d79/results.json",
+        "sha256": "91a2410ef8085ba6665f25867c750e875728c626b766046b28602c7cf6215c20",
+        "passed": false,
+        "manifestSha256": "f4fb120754f29315a49fd8aaf8e7dd0097b4c26a25f55fb535cda73aa43e909e",
+        "executableSha256": "adfbaa62aa4af4be58e6e1719fccd8b1596054a11e94eb3871ec5c608926c0b1",
+        "error": "AssertionError [ERR_ASSERTION]: outputMoved3: decoded stereo tone/silence/routing differs from the fixture (0/30)\n    at requireAudio (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:182:3)\n    at sample (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:659:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:765:11",
+        "outputMoves": 3,
+        "references": {
+          "outputMoved3SourceOutput": {
+            "sourceBefore": {
+              "id": 11,
+              "child": null,
+              "playbackPid": 179201,
+              "primaryProgress": {
+                "frames": 1853760,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null,
+                "tracePath": "/home/ubuntu/code/game-capture/native-qt/qa/reports/native-audio-progress-trace-2/eaeac9fd-e4e3-434a-b86c-da9d28252d79/native-source-73d1b49295d644399f002c3f7eba0f87.log"
+              },
+              "monotonicSeconds": 68083.95550732
+            },
+            "sourceAfter": {
+              "id": 12,
+              "child": null,
+              "playbackPid": 179201,
+              "primaryProgress": {
+                "frames": 1853760,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null,
+                "tracePath": "/home/ubuntu/code/game-capture/native-qt/qa/reports/native-audio-progress-trace-2/eaeac9fd-e4e3-434a-b86c-da9d28252d79/native-source-73d1b49295d644399f002c3f7eba0f87.log"
+              },
+              "monotonicSeconds": 68086.355429708
+            },
+            "path": "outputMoved3-owned-output.f32le",
+            "sha256": "605b825238dbe662d00658c2e76cacac77fcb4c44268cd975a351b4748d4365b",
+            "destination": "gc_qa_25b8ad6821a5",
+            "frames": 96054,
+            "channels": [
+              {
+                "rms": 0.10586236772443157,
+                "toneAmplitudes": {
+                  "440": 3.647150385977604e-06,
+                  "880": 1.3363064389861067e-05,
+                  "2000": 0.0654825713074682
+                }
+              },
+              {
+                "rms": 0.10586236772443157,
+                "toneAmplitudes": {
+                  "440": 3.647150385977604e-06,
+                  "880": 1.3363064389861067e-05,
+                  "2000": 0.0654825713074682
+                }
+              }
+            ],
+            "scope": "Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence."
+          },
+          "outputMoved3CaptureRetiredAtMs": 1792452958472,
+          "outputMoved3AfterCaptureQuitSourceOutput": {
+            "sourceBefore": {
+              "id": 13,
+              "child": null,
+              "playbackPid": 179201,
+              "primaryProgress": {
+                "frames": 1853760,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null,
+                "tracePath": "/home/ubuntu/code/game-capture/native-qt/qa/reports/native-audio-progress-trace-2/eaeac9fd-e4e3-434a-b86c-da9d28252d79/native-source-73d1b49295d644399f002c3f7eba0f87.log"
+              },
+              "monotonicSeconds": 68088.229733595
+            },
+            "sourceAfter": {
+              "id": 14,
+              "child": null,
+              "playbackPid": 179201,
+              "primaryProgress": {
+                "frames": 1853760,
+                "silent": false,
+                "error": null,
+                "writerAlive": true,
+                "clientExitCode": null,
+                "tracePath": "/home/ubuntu/code/game-capture/native-qt/qa/reports/native-audio-progress-trace-2/eaeac9fd-e4e3-434a-b86c-da9d28252d79/native-source-73d1b49295d644399f002c3f7eba0f87.log"
+              },
+              "monotonicSeconds": 68090.637088364
+            },
+            "path": "outputMoved3AfterCaptureQuit-owned-output.f32le",
+            "sha256": "4209f14c6ba4c0d787ce698cf3bb25d212e4854266519a9f01da521ab3dd8c51",
+            "destination": "gc_qa_25b8ad6821a5",
+            "frames": 96176,
+            "channels": [
+              {
+                "rms": 0.10578982198294559,
+                "toneAmplitudes": {
+                  "440": 1.8400284009046797e-05,
+                  "880": 2.6379164738644932e-05,
+                  "2000": 0.05172120987584801
+                }
+              },
+              {
+                "rms": 0.10578982198294559,
+                "toneAmplitudes": {
+                  "440": 1.8400284009046797e-05,
+                  "880": 2.6379164738644932e-05,
+                  "2000": 0.05172120987584801
+                }
+              }
+            ],
+            "scope": "Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence."
+          }
+        }
+      },
+      {
+        "name": "native-audio-progress-verbose",
+        "path": "native-qt/qa/reports/native-audio-progress-verbose/10cf49a6-19e1-4ffa-b1d9-8189647f3ae4/results.json",
+        "sha256": "afae9e2847c8de60ddb13346d5ebb7bb5ccf2f00589d324cca1d599d7ea107d6",
+        "passed": true,
+        "manifestSha256": "9b12d64ddd6d0e1d1e998f79e2a16e48bd9f110e31604e59d00d65196a6273d5",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "outputMoves": 20,
+        "references": {}
+      }
+    ],
+    "sourceDiagnostic": {
+      "name": "native-source-busy-monitor",
+      "path": "native-qt/qa/reports/native-source-busy-monitor/f98d2895-0ed9-49a8-94c1-6f5311d66c16/results.json",
+      "sha256": "285269d093e2d043c430711301199feda338e7c6d9769f912fc4dd1e354a3411",
+      "passed": true,
+      "sourceRetired": true,
+      "monitorRetired": true,
+      "backgroundRetired": true,
+      "phases": [
+        {
+          "move": 0,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14977314428094385,
+            0.14981367677602742
+          ]
+        },
+        {
+          "move": 1,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14981109767315554,
+            0.14979644825184107
+          ]
+        },
+        {
+          "move": 2,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.1499857898666183,
+            0.14998005349880422
+          ]
+        },
+        {
+          "move": 3,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14978897663099594,
+            0.1497982104273031
+          ]
+        },
+        {
+          "move": 4,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14980144662226277,
+            0.1498051545607725
+          ]
+        },
+        {
+          "move": 5,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14975958484641252,
+            0.1498251670481548
+          ]
+        },
+        {
+          "move": 6,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.1497840696910921,
+            0.1498051219220857
+          ]
+        },
+        {
+          "move": 7,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14978407531255378,
+            0.14978185734142704
+          ]
+        },
+        {
+          "move": 8,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.1498267876326249,
+            0.14979961456569468
+          ]
+        },
+        {
+          "move": 9,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.1497928770742586,
+            0.14981666795092302
+          ]
+        },
+        {
+          "move": 10,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14980678257866864,
+            0.14981092381408526
+          ]
+        },
+        {
+          "move": 11,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.15001880818468813,
+            0.1499993948040164
+          ]
+        },
+        {
+          "move": 12,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14981069878488615,
+            0.14980077981955311
+          ]
+        },
+        {
+          "move": 13,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14977670176879387,
+            0.14979300790004516
+          ]
+        },
+        {
+          "move": 14,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14979424180626325,
+            0.14979318631887056
+          ]
+        },
+        {
+          "move": 15,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.15000210844438577,
+            0.14997499251727003
+          ]
+        },
+        {
+          "move": 16,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14979732591558634,
+            0.14979487111722298
+          ]
+        },
+        {
+          "move": 17,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14979789606083552,
+            0.14979907612023077
+          ]
+        },
+        {
+          "move": 18,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.14980839200867968,
+            0.14978712106641698
+          ]
+        },
+        {
+          "move": 19,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.1498190882779437,
+            0.14982387925130738
+          ]
+        },
+        {
+          "move": 20,
+          "passed": true,
+          "nativeToneAmplitudes": [
+            0.15001671720766885,
+            0.15001029498861823
+          ]
+        }
+      ],
+      "applicationTesting": false
+    },
+    "finding": "Packaged failures on output moves 9 and 3 froze the native source writer frame count while the client remained alive. Independent asynchronous output recordings before and after Game Capture quit contained the unrelated 2 kHz output but no meaningful native 440/880 Hz signal. Stopping capture did not restore source progress. This localizes the observed failure to the source/audio graph, not merely receiver decoding; it does not prove whether the capture connection triggered it.",
+    "limits": "Standalone baseline plus 20 moves passed with a separate direct monitor, two busy outputs and virtual input. This does not reproduce or waive the packaged failure. No production audio change or fix claimed. Older synchronous reference captures paused the JavaScript unrelated-tone producers; the new asynchronous recorder preserves that control.",
+    "remaining": "Establish a minimal reproduction and root cause of native-client route-move stalls; qualify a remedy without regressing healthy Pulse stream monitor retention. Calibrated timing, native-client endurance and per-JACK-client capture remain open.",
+    "latestRepeat": "The cursor-fix package passed the full native GUI workflow with 20 output moves, including late reception, source closure and reselection, with verbose native-source diagnostics enabled. This passing repeat does not waive the two stalled-source failures above or establish a routing fix."
   }
 }
