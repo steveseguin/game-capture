@@ -1,0 +1,505 @@
+{
+  "schema": 1,
+  "objective": "One portable native ARM64 Linux package using a glibc 2.35 baseline and bundled Qt/FFmpeg; reuse Linux backends and retain DEB behavior",
+  "parentLedgers": [
+    "linux-parity.json",
+    "linux-arm64.json"
+  ],
+  "status": "bounded final ARM64 archive media and update matrix passed on Ubuntu 22.04 host and Ubuntu 24.04 userland; other combinations unqualified",
+  "recordedAtUtc": "2026-10-19T05:44:13.566190+00:00",
+  "completionPolicy": "Build, syntax, isolated logic and linkage checks are gates. Testing requires the exact shipped archive through real GUI workflows with independent received-media decoding.",
+  "build": {
+    "distribution": "Ubuntu 22.04.5 ARM64, user-owned Ubuntu Base via Bubblewrap on native Jetson CPU",
+    "cpu": "NVIDIA Jetson Orin Nano, six Cortex-A78AE cores",
+    "ramGiB": 7.4,
+    "kernel": "5.15.148-tegra",
+    "qt": "6.2.4",
+    "ffmpeg": "6.1.6",
+    "compiler": "GCC 11.4.0",
+    "cmake": "3.28.4",
+    "pipewire": "0.3.48",
+    "ubuntuBaseSha256": "075d4abd2817a5023ab0a82f5cb314c5ec0aa64a9c0b40fd3154ca3bfdae979f",
+    "abiRequirements": {
+      "GLIBC": "2.35",
+      "GLIBCXX": "3.4.30"
+    },
+    "inventory": {
+      "report": "reports/linux-portable/build-inventory.json",
+      "sha256": "afa7186a815e6e67f6007681be9791a4d54f4c86d75246b5c36f2bfa306aa348"
+    },
+    "packages": {
+      "report": "reports/linux-portable/build-packages.txt",
+      "sha256": "f5d84b4d18ac11856493d1b6db3b109a88561dc54fdbeeb48c6b7869db693a9b"
+    }
+  },
+  "distribution": {
+    "format": "extract-and-run tar.gz with AppRun; no installation or FUSE",
+    "bundled": "Qt plugins, FFmpeg helper and media libraries, Pulse/PipeWire clients and modules, application dependencies; per-file hashes and dependency notices",
+    "host": "loader, glibc, C++/GCC runtimes, graphics drivers, desktop/portal, audio and Secret Service daemons",
+    "policy": "GPL-enabled portable Linux bundle supported; nonfree bundle rejected. Existing DEB, Windows and Mac policy retained. Architecture and package format both gate update selection."
+  },
+  "profile": {
+    "resolution": "960x540",
+    "fps": 30,
+    "video": "native libx264 software H.264 at 4000 kbps",
+    "audio": "mixed system and microphone stereo, AAC 128 kbps",
+    "transport": "loopback UDP/MPEG-TS",
+    "qualification": "owned Xvfb/xfwm4, virtual Pulse sources, independent host FFmpeg decoding; not physical desktop/device or performance qualification"
+  },
+  "previewPackage": {
+    "package": "/workspace/native-qt/dist/portable-preview/game-capture-0.2.65~linux.2-arm64-e30595472239-8e4815ff5481-portable.tar.gz",
+    "sha256": "e66634367cc5eb94aace004d0785eefb012a5866adffa3b410029933b17365a6",
+    "payload": "/workspace/native-qt/dist/portable-preview/game-capture-0.2.65~linux.2-arm64-e30595472239-8e4815ff5481-portable",
+    "manifestSha256": "4aa9c1c1e2b938168e28723e711039bc8133906c0c6d2fb512ed3e5c8f058dfb"
+  },
+  "previewSource": {
+    "sourceRevision": "184fae80b3c46de508ebf8c23139f9d4204c28ff",
+    "sourceTreeSha256": "8e4815ff5481b03dd9da7decf5f90e226daa49e9b92c2e44585699055de5e05e",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-e30595472239-8e4815ff5481-portable-source.tar.gz",
+    "sourceSha256": "5b629c1ca9ee5a32315d09d9667af7ae7c002ef60e65c6a3625aab5c7b8a02d0"
+  },
+  "preservedFailures": [
+    {
+      "report": "reports/portable-host-preview-media/6a1432cf-8724-4c39-af10-d230deea747f/results.json",
+      "sha256": "52ecd05f506bddb07378f8c17b59e3cf2a561295dbd2ffaca42a694d874aefbb",
+      "passed": false,
+      "executableSha256": "bb40d81cfcea6f8d4fa5e818eb272af4d64571f7abef10e8546a75c2296b8536",
+      "manifestSha256": "ba0a264290e611b5cf76a7e339ac3e9b88e910a6e19335aa9965b1931cb5db65",
+      "phases": [],
+      "audioFormRowsFollowOutputMode": false,
+      "settingsRestoredWithoutCapture": false,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "error": "RuntimeError('Incorrect initial audio form rows')",
+      "diagnosis": "Observer checked bitrate rows before expanding Audio encoding. Corrected fixture action; no media attempted."
+    },
+    {
+      "report": "reports/portable-host-preview-media/cb74f670-d3f2-4aaf-b405-0d9120fb77e6/results.json",
+      "sha256": "5e10ec69a2a5ea92b1eef02469b15f305c311b2d85551d169260f31f820bbd3c",
+      "passed": false,
+      "executableSha256": "bb40d81cfcea6f8d4fa5e818eb272af4d64571f7abef10e8546a75c2296b8536",
+      "manifestSha256": "ba0a264290e611b5cf76a7e339ac3e9b88e910a6e19335aa9965b1931cb5db65",
+      "phases": [],
+      "audioFormRowsFollowOutputMode": true,
+      "settingsRestoredWithoutCapture": false,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "error": "RuntimeError('Go live failed')",
+      "diagnosis": "Application preflight inherited the GPL-free bundled-helper policy. Explicit portable Linux policy now permits GPL while retaining nonfree rejection; DEB/Windows/Mac policy is unchanged."
+    }
+  ],
+  "previewTesting": [
+    {
+      "environment": "Direct Ubuntu 22.04 Jetson host; extracted archive relocated to a path containing spaces",
+      "report": "reports/portable-policy-host-media/cd74ef32-f12e-4b04-8d4c-9447157614c2/results.json",
+      "sha256": "3d1350492a509a3e9fbede2257c21b273f5e2fb6a5936fc7e05440fdf709833d",
+      "passed": true,
+      "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+      "manifestSha256": "4aa9c1c1e2b938168e28723e711039bc8133906c0c6d2fb512ed3e5c8f058dfb",
+      "phases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 120
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 142
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 125
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123
+        }
+      ],
+      "audioFormRowsFollowOutputMode": true,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true
+    },
+    {
+      "environment": "Ubuntu 24.04 ARM64 userland on the same native kernel/CPU",
+      "kind": "packaged update/cache GUI workflows",
+      "report": "reports/portable-policy-noble-updates/e125c0dc-ca6a-4fb4-9c29-2cff8736b663/results.json",
+      "sha256": "210d62a344ba1571fc586204984e5d62c8d71226b90c5327da3bb2ae5411ff38",
+      "passed": true,
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "wrong-package-format",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ]
+    }
+  ],
+  "gates": [
+    {
+      "scope": "Four selected native ARM64 gates",
+      "report": "reports/linux-portable/portable-gates.log",
+      "sha256": "b9ed768ca5f9728b3b2daa13279b24a99cc1ad90bd1aed1ac1667317e7372a4a"
+    },
+    {
+      "scope": "46 updater cases under Qt 6.4; architecture and package-format rejection",
+      "report": "reports/linux-portable/deb-update-gate.log",
+      "sha256": "d25a52116e17e3fc706e1907e6b7d5a24c922a78e642713a2e69c3ba6ea167c9"
+    },
+    {
+      "scope": "Portable bundle policy/probe gates",
+      "report": "reports/linux-portable/bundle-policy-table-gate.log",
+      "sha256": "60caea50d82b62983d5256ddf1d28a4c0b37aba23e602f11014e56f70cab4ccb"
+    },
+    {
+      "scope": "Retained DEB bundle policy/probe gates",
+      "report": "reports/linux-portable/deb-bundle-policy-gate.log",
+      "sha256": "29fa8da9c2da850e2f0d4699ef213f884df68cb96fe37aef763f497e9e16f26b"
+    },
+    {
+      "scope": "Native ELF/package architecture gate",
+      "report": "reports/linux-portable/package-architecture-gate.log",
+      "sha256": "089d0839d954b9a44fdc2dd1b8565fcc1fa1a84d3c547561f4019d04b6674324"
+    },
+    {
+      "scope": "ABI floor and driver-exclusion policy sanity gate",
+      "report": "reports/linux-portable/baseline-policy-gate.json",
+      "sha256": "d60b77c9a22b410fa246710dc2a3aea28a633cb8cbe58311e74c53d432b2976f"
+    },
+    {
+      "scope": "DEB packager rejects portable update configuration",
+      "report": "reports/linux-portable/package-format-gate.json",
+      "sha256": "0105ec9f58d6eb535871728a935362b5d337d59bc5d2b714663b0be4e9c5a2b4"
+    },
+    {
+      "scope": "Qt 6.4 / PipeWire 1.0 regression build gate",
+      "report": "reports/linux-portable/noble-regression-build.log",
+      "sha256": "025187034971bd1bffc992570ac5b70bd4848c44c2ae77264ba51fa961ce99f9"
+    },
+    {
+      "scope": "Final default-policy application and helper gate build",
+      "report": "reports/linux-portable/deb-bundle-policy-build.log",
+      "sha256": "8b366205f25f640b5bec73154d8994080dfeeb82528df2e863ebcdf3783604d7"
+    },
+    {
+      "scope": "Final archive integrity, private RPATH and native linkage on host",
+      "report": "reports/linux-portable/final-host-linkage-gate.json",
+      "sha256": "04ca82d1ec91433a5b219f58917e401b2bc6f6580ecd5ada3460ce72ebc3e43e",
+      "passed": true,
+      "elfCount": 204
+    },
+    {
+      "scope": "Final archive integrity, private RPATH and native linkage on noble",
+      "report": "reports/linux-portable/final-noble-linkage-gate.json",
+      "sha256": "899d2e9d9d0006a2f28a251a934410cd23690ca0f3dbb876c5f7d80feb6f6759",
+      "passed": true,
+      "elfCount": 204
+    },
+    {
+      "scope": "Exact archived source integrity; only final documentation/evidence differ",
+      "report": "reports/linux-portable/final-source-integrity-gate.json",
+      "sha256": "794fcb07e70d90b48c1952871d8c3ea0efd3865a3705982a48c44a83901cce59",
+      "passed": true,
+      "archivedFiles": 669,
+      "unchangedFiles": 667
+    }
+  ],
+  "retainedBuildAttempts": [
+    "reports/linux-portable/apt-codecs.log (Jammy lacks librist-dev; reused pinned source build)",
+    "reports/linux-portable/configure.log (missing OpenGL headers in isolated baseline)",
+    "reports/linux-portable/build.log (Qt 6.2 lacks setRowVisible)",
+    "reports/linux-portable/build-qt62-final.log (older SPA header location)",
+    "reports/linux-portable/ffmpeg-build-retry.log (initial no-RIST build and edited running shell script; superseded by clean complete pinned recipe)",
+    "reports/linux-portable/build-qt62-retry.log (overlapping retry stopped before resuming a single build)",
+    "reports/linux-portable/oldest-baseline-launch-gate.log (--help is unsupported; offscreen dev launch terminated, not counted as testing)",
+    "reports/portable-host-observer-gate (private QA window-manager defaults needed a local path; two setup failures retained)"
+  ],
+  "remaining": [
+    "Raspberry Pi OS, Debian and other distributions; amd64 portable execution",
+    "Physical X11/Wayland, portal/PipeWire capture and physical devices",
+    "Hardware encoder initialization and independently decoded output before qualification",
+    "WebRTC/WHIP, other external transports, higher profiles, timing/endurance",
+    "Public release corresponding-source assembly and release automation",
+    "Windows/macOS and amd64 packaged regression qualification; no backend/default changes outside the explicit portable policy"
+  ],
+  "finalPackage": {
+    "package": "native-qt/dist/game-capture-0.2.65~linux.2-arm64-fbe38782f547-0f4c374ec4e1-portable.tar.gz",
+    "sha256": "bd067965acb79c73b76a9a0bbdf53d378d2080e340070a688a9554a810dd797c",
+    "sizeBytes": 71706948,
+    "manifestSha256": "e4b791f35b6fb6746d5d5b7c6e39430589a97c69d6ea09805a812cb66d844ae6",
+    "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+    "sourceRevision": "c2c635d1533c885c6487bb29a4d90963d9cf7061",
+    "sourceTreeSha256": "0f4c374ec4e1407b2baf4819a8664b45113a031f2ea997ebd917803866e2e3ae",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-fbe38782f547-0f4c374ec4e1-portable-source.tar.gz",
+    "sourceSha256": "48571450d864a5d1e4810da96f26e04ed1c15ebf1f080c64115a33b1965a1598",
+    "payloadFileCount": 357,
+    "abiRequirements": {
+      "GLIBC": "2.35",
+      "GLIBCXX": "3.4.30"
+    },
+    "evidenceSnapshot": "Archive contains the source-commit ledger snapshot. This final ledger and docs/linux-portable.md were updated after packaging; production sources are unchanged."
+  },
+  "finalTesting": [
+    {
+      "environment": "Direct Ubuntu 22.04.5 Jetson host; archive extracted into a path containing spaces",
+      "kind": "packaged GUI media/lifecycle workflow",
+      "report": "reports/portable-final-host-media/9cf0df4a-ff72-4cff-a4e1-ec2f93ea7d5d/results.json",
+      "sha256": "0dbae69a23a0dd79035c91c11c1ad31eec0ad2ce1aa9bb38e48a84ff1ba3cc85",
+      "passed": true,
+      "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+      "manifestSha256": "e4b791f35b6fb6746d5d5b7c6e39430589a97c69d6ea09805a812cb66d844ae6",
+      "ownedDesktop": {
+        "report": "reports/portable-final-host-media-desktop/a31dc563-fc98-4726-b727-c5fc5af6830a/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f22a81867a397a5b39ad3a39ef0f9cfbb3d4c87de6f2b9f5044e7ba0c9e20975",
+          "decodedVideoSha256": "f95e2accf83b4bd76dcbc02410ab2b0197d53c59eb6f912fe4d9dbc4ec5499ae",
+          "decodedAudioSha256": "7ae03cba4aa16a22daaa12046d0dbac62d3520da4f77874b8b51397eaa601d17",
+          "spectralWindows": 8
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 141,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "3708aec7b740b8f842ce485d6c1b23a0db6204348f72ddcb97ad082d23ae16fb",
+          "decodedVideoSha256": "cbd3c00569f223aa6113e284e93143b927969c2c778762e5212b18e2eead8489",
+          "decodedAudioSha256": "1d67786479ab3d6b60793823cbb5a55f69a00b7fc7cbb6f67de69710aba1804a",
+          "spectralWindows": 8
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 132,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "2828bca75178a7f6876a6e56ae06347443623ed8f5c6d06f01a8b4bce818d78e",
+          "decodedVideoSha256": "e8419c7b2050591019e2f562429ecd3e878951f4cfe11868010ca59899ea0805",
+          "decodedAudioSha256": "2a472ea93a2d7e1db3b7a3bdbf11f522e7f7b6200cdaac6f7591ba12f997e830",
+          "spectralWindows": 8
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "8fae8a0f481ed1ef1a3cece21a1e5f13eac7105768e1c9b41dd74ec43bd53c90",
+          "decodedVideoSha256": "b3f8722a7e1b6cabf5895531c8cd4f19eae641553ea9deba3d952d6b20d43462",
+          "decodedAudioSha256": "c04af3ae108f59e76e5898c18e1c21cd975a3e0fe77f67b26b67256b7b509abb",
+          "spectralWindows": 8
+        }
+      ],
+      "audioFormRowsFollowOutputMode": true,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "bundledRuntimeLibrariesVerifiedInEveryPhase": [
+        "libQt6Core.so",
+        "libavcodec.so",
+        "libavutil.so",
+        "libpipewire-0.3.so",
+        "libpulse.so",
+        "libswscale.so"
+      ],
+      "bundledFfmpegHelperVerified": true,
+      "independentDecoder": "host system FFmpeg 4.4.2",
+      "privatePulseAudio": "15.99.1"
+    },
+    {
+      "environment": "Direct Ubuntu 22.04.5 Jetson host; archive extracted into a path containing spaces",
+      "kind": "packaged update/cache GUI workflows",
+      "report": "reports/portable-final-host-updates/ff45c369-4f75-4cd9-bd00-f062f36a4660/results.json",
+      "sha256": "5ba2978fac0741ec7c8032927fe3f43e6eaf17b989e570185e059255b69fa403",
+      "passed": true,
+      "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+      "manifestSha256": "e4b791f35b6fb6746d5d5b7c6e39430589a97c69d6ea09805a812cb66d844ae6",
+      "ownedDesktop": {
+        "report": "reports/portable-final-host-updates-desktop/e62068c7-6511-46b8-a363-391fd98af2c1/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      },
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "wrong-package-format",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ],
+      "captureStayedOff": true,
+      "onlineOracle": {
+        "url": "https://api.github.com/repos/steveseguin/game-capture/releases/latest",
+        "etag": "W/\"27eefe80b7954c90daaf82f93ca99f8c1f61d781c097a1a976304fad824aab30\"",
+        "sha256": "95d5e4be375bf79883ce9ec6d931191dedb82ad56e02d3dce14c30b67b8a3993"
+      },
+      "scope": "Future-release cases use private synthetic cache; cold/warm online uses actual public GitHub HTTPS; failed refresh uses a child-scoped proxy. No installer downloaded or run."
+    },
+    {
+      "environment": "Ubuntu 24.04.5 ARM64 userland on the same native CPU/kernel",
+      "kind": "packaged GUI media/lifecycle workflow",
+      "report": "reports/portable-final-noble-media/51526594-1e08-4b1f-b47b-2634365c99b3/results.json",
+      "sha256": "f9d465aadeba85d87ac49a9b496f2d41ceca0f40c54955220e88e958e5399071",
+      "passed": true,
+      "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+      "manifestSha256": "e4b791f35b6fb6746d5d5b7c6e39430589a97c69d6ea09805a812cb66d844ae6",
+      "ownedDesktop": {
+        "report": "reports/portable-final-noble-media-desktop/bb70ef3e-556a-4183-9b2d-4682a60e17e7/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 113,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "2e39c3a0ccf8af18ec5a58611e1ce9c25fd4c7c69963b27502b6d8a3b08dd945",
+          "decodedVideoSha256": "5bfe675ae8b5249f03756a0e687ba0901a1bc5ed0adcde7da26cacb3bae76f57",
+          "decodedAudioSha256": "8864ae9afebee5a2d67645eccff251782be953b75de9e2380a355f3e9760afab",
+          "spectralWindows": 8
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 119,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "7150137cd8c32c71d360a162a3d4fc22e7ebed490012cfcb92691f145c3e81c2",
+          "decodedVideoSha256": "9a7e1b109179af56c06f34ff7bbff36f0c7f540d99b3a657f46ea49a1cd6fa01",
+          "decodedAudioSha256": "d5317275d036eaf16ee87cfe60f5c3213334eef503fbbbff993df77972c3f6c3",
+          "spectralWindows": 8
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 121,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "7da9e182d2bcf51ba84032f4440094d7bbbc4cca01f3444c463e1ec155d99238",
+          "decodedVideoSha256": "cc47581217fd5c8a4c09faaaca3885c458f5c35c10ccfe1441dec92569010dd6",
+          "decodedAudioSha256": "3bf998bf61bb83b5c47702cf175c88d107456e24ad6f3703de97ebb1190fcd61",
+          "spectralWindows": 8
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 116,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "a53178a087fe6b2c4265ad757397dee961ce35a4173382d20d258e82c3b48cc3",
+          "decodedVideoSha256": "0a7176d0fab2141a638ccb54f93bf3b1c3db6da1ac978ca77ae10c4ad3195051",
+          "decodedAudioSha256": "80eab940a64c8fea759922ed8f965996eeda1d3f42892705674b4eaf0f121023",
+          "spectralWindows": 8
+        }
+      ],
+      "audioFormRowsFollowOutputMode": true,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "bundledRuntimeLibrariesVerifiedInEveryPhase": [
+        "libQt6Core.so",
+        "libavcodec.so",
+        "libavutil.so",
+        "libpipewire-0.3.so",
+        "libpulse.so",
+        "libswscale.so"
+      ],
+      "bundledFfmpegHelperVerified": true,
+      "independentDecoder": "Ubuntu 24.04 system FFmpeg 6.1.1",
+      "privatePulseAudio": "16.1"
+    },
+    {
+      "environment": "Ubuntu 24.04.5 ARM64 userland on the same native CPU/kernel",
+      "kind": "packaged update/cache GUI workflows",
+      "report": "reports/portable-final-noble-updates/0d9b39bf-0890-45b3-b715-ac2b8a472e41/results.json",
+      "sha256": "70c4fac890b5c4ae57a2a3cd258d6e8031882aef77149265313af1e1baba137b",
+      "passed": true,
+      "executableSha256": "cf985316ca2bbea7bb72a47fea0c0194c15666d7b6c1b4730ce08748b9193fb8",
+      "manifestSha256": "e4b791f35b6fb6746d5d5b7c6e39430589a97c69d6ea09805a812cb66d844ae6",
+      "ownedDesktop": {
+        "report": "reports/portable-final-noble-updates-desktop/3dd99be5-1e90-4cb5-9fa6-1e3981b63ee6/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      },
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "wrong-package-format",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ],
+      "captureStayedOff": true,
+      "onlineOracle": {
+        "url": "https://api.github.com/repos/steveseguin/game-capture/releases/latest",
+        "etag": "W/\"27eefe80b7954c90daaf82f93ca99f8c1f61d781c097a1a976304fad824aab30\"",
+        "sha256": "95d5e4be375bf79883ce9ec6d931191dedb82ad56e02d3dce14c30b67b8a3993"
+      },
+      "scope": "Future-release cases use private synthetic cache; cold/warm online uses actual public GitHub HTTPS; failed refresh uses a child-scoped proxy. No installer downloaded or run."
+    }
+  ],
+  "memoryCleanup": {
+    "report": "reports/linux-portable/final-cache-reclaim.json",
+    "sha256": "01e97150a250650d27381b4e8f5918017f23953339fbb385c0e6ec228b805d7d",
+    "scope": "POSIX_FADV_DONTNEED for clean task-owned build/download/bundle files only; no global cache drop or host process/service changes",
+    "roots": [
+      ".tools/portable",
+      ".tools/arm64/rootfs",
+      "native-qt/build-linux-arm64-portable",
+      "native-qt/build-linux-arm64-noble",
+      "native-qt/dist"
+    ],
+    "beforeKiB": {
+      "MemTotal": 7802848,
+      "MemFree": 905032,
+      "MemAvailable": 5990428,
+      "Cached": 4732896,
+      "SwapTotal": 3901416,
+      "SwapFree": 3849960
+    },
+    "files": 94572,
+    "advisedBytes": 6060195720,
+    "errors": 0,
+    "afterKiB": {
+      "MemTotal": 7802848,
+      "MemFree": 3509500,
+      "MemAvailable": 5938784,
+      "Cached": 2110424,
+      "SwapTotal": 3901416,
+      "SwapFree": 3849960
+    },
+    "freeIncreaseKiB": 2604468,
+    "ramWasABlocker": false
+  }
+}

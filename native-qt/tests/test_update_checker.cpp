@@ -84,20 +84,42 @@ class UpdateCheckerTest : public QObject {
         QCOMPARE(evaluateRelease(release("v0.2.59"), "0.2.58").status, UpdateStatus::Available);
 #endif
     }
+    void linuxDownloadsAndCache_data() {
+        QTest::addColumn<QString>("architecture");
+        QTest::addColumn<bool>("portable");
+        QTest::newRow("amd64-deb") << QStringLiteral("amd64") << false;
+        QTest::newRow("arm64-deb") << QStringLiteral("arm64") << false;
+        QTest::newRow("amd64-portable") << QStringLiteral("amd64") << true;
+        QTest::newRow("arm64-portable") << QStringLiteral("arm64") << true;
+    }
     void linuxDownloadsAndCache() {
-        const QString name = "game-capture-0.2.59~linux.2-amd64-0123456789ab-abcdef012345.deb";
+        QFETCH(QString, architecture);
+        QFETCH(bool, portable);
+        const auto deb = architecture == "arm64" ? UpdatePlatform::LinuxArm64 : UpdatePlatform::LinuxAmd64;
+        const auto archive = architecture == "arm64" ? UpdatePlatform::LinuxPortableArm64 : UpdatePlatform::LinuxPortableAmd64;
+        const auto platform = portable ? archive : deb;
+        const auto otherFormat = portable ? deb : archive;
+        const auto otherPlatform = portable
+            ? (architecture == "arm64" ? UpdatePlatform::LinuxPortableAmd64 : UpdatePlatform::LinuxPortableArm64)
+            : (architecture == "arm64" ? UpdatePlatform::LinuxAmd64 : UpdatePlatform::LinuxArm64);
+        const auto otherArchitecture = architecture == "arm64" ? "amd64" : "arm64";
+        const QString name = "game-capture-0.2.59~linux.2-" + architecture + "-0123456789ab-abcdef012345" +
+                             (portable ? "-portable.tar.gz" : ".deb");
         const auto url = "https://github.com/steveseguin/game-capture/releases/download/v0.2.59/" + name;
         const QJsonObject asset{{"name", name}, {"state", "uploaded"}, {"size", 1000},
                                {"browser_download_url", url}};
-        const auto platform = UpdatePlatform::LinuxAmd64;
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", platform).status, UpdateStatus::Available);
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.59", platform).status, UpdateStatus::UpToDate);
+        QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", otherPlatform).status,
+                 UpdateStatus::NoCompatibleDownload);
+        QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", otherFormat).status,
+                 UpdateStatus::NoCompatibleDownload);
         QCOMPARE(evaluateRelease(macRelease(asset), "0.2.58", UpdatePlatform::LinuxUnsupported).status,
                  UpdateStatus::NoCompatibleDownload);
         QCOMPARE(evaluateRelease(macRelease(macAsset()), "0.2.58", platform).status,
                  UpdateStatus::NoCompatibleDownload);
         const QList<QPair<QString, QJsonValue>> invalid{
-            {"name", QString(name).replace("amd64", "arm64")},
+            {"name", QString(name).replace(architecture, otherArchitecture)},
             {"name", QString(name).replace("0.2.59", "0.2.58")},
             {"name", QString(name).replace("linux.2", "linux.0")},
             {"name", QString(name).replace("0123456789ab", "unknown")},
@@ -132,6 +154,12 @@ class UpdateCheckerTest : public QObject {
             QCOMPARE(warm.result().status, expected);
             warm.checkForUpdates();
             QCOMPARE(network.requests, 1);
+            // A cache copied from another architecture must never advertise
+            // that architecture's package, even before its next refresh.
+            UpdateChecker foreign("0.2.58", path, nullptr, &network, otherPlatform);
+            QCOMPARE(foreign.result().status, UpdateStatus::NoCompatibleDownload);
+            UpdateChecker differentFormat("0.2.58", path, nullptr, &network, otherFormat);
+            QCOMPARE(differentFormat.result().status, UpdateStatus::NoCompatibleDownload);
         }
         // Existing Linux caches were version-only. Never keep advertising a
         // download without asset evidence while waiting for the next refresh.
@@ -146,6 +174,17 @@ class UpdateCheckerTest : public QObject {
         QCOMPARE(migrated.result().status, UpdateStatus::NoCompatibleDownload);
         migrated.checkForUpdates();
         QCOMPARE(network.requests, 1);
+    }
+    void nativeLinuxArchitecture() {
+#if defined(__linux__) && defined(__aarch64__) && defined(VERSUS_LINUX_PORTABLE)
+        QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxPortableArm64);
+#elif defined(__linux__) && defined(__x86_64__) && defined(VERSUS_LINUX_PORTABLE)
+        QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxPortableAmd64);
+#elif defined(__linux__) && defined(__aarch64__)
+        QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxArm64);
+#elif defined(__linux__) && defined(__x86_64__)
+        QCOMPARE(NativeUpdatePlatform, UpdatePlatform::LinuxAmd64);
+#endif
     }
     void macCacheAndPlatformMigration() {
         for (bool hasDownload : {false, true}) {

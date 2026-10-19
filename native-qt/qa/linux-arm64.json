@@ -1,0 +1,339 @@
+{
+  "schema": 1,
+  "goal": "Experimental native ARM64 Linux development package reusing the Linux backends; bounded software H.264 bring-up, not full parity or performance qualification",
+  "baseline": "476b0a51b76ef525628ca715cc69996b16a5a68c",
+  "parentLedger": "linux-parity.json",
+  "completionPolicy": "Build, isolated logic and syntax checks are gates. Application testing requires exact packaged GUI workflows and independently received/decoded media. Existing x86 evidence and failures are not ARM qualification and remain unchanged.",
+  "target": "Ubuntu 24.04 arm64, native build; no armhf or cross-packaging support",
+  "status": "bounded-packaged-x11-media-e2e-passed; full ARM parity unqualified",
+  "hardware": {
+    "model": "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super",
+    "cpu": "6 ARM Cortex-A78AE cores",
+    "usableRamKiB": 7802848,
+    "hostDistribution": "Ubuntu 22.04.5 LTS",
+    "kernel": "5.15.148-tegra",
+    "desktop": "TTY host; real packaged Qt GUI workflow passed in owned Xvfb/xfwm4. Physical Xorg and Wayland unavailable/unqualified.",
+    "audio": "Host PulseAudio/platform/USB inputs enumerated; physical devices unqualified. Packaged mixing/mute verified through owned PulseAudio 16.1 stereo system and microphone fixtures.",
+    "camera": "MACROSILICON 534d:2109 UVC device enumerated; not qualified",
+    "gpu": "NVIDIA Tegra driver R36.4.7 present; hardware encoding unqualified"
+  },
+  "remaining": [
+    "Native physical X11/Wayland and PipeWire portal workflows",
+    "Physical microphones, cameras and application-audio routing",
+    "VDO.Ninja/WebRTC, WHIP and other external outputs on ARM64",
+    "Hardware encoder API initialization and independently decoded output before any hardware support claim",
+    "Raspberry Pi and other ARM64 systems; higher profiles, calibrated timing and endurance",
+    "amd64, Windows and macOS packaged runtime regression qualification",
+    "Clean installation/desktop launcher workflow on a fresh Ubuntu 24.04 ARM64 system; dependency-resolution simulation passed, extracted DEB workflow passed"
+  ],
+  "evidence": [
+    {
+      "kind": "preserved-failed-workflow",
+      "report": "reports/arm64-media/c12f93ee-22c1-48bc-b2a7-3e63144916dd/results.json",
+      "sha256": "4fbe17cfdf75ab8983fb265588fe6ed65b0faf7c922dc7c184b94a66526811fb",
+      "error": "FileNotFoundError(2, 'No such file or directory')",
+      "diagnosis": "Observer assumption: Tegra kernel omits /proc/PID/task/TID/children. Received H.264/AAC file probed successfully, but validation was incomplete. Use /proc/PID/stat parent/start identities for helper cleanup.",
+      "passedMediaPhases": [],
+      "forcedCleanup": true,
+      "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+    },
+    {
+      "kind": "preserved-failed-workflow",
+      "report": "reports/arm64-media/49b2dd93-2969-40e3-a57b-0df4d5d02223/results.json",
+      "sha256": "1e71c070e217b8e9cf0cf06cb71683c66783c78bd909f5f822f535b88d72962b",
+      "error": "AssertionError('Audio capture leaked after Stop')",
+      "diagnosis": "Observer assumption: remapped microphone fixture owns a permanent monitor stream; requiring no Pulse source outputs is incorrect. Mixed, muted and unmuted media passed. Require return to the recorded fixture baseline.",
+      "passedMediaPhases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 149,
+          "uniqueSourceIdentities": 114
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 149,
+          "uniqueSourceIdentities": 114
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 121
+        }
+      ],
+      "forcedCleanup": true,
+      "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+    },
+    {
+      "kind": "preserved-failed-workflow",
+      "report": "reports/arm64-media/7a5b6514-a150-4693-9b99-7534b6a48303/results.json",
+      "sha256": "39336a47411b2638650823e92a45b65f08bcab73de76a1bfb5efb19d9566e807",
+      "error": "AssertionError('Saved setting missing: ARMBringupMicrophone')",
+      "diagnosis": "Observer assumption: saved microphone label includes default marker/sample format. All four media phases, Stop/restart and first clean Quit passed. Saved device ID pulse:arm_input and screenshot prove selection persisted. Compare the full initially selected label on relaunch.",
+      "passedMediaPhases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 136
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 117
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 148,
+          "uniqueSourceIdentities": 133
+        }
+      ],
+      "forcedCleanup": true,
+      "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+    },
+    {
+      "kind": "packaged-update-gui",
+      "report": "reports/arm64-updates/84cd4982-5738-486a-b31e-d29dde094ef8/results.json",
+      "sha256": "fc78ff6f7fedefe606381195e9d8c73b0be3cc2313492608f4936e6fa7e0a2f8",
+      "passed": true,
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ],
+      "package": {
+        "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-88021d1c5933.deb",
+        "sha256": "11f559cb3e97ae2150d9d7541321763b128062aeb516d36fcd0ab7c8c63b9ae8",
+        "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-88021d1c5933",
+        "manifestSha256": "9d0f5879228daebeac936242b053173778b299b4d0350009263df40a14c71eb9"
+      }
+    },
+    {
+      "kind": "packaged-gui-media-final",
+      "passed": true,
+      "report": "reports/arm64-media-final/3417476d-8d7c-4c88-8b60-5b34ca37eb3d/results.json",
+      "reportSha256": "00f1595c641ad82c0a4399e6041fd0a8d50de3078a3da10bb148d677264a879d",
+      "package": {
+        "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-003f13baf084.deb",
+        "sha256": "a548cd9da608320b85e999cff426e3553993b568ed10ae182587f75be6cecb1d",
+        "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-003f13baf084",
+        "manifestSha256": "06ebbccdb71cd27c3cab690716b86357a85bb1a8976569a27fda1b8e93ba8347"
+      },
+      "sourceIntegrity": {
+        "classification": "Artifact/source integrity gate, not application testing",
+        "passed": true,
+        "productionSourceFilesVerified": 146,
+        "packageSha256": "a548cd9da608320b85e999cff426e3553993b568ed10ae182587f75be6cecb1d",
+        "manifestSha256": "06ebbccdb71cd27c3cab690716b86357a85bb1a8976569a27fda1b8e93ba8347",
+        "sourceRevision": "3b24bf4914613e8114de272ebdc384e7c72ddcff",
+        "sourceTreeSha256": "003f13baf084e9969dec6a67a42c7f4a2fe6505e308364586dca10c2f78c86c5",
+        "sourceArchiveSha256": "5f96e4863ae16e802ac52553b99859c09d0afbf6cbbdc94aab16e15967acb3cd",
+        "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "source": "Owned Tk window 640x360, changing 16-bit frame identities; scaled to 960x540",
+      "audioFixture": "Private PulseAudio; system L/R=440/880 Hz, microphone L/R=660/1320 Hz, 48 kHz stereo; 100% gains, limiter enabled, 128 kbps AAC target",
+      "phases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 138,
+          "audioSamplesPerChannel": 240640,
+          "microphoneExpected": true,
+          "transportSha256": "534f2ef525eb9a81a43d6545e95fec208a3ac03c04b56bc5a5f1bb9de6af17b7",
+          "decodedVideoSha256": "882b86aef1106174b069625ac79c607fb26c66de2308128d8f606b0ec2c985d3",
+          "decodedAudioSha256": "c030059d3ad45a99337adf643d69ef881487207e2c6973458d801d03d45e745c",
+          "frequencyCheckWindows": 8
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 111,
+          "audioSamplesPerChannel": 240640,
+          "microphoneExpected": false,
+          "transportSha256": "3fc35a03e49c5e56863c4e9db299c6d6794adb96682d7deec6d645b62e178cbe",
+          "decodedVideoSha256": "358b94fdf6df40bcca5f80fee5dadba362ade492cc2d114914b80dbdbe24ce52",
+          "decodedAudioSha256": "1e019bcb9c5fb3fd342913a918fe9bd8c3baaa71541e84e3d37774635e9a2d81",
+          "frequencyCheckWindows": 8
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 116,
+          "audioSamplesPerChannel": 240640,
+          "microphoneExpected": true,
+          "transportSha256": "fe2145eba81a98724c8e2d78e01c729c289d7444097a6209d6bfd3cd3edd5392",
+          "decodedVideoSha256": "b47858844d7d267a9fb1d1f5edcffa033ab332874a7e1cda652cdc370ec5b069",
+          "decodedAudioSha256": "876e94ec0aa3b7bf99c97345e2490f9a9a4db145468d88d7816f594bf5cc69b6",
+          "frequencyCheckWindows": 8
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 137,
+          "audioSamplesPerChannel": 240640,
+          "microphoneExpected": true,
+          "transportSha256": "2d8a0c5be7555bc51df9553acda1672f2036dc2dcb1cf4db9ff32c00f9fa2ee2",
+          "decodedVideoSha256": "f22dd8346a377fe67ca21d5d6311de2dedd21d3e6c7900b72821bcd27d3f53fb",
+          "decodedAudioSha256": "1a86afd45010e52ee6d351aabfe1052d3ebeb90d03b8bd9f560635533220ccef",
+          "frequencyCheckWindows": 8
+        }
+      ],
+      "checks": {
+        "h264AndStereoAacDecoded": true,
+        "movingVideoIdentitiesAndColorMarkers": true,
+        "correctStereoToneChannelsAndMix": true,
+        "microphoneMutePreservesSystemAudioAndVideo": true,
+        "unmuteRestoresMicrophone": true,
+        "stopRestoresAudioFixtureBaseline": true,
+        "outputHelperRetiredAfterStop": true,
+        "restartReceivesDecodedMedia": true,
+        "settingsRestoredWithoutCapture": true,
+        "twoFileMenuQuitsSucceeded": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "000fae3f68cfbaca2322b558e9d57edfa64ad5b36334824efc9af82c83249d0f",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6"
+      },
+      "screenshots": {
+        "mixed-gui.png": "83f9791ef9d251b23ef3132652f5152c501c5b6ee262ff53bfb8a87cf8ec43c3",
+        "muted-gui.png": "c710e7f1af75e18421590dcb18cbc1b5c0218fa7f85102dca5222f2d3a1392e9",
+        "restarted-gui.png": "c907328e6e2b0956c773d6fbe4b8d23c299b0fa1ecf9a024c9977d80a3429629",
+        "relaunched-ready.png": "23570416784437ddba1055516c0a040b38b8bafcaee4c8a4e47ce2d9d1e4246c"
+      }
+    },
+    {
+      "kind": "packaged-update-gui-final",
+      "passed": true,
+      "report": "reports/arm64-updates-final/8b641899-42b2-4bbb-845d-e93c3183b8b1/results.json",
+      "reportSha256": "f6b65c70fd7b3c7c90f6120999dba580fd8e291c0aa6925e256d7f7b5cf62d06",
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ],
+      "scope": "Real packaged GUI/cache/relaunch and public HTTPS lookup; wrong-architecture and untrusted-asset cases use seeded private cache. Offline refresh uses process-scoped rejecting proxy. No installer downloaded. The separate private-CA HTTPS fixture was adapted but not run on ARM.",
+      "package": {
+        "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-003f13baf084.deb",
+        "sha256": "a548cd9da608320b85e999cff426e3553993b568ed10ae182587f75be6cecb1d",
+        "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-003f13baf084",
+        "manifestSha256": "06ebbccdb71cd27c3cab690716b86357a85bb1a8976569a27fda1b8e93ba8347"
+      }
+    }
+  ],
+  "buildEnvironment": {
+    "kind": "User-owned Ubuntu 24.04.5 ARM64 root filesystem; Bubblewrap namespaces on the native Jetson CPU, no emulation",
+    "baseUrl": "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz",
+    "baseSha256": "a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2",
+    "compiler": "GCC 13.3.0",
+    "cmake": "3.28.3",
+    "qt": "6.4.2",
+    "ffmpeg": "6.1.1",
+    "buildJobs": 2,
+    "hostServicesChanged": false,
+    "packageList": "reports/linux-arm64-bringup/build-environment-packages.txt",
+    "packageListSha256": "9a43805c457c64df167a0751676450e39eaf0755e7fe5913dbd9be1b1fa26d0e"
+  },
+  "gates": {
+    "classification": "Build, logic and syntax gates; not application testing",
+    "nativeReleaseBuild": true,
+    "passed": [
+      "UpdateCheckerTest (ARM64 native selection, amd64/arm64 asset and foreign-cache cases)",
+      "AudioSampleClockGate",
+      "PlatformCapabilitiesGate",
+      "PosixFfmpegGate",
+      "package-linux-gate.py (amd64/arm64 and wrong ELF rejection)",
+      "Python syntax",
+      "git diff --check",
+      "Debian dependency-resolution simulation for final DEB",
+      "146 production source inputs match final source archive"
+    ],
+    "logs": {
+      "configure.log": "d8a17ede2bbc835ba6afde35d5bb0b4c40a18e89d14da17b7ca47d4a7330c4c9",
+      "build.log": "4de4e2dc09318893c12c7b294898c5a282759b14963936b43e3a9e6c7105fcca",
+      "early-gates.log": "e59c99fc1731b3130cc8056224eda7aaf0eac5207509b7c4912fda0513e570c7",
+      "remaining-gates.log": "698578c70dec4581ebad2c40d222f2a0e54eed2a721201ca2edb6dbaee558634",
+      "package-gate.log": "9f75add94930d82f86f40553d972627172fa9fcad2415eaa9947d6de3d460011",
+      "deb-dependency-resolution-gate.log": "66241e7c20acbbcc7b9ca577d51554b8cf7e38185341278361def973ba962399"
+    },
+    "warnings": "GCC 13 reports stringop-overflow in the unchanged spdlog bundled fmt implementation; compilation/link succeeded. dpkg-shlibdeps reports the Ubuntu merged-/usr loader diversion and staging-layout warnings; generated ARM64 dependencies inspected."
+  },
+  "setupFindings": [
+    "Host CMake 3.22.1 fails the existing CMake >=3.24 requirement; host Qt/media development dependencies missing and FFmpeg 4.4 is older than the Linux package requirement.",
+    "Passwordless sudo and Docker socket access unavailable. Used an unprivileged Ubuntu 24.04 filesystem with Bubblewrap; no host service or driver changes.",
+    "Old host proot crashed; switched to Bubblewrap. Single-UID namespace package setup required FAKEROOTDONTTRYCHOWN=1 for ownership operations. Dependency configuration completed and dpkg --audit was clean."
+  ],
+  "memory": {
+    "blocker": false,
+    "initialAvailableGiB": 5.8,
+    "downloadCacheReleasedKiB": 334000,
+    "method": "posix_fadvise(DONTNEED) for completed task-owned downloads; no host processes stopped",
+    "report": "reports/linux-arm64-bringup/memory-cache-reclaim.json",
+    "reportSha256": "72811db5f208d871449e8501acc2f4893327351e5129719106200ae4fdf560fb",
+    "finalCacheReclaim": {
+      "report": "reports/linux-arm64-bringup/final-cache-reclaim.json",
+      "sha256": "91c30e72e74e57f431e2a6fac56657c9029bc55a8044f964192aa9f08b706830",
+      "scope": "After all owned application workflows finished, evict clean cached pages from task-owned build and rootfs files only. No host services stopped.",
+      "before": {
+        "MemFree": "1517656 kB",
+        "MemAvailable": "5988496 kB",
+        "Cached": "4266736 kB",
+        "SwapFree": "3900392 kB"
+      },
+      "advisedBytes": 2709568508,
+      "files": 42478,
+      "after": {
+        "MemFree": "3343360 kB",
+        "MemAvailable": "5992004 kB",
+        "Cached": "2486048 kB",
+        "SwapFree": "3900392 kB"
+      }
+    }
+  },
+  "inventory": {
+    "report": "reports/linux-arm64-bringup/host-inventory.json",
+    "sha256": "f01b1bfe801733bc0a25660907308a6eeaab022916c916f1c213c7f526399ac7"
+  },
+  "regressionRisks": [
+    "Shared update matcher retains Windows VersionOnly and Mac ARM64 policies; isolated gate exercises them, but Windows/Mac packaged runtime regressions were not run.",
+    "amd64 matcher and package ELF mapping have passing logic gates on this ARM CPU; actual amd64 package/runtime regression remains unqualified.",
+    "Linux backends, CMake dependencies, encoder defaults and global profiles are unchanged. Existing physical desktop/portal/timing/endurance failures in linux-parity.json are preserved."
+  ],
+  "desktopWrappers": [
+    {
+      "report": "reports/arm64-desktop-final/ef9f2eac-2e33-4af1-8b7b-82a927b2dc21/results.json",
+      "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true
+    },
+    {
+      "report": "reports/arm64-update-desktop-final/6635b884-5700-4650-a3de-2515d0587f27/results.json",
+      "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true
+    }
+  ]
+}

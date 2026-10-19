@@ -21,7 +21,9 @@ for(const name of ['linux-update-browser.js','linux-owned-browser.js','linux-roo
 }
 const settings=path.join(report,'private-settings');fs.mkdirSync(settings);
 const cache=path.join(settings,'update-check.ini'),discovery=path.join(report,'private-control.json');
-const name='game-capture-99.0.0~linux.2-amd64-0123456789ab-abcdef012345.deb';
+const architecture=JSON.parse(fs.readFileSync(path.resolve(path.dirname(artifact.exe),'../../release-artifact-manifest.json'))).architecture;
+assert(['amd64','arm64'].includes(architecture));
+const name=`game-capture-99.0.0~linux.2-${architecture}-0123456789ab-abcdef012345.deb`;
 const metadata={tag_name:'v99.0.0',draft:false,prerelease:false,assets:[{name,size:1000,state:'uploaded',
   browser_download_url:'https://github.com/steveseguin/game-capture/releases/download/v99.0.0/'+name}]};
 const now=Math.floor(Date.now()/1000);

@@ -29,7 +29,12 @@
 #include <poll.h>
 #include <pipewire/pipewire.h>
 #include <spa/param/video/format-utils.h>
+#if __has_include(<spa/param/buffers.h>)
 #include <spa/param/buffers.h>
+#else
+// PipeWire 0.3.48 keeps buffer/metadata parameter IDs in the common header.
+#include <spa/param/param.h>
+#endif
 #include <spa/buffer/meta.h>
 #include <xcb/xcb.h>
 #include <xcb/composite.h>

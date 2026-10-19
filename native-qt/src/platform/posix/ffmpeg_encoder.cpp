@@ -1,4 +1,5 @@
 #include "versus/platform/posix_ffmpeg_encoder.h"
+#include "versus/video/ffmpeg_bundle_policy.h"
 #include "versus/platform/posix_ffmpeg.h"
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
@@ -233,7 +234,7 @@ bool PosixFfmpegEncoder::initialize(const EncoderConfig &config) {
     const auto probe = VideoEncoder::probeFfmpeg(config.ffmpegPath);
     if (!probe.resolved || !probe.error.empty() ||
         (config.codec == VideoCodec::AV1 ? !probe.hasLibaomAv1 : !probe.hasLibvpxVp9) ||
-        (probe.bundled && (probe.gplEnabled || probe.nonfreeEnabled))) return false;
+        rejectBundledFfmpeg(probe.bundled, probe.gplEnabled, probe.nonfreeEnabled)) return false;
     state_->config = config;
     state_->executable = resolvePosixFfmpeg(config.ffmpegPath).string();
     state_->stop = state_->ready = state_->job = state_->completed = state_->restart = state_->busy = false;
