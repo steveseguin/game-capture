@@ -9,6 +9,13 @@ with software H.264. This is a development package, not a qualified release.
 separately from the unchanged [Linux x86 ledger](../native-qt/qa/linux-parity.json).
 Existing desktop/portal failures and unqualified parity requirements still apply.
 
+The final Jetson bring-up package passed the real Qt GUI workflow under owned Xvfb:
+960x540/30 software H.264, independently decoded moving video and mixed stereo
+AAC, microphone mute/unmute, Stop/restart, saved settings, idle relaunch and two
+clean File-menu Quits. The ARM ledger retains the exact package/source/observer
+hashes and the three earlier observer failures. This bounded result does not
+qualify physical desktops, devices, WebRTC or Raspberry Pi performance.
+
 ## Native build and package
 
 On Ubuntu 24.04 arm64, install these dependencies:
@@ -67,6 +74,9 @@ mixes two stereo tone sources through a private PulseAudio server. A separate
 FFmpeg process receives loopback UDP/MPEG-TS; decoded frame identities and audio
 frequencies verify movement, channel mapping, microphone mute/unmute and restart.
 It also checks saved settings, idle relaunch, File-menu Quit and resource cleanup.
+Cleanup uses process parent/start identities (Tegra may omit `/proc` thread
+children files) and requires Pulse capture streams to return to the fixture's
+recorded baseline, including its remapped microphone monitor.
 It uses the existing desktop/accessibility/source helpers and changes no global
 defaults or existing acceptance thresholds. The fixture also accepts amd64.
 
