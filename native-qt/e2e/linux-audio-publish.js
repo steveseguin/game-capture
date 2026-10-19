@@ -43,6 +43,12 @@ assert(!audioServerLoss || (matrix === 'gui' && opts.case === 'mix' && audioWarn
 assert(!audioServerLoss || !wayland || (process.env.GC_QA_OWNED_WAYLAND && process.env.GC_QA_AUDIO_FAULT_SCOPE === (captureServerLoss ? 'pipewire' : 'pulse-only')), 'Wayland service loss requires the matching owned compositor fault scope');
 assert(!audioServerLoss || (process.env.GC_QA_RECEIVER_PULSE_SERVER && process.env.GC_QA_RECEIVER_PULSE_SERVER !== process.env.PULSE_SERVER), 'Audio server loss requires an independent receiver audio clock/server');
 const continuousApps=opts['continuous-app-audio']==='true';
+const appPlaybackBackend=opts['app-playback-backend']||'pulse';
+assert(['pulse','pipewire','jack'].includes(appPlaybackBackend));
+const nativeDirectSelection=appPlaybackBackend==='pipewire'&&matrix==='apps-gui';
+const jackSystem=appPlaybackBackend==='jack'&&matrix==='routes'&&opts.case==='system';
+assert(appPlaybackBackend==='pulse'||((['apps','apps-gui'].includes(matrix)||jackSystem)&&!continuousApps&&!previewBeforeLive),'Native playback supports explicit app selection or JACK system-output routing');
+const selectedAppPid=source=>nativeDirectSelection?source.playbackPid:source.child.pid;
 assert(!continuousApps||(matrix==='apps'&&!wayland),'Continuous app diagnostic currently requires explicit X11 CLI apps');
 const appOutputMoves=Number(opts['app-output-moves']||1);
 assert(Number.isInteger(appOutputMoves)&&appOutputMoves>=1&&appOutputMoves<=5,'App output moves must be 1..5');
@@ -93,6 +99,10 @@ const result = {scope:`Extracted Ubuntu DEB; bounded ${wayland ? 'Wayland portal
   guiHelperSha256:sha(path.join(__dirname, 'linux-ui-control.py')),
   portalHelperSha256:sha(path.join(__dirname, 'linux-portal-select.py')),
   appFixtureSha256:sha(path.join(__dirname, 'linux-app-audio-source.py')), matrix, backend:wayland ? 'wayland' : 'x11', requestedCase:opts.case || 'all', cases:[], passed:false};
+result.appPlaybackBackend=appPlaybackBackend;
+if(appPlaybackBackend==='pipewire')result.scope=result.scope.replace('native PipeWire/JACK app streams','JACK app streams')+(nativeDirectSelection?' Native pw-cat GUI discovery/selection, sibling exclusion and stale selection/reselection.':' Native pw-cat children and grandchildren; explicit parent-PID capture, not same-PID streams or GUI app discovery.');
+if(appPlaybackBackend==='jack')result.scope=result.scope.replace('native PipeWire/JACK app streams','other JACK servers/clients')+' Real JACK API via pw-jack in an owned PipeWire server; dynamic same-process and child-client routing.';
+if(jackSystem)result.scope='Packaged X11 window video and system-output capture of actual JACK API stereo playback through pw-jack. Independent browser decoding, silence/resume and late reception. No per-JACK-client capture, physical audio, other JACK servers, performance or drift qualification.';
 if(audioServerLoss)result.audioServerFault={requested:true,captureServerLoss,phase:previewServiceLoss?'local-preview':'publishing',previewCoreStartupDown,unavailableCoreAction,scope:process.env.GC_QA_AUDIO_FAULT_SCOPE||'whole-private-audio-server',stopWhileDown:audioServerStopDown,quitWhileDown:audioServerQuitDown,startupWhileDown:audioServerStartupDown,fixtureSha256:sha(path.join(report,'linux-private-audio.py')),receiverPulseServer:process.env.GC_QA_RECEIVER_PULSE_SERVER,publisherPulseServer:process.env.PULSE_SERVER};
 if(previewBeforeLive)result.previewBeforeLive={requested:true,helperUnavailable:previewHelperUnavailable,observerSha256:sha(path.join(report,'linux-preview-observer.py'))};
 if(wayland)result.pipewireSnapshotHelperSha256=sha(path.join(report,'linux-pipewire-snapshot.py'));
@@ -140,9 +150,9 @@ function tone(device, label) {
   tones.push(state); return state;
 }
 async function startApp(device) {
-  const child = spawn('python3', [path.join(__dirname, 'linux-app-audio-source.py'), '--device', device], {detached:true, stdio:['pipe', 'pipe', 'pipe']});
+  const child = spawn(appPlaybackBackend==='jack'?'pw-jack':'python3', [...(appPlaybackBackend==='jack'?['python3']:[]), path.join(__dirname, 'linux-app-audio-source.py'), '--device', device, '--backend', appPlaybackBackend], {detached:true, stdio:['pipe', 'pipe', 'pipe']});
   const lines = [], state = {child, errors:'', ready:false, serial:0}; let buffer = '';
-  child.stdout.on('data', data => { buffer += data; while (buffer.includes('\n')) { const end = buffer.indexOf('\n'); const line = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); if (line.ready) state.ready = true; else lines.push(line); } });
+  child.stdout.on('data', data => { buffer += data; while (buffer.includes('\n')) { const end = buffer.indexOf('\n'); const line = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); if(line.playbackPid)state.playbackPid=line.playbackPid; if (line.ready) state.ready = true; else lines.push(line); } });
   child.stderr.on('data', data => { state.errors += data; });
   state.closed = new Promise(resolve => child.once('close', resolve));
   state.stop = async () => {
@@ -199,7 +209,7 @@ function barriers() {
     const env = {...process.env};
     for (const key of Object.keys(env)) if (/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_)/.test(key) || /^(GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN)$/.test(key)) delete env[key];
     env.XDG_STATE_HOME = path.join(report, 'private-state'); env.XDG_CONFIG_HOME = path.join(report, 'private-config'); env.XDG_DATA_HOME = path.join(report, 'private-data');
-    if(continuousApps){env.VERSUS_LINUX_AUDIO_TRACE=path.join(report,'linux-audio-timing.csv');result.audioTrace={path:'linux-audio-timing.csv',scope:'One selected-app lifecycle capture; opt-in timing metadata, no PCM in native trace.'};}
+    if(continuousApps||opts['capture-audio-diagnostics']==='true'){env.VERSUS_LINUX_AUDIO_TRACE=path.join(report,'linux-audio-timing.csv');result.audioTrace={path:'linux-audio-timing.csv',scope:'One selected-app lifecycle capture; opt-in timing metadata, no PCM in native trace.'};}
     if (wayland) { env.XDG_SESSION_TYPE = 'wayland'; env.WAYLAND_DISPLAY = process.env.WAYLAND_DISPLAY || 'wayland-0'; env.QT_QPA_PLATFORM = 'wayland'; }
     else { env.XDG_SESSION_TYPE = 'x11'; delete env.WAYLAND_DISPLAY; env.QT_QPA_PLATFORM = 'xcb'; }
     if (gui) env.QT_LINUX_ACCESSIBILITY_ALWAYS_ON = '1';
@@ -285,6 +295,27 @@ function barriers() {
       if (apps) {
         systemTone.frequencies = inputTone.frequencies = [2000, 2000];
         if (!automaticApp) appSource = await startApp(defaultSink);
+        if(appPlaybackBackend==='pipewire'){
+          const pid=appSource.playbackPid;
+          assert(Number.isInteger(pid)&&pid>0);
+          const executable=fs.realpathSync('/proc/'+pid+'/exe');
+          const mappings=fs.readFileSync('/proc/'+pid+'/maps','utf8');
+          assert.equal(path.basename(executable),'pw-cat');
+          assert(mappings.includes('libpipewire-0.3.so'),'Source is not a native PipeWire client');
+          assert(!mappings.includes('libpulse.so'),'Source unexpectedly uses Pulse');
+          entry.nativePlayback={pid,parentPid:appSource.child.pid,executable,executableSha256:sha(executable),nativePipeWireLibrary:true,pulseLibrary:false};save();
+        }
+        if(appPlaybackBackend==='jack'){
+          const mappings=fs.readFileSync('/proc/'+appSource.child.pid+'/maps','utf8');
+          assert(mappings.includes('/pipewire-0.3/jack/libjack.so'),'JACK fixture did not load the PipeWire JACK implementation');
+          entry.nativePlayback={pid:appSource.child.pid,jackThroughPipeWire:true};save();
+        }
+      }
+      if(jackSystem){
+        systemTone.silent=true;
+        appSource=await startApp(defaultSink);
+        assert(fs.readFileSync('/proc/'+appSource.child.pid+'/maps','utf8').includes('/pipewire-0.3/jack/libjack.so'));
+        entry.nativePlayback={pid:appSource.child.pid,jackThroughPipeWire:true};save();
       }
       const stream = 'gclinuxaudio' + crypto.randomBytes(12).toString('hex');
       const remoteToken = crypto.randomBytes(24).toString('hex');
@@ -385,7 +416,7 @@ function barriers() {
           entry.missingOutputBlockedBeforeCapture = true;
           ui('choose', 'Choose a communications output', 'GameCaptureOwnedQACommunications');
         }
-        if (apps) ui('choose', wayland ? 'Choose an audio app' : 'Selected X11 window (automatic)', 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
+        if (apps) ui('choose', wayland ? 'Choose an audio app' : 'Selected X11 window (automatic)', 'GameCaptureOwnedQAApp (PID ' + selectedAppPid(appSource) + ')');
         ui('press', 'Audio encoding');
         // The shared UI defaults to RED. Select plain Opus for the route/mute
         // workflow; the separate codec matrix exercises both RED receivers.
@@ -618,7 +649,11 @@ function barriers() {
           await sleep(label==='streamRecreated'?resumeSnapshotDelayMs:1200);
           if (automaticApp) { entry[label + 'SourceClock'] = await source.evaluate(() => ({state:audioFixture.state, time:audioFixture.currentTime, baseLatency:audioFixture.baseLatency, outputLatency:audioFixture.outputLatency})); save(); }
           const observation = await observeAudio(viewer,null,{reuseContext:persistentSnapshot,traceObserver:continuousApps});
-          entry[label] = observation; requireAudio(observation, label, {excluded:true, ...checks}); save();
+          entry[label] = observation;
+          if(opts['capture-audio-diagnostics']==='true'){
+            entry[label+'Diagnostic']={atMs:Date.now(),diagnostics:await api('/diagnostics'),playback:JSON.parse(pactl('-f','json','list','sink-inputs')),clients:JSON.parse(pactl('-f','json','list','clients'))};
+          }
+          save();requireAudio(observation, label, {excluded:true, ...checks});
           // Prepare recording while the source is intentionally silent, before
           // the drain starts the resume phase. All continuous rows are retained.
           if(label==='noStreams'&&resumeRecording){receiverRecording=await require('./macos-continuous-audio').record(viewer,path.join(report,'resume-receiver.webm'));result.resumeReceiverRecording=receiverRecording.metadata;save();}
@@ -631,9 +666,15 @@ function barriers() {
           entry.lateAudio = await observeAudio(late); requireAudio(entry.lateAudio, 'Automatic app late viewer', {excluded:true});
           await late.close();
         } else {
+        if(nativeDirectSelection){
+          await appSource.command({silent:true}); await sample('nativeSilent',{silent:true});
+          await appSource.command({silent:false}); await sample('nativeResumed',{microphoneOff:true});
+          await appSource.command({extra:true}); await sample('unselectedNativeSiblingExcluded',{microphoneOff:true});
+          await appSource.command({extra:false});
+        }else{
         await appSource.command({child:true}); await sample('childJoined', {microphone:true});
         await appSource.command({child:false}); await sample('childRemoved', {microphoneOff:true});
-        await appSource.command({extra:true}); await sample('secondStreamSameProcess', {microphone:true});
+        await appSource.command({extra:true}); await sample(appPlaybackBackend==='pipewire'?'secondNativeChildStream':'secondStreamSameProcess', {microphone:true});
         await appSource.command({extra:false});
         if(playoutReference){
           result.receiverMediaElements=await viewer.evaluate(()=>[...document.querySelectorAll('video,audio')].map(e=>({tag:e.tagName,muted:e.muted,volume:e.volume,paused:e.paused,readyState:e.readyState,audioTracks:e.srcObject?.getAudioTracks().map(t=>({enabled:t.enabled,muted:t.muted,readyState:t.readyState}))})));
@@ -665,9 +706,11 @@ function barriers() {
           execFileSync('python3',[path.join(report,'linux-received-audio-report.py'),report],{encoding:'utf8',timeout:40000});
           result.resumeReceiverAnalysis={path:'resume-receiver-analysis.json',sha256:sha(path.join(report,'resume-receiver-analysis.json'))};save();
         }
+        }
         entry.outputMoves=[];
         for(let move=0;move<appOutputMoves;move++) {
-          const playback = JSON.parse(pactl('-f', 'json', 'list', 'sink-inputs')).filter(row => Number(row.properties['application.process.id']) === appSource.child.pid);
+          const nativeClients=appPlaybackBackend!=='pulse'?JSON.parse(pactl('-f','json','list','clients')).filter(row=>Number(row.properties['application.process.id'])===appSource.playbackPid).map(row=>Number(row.index)):[];
+          const playback = JSON.parse(pactl('-f', 'json', 'list', 'sink-inputs')).filter(row => appPlaybackBackend!=='pulse'?nativeClients.includes(Number(row.client)):Number(row.properties['application.process.id']) === appSource.child.pid);
           assert.equal(playback.length, 1);
           const destination=move%2===0?sinkName:defaultSink;
           const transition={playbackIndex:playback[0].index,destination,requestedAtMs:Date.now()};
@@ -714,9 +757,13 @@ function barriers() {
         entry.mixedRmsAtHalfGain = median(entry.audio.spectra.map(sample => sample.rms));
         assert(entry.mixedRmsAtHalfGain > .025 && entry.mixedRmsAtHalfGain < .095, 'Decoded half-gain mix level is outside fixture bounds');
       }
-      systemTone.silent = inputTone.silent = true; if (communicationsTone) communicationsTone.silent = true; await sleep(1000);
+      systemTone.silent = inputTone.silent = true; if (communicationsTone) communicationsTone.silent = true;
+      if(jackSystem)await appSource.command({silent:true});
+      await sleep(1000);
       entry.silence = await observeAudio(viewer); requireAudio(entry.silence, fixture.name + ' silence', {silent:true});
-      systemTone.silent = inputTone.silent = false; if (communicationsTone) communicationsTone.silent = false; await sleep(1000);
+      systemTone.silent = inputTone.silent = false; if (communicationsTone) communicationsTone.silent = false;
+      if(jackSystem){systemTone.silent=true;await appSource.command({silent:false});}
+      await sleep(1000);
       const late = await receiver(viewerBrowser, stream, publisher);
       entry.lateAudio = await observeAudio(late); requireAudio(entry.lateAudio, fixture.name + ' late viewer', {microphone:fixture.mix, excluded:communications || fixture.name === 'microphone'});
       if (communications && gui) {
@@ -881,7 +928,7 @@ function barriers() {
         await checkAudioWarning(/Selected audio app is unavailable/, 'staleAppWarningVisible');
         await staleViewer.close(); ui('press', 'Stop streaming');
         await waitFor(async () => !(await api('/diagnostics')).app.capturing, 10000, 'Stale-app stop did not finish');
-        ui('choose', stale.name, 'GameCaptureOwnedQAApp (PID ' + appSource.child.pid + ')');
+        ui('choose', stale.name, 'GameCaptureOwnedQAApp (PID ' + selectedAppPid(appSource) + ')');
         await goLive();
         const restarted = await receiver(viewerBrowser, stream, publisher);
         entry.afterExplicitReselection = await observeAudio(restarted); requireAudio(entry.afterExplicitReselection, 'Explicit app reselection', {excluded:true});

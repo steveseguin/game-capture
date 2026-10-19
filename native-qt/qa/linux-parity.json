@@ -17,7 +17,7 @@
       "id": "wayland-window",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Explicit-permission preview before publishing now passed the bounded workflows in linux_local_window_preview_checkpoint. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_nvenc_750ti_checkpoint: NVIDIA 580 driver now works and an owned-software-compositor H.264 NVENC lifecycle passes, but NVIDIA-backed headless capture delivers about one fresh image per second with both encoders; the full surfaceless resize/late-viewer workflow also fails with capture stalling after resize. Physical GNOME/NVIDIA and these failures remain unqualified."
+      "remaining": "Packaged CLI and native Qt Wayland GUI passed real GNOME portal selection, moving/static H264 reception, native resize and late viewer. GUI portal cancellation captured no frames and allowed successful retry; Stop/new portal/restart/Stop and clean exit passed. CLI source-loss cleanup previously passed. Permission-policy denial, session revocation, suspend/restore, cursor remain. Native Wayland GUI source loss, explicit replacement selection and decoded restart now passed. Programmatic Stop/Quit during pending permission fails on installed GNOME 46.2: independent Request.Close reproduces backend SIGSEGV. A compatible desktop fix and rerun are required; this is not an accepted exception. Packaged live preview now passed pixel identity, resize, Stop clearing and source-loss/replacement restart with accessible idle permission guidance and description clearing on camera-mode changes. Explicit-permission preview before publishing now passed the bounded workflows in linux_local_window_preview_checkpoint. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Protected-room GUI capture also passed default 1280x720/30 HQ plus 640x360 LQ, with fresh portal selection on Go live and after GUI Stop/restart. These granted-session workflows do not waive the installed pending-cancellation portal failure. Native 1280x720/60 A/V capture now has an exact-package controlled-source workflow, but the 30-second pilot fails the delivery target and timing; source/compositor performance is also below target in three intervals. See av_diagnostic_wayland_checkpoint; this does not qualify 60fps or endurance. See linux_wayland_input_cadence_checkpoint: packaged producer-stage traces show no application admission losses; roughly 50 fps arrives from PipeWire even when the fixture source sustains 60 fps. The 60 fps Wayland workflow remains failed and unqualified. See linux_pipewire_format_checkpoint: corrected BGRx enum advertisement with SPA protocol gates and a packaged BGRA regression workflow. Other native pixel formats and 60 fps remain unqualified. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_nvenc_750ti_checkpoint: NVIDIA 580 driver now works and an owned-software-compositor H.264 NVENC lifecycle passes, but NVIDIA-backed headless capture delivers about one fresh image per second with both encoders; the full surfaceless resize/late-viewer workflow also fails with capture stalling after resize. Physical GNOME/NVIDIA and these failures remain unqualified. See linux_native_inputs_checkpoint: native GTK capture through an owned software GNOME compositor and NVENC passes moving/static/resized/late/restarted decoding. The Chrome resize stall remains unresolved; no physical-desktop or60fps qualification is inferred."
     },
     {
       "id": "x11-window",
@@ -29,19 +29,19 @@
       "id": "camera",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, other permission mechanisms and initial-launch permission errors remain; multi-plane devices unsupported. Packaged X11 GUI now passed physical camera publication at 1280x720/30, exact live/restarted preview pixels, idle/Stop clearing, busy-camera isolation, camera release/reopen, and saved settings across two app launches without automatic capture. HDMI identities held at 10 Hz; high-motion input tearing remains a separate unqualified gap. Native GNOME Wayland camera GUI now also passed exact packaged two-launch preview, publication, Stop/restart, saved settings and competing headless-open isolation on an owned 1280x900 virtual monitor, with the physical HDMI source on the unchanged original monitor. X11 regression passed the revised preview observer on the same package. High-motion, other formats/devices, GUI initial-permission/hotplug errors and multi-plane support remain open. Packaged X11 and native Wayland GUI busy-device failure and explicit retry now pass twice each: full actionable error and enabled Go Live visible, no failed-GUI capture/peers, first publisher keeps delivering decoded video, clean owner release and successful GUI publication/preview. Other permission mechanisms, initial-launch denial and disconnect/hotplug remain open. Camera permission revocation after selection now passes packaged X11 and native Wayland: sustained kernel EACCES through automatic refresh retains actionable error, clears inaccessible selection, disables Go Live, and permits explicit Refresh/reselection/retry with decoded media after access restoration. Uses a private alias of the real Cam Link; host permissions and ACL remain unchanged. Other permission mechanisms/initial-launch denial and physical disconnect/hotplug remain open."
+      "remaining": "Cam Link physical HDMI loopback passed software H264 at 640x360/30fps, with 10 Hz source changes: moving/static identities, colors/orientation, late viewer, busy-device isolation, shutdown/reopen. High-motion physical input tearing, other devices/formats/MJPEG, disconnect/hotplug, other permission mechanisms and initial-launch permission errors remain; multi-plane devices unsupported. Packaged X11 GUI now passed physical camera publication at 1280x720/30, exact live/restarted preview pixels, idle/Stop clearing, busy-camera isolation, camera release/reopen, and saved settings across two app launches without automatic capture. HDMI identities held at 10 Hz; high-motion input tearing remains a separate unqualified gap. Native GNOME Wayland camera GUI now also passed exact packaged two-launch preview, publication, Stop/restart, saved settings and competing headless-open isolation on an owned 1280x900 virtual monitor, with the physical HDMI source on the unchanged original monitor. X11 regression passed the revised preview observer on the same package. High-motion, other formats/devices, GUI initial-permission/hotplug errors and multi-plane support remain open. Packaged X11 and native Wayland GUI busy-device failure and explicit retry now pass twice each: full actionable error and enabled Go Live visible, no failed-GUI capture/peers, first publisher keeps delivering decoded video, clean owner release and successful GUI publication/preview. Other permission mechanisms, initial-launch denial and disconnect/hotplug remain open. Camera permission revocation after selection now passes packaged X11 and native Wayland: sustained kernel EACCES through automatic refresh retains actionable error, clears inaccessible selection, disables Go Live, and permits explicit Refresh/reselection/retry with decoded media after access restoration. Uses a private alias of the real Cam Link; host permissions and ACL remain unchanged. Other permission mechanisms/initial-launch denial and physical disconnect/hotplug remain open. See linux_native_inputs_checkpoint for physical MJPEG Facecam, NV12 Cam Link and owned YUYV v4l2loopback coverage, including local decoded media, GUI preview and Stop/restart; ARM frame-rate-aware format selection is integrated. These newer cases supersede the earlier absence of MJPEG/virtual-device evidence only. Uncontrolled scenes do not qualify optical cadence; hot-plug, multi-plane capture and other device/formats remain open."
     },
     {
       "id": "application-audio",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "Packaged CLI/GUI selection and lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Healthy direct monitors survive output moves, including repeated-move evidence. See linux_receiver_playout_checkpoint: normal visible and headless unmuted receiver workflows pass all nine continuous phases and actual owned-sink restart playback checks. The older muted headless Web Audio control still contains a 10 ms zero interval despite clean encoded audio; historical failures remain recorded and its precise browser-internal cause is unproven. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open."
+      "remaining": "Packaged CLI/GUI selection and lifecycle, retained notices, stale-selection rejection and explicit reselection have bounded passing evidence. Healthy direct monitors survive output moves, including repeated-move evidence. See linux_receiver_playout_checkpoint: normal visible and headless unmuted receiver workflows pass all nine continuous phases and actual owned-sink restart playback checks. The older muted headless Web Audio control still contains a 10 ms zero interval despite clean encoded audio; historical failures remain recorded and its precise browser-internal cause is unproven. PulseAudio termination/recovery and event-churn behavior remain unqualified. Also required: fresh native Wayland regression, native PipeWire/JACK clients, sandboxed PID namespaces, non-descendant helper services, PID-reuse collisions, audio-server loss, mixed-microphone continuity, CPU load, physical outputs/devices, calibrated A/V startup and final-package endurance. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_native_inputs_checkpoint: native PipeWire client identity fix passes real selected-app CLI and GUI workflows, descendants, exclusion, output moves and stale-instance reselection. An intermittent GUI output-move silence remains unresolved despite subsequent passing traces. JACK DSP per-client capture remains unsupported; PipeWire system-output capture of actual JACK playback passes."
     },
     {
       "id": "system-audio",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and X11 GUI default-output capture, decoded stereo, silence, system/mic mixing, mute and 50/50 gain passed. Output changes, audio-server loss, timestamp/drift and endurance qualification remain. Native Wayland GUI routing, silence, late viewer, half-gain mixing, mute and persisted settings passed. Linux communications-output now has a separate explicit-device workflow and its own required parity row. Default system-output/microphone GUI regression passed on that package. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open."
+      "remaining": "Packaged CLI and X11 GUI default-output capture, decoded stereo, silence, system/mic mixing, mute and 50/50 gain passed. Output changes, audio-server loss, timestamp/drift and endurance qualification remain. Native Wayland GUI routing, silence, late viewer, half-gain mixing, mute and persisted settings passed. Linux communications-output now has a separate explicit-device workflow and its own required parity row. Default system-output/microphone GUI regression passed on that package. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_native_inputs_checkpoint for actual JACK playback through PipeWire system-output capture and final-package system/virtual-microphone GUI regression. This is not physical microphone or JACK per-client qualification."
     },
     {
       "id": "communications-output",
@@ -72,7 +72,7 @@
       "id": "hardware-encoding",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "See linux_nvenc_750ti_checkpoint: incompatible NVIDIA 595-open replaced with proprietary 580.178.04 and rebooted. The accessible GTX 750 Ti now passes packaged H.264 NVENC GUI workflows at 960x540/30: full X11 moving/static/resize/late-viewer/Stop and dedicated owned-Wayland moving/late-viewer/Stop/fresh-grant/restart/Stop. Physical desktops, full Wayland resize (failed), NVIDIA-backed compositor capture cadence (failed with both software and NVENC), higher rates/resolutions, audio/external outputs, rate control, failures and endurance remain unqualified. No HEVC/AV1 or unavailable hardware is qualified. Future device/backend extensibility remains required. See linux_encoder_portability_checkpoint: Linux ARM first-run defaults now use 720p30; native ARM testing, per-device/per-codec runtime discovery and additional VA-API/Intel/V4L2/vendor backends remain open. This policy change qualifies no additional hardware."
+      "remaining": "See linux_nvenc_750ti_checkpoint: incompatible NVIDIA 595-open replaced with proprietary 580.178.04 and rebooted. The accessible GTX 750 Ti now passes packaged H.264 NVENC GUI workflows at 960x540/30: full X11 moving/static/resize/late-viewer/Stop and dedicated owned-Wayland moving/late-viewer/Stop/fresh-grant/restart/Stop. Physical desktops, full Wayland resize (failed), NVIDIA-backed compositor capture cadence (failed with both software and NVENC), higher rates/resolutions, audio/external outputs, rate control, failures and endurance remain unqualified. No HEVC/AV1 or unavailable hardware is qualified. Future device/backend extensibility remains required. See linux_encoder_portability_checkpoint: Linux ARM first-run defaults now use 720p30; native ARM testing, per-device/per-codec runtime discovery and additional VA-API/Intel/V4L2/vendor backends remain open. This policy change qualifies no additional hardware. See linux_native_inputs_checkpoint: GTX750Ti H264 NVENC additionally passes native GTK Wayland resize/late/restart and physical CamLink NV12 input to local UDP/MPEGTS at1280x720/30 output. Other codecs/devices, per-device discovery and endurance remain open."
     },
     {
       "id": "vdo-direct",
@@ -144,7 +144,7 @@
       "id": "arm-portability",
       "required": true,
       "status": "in-progress",
-      "remaining": "Keep codec/capture core free of x86-only intrinsics; dispatch pixel layouts by negotiated metadata. ARM package/qualification is deferred by scope."
+      "remaining": "Keep core free of x86-only assumptions. The separate ARM agent integrated experimental ARM64/portable packages and physical-camera qualification; see linux-arm64.json, linux-portable.json and linux-arm-camera.json. This x86 checkpoint imports those changes and checks accessible x86 devices. Full ARM parity/hardware and cross-platform qualification are not inferred."
     }
   ],
   "evidence": [
@@ -34752,5 +34752,816 @@
       "Keep explicit selections strict, portable software H.264 fallback, shared UI/core and accurate active-encoder/fallback diagnostics as new backends are added.",
       "The previous NVIDIA-backed compositor and Wayland resize failures remain open. No broader hardware, timing, endurance or platform parity claim is made."
     ]
+  },
+  "linux_native_inputs_checkpoint": {
+    "date": "2026-10-19",
+    "scope": "Linux x86 packaged workflows after importing ARM camera-format changes; all 23 parity rows remain required.",
+    "importedArmCommits": [
+      "7156b9a2c0b9f54fc674e73e974b6ef3af69b246",
+      "230ab69",
+      "0467cff"
+    ],
+    "change": "Resolve native PipeWire playback identity from the Pulse-protocol owning client when a stream omits process metadata. Stream PID overrides, UID/process-generation checks and per-stream monitors remain. Client changes trigger discovery; no system-mix fallback.",
+    "source": {
+      "path": "native-qt/src/platform/linux/audio_capture.cpp",
+      "sha256": "2c8716ee4f4aec5bf7a1c705b75683e7fddb46a0c7e6bffa08b93e62dba12b2d"
+    },
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-3e5038da154d-c0804471b048.deb",
+      "sha256": "3c163af4e05f04a2ebc66d30e1542fe2d6fbd74768adc6ecb794fdc260748563",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-3e5038da154d-c0804471b048",
+      "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4"
+    },
+    "matrix": {
+      "path": "/home/ubuntu/.local/state/game-capture-linux-parity/combined-input-matrix.json",
+      "sha256": "e5d46bfa31a558f6a08aa89d15a0562c511cfae503528e476bd1537a210a0262"
+    },
+    "applicationWorkflows": [
+      {
+        "path": "native-qt/qa/reports/final-facecam/4ecb5c14-5573-4caf-9269-df26f3379c6e/results.json",
+        "sha256": "cf220708d9f08d7d368a13cdcd79ba3f6c5891c0ce516350ff9529ed6f9574d5",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 151,
+            "imageStandardDeviation": 13.222704483457214,
+            "uniqueDecodedFrames": 151,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 130,
+            "imageStandardDeviation": 13.323348166963124,
+            "uniqueDecodedFrames": 130,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 150,
+            "imageStandardDeviation": 13.146301403098871,
+            "uniqueDecodedFrames": 150,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated MJPG 1280x720, interval 1/30, colorspace 8, YCbCr 0, range 0"
+        ],
+        "name": "final-facecam",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-camlink/b6939d3e-e6b2-4b27-88e2-8c746913a804/results.json",
+        "sha256": "c1af41b02427bcb988ac4d199768f326efb24f77184a1246ecd24de6be817ae1",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 124,
+            "imageStandardDeviation": 17.320122597284872,
+            "uniqueDecodedFrames": 124,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 133,
+            "imageStandardDeviation": 17.320859083717373,
+            "uniqueDecodedFrames": 133,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 150,
+            "imageStandardDeviation": 17.321872212773396,
+            "uniqueDecodedFrames": 150,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated NV12 3840x2160, interval 1/30, colorspace 8, YCbCr 2, range 0"
+        ],
+        "name": "final-camlink",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-native-window/1907e9e4-8d8a-405f-a7e1-aa3acec9507a/results.json",
+        "sha256": "0271eeceb3d50f645cf80891488131def66b7ece3a6ee4dbb142f75f6ec29f63",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 151,
+            "uniqueIdentities": 151,
+            "passed": true
+          },
+          {
+            "name": "static",
+            "decodedFrames": 133,
+            "uniqueIdentities": 1,
+            "passed": true
+          },
+          {
+            "name": "resized",
+            "decodedFrames": 146,
+            "uniqueIdentities": 146,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 128,
+            "uniqueIdentities": 128,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 151,
+            "uniqueIdentities": 151,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "name": "final-native-window",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-native-audio-gui/26976a96-421d-4d32-b46a-8581826c16cc/results.json",
+        "sha256": "7afc01b3cb02d19ff7b8ee9a37fb1cade4371dd05c5058cfa24e62289d407222",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "audioWarningObservations",
+              "healthyAudioHasNoWarning",
+              "nativeSilent",
+              "nativeResumed",
+              "unselectedNativeSiblingExcluded",
+              "outputMoves",
+              "outputMoved",
+              "lateAudio",
+              "noAudioAfterAppExit",
+              "appLossWarningVisible",
+              "videoAfterAppExit",
+              "guiStopSettled",
+              "audioWarningClearedOnStop",
+              "videoWithStaleApp",
+              "staleAppNotReplaced",
+              "staleAppWarningVisible",
+              "afterExplicitReselection",
+              "audioWarningClearedOnExplicitRestart"
+            ]
+          }
+        ],
+        "name": "final-native-audio-gui",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-pulse-app/3f6c522f-3fc2-4eb3-8963-f9d1e3444bfb/results.json",
+        "sha256": "215577de6a8aab80e39019dea3b9917175da14ea550e92175fbbc04942912bad",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "observations": [
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "childJoined",
+              "childRemoved",
+              "secondStreamSameProcess",
+              "secondStreamRemoved",
+              "noStreams",
+              "streamRecreated",
+              "outputMoves",
+              "outputMoved",
+              "lateAudio",
+              "noAudioAfterAppExit",
+              "videoAfterAppExit"
+            ]
+          }
+        ],
+        "name": "final-pulse-app",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-jack-system/32ccf2e0-e3dd-42fd-b9ce-c404690659e0/results.json",
+        "sha256": "c919f6c49f37e7c845c0b1a04a1ce36a9d2f8c4b95b2dd1278c505023ce5b5af",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "workflowCases": [
+          {
+            "name": "system",
+            "passed": true,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "silence",
+              "lateAudio"
+            ]
+          }
+        ],
+        "name": "final-jack-system",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-system-microphone/171813a4-2ffa-4312-836c-58febecf3a48/results.json",
+        "sha256": "76b986be7049a690e40a5b4ac5ad2f2dc0cc85dd1cf392d04a99f90fbeebedba",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "workflowCases": [
+          {
+            "name": "mix",
+            "passed": true,
+            "observations": [
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "muted",
+              "videoWhileMuted",
+              "unmuted",
+              "mixedRmsAtHalfGain",
+              "silence",
+              "lateAudio",
+              "guiStopSettled",
+              "settingsRestoredWithoutCapture"
+            ]
+          }
+        ],
+        "name": "final-system-microphone",
+        "runnerStatus": "passed"
+      },
+      {
+        "path": "native-qt/qa/reports/final-x11-nvenc/06a655c4-c571-4bbc-88b1-53b17c256bf0/results.json",
+        "sha256": "9788b4c6ab69e365c3157bf1276b6515a83302769cb06550bf26805b9e7c347a",
+        "passed": true,
+        "executableSha256": "3e5038da154dc32158207c8c8c4fe6e5003eadc156224b0320488e2e14aecc5f",
+        "manifestSha256": "e36ef7f2ff43558f1e33b9f5ad407e69edf2f5be6cf088b255e296f5c40ad1f4",
+        "name": "final-x11-nvenc",
+        "runnerStatus": "passed"
+      }
+    ],
+    "earlierBoundedEvidence": [
+      {
+        "path": "native-qt/qa/reports/linux-native-input-nvenc/3e8ee264-043d-47d6-9cb7-bbf5ae7f811f/results.json",
+        "sha256": "aa997831c22479c98432f4f3bcae3ebd4dd9048100164712d06fdf0965e595e6",
+        "passed": true,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": "85e44cba2d34a98533a8e9eaae7cc271f2c66b9a361659dd0a9c9e8cffa78b7b",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 150,
+            "uniqueIdentities": 150,
+            "passed": true
+          },
+          {
+            "name": "static",
+            "decodedFrames": 133,
+            "uniqueIdentities": 1,
+            "passed": true
+          },
+          {
+            "name": "resized",
+            "decodedFrames": 146,
+            "uniqueIdentities": 146,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 127,
+            "uniqueIdentities": 127,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 150,
+            "uniqueIdentities": 150,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "path": "native-qt/qa/reports/linux-facecam-mjpeg/a0bce51a-c0a4-411b-8e40-2a305d61c316/results.json",
+        "sha256": "2a4b5d38053c99802e2dd8b443fb0519ab6efe56c8db901ad5b64c23524b1265",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 151,
+            "imageStandardDeviation": 13.384233908117837,
+            "uniqueDecodedFrames": 151,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 131,
+            "imageStandardDeviation": 13.430258786546636,
+            "uniqueDecodedFrames": 131,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 123,
+            "imageStandardDeviation": 13.293360075459631,
+            "uniqueDecodedFrames": 123,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated MJPG 1280x720, interval 1/30, colorspace 8, YCbCr 0, range 0"
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-camlink-nvenc/7ab36318-6e07-4396-a709-eff9df2686eb/results.json",
+        "sha256": "dbb7a8406ee769da03524b9f9d4dd53db52fed8a0c88316ee2a97f8f33d475ce",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 124,
+            "imageStandardDeviation": 17.322252515459358,
+            "uniqueDecodedFrames": 124,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 136,
+            "imageStandardDeviation": 17.319780354342655,
+            "uniqueDecodedFrames": 136,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 151,
+            "imageStandardDeviation": 17.31992236736897,
+            "uniqueDecodedFrames": 151,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated NV12 3840x2160, interval 1/30, colorspace 8, YCbCr 2, range 0"
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-v4l2loopback-input/c0e8892a-db1d-4829-b934-a77bb92fc8c3/results.json",
+        "sha256": "c4851b473cc908b77d47fdaf82b946de64a0538cacc9fc23ba399d0ce63ca1ca",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "phases": [
+          {
+            "name": "moving",
+            "decodedFrames": 150,
+            "imageStandardDeviation": 121.32729384401047,
+            "uniqueDecodedFrames": 150,
+            "passed": true
+          },
+          {
+            "name": "late",
+            "decodedFrames": 130,
+            "imageStandardDeviation": 121.80029923276797,
+            "uniqueDecodedFrames": 130,
+            "passed": true
+          },
+          {
+            "name": "restarted",
+            "decodedFrames": 150,
+            "imageStandardDeviation": 121.84921085223503,
+            "uniqueDecodedFrames": 150,
+            "passed": true
+          }
+        ],
+        "stopPassed": true,
+        "restartPassed": true,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated YUYV 1280x720, interval 1/30, colorspace 8, YCbCr 0, range 0"
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-native-pipewire-app-audio-fixed/fa8144b5-8763-46da-bed7-cc346bac1f79/results.json",
+        "sha256": "cbc202e700f7697cc5ab5ff918641ae9f3dd9b57847db171c92d92c6a5ae6541",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "childJoined",
+              "childRemoved",
+              "secondNativeChildStream",
+              "secondStreamRemoved",
+              "noStreams",
+              "streamRecreated",
+              "outputMoves",
+              "outputMoved",
+              "lateAudio",
+              "noAudioAfterAppExit",
+              "videoAfterAppExit"
+            ]
+          }
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-native-pipewire-app-gui-trace/165c284f-544e-4945-b900-e5b279b99c0c/results.json",
+        "sha256": "f4d636e2b30024989875194ee537130a62748e4e44911ba3758ed38e96703386",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "audioWarningObservations",
+              "healthyAudioHasNoWarning",
+              "nativeSilent",
+              "nativeResumed",
+              "unselectedNativeSiblingExcluded",
+              "outputMoves",
+              "outputMoved",
+              "lateAudio",
+              "noAudioAfterAppExit",
+              "appLossWarningVisible",
+              "videoAfterAppExit",
+              "guiStopSettled",
+              "audioWarningClearedOnStop",
+              "videoWithStaleApp",
+              "staleAppNotReplaced",
+              "staleAppWarningVisible",
+              "afterExplicitReselection",
+              "audioWarningClearedOnExplicitRestart"
+            ]
+          }
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-native-pipewire-app-gui-trace/85d950d0-3f8e-4d82-b5bf-1bd91ba591ec/results.json",
+        "sha256": "179d6193f79c6ecdb746a491711ebe9b053bfadcefd32efe2907b328335ad521",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "audioWarningObservations",
+              "healthyAudioHasNoWarning",
+              "nativeSilent",
+              "nativeResumed",
+              "unselectedNativeSiblingExcluded",
+              "outputMoves",
+              "outputMoved",
+              "lateAudio",
+              "noAudioAfterAppExit",
+              "appLossWarningVisible",
+              "videoAfterAppExit",
+              "guiStopSettled",
+              "audioWarningClearedOnStop",
+              "videoWithStaleApp",
+              "staleAppNotReplaced",
+              "staleAppWarningVisible",
+              "afterExplicitReselection",
+              "audioWarningClearedOnExplicitRestart"
+            ]
+          }
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-pulse-app-audio-regression/40be67b2-fd3c-4d9a-a5e9-de420da0f89f/results.json",
+        "sha256": "70bdcf441780f634c2da737ddf740548b9a527be9d92cb2de84dd9e4d980bd4e",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "observations": [
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "childJoined",
+              "childRemoved",
+              "secondStreamSameProcess",
+              "secondStreamRemoved",
+              "noStreams",
+              "streamRecreated",
+              "outputMoves",
+              "outputMoved",
+              "lateAudio",
+              "noAudioAfterAppExit",
+              "videoAfterAppExit"
+            ]
+          }
+        ]
+      },
+      {
+        "path": "native-qt/qa/reports/linux-jack-system-audio/6e3bd445-c680-4278-ac11-1be02a2d7656/results.json",
+        "sha256": "417b184b7380d63ccb3977e399539a18e4d5094984295bcccd088a94ec5de96c",
+        "passed": true,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "workflowCases": [
+          {
+            "name": "system",
+            "passed": true,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "silence",
+              "lateAudio"
+            ]
+          }
+        ]
+      }
+    ],
+    "failuresRetained": [
+      {
+        "path": "native-qt/qa/reports/linux-native-input-nvenc/c7df6778-822f-49d8-a950-a12781df46e2/results.json",
+        "sha256": "aba97554524a3dc5140ddcaca884944bb0cba90d80131127d70d091bd5f9ab2f",
+        "passed": false,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": "85e44cba2d34a98533a8e9eaae7cc271f2c66b9a361659dd0a9c9e8cffa78b7b",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 176, in main\n    go_live('initial'); receive('moving')\n    ^^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 97, in go_live\n    wait(lambda:api()['app']['live'], 'Go live failed', 40)\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 79, in wait\n    raise RuntimeError(message)\nRuntimeError: Go live failed\n",
+        "phases": [],
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "classification": "Fixture setup: native source title did not initially match the portal selector owned-title guard."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-facecam-mjpeg/27fc810d-4a47-4b8d-b592-c6831d83e8b5/results.json",
+        "sha256": "c3d6fe8c15c16232f301d9f4f5cc8cb1e47cb5e78239e401f51b495723d47653",
+        "passed": false,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 181, in main\n    go_live('initial'); receive('moving')\n                        ^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 123, in receive\n    assert video['codec_name']=='h264' and (video['width'], video['height']) == (960,540)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "phases": [],
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated MJPG 1280x720, interval 1/30, colorspace 8, YCbCr 0, range 0"
+        ],
+        "classification": "Fixture development error: device alias identity, duplicate selector labels, or camera-mode output-size expectation. Subsequent complete packaged cases pass; this failed attempt is retained."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-facecam-mjpeg/7cb2d467-eb02-4b82-b494-c2d19b76d217/results.json",
+        "sha256": "d0557728a209255b0d583bdce4966038bd5a23f8ec79af5170d4bd6a0b9bb6ba",
+        "passed": false,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": "85e44cba2d34a98533a8e9eaae7cc271f2c66b9a361659dd0a9c9e8cffa78b7b",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 174, in main\n    ui('choose', '1280x720', '960x540'); ui('choose', '60', '30')\n    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 82, in ui\n    return subprocess.check_output([sys.executable, str(helpers/'linux-ui-control.py'), str(app.pid), *argv],\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 466, in check_output\n    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/usr/lib/python3.12/subprocess.py\", line 571, in run\n    raise CalledProcessError(retcode, process.args,\nsubprocess.CalledProcessError: Command '['/usr/bin/python3', '/home/ubuntu/code/game-capture/native-qt/e2e/linux-ui-control.py', '28575', 'choose', '1280x720', '960x540']' returned non-zero exit status 1.\n",
+        "phases": [],
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "classification": "Fixture development error: device alias identity, duplicate selector labels, or camera-mode output-size expectation. Subsequent complete packaged cases pass; this failed attempt is retained."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-facecam-mjpeg/a2853c99-03c7-477f-a544-dfc4b083260c/results.json",
+        "sha256": "676fbe276ada4ac7bd6ba4e8433e205795dca9f934a4c295594db6a48eb12a63",
+        "passed": false,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": "85e44cba2d34a98533a8e9eaae7cc271f2c66b9a361659dd0a9c9e8cffa78b7b",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 181, in main\n    go_live('initial'); receive('moving')\n                        ^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 123, in receive\n    assert video['codec_name']=='h264' and (video['width'], video['height']) == (960,540)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "phases": [],
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated MJPG 1280x720, interval 1/30, colorspace 8, YCbCr 0, range 0"
+        ],
+        "classification": "Fixture development error: device alias identity, duplicate selector labels, or camera-mode output-size expectation. Subsequent complete packaged cases pass; this failed attempt is retained."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-facecam-mjpeg/d30685b0-ba15-421a-94ff-742494065119/results.json",
+        "sha256": "28ff91508a5093648e91f49d43dd00e50d5862e8a9776f2c386cee14f299f2a2",
+        "passed": false,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": "85e44cba2d34a98533a8e9eaae7cc271f2c66b9a361659dd0a9c9e8cffa78b7b",
+        "error": "Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 177, in main\n    go_live('initial'); receive('moving')\n    ^^^^^^^^^^^^^^^^^^\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-input-publish.py\", line 104, in go_live\n    if args.camera_id: assert d['source']['source_id'] == args.camera_id\n                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+        "phases": [],
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "negotiatedFormats": [
+          "[V4L2] Negotiated MJPG 1280x720, interval 1/30, colorspace 8, YCbCr 0, range 0"
+        ],
+        "classification": "Fixture development error: device alias identity, duplicate selector labels, or camera-mode output-size expectation. Subsequent complete packaged cases pass; this failed attempt is retained."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-wayland-capture-diagnostic/7ba7f1f1-d290-42d6-9512-aba5da6cf6fb/results.json",
+        "sha256": "3c73f9171393e802a9fef36030c9d970b223796eaf13e27a3f7a326952ce38da",
+        "passed": false,
+        "executableSha256": "64fd58d011632009ac4d4ef5e1c4c0b7cf1b9e0f3af3557f4cda52524faa5752",
+        "manifestSha256": "43617759a6d05b4b62deea396bad52f26b3c22c3827342cd1d9557355a4af2c0",
+        "error": "Error: Late Linux receiver: only 1 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/code/game-capture/native-qt/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:386:126",
+        "classification": "Unresolved Chrome/Wayland resize stall. Trace arrivals collapse before the encoder; native GTK comparison passes."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-native-pipewire-app-audio/28d4f1ed-e6bc-41af-980f-0279c169bbb5/results.json",
+        "sha256": "a1740d4465ea889eec764d2db7140e5f0914d46739d2180f9406558bc2cc5edb",
+        "passed": false,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": "85e44cba2d34a98533a8e9eaae7cc271f2c66b9a361659dd0a9c9e8cffa78b7b",
+        "error": "AssertionError [ERR_ASSERTION]: selected-app: decoded stereo tone/silence/routing differs from the fixture (0/30)\n    at requireAudio (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:175:3)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:623:117",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": false,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio"
+            ]
+          }
+        ],
+        "classification": "Reproduced product defect: native client metadata missing from stream-only PID lookup. Independent sink recording proves the source is audible. Fixed by owning-client fallback."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-native-pipewire-app-gui/dcbf50ad-b449-4d72-a7ab-22534cd0353d/results.json",
+        "sha256": "cf184e08eb02502ba1bb57186d1094486665420a1e86a50e0b57c49cffb01da0",
+        "passed": false,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "error": "AssertionError [ERR_ASSERTION]: outputMoved: decoded stereo tone/silence/routing differs from the fixture (0/30)\n    at requireAudio (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:177:3)\n    at sample (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:638:39)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:701:11",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": false,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio",
+              "audioDiagnostics",
+              "audioWarningObservations",
+              "healthyAudioHasNoWarning",
+              "nativeSilent",
+              "nativeResumed",
+              "unselectedNativeSiblingExcluded",
+              "outputMoves",
+              "outputMoved"
+            ]
+          }
+        ],
+        "classification": "Unresolved intermittent output-move silence. Traced repeats pass without a routing-code change; failure is not waived."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-jack-app-audio/c9647717-939e-4943-99f0-4cbd126c166a/results.json",
+        "sha256": "64406585d316cf668b356ae80cc50847b37e3a675c765f38de606eb651896da1",
+        "passed": false,
+        "executableSha256": "b816fea67137cc1e411d4b7d14ca381a3075dadb5f625ee1ffb9d105a24d35f8",
+        "manifestSha256": "408faf611926aa64f5bf62fc37f3d38ed0644116bc0ae5de1356882377b79e61",
+        "error": "AssertionError [ERR_ASSERTION]: selected-app: decoded stereo tone/silence/routing differs from the fixture (0/30)\n    at requireAudio (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:178:3)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:631:117",
+        "workflowCases": [
+          {
+            "name": "selected-app",
+            "passed": false,
+            "observations": [
+              "nativePlayback",
+              "video",
+              "audio"
+            ]
+          }
+        ],
+        "classification": "Unsupported path: JACK DSP nodes are not exposed as Pulse sink inputs. System-output JACK capture is separately qualified."
+      },
+      {
+        "path": "native-qt/qa/reports/linux-post-arm-x86-bringup/c794402b-aed2-4043-9f07-4c86ff50b7ae/results.json",
+        "sha256": "33b8c84ed3b390ffa03dc4703d411d4e8e74c185c5b7b2b60ab4a6ec02ac5d58",
+        "passed": false,
+        "executableSha256": "e61d75133e52cced382b3d7cea9ba9d2722e870bcb9a4c0a234731cf2ad44821",
+        "manifestSha256": null,
+        "error": "FileNotFoundError(2, 'No such file or directory')",
+        "phases": [],
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true,
+        "classification": "Fixture setup: this host runs PipeWire and lacks a standalone pulseaudio executable; no shipped-app workflow completed in this attempt."
+      }
+    ],
+    "gates": {
+      "scope": "Build, syntax and compiled checks only; separate from application testing",
+      "build": {
+        "path": "/tmp/linux-combined-input-build.log",
+        "sha256": "c9c6a59869233b3a2c69983b7bbb7b225852f794e7a92dfc2a7b2e0d17f34a05"
+      },
+      "compiled": {
+        "path": "/tmp/linux-combined-input-gates.log",
+        "sha256": "bc100a8763e19d0fd79e87666c4c57866ef69d437350d3b7c8b84eb650e1467d"
+      }
+    },
+    "fixtureNotes": [
+      "Verified surfaceless software GNOME uses a mount namespace hiding /dev/dri; /dev/nvidia* remains available for actual NVENC. It is not the physical desktop.",
+      "Native GTK redraw identities separate window capture from Chrome rendering. Camera scenes are uncontrolled; decoded image variation is not optical cadence or motion-fidelity qualification.",
+      "JACK stimulus uses the real JACK API through PipeWire libjack. An independent sink-monitor recording measured both 440/880Hz tones before packaged workflow execution.",
+      "v4l2loopback module and /dev/video42 were created only for the owned virtual camera and removed afterward. The stimulus is FFmpeg testsrc2/YUYV, not OBS."
+    ],
+    "remaining": [
+      "Chrome native-Wayland resize/late-viewer stall remains failed. GTK passing capture does not establish the Chrome cause or fix.",
+      "One native PipeWire GUI output-move attempt decoded silence; two traced repeats passed without a production routing change. Intermittent failure remains unresolved.",
+      "JACK DSP nodes are absent from the Pulse sink-input catalog: per-JACK-client capture is unsupported. System-output capture of the same real JACK signal passed.",
+      "Physical desktop sessions, microphone sound-content qualification, unplug/reconnect, multi-plane V4L2, other hardware/codecs, VA-API/QSV/vendor backends and per-device/codec discovery remain open.",
+      "Calibrated A/V, Wayland60fps, final-package >=30-minute endurance, original portal/Mutter failures, distribution and Windows/macOS runtime regression remain open. This checkpoint does not complete parity."
+    ],
+    "virtualDeviceCleanup": {
+      "moduleLoadedByThisTurn": true,
+      "device": "/dev/video42",
+      "producer": [
+        {
+          "pid": 33129,
+          "startTime": "594789"
+        }
+      ],
+      "cleanupPassed": true
+    },
+    "timingPilot": {
+      "path": "native-qt/qa/reports/final-av-pilot/e8aa652e-17fb-494e-ae3e-cbc5fade74b9/results.json",
+      "sha256": "a15a5bfd629edc2ffb585bd7902701a400a7d145a4d67b4656e4cbdd210e66a8",
+      "passed": true,
+      "profile": "X11, software H264,1280x720/60, selected-Chrome-process stereo Opus128kbps",
+      "seconds": 60,
+      "intervals": 12,
+      "passingIntervals": 12,
+      "minimumDeliveryRatio": 0.9920832986886721,
+      "medianAdditionalAVOffsetMs": -6.5000000000061675,
+      "maximumAbsoluteAdditionalOffsetMs": 26.99999999999924,
+      "longRunDriftQualified": false,
+      "scope": "Paired software-source/received-media timing; not independent physical latency or physical desktop qualification."
+    },
+    "browserComparison": {
+      "path": "native-qt/qa/reports/chromium145-wayland-comparison/99290845-f232-4bc9-8125-8089328f0c3e/results.json",
+      "sha256": "092e40c015d7dacffc56bfa0a5b57be8f019efcf7fc3f269b1c2f232c163fad8",
+      "passed": false,
+      "sourceBrowserVersion": "145.0.7632.6",
+      "error": "Error: Initial Linux stream: only 1 distinct decoded fixture identities\n    at requireMoving (/home/ubuntu/code/game-capture/native-qt/e2e/macos-media-receiver.js:132:31)\n    at /home/ubuntu/code/game-capture/native-qt/e2e/linux-window-publish.js:306:97",
+      "scope": "Same owned software GNOME and NVENC; source browser replaced with Chromium145, receiver remains Chrome143. Capture is already stale during initial moving phase, before resize."
+    },
+    "endurance": {
+      "status": "running",
+      "statePath": "/home/ubuntu/.local/state/game-capture-linux-parity/combined-input-endurance.json",
+      "scope": "31-minute X11 software-reference A/V on the combined package; no qualification claim until completion"
+    }
   }
 }

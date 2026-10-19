@@ -17,6 +17,7 @@ import signal
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import time
 import uuid
@@ -72,6 +73,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=600)
+    parser.add_argument('--renderer', choices=['software', 'auto'], default='software',
+                        help='Isolate DRM devices for repeatable software rendering, or exercise the host-selected GPU')
+    parser.add_argument('--isolated-renderer', action='store_true', help=argparse.SUPPRESS)
     faults = parser.add_mutually_exclusive_group()
     faults.add_argument('--pulse-fault', action='store_true', help='Allow child to stop/start only the owned Pulse service; keep video PipeWire running')
     faults.add_argument('--pipewire-fault', action='store_true', help='Allow child to stop/start owned PipeWire, Pulse and WirePlumber; keep compositor running')
@@ -79,10 +83,28 @@ def main():
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     assert command and 1 <= args.timeout <= 7200
+    if args.renderer == 'software':
+        mesa = '/usr/share/glvnd/egl_vendor.d/50_mesa.json'
+        assert Path(mesa).is_file(), 'Software fixture requires Mesa EGL'
+        if not args.isolated_renderer:
+            assert shutil.which('bwrap'), 'Software fixture requires bubblewrap'
+            # LIBGL_ALWAYS_SOFTWARE only controls Mesa. Once the NVIDIA driver
+            # is installed, Mutter otherwise selects NVIDIA GBM and silently
+            # changes this fixture's renderer. Hide DRM only inside this mount
+            # namespace; CUDA/NVENC device nodes remain accessible to the app.
+            argv = ['bwrap', '--dev-bind', '/', '/', '--tmpfs', '/dev/dri',
+                    '--die-with-parent', '--setenv', '__EGL_VENDOR_LIBRARY_FILENAMES', mesa,
+                    '--setenv', 'GALLIUM_DRIVER', 'llvmpipe', '--', sys.executable,
+                    str(Path(__file__).resolve()), '--isolated-renderer', *sys.argv[1:]]
+            os.execvp(argv[0], argv)
+        assert not list(Path('/dev/dri').iterdir()), 'Fixture DRM isolation is missing'
+        assert os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES') == mesa
+        assert os.environ.get('GALLIUM_DRIVER') == 'llvmpipe'
     assert '0.4.' in subprocess.check_output(['wireplumber', '--version'], text=True)
     report = args.reports.resolve()/str(uuid.uuid4()); report.mkdir(parents=True, mode=0o700)
     shutil.copyfile(__file__, report/Path(__file__).name)
     result = {'scope': __doc__, 'passed': False,
+              'rendererRequested': args.renderer,
               'harnessSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               'commandSha256': hashlib.sha256(json.dumps(command).encode()).hexdigest()}
     processes = []; logs = []; child = session = None
@@ -113,12 +135,18 @@ def main():
         for key, name in [('XDG_RUNTIME_DIR', 'runtime'), ('XDG_CONFIG_HOME', 'config'),
                           ('XDG_DATA_HOME', 'data'), ('XDG_STATE_HOME', 'state'), ('XDG_CACHE_HOME', 'cache')]:
             directory = root/name; directory.mkdir(mode=0o700); env[key] = str(directory)
-        env.update(GSETTINGS_BACKEND='memory', LIBGL_ALWAYS_SOFTWARE='1',
+        env.update(GSETTINGS_BACKEND='memory',
                    XDG_SESSION_TYPE='wayland', XDG_CURRENT_DESKTOP='GNOME',
                    GNOME_SHELL_SESSION_MODE='user', WAYLAND_DISPLAY='gc-qa',
                    PIPEWIRE_RUNTIME_DIR=env['XDG_RUNTIME_DIR'],
                    PULSE_SERVER='unix:'+env['XDG_RUNTIME_DIR']+'/pulse/native',
-                   GC_QA_OWNED_WAYLAND=str(report), GC_QA_KEYBOARD_SOCKET=str(root/'input.sock'))
+                   GC_QA_OWNED_WAYLAND=str(report), GC_QA_KEYBOARD_SOCKET=str(root/'input.sock'),
+                   GC_QA_COMPOSITOR_RENDERER=args.renderer)
+        if args.renderer == 'software':
+            env['LIBGL_ALWAYS_SOFTWARE'] = '1'
+        else:
+            for key in ('LIBGL_ALWAYS_SOFTWARE', 'GALLIUM_DRIVER', '__EGL_VENDOR_LIBRARY_FILENAMES'):
+                env.pop(key, None)
         if args.pulse_fault or args.pipewire_fault:
             env.update(GC_QA_AUDIO_SOCKET=str(root/'audio.sock'), GC_QA_AUDIO_FAULT_SCOPE='pipewire' if args.pipewire_fault else 'pulse-only')
             result['audioFault'] = {'scope':'Owned PipeWire/Pulse/WirePlumber; compositor stays running' if args.pipewire_fault else 'Owned pipewire-pulse only; compositor and video PipeWire stay running', 'actions':[]}
@@ -213,6 +241,11 @@ def main():
             shell = launch('shell', ['gnome-shell', '--headless', '--wayland', '--no-x11', '--sm-disable',
                                      '--virtual-monitor=1440x1000', '--wayland-display=gc-qa'])
             wait_for(lambda: (root/'runtime/gc-qa').is_socket())
+            if args.renderer == 'software':
+                assert 'Created surfaceless renderer without GPU' in (report/'shell.log').read_text(), 'Software renderer not confirmed'
+                result['softwareRendererVerified'] = True
+            else:
+                result['scope'] = 'Owned headless GNOME using the host-selected renderer; not physical-desktop qualification.'
             connection = dbus.bus.BusConnection(env['DBUS_SESSION_BUS_ADDRESS'])
             wait_for(lambda: connection.name_has_owner('org.gnome.Mutter.RemoteDesktop'))
             daemon = dbus.Interface(connection.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus'), 'org.freedesktop.DBus')

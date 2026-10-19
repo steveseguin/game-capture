@@ -184,10 +184,20 @@ bool belongsTo(ProcessIdentity candidate, const ProcessIdentity &root) {
     return false;
 }
 struct Playback {
-    uint32_t index = PA_INVALID_INDEX, sink = PA_INVALID_INDEX, pid = 0;
+    uint32_t index = PA_INVALID_INDEX, sink = PA_INVALID_INDEX, client = PA_INVALID_INDEX, pid = 0;
     std::string name, executable;
-    bool active = false;
+    bool active = false, processIdSupplied = false;
 };
+void readPlaybackProperties(Playback &stream, const pa_proplist *properties) {
+    if (!properties) return;
+    if (const auto *pid = pa_proplist_gets(properties, PA_PROP_APPLICATION_PROCESS_ID)) {
+        stream.processIdSupplied = true;
+        const auto parsed = std::from_chars(pid, pid + std::strlen(pid), stream.pid);
+        if (parsed.ec != std::errc{} || *parsed.ptr) stream.pid = 0;
+    }
+    if (const auto *name = pa_proplist_gets(properties, PA_PROP_APPLICATION_NAME)) stream.name = name;
+    if (const auto *binary = pa_proplist_gets(properties, PA_PROP_APPLICATION_PROCESS_BINARY)) stream.executable = binary;
+}
 // Wake catalog reconciliation for stream/output changes while retaining periodic
 // process-identity checks. Callbacks run on the capture thread's Pulse mainloop.
 struct PlaybackChanges {
@@ -196,12 +206,13 @@ struct PlaybackChanges {
     explicit PlaybackChanges(Server &server, const std::atomic<bool> &running) : context(server.context) {
         pa_context_set_subscribe_callback(context, [](pa_context *, pa_subscription_event_type_t event, uint32_t, void *data) {
             const auto facility = event & PA_SUBSCRIPTION_EVENT_FACILITY_MASK;
-            if (facility == PA_SUBSCRIPTION_EVENT_SINK_INPUT || facility == PA_SUBSCRIPTION_EVENT_SINK)
+            if (facility == PA_SUBSCRIPTION_EVENT_SINK_INPUT || facility == PA_SUBSCRIPTION_EVENT_SINK ||
+                facility == PA_SUBSCRIPTION_EVENT_CLIENT)
                 static_cast<PlaybackChanges *>(data)->dirty = true;
         }, this);
         bool subscribed = false;
         const bool completed = server.finish(pa_context_subscribe(context,
-            pa_subscription_mask_t(PA_SUBSCRIPTION_MASK_SINK_INPUT | PA_SUBSCRIPTION_MASK_SINK),
+            pa_subscription_mask_t(PA_SUBSCRIPTION_MASK_SINK_INPUT | PA_SUBSCRIPTION_MASK_SINK | PA_SUBSCRIPTION_MASK_CLIENT),
             [](pa_context *, int success, void *data) { *static_cast<bool *>(data) = success != 0; }, &subscribed), running);
         if (!completed || !subscribed)
             spdlog::warn("[LinuxAudio] Playback change notifications unavailable; retaining periodic discovery");
@@ -214,8 +225,9 @@ struct PlaybackChanges {
 struct PlaybackQuery {
     std::vector<Playback> streams;
     std::map<uint32_t, std::string> monitors;
-    pa_operation *inputs = nullptr, *sinks = nullptr;
-    bool inputsDone = false, sinksDone = false, failed = false;
+    std::map<uint32_t, Playback> clientProperties;
+    pa_operation *inputs = nullptr, *sinks = nullptr, *clients = nullptr;
+    bool inputsDone = false, sinksDone = false, clientsDone = false, failed = false;
     Clock::time_point deadline = Clock::now() + std::chrono::seconds(2);
     explicit PlaybackQuery(Server &server) {
         inputs = pa_context_get_sink_input_info_list(server.context, [](pa_context *, const pa_sink_input_info *info, int end, void *data) {
@@ -223,12 +235,8 @@ struct PlaybackQuery {
             if (end) { out.inputsDone = true; out.failed |= end < 0; return; }
             if (!info || out.streams.size() >= 1024) { out.failed = true; return; }
             Playback stream; stream.index = info->index; stream.sink = info->sink; stream.active = !info->corked;
-            if (const auto *pid = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_ID)) {
-                const auto parsed = std::from_chars(pid, pid + std::strlen(pid), stream.pid);
-                if (parsed.ec != std::errc{} || *parsed.ptr) stream.pid = 0;
-            }
-            if (const auto *name = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_NAME)) stream.name = name;
-            if (const auto *binary = pa_proplist_gets(info->proplist, PA_PROP_APPLICATION_PROCESS_BINARY)) stream.executable = binary;
+            stream.client = info->client;
+            readPlaybackProperties(stream, info->proplist);
             out.streams.push_back(std::move(stream));
         }, this);
         sinks = pa_context_get_sink_info_list(server.context, [](pa_context *, const pa_sink_info *info, int end, void *data) {
@@ -237,15 +245,34 @@ struct PlaybackQuery {
             if (!info || out.monitors.size() >= 1024) { out.failed = true; return; }
             if (info->monitor_source_name) out.monitors[info->index] = info->monitor_source_name;
         }, this);
-        failed = !inputs || !sinks;
+        clients = pa_context_get_client_info_list(server.context, [](pa_context *, const pa_client_info *info, int end, void *data) {
+            auto &out = *static_cast<PlaybackQuery *>(data);
+            if (end) { out.clientsDone = true; out.failed |= end < 0; return; }
+            if (!info || out.clientProperties.size() >= 1024) { out.failed = true; return; }
+            readPlaybackProperties(out.clientProperties[info->index], info->proplist);
+        }, this);
+        failed = !inputs || !sinks || !clients;
     }
     ~PlaybackQuery() {
-        for (auto *operation : {inputs, sinks}) if (operation) {
+        for (auto *operation : {inputs, sinks, clients}) if (operation) {
             if (pa_operation_get_state(operation) == PA_OPERATION_RUNNING) pa_operation_cancel(operation);
             pa_operation_unref(operation);
         }
     }
-    bool done() const { return inputsDone && sinksDone; }
+    bool done() const { return inputsDone && sinksDone && clientsDone; }
+    void resolveClientProperties() {
+        // Native PipeWire playback nodes need not repeat their client's PID.
+        // Use the Pulse protocol's owning-client index, not PipeWire client.id
+        // (a different ID space). Preserve explicit stream identities, and
+        // leave unknown owners unselected; never fall back to a system mix.
+        for (auto &stream : streams) {
+            const auto owner = clientProperties.find(stream.client);
+            if (owner == clientProperties.end()) continue;
+            if (!stream.processIdSupplied) stream.pid = owner->second.pid;
+            if (stream.name.empty()) stream.name = owner->second.name;
+            if (stream.executable.empty()) stream.executable = owner->second.executable;
+        }
+    }
 };
 struct AudioBlock { int64_t first = 0; std::vector<float> samples; };
 struct MonitorTap {
@@ -324,6 +351,7 @@ struct WindowAudioCaptureCore::LinuxImpl {
                 fail("Could not refresh application audio streams. Application audio is off."); return;
             }
             if (query && query->done()) {
+                query->resolveClientProperties();
                 std::map<uint32_t, std::pair<Playback, ProcessIdentity>> wanted;
                 for (const auto &stream : query->streams) {
                     const auto identity = processIdentity(stream.pid);
@@ -614,6 +642,7 @@ std::vector<AudioSessionInfo> WindowAudioCaptureCore::GetAudioSessions() {
     while (!query.done() && !query.failed && Clock::now() < query.deadline && server.connected())
         if (!server.pump()) break;
     if (!query.done() || query.failed) return {};
+    query.resolveClientProperties();
     std::map<uint32_t, AudioSessionInfo> sessions;
     for (const auto &stream : query.streams) {
         const auto identity = processIdentity(stream.pid);

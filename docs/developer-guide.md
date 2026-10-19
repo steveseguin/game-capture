@@ -134,6 +134,52 @@ in the npm script; use them when external TURN-registry coverage is not intended
 The Firefox Control Center workflow selects VP9 and disables the H.264-only room LQ tier because
 Playwright's Firefox runtime does not expose platform H.264; the Edge workflow covers default H.264.
 
+## Linux packaged input workflows
+
+Build and package with `cmake --build native-qt/build-linux --target game-capture`
+and `python3 native-qt/qa/package-linux.py --build native-qt/build-linux`. Use the
+payload path and manifest SHA-256 printed by that packaging invocation. Each
+workflow checks the entire payload and retains its own harness snapshot. Build,
+syntax and compiled logic checks are gates; application testing requires these
+real capture/publish/receive workflows.
+
+The owned desktop fixtures need the Ubuntu desktop/accessibility tools already
+used by the Linux workflows. Additional dependencies for the input matrix are
+`bubblewrap`, `python3-numpy`, `python3-gi-cairo` and, for JACK, `pipewire-jack`.
+They use private session buses and audio servers. The Wayland fixture defaults
+to verified Mesa software rendering: its mount namespace hides DRM devices,
+while NVIDIA CUDA/NVENC devices remain accessible. `--renderer=auto` exercises
+the host-selected headless renderer and has a different qualification scope.
+
+`native-qt/e2e/linux-input-publish.py` takes `--publisher`,
+`--manifest-sha256`, `--reports`, `--backend=x11|wayland` and optionally
+`--encoder=nvenc`. It drives the actual GUI and independently decodes local
+UDP/MPEG-TS. Its native GTK source covers moving/static pictures, resize,
+late reception and Stop/restart. Add `--camera-id=v4l2:/dev/videoN` and the exact
+`--camera-label` for a camera workflow with a real preview. Camera recordings
+and screenshots stay in the private ignored report directory; uncontrolled
+camera scenes do not establish frame cadence or optical motion fidelity.
+
+For X11, run it under `xvfb-run -a -s '-screen 0 1600x1000x24'`, then
+`linux-private-desktop.py --window-manager --reports=... --`. For Wayland,
+nest `linux-owned-wayland-desktop.py --reports=... --`, then
+`linux-wayland-desktop.py --reports=... --`. All scripts are in `native-qt/e2e`.
+
+The existing `linux-audio-publish.js` additionally accepts
+`--app-playback-backend=pipewire --matrix=apps` for native playback children,
+stream recreation, routing and exclusion; `--matrix=apps-gui` covers discovery,
+explicit selection and stale-instance reselection. Use
+`--app-playback-backend=jack --matrix=routes --case=system` for actual JACK API
+playback through PipeWire into system-output capture. Direct JACK DSP application
+capture remains unsupported. Nest `linux-private-audio.py --reports=... --`
+inside the X11 desktop wrapper to avoid host audio changes. Audio diagnostics
+can be retained with `--capture-audio-diagnostics=true`; timing metadata does
+not qualify endurance or calibrated A/V timing.
+
+The evidence ledger retains failures, including the Chrome/Wayland resize
+stall and an intermittent native PipeWire output-move silence. A passing native
+GTK workflow does not establish that the browser capture failure is fixed.
+
 ## Releases
 
 Use the [release playbook](RELEASES.md) for the exact release checklist, including fixed asset names, signing commands, VirusTotal commands, and troubleshooting.
