@@ -113,6 +113,7 @@ class MainWindow : public QMainWindow {
     void loadPersistedSettings();
 #ifdef __APPLE__
     void syncAudioSourceChoices();
+    void refreshMicrophoneWarning();
 #endif
     bool resetPersistedSettingsToDefaults();
     void showFirewallWarningIfNeeded();
@@ -212,6 +213,9 @@ class MainWindow : public QMainWindow {
     QCheckBox *includeMicrophoneCheck_ = nullptr;
     QComboBox *microphoneDeviceSelect_ = nullptr;
     QPushButton *microphoneMuteButton_ = nullptr;
+#ifdef __APPLE__
+    QLabel *microphoneWarningLabel_ = nullptr;
+#endif
     QSpinBox *primaryAudioGainSpin_ = nullptr;
     QSpinBox *microphoneAudioGainSpin_ = nullptr;
     QCheckBox *audioLimiterCheck_ = nullptr;

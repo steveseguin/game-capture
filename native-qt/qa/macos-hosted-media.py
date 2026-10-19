@@ -130,8 +130,10 @@ def main():
                         'framesPerSecond', 'freezeCount', 'totalFreezesDuration'] if k in track}
                         for track in observed_phase.get('tracks', [])]
             entry['initialSourceTrace'] = case.get('initialSourceTrace', [])
+            entry['lateSourceTrace'] = case.get('lateSourceTrace', [])
             entry['publisher'] = {}
-            for phase in ['initialBeforeDiagnostics', 'initialAfterDiagnostics']:
+            for phase in ['initialBeforeDiagnostics', 'initialAfterDiagnostics',
+                          'lateBeforeDiagnostics', 'lateAfterDiagnostics']:
                 diagnostics = case.get(phase, {})
                 entry['publisher'][phase] = {
                     'generatedSteadyMs': diagnostics.get('generated_steady_ms'),

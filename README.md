@@ -9,9 +9,9 @@ A free, open-source app for streaming games, app windows, and webcams to **VDO.N
 | Platform | Download | Status |
 | --- | --- | --- |
 | **Windows 64-bit** | [Installer](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe) · [Portable](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-portable.exe) · [ZIP](https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-win64.zip) | Stable / production |
-| **macOS — Apple Silicon** | [Download Mac ZIP](https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.64-beta.2/game-capture-macos-arm64-0.2.64-beta.2.zip) | **0.2.64 Beta 2 — Experimental** |
+| **macOS — Apple Silicon** | [Download Mac ZIP](https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.65-beta.3/game-capture-macos-arm64-0.2.65-beta.3.zip) | **0.2.65 Beta 3 — Experimental** |
 
-[Windows release notes](https://github.com/steveseguin/game-capture/releases/latest) · [Mac release notes, source & checksums](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.64-beta.2)
+[Windows release notes](https://github.com/steveseguin/game-capture/releases/latest) · [Mac release notes, source & checksums](https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3)
 
 [![Game Capture on macOS with a demo window selected and Go Live controls](docs/macos-app-screenshot.png)](https://steveseguin.github.io/game-capture/macos-guide.html)
 
@@ -32,7 +32,7 @@ The production version supports Windows hardware encoders, Spout2 sources, optio
 
 Apple Silicon (M-series) only, built for **macOS 14.2+**. Uses **Apple VideoToolbox** hardware H.264 or **x264** software H.264. The app is Developer ID signed and notarized. See the [Mac setup guide](https://steveseguin.github.io/game-capture/macos-guide.html) for installation, permissions, audio, and troubleshooting.
 
-This is an early port with incomplete feature parity. Minimum-OS and clean-machine compatibility remain unverified; packaged workflows were tested on an M1 running macOS 26.4.1. See the [Mac testing status and open findings](docs/macos-beta2-validation-2026-10-17.md) before using it. [Unreleased candidate results](docs/macos-independent-receiver-2026-10-17.md) track ongoing improvements.
+The Mac port remains experimental. Packaged workflows passed on an M1 running macOS 26.4.1, with bounded startup coverage on a fresh macOS 14.8.9 ARM64 VM. Physical minimum-OS, privacy/device transitions and broader production qualification remain open. See the [testing results and known limits](docs/macos-0265-beta3-validation-2026-10-18.md).
 
 ### Linux development
 

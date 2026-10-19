@@ -28,7 +28,54 @@ Auto is vendor neutral. Explicit NVIDIA, AMD, Intel or software selections remai
 | FFmpeg libaom AV1 | Realtime, cpu-used 8, no lag, row multithreading, 1-4 workers |
 | libvpx VP9 | Existing realtime cpu-used 8, bounded workers, zero lag; all-keyframes by default. Protected dual-track alpha keeps its mandatory all-keyframe synchronization contract |
 
-Worker caps limit parallelism, not total CPU use. Software AV1/HEVC and dual-track alpha can still be too expensive for a busy gaming PC. These options do not make unsupported codecs work with RTMP/WHIP destinations. Bundled FFmpeg remains LGPL; x264/x265 require a suitable user-supplied build. Driver controls may be unsupported; warnings and the actual negotiated/encoded stream are authoritative.
+Worker caps limit parallelism, not total CPU use. Software AV1/HEVC and dual-track alpha can still be too expensive for a busy gaming PC. These options do not make unsupported codecs work with RTMP/WHIP destinations. On Windows, bundled FFmpeg remains LGPL; x264/x265 require a suitable user-supplied build. The Mac experimental package includes its native x264 backend. Driver controls may be unsupported; warnings and the actual negotiated/encoded stream are authoritative.
+
+## macOS experimental defaults
+
+The Apple Silicon **0.2.65 Beta 3** uses the same window defaults: **1280 x 720,
+60 fps, 4,000 kbps**, H.264 and 128 kbps Opus. Camera capture retains its separate
+**1920 x 1080 / 30 fps** preference and the selected video bitrate. Saved choices
+are preserved; switching resolution does not change the bitrate automatically.
+
+| Backend | Mac policy |
+|---|---|
+| Auto | Try Apple VideoToolbox hardware first, then x264 for H.264 |
+| Apple VideoToolbox | Require actual hardware; Constrained Baseline H.264, real-time mode, no frame reordering, at most one-second keyframes in low-latency mode |
+| x264 | Veryfast + zerolatency, Baseline H.264, zero B-frames, at most one-second keyframes, 1-4 workers capped at half the logical CPUs |
+
+Explicit VideoToolbox and software selections remain strict. H.264 stays the
+default; HEVC is an explicit hardware/destination-dependent choice. The native
+VT path uses [**AverageBitRate**](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_averagebitrate), including live bitrate updates. Beta 3 also sets H.264
+[**DataRateLimits**](https://developer.apple.com/documentation/videotoolbox/kvtcompressionpropertykey_dataratelimits)
+to half a second at 1.5 times the requested bitrate. This limits short encoder
+bursts while allowing simple scenes to use less bandwidth. The 4,000 kbps
+setting remains an average target, **not a hard total-network bandwidth ceiling**. Native x264 uses ABR with
+VBV maxrate and a half-second buffer. Neither is the identical rate-control setup
+used by the standalone OBS/FFmpeg quality measurements.
+
+The October 18 upstream review found the shared resolution/bitrate policy and
+Mac keyframe/worker alignment already present. A subsequent native-app comparison
+reproduced a Beta 2 WHIP reconnect when a still image changed to complex motion.
+The Beta 3 bounded-average candidate completed all six full 60-second reference
+runs and live bitrate-control/GUI receiver workflows without that failure. A
+constant-bitrate alternative also passed, with slightly higher synthetic quality
+scores but larger short bursts and more bandwidth on simple scenes. A tighter
+average limit underused the requested bitrate. These observations support the
+bounded-average change while retaining VT first and the existing defaults.
+
+The [native comparison and limits](macos-0265-beta3-validation-2026-10-18.md)
+cover this change. The earlier
+[OBS quality comparison](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-obs-h264)
+uses High profile, CBR and a different source/color pipeline; its scores are not
+a direct ranking against native Game Capture. Native pixel conversion and color
+metadata remain paired and unchanged. Mac remains experimental, with qualification
+separate from the Windows release.
+
+Six actual released-app GUI launches also verified fresh defaults, persistence of
+explicit software/VideoToolbox/Auto choices, and Beta 1-to-Beta 2 preferences
+migration. The initial failed foreground-activation attempt remains recorded;
+the accepted PID-scoped preference workflow does not qualify activation or add
+new live-media coverage. [Review evidence and retained attempt](https://github.com/steveseguin/video-encoder-testing/tree/main/knowledge/2026-10-18-apple-m1-beta2-defaults-review).
 
 ## Resolution and bandwidth choices
 
@@ -58,7 +105,7 @@ These higher-resolution values are recommendations, not claims that every game/r
 
 Desktop Studio's independent recording keeps **12 Mbps**, or **24 Mbps for 1080-class 60 fps**, and **192 kbps AAC**. It does not inherit the reduced upload budget. Guest-return video stays 30 fps / 2.5 Mbps, with its maximum now equal to that target rather than 4 Mbps.
 
-These source changes target the Windows apps. macOS work lives on separate experimental branches; Apple VideoToolbox should be the first choice there, but it is not implemented or qualified by this Windows change. There is no new Linux support claim. For OBS/FFmpeg on other systems, use the [research field guide](https://github.com/steveseguin/video-encoder-testing/tree/main/docs/streaming-settings), with hardware availability and endpoint validation.
+The Windows release and experimental Mac package have separate qualification. The Mac policy above applies to its native VT/x264 backends; Windows FFmpeg and hardware controls do not automatically apply to them. There is no new Linux support claim. For OBS/FFmpeg on other systems, use the [research field guide](https://github.com/steveseguin/video-encoder-testing/tree/main/docs/streaming-settings), with hardware availability and endpoint validation.
 
 Validation and limitations for this change: [packaged defaults review](defaults-validation-2026-10-18.md).
 

@@ -88,10 +88,18 @@ int main(int argc,char **argv) { @autoreleasepool {
         if (!active) fprintf(stderr,"Target PID %d did not become frontmost (current PID %d)\n",pid,NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier);
         CFRelease(app); return active ? 0 : 5;
     }
-    if (action == "window") {
+    if (action == "window" || action == "window-bounds") {
         NSArray *windows = CFBridgingRelease(CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly,kCGNullWindowID));
         for (NSDictionary *window in windows) if ([window[(id)kCGWindowOwnerPID] intValue] == pid && [window[(id)kCGWindowLayer] intValue] == 0) {
-            printf("%u\n",[window[(id)kCGWindowNumber] unsignedIntValue]); CFRelease(app); return 0;
+            if (action == "window-bounds") {
+                CGRect bounds{};
+                if (!CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)window[(id)kCGWindowBounds],&bounds)) {
+                    CFRelease(app); return 5;
+                }
+                printf("{\"windowId\":%u,\"x\":%f,\"y\":%f,\"width\":%f,\"height\":%f}\n",
+                    [window[(id)kCGWindowNumber] unsignedIntValue],bounds.origin.x,bounds.origin.y,bounds.size.width,bounds.size.height);
+            } else printf("%u\n",[window[(id)kCGWindowNumber] unsignedIntValue]);
+            CFRelease(app); return 0;
         }
         CFRelease(app); return 3;
     }

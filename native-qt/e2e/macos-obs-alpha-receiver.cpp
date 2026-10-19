@@ -189,12 +189,19 @@ int main(int argc,char **argv) {
     });
     QTimer::singleShot(20000,&app,[&]{composition.phase=2;});
     }
-    auto snapshot=[&](const QString &label) {
+    bool snapshotFailed=false;
+    auto snapshot=[&](const QString &label) -> bool {
         result["samples"]=samples;result["sampleCount"]=samples.size();
         result["sourceCreations"]=1;result["controlled"]=controlled;
         {std::lock_guard lock(composition.mutex);result["blackComposition"]=composition.black;result["whiteComposition"]=composition.white;}
+        const auto bytes=QJsonDocument(result).toJson(QJsonDocument::Compact);
         QSaveFile file(out+"/"+label+".json");
-        if(!file.open(QIODevice::WriteOnly)||file.write(QJsonDocument(result).toJson())<0||!file.commit())app.exit(4);
+        const char *stage="open";
+        bool ok=file.open(QIODevice::WriteOnly);
+        if(ok){stage="write";ok=file.write(bytes)==bytes.size();}
+        if(ok){stage="commit";ok=file.commit();}
+        if(!ok){snapshotFailed=true;fprintf(stderr,"SNAPSHOT_ERROR %s stage=%s: %s\n",label.toUtf8().constData(),stage,file.errorString().toUtf8().constData());fflush(stderr);}
+        return ok;
     };
     QByteArray pending;
     QSocketNotifier input(STDIN_FILENO,QSocketNotifier::Read);
@@ -208,7 +215,7 @@ int main(int argc,char **argv) {
             const auto fields=command.split(' ');
             if(fields.size()!=2||!QRegularExpression("^[A-Za-z0-9_-]+$").match(fields[1]).hasMatch()){app.exit(6);return;}
             if(fields[0]=="mark"){segment=fields[1];std::lock_guard lock(composition.mutex);composition.segment=segment;}
-            else if(fields[0]=="snapshot")snapshot(fields[1]);
+            else if(fields[0]=="snapshot"){if(!snapshot(fields[1])){app.exit(4);return;}}
             else if(fields[0]=="compose"&&(fields[1]=="black"||fields[1]=="white")) {
                 if(!scene)beginComposition();
                 composition.phase=0;if(!background)return;
@@ -231,8 +238,8 @@ int main(int argc,char **argv) {
     if(background)obs_source_release(background);
     obs_source_dec_active(source);obs_source_dec_showing(source);obs_source_release(source);
     obs_shutdown();
-    result["samples"]=samples;result["sampleCount"]=samples.size();
-    result["blackComposition"]=composition.black;result["whiteComposition"]=composition.white;
-    QFile file(out+"/received.json");if(!file.open(QIODevice::WriteOnly))return 4;
-    file.write(QJsonDocument(result).toJson());return code;
+    if(!snapshot("received"))return 4;
+    // EOF can queue quit() after an IO error queued exit(4). Preserve the error
+    // independently of the event loop's final exit code.
+    return snapshotFailed?4:code;
 }

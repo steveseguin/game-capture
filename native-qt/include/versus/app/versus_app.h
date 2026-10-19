@@ -227,6 +227,9 @@ class VersusApp {
     std::string getVideoEncoderFallbackReason() const;
     std::string getVideoCodecName() const;
     bool isHardwareVideoEncoder() const;
+#ifdef __APPLE__
+    bool isMicrophoneCaptureActive() const;
+#endif
     float getAudioLevelRms() const;
     float getAudioPeak() const;
     float getPrimaryAudioLevelRms() const;

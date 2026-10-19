@@ -83,7 +83,9 @@ SCStreamConfiguration *configuration(int width, int height, bool alpha = false) 
     config.minimumFrameInterval = kCMTimeZero;
     config.pixelFormat = kCVPixelFormatType_32BGRA;
     config.queueDepth = 3;
-    config.showsCursor = YES;
+    // Match Windows Graphics Capture's IsCursorCaptureEnabled(false). The
+    // system pointer is an overlay, not part of the selected window's pixels.
+    config.showsCursor = NO;
     config.scalesToFit = YES;
     config.preservesAspectRatio = YES;
     config.ignoreShadowsSingleWindow = YES;
@@ -546,7 +548,11 @@ QPixmap WindowCapture::captureWindowThumbnail(const std::string &id, int maxWidt
         const auto now = std::chrono::steady_clock::now();
         preview->visited = now;
         const auto age = now - preview->updated;
-        if (age < std::chrono::seconds(large ? 2 : 10)) result = preview->image;
+        // Return the last completed image while refreshing asynchronously. The
+        // source list retries missing thumbnails every 12 seconds, so expiring
+        // an image after 10 seconds can prevent it from ever being displayed.
+        // Failed captures clear the image; the bounded cache evicts old sources.
+        result = preview->image;
         if (preview->pending || age < std::chrono::milliseconds(large ? 200 : 5000) ||
             (large ? cache->largeRequest : cache->thumbnailRequests >= 8)) return QPixmap::fromImage(result);
         preview->pending = true;

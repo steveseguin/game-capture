@@ -3,12 +3,16 @@
 // Packaged Mac camera/input -> WHIP -> independent MediaMTX/browser receiver.
 const fs=require('fs'),path=require('path'),crypto=require('crypto'),http=require('http'),net=require('net'),dgram=require('dgram');
 const {spawn,execFileSync}=require('child_process'),{chromium}=require('playwright');
-const {sleep,waitFor,receiverAt,observe,requireMoving,observeAudio}=require('./macos-media-receiver');
+const {sleep,waitFor,receiverAt,observe,observeDecoded,requireMoving,observeAudio}=require('./macos-media-receiver');
 const opts=Object.fromEntries(process.argv.slice(2).map(a=>{const i=a.indexOf('=');return[a.slice(2,i),a.slice(i+1)];}));
 if(process.platform!=='darwin'||!opts.app||!opts.reports||!opts.server||!opts['camera-device']||!opts['camera-helper']||!opts['tone-helper']||!opts['microphone-device'])
   throw Error('Required: --app, --reports, --server, --camera-device, --camera-helper, --microphone-device and --tone-helper');
 const turnDiscovery=opts['turn-discovery']||'none';
 const unresponsiveStun=opts['unresponsive-stun']==='true';
+const cadenceSeconds=Number(opts['cadence-seconds']||0);
+if(!Number.isInteger(cadenceSeconds)||cadenceSeconds<0||cadenceSeconds>120||cadenceSeconds%10)throw Error('--cadence-seconds must be 0 or a multiple of 10 up to 120');
+const restartCycles=opts['restart-cycles']===undefined?null:Number(opts['restart-cycles']);
+if(restartCycles!==null&&(!Number.isInteger(restartCycles)||restartCycles<1||restartCycles>5))throw Error('--restart-cycles must be an integer from 1 to 5');
 if(unresponsiveStun&&(turnDiscovery!=='none'||opts.gui))throw Error('Unresponsive STUN workflow requires headless publishing without TURN discovery');
 if(!['none','options','post'].includes(turnDiscovery)||
    (turnDiscovery!=='none'&&(!opts['turn-server']||opts.gui)))
@@ -27,6 +31,11 @@ if(opts['relaunch-app']&&(!fs.existsSync(path.join(path.resolve(opts['relaunch-a
 const result={executableSha256:hash(exe),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
   helperSha256:opts.gui?hash(path.resolve(opts['ui-helper'])):null,serverSha256:hash(path.resolve(opts.server)),gui:!!opts.gui,scope:'Packaged WHIP with controlled virtual camera/input and local MediaMTX; release/remote TURN qualification excluded',cases:[],trace:[],passed:false};
 result.turnDiscovery=turnDiscovery;
+result.restartCycles=restartCycles;
+result.cadenceSeconds=cadenceSeconds;
+result.cameraFixtureSha256=hash(path.resolve(opts['camera-helper']));
+result.toneFixtureSha256=hash(path.resolve(opts['tone-helper']));
+if(opts['browser-executable'])result.browserExecutableSha256=hash(path.resolve(opts['browser-executable']));
 if(opts['relaunch-app'])result.profileMigration={initialExecutableSha256:hash(exe),relaunchExecutableSha256:hash(relaunchExe),scope:'Same private preferences and Keychain profile across two retained packaged binaries; no credentials re-entered. Not an installation replacement or fresh-machine workflow.'};
 if(turnDiscovery!=='none')result.turnServerSha256=hash(path.resolve(opts['turn-server']));
 for(const name of ['macos-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
@@ -103,19 +112,30 @@ function audioCheck(value,silent=false){
   const fixture=launch(opts['camera-helper'],[opts['camera-device']],'camera');
   const tone=launch(opts['tone-helper'],[opts['microphone-device'],'440','880'],'tone');
   for(const p of [fixture,tone])await waitFor(()=>{if(p.exitCode!==null)throw Error('Fixture exited');return p.output().includes('READY');},5000,'Fixture did not start');
-  browser=await chromium.launch({headless:true,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+  browser=await chromium.launch({headless:true,...(opts['browser-executable']?{executablePath:path.resolve(opts['browser-executable'])}:{}),args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});
+  result.browserVersion=browser.version();
   for(const encoder of (opts.gui?[guiEncoder]:['videotoolbox','x264'])){
     currentCase=encoder;const entry={encoder,passed:false};result.cases.push(entry);const stream='whip'+crypto.randomBytes(12).toString('hex');
     const discovery=path.join(report,encoder+'-control.json');
     const guiArgs=[`--settings-dir=${settingsDirectory}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`];
     let publisher=launch(exe,opts.gui?guiArgs:['--headless','--source=camera',`--camera-id=${opts['camera-device']}`,'--output=whip',`--output-url=http://127.0.0.1:${proxy.address().port}/${stream}/whip`,`--output-token=${token}`,
       ...(turnDiscovery!=='none'?['--ice-mode=relay']:[]),
-      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000','--duration-ms=180000','--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
+      '--audio-source=none','--include-microphone',`--microphone-device=${opts['microphone-device']}`,`--video-encoder=${encoder}`,'--video-codec=h264','--width=640','--height=360','--fps=30','--bitrate-kbps=2000',`--duration-ms=${180000+(restartCycles||0)*60000+cadenceSeconds*1000}`,'--local-control','--local-control-port=0',`--local-control-discovery=${discovery}`],encoder);
     async function ready(){await waitFor(()=>{if(publisher.exitCode!==null)throw Error('Publisher exited before ready');return fs.existsSync(discovery);},10000,'No control discovery');return JSON.parse(fs.readFileSync(discovery));}
     let control=await ready();
-    const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000});
+    const ui=(action,name,value)=>execFileSync(path.resolve(opts['ui-helper']),[String(publisher.pid),action,...(name?[name]:[]),...(value!==undefined?[value]:[])],{encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']});
+    const waitUiRead=async(action,name,phase)=>{
+      const began=Date.now();let attempts=0;
+      await waitFor(()=>{
+        if(publisher.exitCode!==null||publisher.signalCode)throw Error('Publisher exited before GUI readiness');
+        attempts++;
+        try {const value=ui(action,name);return action==='actions'?JSON.parse(value).includes('AXPress'):true;}
+        catch(error){if((action==='actions'&&error.status===3)||(action==='source-ready'&&error.status===4))return false;throw error;}
+      },10000,`GUI readiness timed out: ${phase}`);
+      (entry.guiReadiness??=[]).push({phase,action,name,attempts,elapsedMs:Date.now()-began});
+    };
     if(opts.gui){
-      await sleep(700);ui('press','sourceModeSelect');await sleep(250);ui('press','Camera / Webcam');await sleep(700);ui('select-source','OBS Virtual Camera');
+      await waitUiRead('actions','sourceModeSelect','initial window');ui('press','sourceModeSelect');await sleep(250);ui('press','Camera / Webcam');await waitUiRead('source-ready','OBS Virtual Camera','initial camera discovery');ui('select-source','OBS Virtual Camera');
       ui('press','microphoneDeviceSelect');await sleep(250);ui('press','BlackHole 2ch');await sleep(300);
       ui('press','advancedToggle');await sleep(250);
       ui('press','encoderSelect');await sleep(250);ui('press',encoder==='videotoolbox'?'Apple VideoToolbox':'Software (x264 / VP9 / AV1)');await sleep(250);
@@ -125,17 +145,56 @@ function audioCheck(value,silent=false){
       if(ini.includes(token)||ini.includes(stream)||!ini.includes('profilesEncrypted='))throw Error('Output profile was not stored as an opaque Keychain reference');
       await api(control,'/commands',{command:'quit'});await publisher.closed;if(publisher.exitCode!==0)throw Error('Profile-save shutdown failed');
       await waitFor(()=>!fs.existsSync(discovery),5000,'Old discovery survived profile-save shutdown');
-      publisher=launch(relaunchExe,guiArgs,encoder+'-relaunch');control=await ready();await sleep(700);
+      publisher=launch(relaunchExe,guiArgs,encoder+'-relaunch');control=await ready();await waitUiRead('actions','sourceModeSelect','relaunched window');
       const restoredIni=fs.readFileSync(path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini'),'utf8');
       const profileReference=text=>text.match(/^profilesEncrypted=.*$/m)?.[0];
       if(!profileReference(ini)||profileReference(ini)!==profileReference(restoredIni)||restoredIni.includes(token)||restoredIni.includes(stream))throw Error('Saved Keychain profile reference changed or leaked on relaunch');
       entry.sameKeychainReference=true;
       // No endpoint/token command-line arguments and no credential re-entry:
       // successful authenticated publishing proves the persisted profile loaded.
-      ui('select-source','OBS Virtual Camera');ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');entry.profileRelaunched=true;entry.publishingExecutableSha256=hash(relaunchExe);
+      await waitUiRead('source-ready','OBS Virtual Camera','relaunched camera discovery');ui('select-source','OBS Virtual Camera');ui('verify-selected','OBS Virtual Camera');ui('press','goLiveButton');entry.profileRelaunched=true;entry.publishingExecutableSha256=hash(relaunchExe);
     }
     const url=`http://127.0.0.1:${webPort}/${stream}/?muted=true`;
     let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);entry.audio=await observeAudio(page);audioCheck(entry.audio);
+    if(cadenceSeconds){
+      entry.cadence=[];
+      const fixtureState=async()=>{
+        const offset=fixture.output().length;fixture.stdin.write('state\n');
+        return waitFor(()=>{
+          for(const line of fixture.output().slice(offset).split('\n'))if(line.startsWith('{')&&line.endsWith('}')){
+            const state=JSON.parse(line);if(Number.isInteger(state.publishedFrames)&&Number.isFinite(state.time))return state;
+          }
+          if(fixture.exitCode!==null)throw Error('Camera fixture exited during cadence observation');
+          return false;
+        },5000,'Camera fixture did not report its source counter');
+      };
+      const browserState=()=>page.evaluate(async()=>{
+        const tracks=[];
+        for(const pc of window.reviewPCs)if(pc.connectionState==='connected'){
+          const stats=await pc.getStats();
+          for(const item of stats.values())if(item.type==='inbound-rtp'&&item.kind==='video')tracks.push({...item,codec:stats.get(item.codecId)?.mimeType,codecFmtpLine:stats.get(item.codecId)?.sdpFmtpLine});
+        }
+        const video=[...document.querySelectorAll('video')].find(v=>v.videoWidth&&!v.paused);
+        if(!video)throw Error('No playing cadence receiver');
+        const q=video.getVideoPlaybackQuality();
+        return {epochMs:performance.timeOrigin+performance.now(),visibility:document.visibilityState,
+          playbackRate:video.playbackRate,currentTime:video.currentTime,
+          playback:{creationTime:q.creationTime,totalVideoFrames:q.totalVideoFrames,droppedVideoFrames:q.droppedVideoFrames,corruptedVideoFrames:q.corruptedVideoFrames},tracks};
+      });
+      const appState=async()=>{const d=await api(control,'/diagnostics');return {epochMs:Date.now(),video:d.video,output:d.output};};
+      for(let index=0;index<cadenceSeconds/10;index++){
+        const before=await Promise.all([fixtureState(),appState(),browserState()]);
+        const row={index,sourceBefore:before[0],publisherBefore:before[1],receiverBefore:before[2]};entry.cadence.push(row);
+        const measured=await Promise.all([observe(page,10000),observeDecoded(page,10000,null,'camera',true)]);
+        row.presentation=measured[0];row.decoded=measured[1];
+        requireMoving(row.presentation,'Cadence presentation');requireMoving(row.decoded,'Cadence decoded track');
+        const after=await Promise.all([fixtureState(),appState(),browserState()]);
+        Object.assign(row,{sourceAfter:after[0],publisherAfter:after[1],receiverAfter:after[2]});
+        const rate=observation=>new Set(observation.observations.map(f=>f.id)).size/((observation.ended-observation.started)/1000);
+        console.log(JSON.stringify({encoder,cadenceInterval:index,decodedDistinctFps:rate(row.decoded),presentationDistinctFps:rate(row.presentation)}));
+        fs.writeFileSync(path.join(report,encoder+'-cadence.json'),JSON.stringify({scope:'Paired decoded-track and presentation observations with separate source/publisher/receiver bookends; not physical display or latency measurement',intervals:entry.cadence},null,2));
+      }
+    }
     tone.stdin.write('silence\n');await sleep(700);entry.silence=await observeAudio(page);audioCheck(entry.silence,true);tone.stdin.write('sound\n');
     fixture.stdin.write('pause\n');await sleep(700);entry.static=await observe(page,2500);if(new Set(entry.static.observations.map(f=>f.id)).size!==1||entry.static.observations.length<10)throw Error('Static video did not stay paced');fixture.stdin.write('resume\n');
     const late=await receiverAt(browser,url,publisher);entry.late=await observe(late,3000);requireMoving(entry.late,'Late WHIP viewer');entry.lateAudio=await observeAudio(late);audioCheck(entry.lateAudio);await late.close();
@@ -144,17 +203,29 @@ function audioCheck(value,silent=false){
     if(diag.source.source_id!==opts['camera-device']||!diag.audio.active_microphone_source.includes('BlackHole'))throw Error('Source identity differs');
     if(JSON.stringify(diag).includes(token)||JSON.stringify(diag).includes(stream))throw Error('Token or private endpoint path leaked into diagnostics');fs.writeFileSync(path.join(report,encoder+'-diagnostics.json'),JSON.stringify(diag,null,2));
     await page.screenshot({path:path.join(report,encoder+'-receiver.png')});
-    if(encoder==='videotoolbox'||turnDiscovery!=='none'||opts['relaunch-app']){
-      entry.reconnectsBeforeServerRestart=diag.output.reconnects;
+    const recoveryCount=restartCycles??((encoder==='videotoolbox'||turnDiscovery!=='none'||opts['relaunch-app'])?1:0);
+    entry.serverRestarts=[];
+    for(let cycle=0;cycle<recoveryCount;cycle++){
+      const beforeRestart=await api(control,'/diagnostics');
+      entry.reconnectsBeforeServerRestart=beforeRestart.output.reconnects;
+      const recovery={cycle:cycle+1,reconnectsBefore:entry.reconnectsBeforeServerRestart,started:Date.now(),passed:false};entry.serverRestarts.push(recovery);
       await page.close();server.kill('SIGTERM');await server.closed;await sleep(1500);await startServer();
       await waitFor(async()=>{if(publisher.exitCode!==null)throw Error('Publisher exited during recovery');const d=await api(control,'/diagnostics');return d.output.reconnects>entry.reconnectsBeforeServerRestart&&d.output.state===2;},40000,'WHIP did not reconnect after the server restart');
       page=await receiverAt(browser,url,publisher);entry.reconnected=await observe(page,5000);requireMoving(entry.reconnected,'Recovered WHIP');entry.reconnectedAudio=await observeAudio(page);audioCheck(entry.reconnectedAudio);
       entry.recoveryOutput=(await api(control,'/diagnostics')).output;
       if(turnDiscovery!=='none'&&entry.recoveryOutput.ice_path!=='TURN/RELAY')throw Error('Recovered WHIP bypassed TURN');
+      Object.assign(recovery,{reconnected:entry.reconnected,audio:entry.reconnectedAudio,output:entry.recoveryOutput,completed:Date.now(),passed:true});
     }
     const appLog=await api(control,'/logs/recent?lines=1');if(fs.readFileSync(appLog.path,'utf8').includes(token))throw Error('Token leaked into application log');
     await api(control,'/commands',{command:'quit'});await waitFor(()=>publisher.exitCode!==null,10000,'Publisher did not quit');if(publisher.exitCode!==0||fs.existsSync(discovery))throw Error('Publisher shutdown failed');await publisher.closed;
-    if(!result.trace.some(t=>t.case===encoder&&t.method==='DELETE'))throw Error('WHIP session not deleted');
+    const finalDelete=result.trace.filter(t=>t.case===encoder&&t.method==='DELETE').at(-1);
+    if(!finalDelete||!finalDelete.authorized||![200,204].includes(finalDelete.status))throw Error('Final WHIP session deletion was not acknowledged');
+    const pathsResponse=await fetch(`http://127.0.0.1:${apiPort}/v3/paths/list`,{signal:AbortSignal.timeout(5000)});
+    if(!pathsResponse.ok)throw Error('Cannot verify stopped publisher at receiver server');
+    const stoppedPaths=await pathsResponse.json();if(!Array.isArray(stoppedPaths.items))throw Error('Invalid receiver-server path inventory');
+    const stoppedPath=stoppedPaths.items.find(item=>item.name===stream);
+    entry.serverAfterQuit={pathPresent:!!stoppedPath,ready:stoppedPath?.ready??false,sourcePresent:!!stoppedPath?.source};
+    if(stoppedPath&&(stoppedPath.ready!==false||stoppedPath.source!==null))throw Error('Receiver server retains a live publisher after Quit');
     if(turnDiscovery!=='none'){
       const trace=result.trace.filter(t=>t.case===encoder),posts=trace.filter(t=>t.method==='POST'),options=trace.filter(t=>t.method==='OPTIONS'&&t.status===204);
       if(!options.length||!posts.length||posts.some(t=>t.status!==201))throw Error('TURN workflow lacks successful WHIP negotiation');
@@ -172,8 +243,17 @@ function audioCheck(value,silent=false){
   }
   if(unresponsiveStun&&result.unresponsiveStun.requests<2)throw Error('Unresponsive STUN fixture did not receive retries');
   result.passed=true;
-}catch(e){result.error=String(e.stack||e);console.error(result.error);process.exitCode=1;}
-finally{for(const p of children)p.kill('SIGTERM');if(browser)await browser.close().catch(()=>{});if(proxy){proxy.closeAllConnections();proxy.close();}if(stalledStun)stalledStun.close();await Promise.all([...children].map(p=>p.closed));
+}catch(e){result.error=String(e.stack||e).split(token).join('<redacted>');console.error(result.error);process.exitCode=1;}
+finally{
+  // Preserve the observation even if a failed GUI action leaves a child unable
+  // to handle graceful shutdown. Escalate only the children owned by this run.
+  fs.writeFileSync(path.join(report,'results-before-cleanup.json'),JSON.stringify(result,null,2));
+  const pending=[...children];for(const p of pending)p.kill('SIGTERM');
+  const reap=setTimeout(()=>{for(const p of pending)if(children.has(p)){
+    (result.forcedCleanup??=[]).push({pid:p.pid,signal:'SIGKILL'});p.kill('SIGKILL');
+  }},5000);
+  try{if(browser)await browser.close().catch(()=>{});if(proxy){proxy.closeAllConnections();proxy.close();}if(stalledStun)stalledStun.close();await Promise.all(pending.map(p=>p.closed));}
+  finally{clearTimeout(reap);}
   if(opts.gui){const ini=path.join(settingsDirectory,'VDO.Ninja/Game Capture.ini');if(fs.existsSync(ini)){
     const encoded=fs.readFileSync(ini,'utf8').match(/^profilesEncrypted="?@ByteArray\(([A-Za-z0-9+/=]+)\)"?$/m)?.[1];const reference=encoded?Buffer.from(encoded,'base64').toString():'';
     if(/^mac-keychain-v1:[0-9a-f-]{36}$/.test(reference))try{execFileSync('/usr/bin/security',['delete-generic-password','-s','ninja.vdo.game-capture.output-profiles','-a',reference],{stdio:'pipe'});result.ownedProfileRemoved=true;}catch(e){result.cleanupError=String(e);result.passed=false;process.exitCode=1;}
