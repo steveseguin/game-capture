@@ -2,10 +2,18 @@
 // Shared actual Qt controls for packaged external-output GUI workflows.
 const fs=require('fs'),path=require('path'),assert=require('assert/strict'),{execFileSync,spawn}=require('child_process');
 const {waitFor,sleep}=require('./macos-media-receiver');
-module.exports=function({exe,report,env,launch,api,title,inputLabel}){
+module.exports=function({exe,report,env,launch,api,title,inputLabel,previewBeforeLive=false,source}){
   const wayland=env.QT_QPA_PLATFORM==='wayland';
+  assert(!previewBeforeLive||(wayland&&env.GC_QA_OWNED_WAYLAND&&source),'External-output preview requires an owned Wayland source');
   assert((wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP)&&process.env.DBUS_SESSION_BUS_ADDRESS,'Use the matching owned desktop fixture');
-  const evidence={backend:wayland?'wayland':'x11',portalSelections:[]};
+  const evidence={backend:wayland?'wayland':'x11',portalSelections:[],previews:[]};
+  const hash=file=>require('crypto').createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+  if(previewBeforeLive){
+    evidence.previewHelpers={};
+    for(const name of ['linux-preview-observer.py','linux-pipewire-snapshot.py']){
+      fs.copyFileSync(path.join(__dirname,name),path.join(report,name));evidence.previewHelpers[name]=hash(path.join(report,name));
+    }
+  }
   let keyboard,keyboardDirectory,selector,portalOwner;
   const portal=path.join(report,'linux-portal-select.py');
   if(wayland)fs.copyFileSync(path.join(__dirname,'linux-portal-select.py'),portal);
@@ -15,23 +23,69 @@ module.exports=function({exe,report,env,launch,api,title,inputLabel}){
   }
   async function initialize(){
     if(!wayland||keyboard)return;checkPortal();
+    if(env.GC_QA_OWNED_WAYLAND){assert(env.GC_QA_KEYBOARD_SOCKET&&fs.statSync(env.GC_QA_KEYBOARD_SOCKET).isSocket());evidence.ownedCompositorInput=true;return;}
     keyboardDirectory=fs.mkdtempSync(path.join(require('os').tmpdir(),'gc-wayland-keys-'));fs.chmodSync(keyboardDirectory,0o700);
     env.GC_QA_KEYBOARD_SOCKET=path.join(keyboardDirectory,'input.sock');
     keyboard=spawn('sudo',['-n','python3',portal,'--keyboard-server='+env.GC_QA_KEYBOARD_SOCKET],{env,stdio:['pipe','pipe','pipe']});
     keyboard.closed=new Promise(resolve=>keyboard.once('close',resolve));let ready='';keyboard.stdout.on('data',d=>ready+=d);keyboard.stderr.on('data',d=>process.stderr.write(d));
     await waitFor(()=>{assert.equal(keyboard.exitCode,null,'Owned keyboard exited');return ready.includes('ready');},10000,'Owned keyboard not ready');
   }
-  async function goLive(session){
+  async function captureAction(session,action,promote=false){
     let selected,log;
     if(wayland)assert(title.startsWith('Owned Linux Capture '),'Portal fixture title must be eligible before opening consent');
-    if(wayland){
+    if(wayland&&!promote){
       checkPortal();selected=path.join(report,'portal-'+(evidence.portalSelections.length+1)+'.json');
       log=fs.createWriteStream(selected+'.log');selector=spawn('python3',[portal,'--title='+title,'--output='+selected],{env,stdio:['ignore','pipe','pipe']});
       selector.stdout.pipe(log,{end:false});selector.stderr.pipe(log,{end:false});selector.closed=new Promise(resolve=>selector.once('close',()=>log.end(resolve)));
     }
-    session.ui('press','Go live');
-    await waitFor(async()=>{if(wayland)assert(selector.exitCode===null||selector.exitCode===0,'Portal selector failed');return (await api(session.control,'/diagnostics')).app.live;},30000,'GUI did not go live');
-    if(wayland){await waitFor(()=>selector.exitCode!==null,10000,'Portal selection did not finish');await selector.closed;assert.equal(selector.exitCode,0);const observation=JSON.parse(fs.readFileSync(selected));assert(observation.passed);evidence.portalSelections.push({file:path.basename(selected),sha256:require('crypto').createHash('sha256').update(fs.readFileSync(selected)).digest('hex')});checkPortal();}
+    session.ui('press',action);
+    await waitFor(async()=>{if(wayland&&!promote)assert(selector.exitCode===null||selector.exitCode===0,'Portal selector failed');const d=await api(session.control,'/diagnostics');return action==='Preview window'?d.app.window_preview_active:d.app.live;},30000,'GUI capture action did not finish: '+action);
+    if(wayland&&!promote){await waitFor(()=>selector.exitCode!==null,10000,'Portal selection did not finish');await selector.closed;assert.equal(selector.exitCode,0);const observation=JSON.parse(fs.readFileSync(selected));assert(observation.passed);evidence.portalSelections.push({action,file:path.basename(selected),sha256:hash(selected)});checkPortal();}
+  }
+  const goLive=(session,promote=false)=>captureAction(session,'Go live',promote);
+  let snapshotSerial=0;
+  function captureNodes(session){
+    const output=path.join(report,'preview-pipewire-'+(++snapshotSerial)+'.json');
+    const snapshot=JSON.parse(execFileSync('python3',[path.join(report,'linux-pipewire-snapshot.py'),'--output='+output],{env,encoding:'utf8',timeout:7000}));
+    const clients=new Set(snapshot.objects.filter(o=>o.type==='PipeWire:Interface:Client'&&String(o.info?.props?.['application.process.id'])===String(session.publisher.pid)).map(o=>o.id));
+    return {nodes:snapshot.objects.filter(o=>o.type==='PipeWire:Interface:Node'&&clients.has(o.info?.props?.['client.id'])&&o.info?.props?.['media.type']==='Video').map(o=>({id:o.id,serial:o.info.props['object.serial']})),file:path.basename(output),sha256:hash(output),batches:snapshot.batches};
+  }
+  async function localOnly(session,active){
+    const d=await api(session.control,'/diagnostics');
+    assert.equal(d.app.window_preview_active,active);
+    assert(!d.app.live&&!d.app.capturing&&!d.app.primary_audio_capturing&&!d.app.microphone_capturing,'External-output preview opened audio or publishing');
+    assert.equal(d.video.frames_sent,0);assert.equal(d.video.frames_captured,0);assert.equal(d.metrics.audio_packets_sent,0);
+    assert(!d.output||!d.output.muxer_pid,'External-output preview started a mux helper');
+    const streams=JSON.parse(execFileSync('pactl',['--format=json','list','source-outputs'],{env,encoding:'utf8',timeout:5000})).filter(s=>String(s.properties?.['application.process.id'])===String(session.publisher.pid));
+    assert.equal(streams.length,0,'Preview opened an audio recording stream');
+    const graph=captureNodes(session);assert.equal(graph.nodes.length,active?1:0);
+    return {app:d.app,videoFramesSent:d.video.frames_sent,audioPacketsSent:d.metrics.audio_packets_sent,audioCaptureStreams:streams.length,graph};
+  }
+  async function previewPixels(session,label,identity){
+    let sourceIdentity=null;
+    if(identity!=='none'){
+      sourceIdentity=await source.evaluate(id=>{
+        fixture.paused=true;fixture.id=id;paint();let observed=0;
+        for(let bit=0;bit<16;bit++)if(ctx.getImageData(Math.floor((.2+(bit+.5)*.6/16)*canvas.width),Math.floor(.5*canvas.height),1,1).data[0]>127)observed|=1<<bit;
+        return observed;
+      },identity);
+      assert.equal(sourceIdentity,identity);await sleep(2200);
+    }
+    const output=path.join(report,'preview-'+label+'.png');
+    const shot=JSON.parse(execFileSync('python3',[path.join(report,'linux-preview-observer.py'),'--pid='+session.publisher.pid,'--output='+output,'--expected='+identity],{env,encoding:'utf8',timeout:20000}));
+    return {...shot,sourceIdentity,file:path.basename(output),sha256:hash(output)};
+  }
+  async function preparePreview(session,protocol){
+    const entry={protocol};evidence.previews.push(entry);session.previewEvidence=entry;
+    entry.idle=await localOnly(session,false);
+    await captureAction(session,'Preview window');entry.initial=await localOnly(session,true);
+    entry.firstPixels=await previewPixels(session,protocol+'-first',13735);
+    entry.changedPixels=await previewPixels(session,protocol+'-changed',51546);
+    session.ui('press','Stop preview');await waitFor(async()=>!(await api(session.control,'/diagnostics')).app.window_preview,10000,'External-output preview did not stop');
+    entry.stopped=await localOnly(session,false);entry.clearedPixels=await previewPixels(session,protocol+'-stopped','none');
+    await captureAction(session,'Preview window');entry.beforePromotion=await localOnly(session,true);
+    entry.restartedPixels=await previewPixels(session,protocol+'-restarted',24681);
+    await source.evaluate(()=>fixture.paused=false);
   }
   async function close(){
     if(selector&&selector.exitCode===null){selector.kill('SIGTERM');await selector.closed;}
@@ -87,7 +141,15 @@ module.exports=function({exe,report,env,launch,api,title,inputLabel}){
     if(secrets[protocol]){ui('reveal',secrets[protocol]);assert.equal(JSON.parse(ui('read-text',secrets[protocol])),secret);ui('reveal',secrets[protocol]);}
     if(protocol==='srt'){assert.equal(JSON.parse(ui('read-text','Stream ID')),streamId);assert.equal(JSON.parse(ui('dump')).find(r=>r.name==='SRT latency'&&r.role==='spin button').value,420);}
     if(protocol!=='whip')assert.equal(JSON.parse(ui('dump')).find(r=>r.name==='AAC bitrate'&&r.role==='spin button').value,192);
-    ui('source',wayland?'Choose a window':title);await beforeGoLive();await goLive(session);
+    ui('source',wayland?'Choose a window':title);
+    if(previewBeforeLive)await preparePreview(session,protocol);
+    await beforeGoLive();await goLive(session,previewBeforeLive);
+    if(previewBeforeLive){
+      const entry=session.previewEvidence;entry.promotedApp=(await api(session.control,'/diagnostics')).app;
+      assert(entry.promotedApp.live&&entry.promotedApp.capturing&&!entry.promotedApp.window_preview);
+      entry.promotedGraph=captureNodes(session);assert.deepEqual(entry.promotedGraph.nodes,entry.beforePromotion.graph.nodes,'External publishing replaced the preview grant');
+      entry.promotedSameSession=true;
+    }
     privacy();return {...session,profileRestored:true};
   }
   async function stop(session){session.ui('press','Stop streaming');await waitFor(async()=>{const d=await api(session.control,'/diagnostics');return !d.app.live&&!d.app.capturing;},10000,'GUI did not stop');privacy();}

@@ -12,6 +12,7 @@ assert(['none','options','post'].includes(turnDiscovery));assert(turnDiscovery==
 const failure=opts.failure||'';assert(['','unauthorized','invalid-tls','cancel','cancel-gathering','malformed','oversized'].includes(failure));
 const tls=opts.tls==='true'||failure==='invalid-tls';assert(!(unresponsiveStun&&turnDiscovery!=='none'));
 const wayland=opts.backend==='wayland';assert(!wayland||opts.gui==='true','Wayland output fixture requires actual GUI');
+const previewBeforeLive=opts['preview-before-live']==='true';assert(!previewBeforeLive||(wayland&&opts.gui==='true'&&process.env.GC_QA_OWNED_WAYLAND),'Preview requires the owned Wayland GUI fixture');
 const gui=opts.gui==='true';if(gui){assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires the matching owned desktop fixture');assert(!tls&&!failure&&!unresponsiveStun&&turnDiscovery==='none','GUI fixture currently covers authenticated HTTP publishing');}
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
@@ -20,12 +21,13 @@ const manifest=JSON.parse(fs.readFileSync(manifestFile));assert.equal(hash(exe),
 for(const item of manifest.payload.files){const file=path.resolve(bundle,item.relativePath);assert(file.startsWith(bundle+path.sep));assert.equal(fs.statSync(file).size,item.size);assert.equal(hash(file),item.sha256);}
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 for(const name of ['linux-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
-const result={gui,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
+const result={gui,previewBeforeLive,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
  serverSha256:hash(path.resolve(opts.server)),turnDiscovery,tls,failure,unresponsiveStun:unresponsiveStun?{requests:0}:null,
  scope:'Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance.',cases:[],trace:[],passed:false};
 if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py',...(wayland?['linux-wayland-desktop.py','linux-portal-select.py']:['linux-private-desktop.py'])]){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
 if(turnDiscovery!=='none')result.turnServerSha256=hash(path.resolve(opts['turn-server']));
 if(wayland)result.scope=result.scope.replace('X11','Native GNOME Wayland').replace('Excludes Wayland,','Fresh portal consent on each Go live. Excludes');
+if(previewBeforeLive)result.scope=result.scope.replace('Fresh portal consent on each Go live.','Explicit video-only preview, same-grant promotion, and fresh portal consent after Stop.');
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>!/^(QT_|DYLD_|GAME_CAPTURE_|VERSUS_|GH_TOKEN|GITHUB_TOKEN|ACTIONS_.*TOKEN|SSL_CERT_)/.test(k)));
 Object.assign(env,{QT_QPA_PLATFORM:wayland?'wayland':'xcb',XDG_SESSION_TYPE:wayland?'wayland':'x11',XDG_STATE_HOME:path.join(report,'private-state'),XDG_CONFIG_HOME:path.join(report,'private-config'),XDG_DATA_HOME:path.join(report,'private-data')});if(wayland)env.WAYLAND_DISPLAY=process.env.WAYLAND_DISPLAY||'wayland-0';else delete env.WAYLAND_DISPLAY;
 const save=()=>fs.writeFileSync(path.join(report,'results.json'),JSON.stringify(result,null,2)+'\n');save();
@@ -133,13 +135,14 @@ function audioCheck(value,silent=false){
   source=await sourceBrowser.newPage(wayland?{viewport:null}:{viewport:{width:800,height:450}});const title='Owned Linux Capture WHIP '+suffix;
   await source.setContent(`<title>${title}</title><style>html,body{margin:0;overflow:hidden;cursor:none}canvas{display:block}</style><canvas></canvas><script>
   const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');window.fixture={id:0,paused:false};
-  function draw(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
+  function paint(){canvas.width=innerWidth;canvas.height=innerHeight;const w=canvas.width,h=canvas.height;if(!fixture.paused)fixture.id=(fixture.id+1)%65536;
   ctx.fillStyle='#183042';ctx.fillRect(0,0,w,h);ctx.fillStyle='red';ctx.fillRect(0,0,w,.1*h);ctx.fillStyle='#00ff00';ctx.fillRect(0,.9*h,w,.1*h);
   ctx.fillStyle='cyan';ctx.fillRect(.1*w,.25*h,.05*w,.5*h);ctx.fillStyle='magenta';ctx.fillRect(.85*w,.25*h,.05*w,.5*h);
-  for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}requestAnimationFrame(draw);}draw();</script>`);
+  for(let i=0;i<16;i++){ctx.fillStyle=(fixture.id>>i)&1?'white':'black';ctx.fillRect((.2+i*.6/16)*w,.25*h,.6/16*w,.5*h);}}
+  function draw(){paint();requestAnimationFrame(draw);}draw();</script>`);
   await source.bringToFront();await sleep(1000);result.sourceBrowserVersion=sourceBrowser.version();
 
-  desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedWhipInput'}):null;if(desktop)result.guiDesktop=desktop.evidence;
+  desktop=gui?require('./linux-output-gui')({exe,report,env,launch,api,title,inputLabel:'GameCaptureOwnedWhipInput',previewBeforeLive,source}):null;if(desktop)result.guiDesktop=desktop.evidence;
   browser=await chromium.launch({executablePath:'/usr/bin/google-chrome',headless:true,env,args:['--autoplay-policy=no-user-gesture-required','--mute-audio']});result.receiverBrowserVersion=browser.version();
   for(const encoder of ['software']){
     currentCase=encoder;const entry={encoder,passed:false};result.cases.push(entry);const stream='whip'+crypto.randomBytes(12).toString('hex');
