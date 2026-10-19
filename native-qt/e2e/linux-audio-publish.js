@@ -2,7 +2,8 @@
 // Packaged X11/Wayland video + real PipeWire/Pulse routes -> hosted browser decoding.
 // Owned virtual input qualifies routing, not a physical microphone or A/V drift.
 const fs = require('fs'), path = require('path'), crypto = require('crypto'), os = require('os');
-const assert = require('assert/strict'), {spawn, execFileSync} = require('child_process');
+const assert = require('assert/strict'), {spawn, execFile, execFileSync} = require('child_process');
+const execFileAsync = require('util').promisify(execFile);
 const {chromium} = require('playwright');
 const {receiver, observe, requireMoving, observeAudio, closeAudioObserver, waitFor, sleep} = require('./macos-media-receiver');
 const {receive} = require('./audio-settings-packaged-e2e');
@@ -150,7 +151,8 @@ function tone(device, label) {
   tones.push(state); return state;
 }
 async function startApp(device) {
-  const child = spawn(appPlaybackBackend==='jack'?'pw-jack':'python3', [...(appPlaybackBackend==='jack'?['python3']:[]), path.join(__dirname, 'linux-app-audio-source.py'), '--device', device, '--backend', appPlaybackBackend], {detached:true, stdio:['pipe', 'pipe', 'pipe']});
+  const child = spawn(appPlaybackBackend==='jack'?'pw-jack':'python3', [...(appPlaybackBackend==='jack'?['python3']:[]), path.join(__dirname, 'linux-app-audio-source.py'), '--device', device, '--backend', appPlaybackBackend], {detached:true, stdio:['pipe', 'pipe', 'pipe'],
+    env:{...process.env,...(appPlaybackBackend==='pipewire'&&opts['capture-native-source']==='true'?{GC_QA_PIPEWIRE_TRACE_DIR:report}:{})}});
   const lines = [], state = {child, errors:'', ready:false, serial:0}; let buffer = '';
   child.stdout.on('data', data => { buffer += data; while (buffer.includes('\n')) { const end = buffer.indexOf('\n'); const line = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1); if(line.playbackPid)state.playbackPid=line.playbackPid; if (line.ready) state.ready = true; else lines.push(line); } });
   child.stderr.on('data', data => { state.errors += data; });
@@ -651,7 +653,7 @@ function barriers() {
           const observation = await observeAudio(viewer,null,{reuseContext:persistentSnapshot,traceObserver:continuousApps});
           entry[label] = observation;
           if(opts['capture-audio-diagnostics']==='true'){
-            entry[label+'Diagnostic']={atMs:Date.now(),diagnostics:await api('/diagnostics'),playback:JSON.parse(pactl('-f','json','list','sink-inputs')),clients:JSON.parse(pactl('-f','json','list','clients'))};
+            entry[label+'Diagnostic']={sourceProgress:appSource?await appSource.command({}):null,atMs:Date.now(),diagnostics:await api('/diagnostics'),playback:JSON.parse(pactl('-f','json','list','sink-inputs')),clients:JSON.parse(pactl('-f','json','list','clients'))};
           }
           save();
           try{requireAudio(observation, label, {excluded:true, ...checks});}
@@ -667,22 +669,32 @@ function barriers() {
                 const graph=path.join(report,label+'-pipewire-graph.json');
                 fs.writeFileSync(graph,execFileSync('pw-dump',[],{timeout:5000,maxBuffer:16*1024*1024}),{flag:'wx',mode:0o600});
                 entry[label+'PipeWireGraph']={path:path.basename(graph),sha256:sha(graph)};
-                const raw=execFileSync('/usr/bin/ffmpeg',['-hide_banner','-loglevel','error','-f','pulse','-i',destination+'.monitor','-t','2','-ar','48000','-ac','2','-c:a','pcm_f32le','-f','f32le','pipe:1'],{timeout:10000,maxBuffer:4*1024*1024});
-                assert(raw.length>=48000*8&&raw.length%8===0);
-                const file=path.join(report,label+'-owned-output.f32le');fs.writeFileSync(file,raw,{flag:'wx',mode:0o600});
-                const frames=raw.length/8,channels=[];
-                for(let channel=0;channel<2;channel++){
-                  let power=0;const tones={};
-                  for(let n=0;n<frames;n++)power+=raw.readFloatLE(n*8+channel*4)**2;
-                  for(const hz of [440,880,2000]){
-                    let re=0,im=0;
-                    for(let n=0;n<frames;n++){const value=raw.readFloatLE(n*8+channel*4),angle=2*Math.PI*hz*n/48000;re+=value*Math.cos(angle);im+=value*Math.sin(angle);}
-                    tones[hz]=2*Math.hypot(re,im)/frames;
+                const recordOutput=async suffix=>{
+                  const before=await appSource.command({});
+                  const {stdout:raw}=await execFileAsync('/usr/bin/ffmpeg',['-hide_banner','-loglevel','error','-f','pulse','-i',destination+'.monitor','-t','2','-ar','48000','-ac','2','-c:a','pcm_f32le','-f','f32le','pipe:1'],{timeout:10000,maxBuffer:4*1024*1024,encoding:'buffer'});
+                  const after=await appSource.command({});
+                  assert(raw.length>=48000*8&&raw.length%8===0);
+                  const file=path.join(report,label+suffix+'-owned-output.f32le');fs.writeFileSync(file,raw,{flag:'wx',mode:0o600});
+                  const frames=raw.length/8,channels=[];
+                  for(let channel=0;channel<2;channel++){
+                    let power=0;const tones={};
+                    for(let n=0;n<frames;n++)power+=raw.readFloatLE(n*8+channel*4)**2;
+                    for(const hz of [440,880,2000]){
+                      let re=0,im=0;
+                      for(let n=0;n<frames;n++){const value=raw.readFloatLE(n*8+channel*4),angle=2*Math.PI*hz*n/48000;re+=value*Math.cos(angle);im+=value*Math.sin(angle);}
+                      tones[hz]=2*Math.hypot(re,im)/frames;
+                    }
+                    channels.push({rms:Math.sqrt(power/frames),toneAmplitudes:tones});
                   }
-                  channels.push({rms:Math.sqrt(power/frames),toneAmplitudes:tones});
-                }
-                entry[label+'SourceOutput']={path:path.basename(file),sha256:sha(file),destination,frames,channels,scope:'Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence.'};
+                  entry[label+suffix+'SourceOutput']={sourceBefore:before,sourceAfter:after,path:path.basename(file),sha256:sha(file),destination,frames,channels,scope:'Independent recording of the owned virtual output after the failed receiver check; not physical timing or uninterrupted capture evidence.'};
+                  save();
+                };
+                await recordOutput('');
                 entry[label+'AfterReferenceDiagnostic']=await api('/diagnostics');
+                await quit();
+                entry[label+'CaptureRetiredAtMs']=Date.now();save();
+                await sleep(1200);
+                await recordOutput('AfterCaptureQuit');
               }catch(referenceError){entry[label+'SourceOutputError']=String(referenceError);}
               save();
             }

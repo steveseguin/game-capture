@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 import threading
+import uuid
 
 
 class Spec(C.Structure):
@@ -74,10 +75,19 @@ class PipeWireTone(Tone):
     """
     def __init__(self, device, frequencies):
         self.frequencies, self.frames = frequencies, 0
-        self.client = subprocess.Popen(['pw-cat', '--playback', '--target', device,
-            '--rate', '48000', '--channels', '2', '--format', 'f32', '--latency', '20ms',
-            '--properties', '{ application.name = GameCaptureOwnedQAApp }', '-'],
-            stdin=subprocess.PIPE, stdout=subprocess.DEVNULL)
+        env = dict(os.environ); trace = None; self.trace_path = None
+        if env.get('GC_QA_PIPEWIRE_TRACE_DIR'):
+            self.trace_path = str(Path(env['GC_QA_PIPEWIRE_TRACE_DIR'])/('native-source-'+uuid.uuid4().hex+'.log'))
+            trace = open(self.trace_path, 'xb')
+            os.chmod(self.trace_path, 0o600)
+            env['PIPEWIRE_DEBUG'] = '2,pw.stream:5'
+        try:
+            self.client = subprocess.Popen(['pw-cat', *(['--verbose'] if trace else []), '--playback', '--target', device,
+                '--rate', '48000', '--channels', '2', '--format', 'f32', '--latency', '20ms',
+                '--properties', '{ application.name = GameCaptureOwnedQAApp }', '-'],
+                stdin=subprocess.PIPE, stdout=trace or subprocess.DEVNULL, stderr=trace, env=env)
+        finally:
+            if trace: trace.close()
         self.running, self.silent, self.error = True, False, None
         self.worker = threading.Thread(target=self.run)
         self.worker.start()
@@ -218,8 +228,16 @@ def main():
                         child = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--device', args.device, '--child', '--backend', args.backend], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
                         if not json.loads(child.stdout.readline()).get('ready'):
                             raise RuntimeError('Child did not start')
+                progress = None if primary is None else {
+                    'frames': primary.frames, 'silent': primary.silent,
+                    'error': str(primary.error) if primary.error else None,
+                    'writerAlive': primary.worker.is_alive() if hasattr(primary, 'worker') else None,
+                    'clientExitCode': primary.client.poll() if args.backend == 'pipewire' else None,
+                    'tracePath': primary.trace_path if args.backend == 'pipewire' else None,
+                }
                 print(json.dumps({'id': command.get('id'), 'child': child.pid if child else None,
-                    'playbackPid': primary.client.pid if primary and args.backend == 'pipewire' else None}), flush=True)
+                    'playbackPid': primary.client.pid if primary and args.backend == 'pipewire' else None,
+                    'primaryProgress': progress, 'monotonicSeconds': time.monotonic()}), flush=True)
             for tone in (primary, extra):
                 if tone and tone.error:
                     raise tone.error
