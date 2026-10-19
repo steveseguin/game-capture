@@ -1,0 +1,43 @@
+{
+  "schema": 1,
+  "goal": "Experimental native ARM64 Linux development package reusing the Linux backends; bounded software H.264 bring-up, not full parity or performance qualification",
+  "baseline": "476b0a51b76ef525628ca715cc69996b16a5a68c",
+  "parentLedger": "linux-parity.json",
+  "completionPolicy": "Build, isolated logic and syntax checks are gates. Application testing requires exact packaged GUI workflows and independently received/decoded media. Existing x86 evidence and failures are not ARM qualification and remain unchanged.",
+  "target": "Ubuntu 24.04 arm64, native build; no armhf or cross-packaging support",
+  "status": "bring-up-in-progress",
+  "hardware": {
+    "model": "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super",
+    "cpu": "6 ARM Cortex-A78AE cores",
+    "usableRamKiB": 7802848,
+    "hostDistribution": "Ubuntu 22.04.5 LTS",
+    "kernel": "5.15.148-tegra",
+    "desktop": "TTY session; no logged-in user desktop. Owned Xvfb/xfwm4 planned.",
+    "audio": "Host PulseAudio 15.99.1 and platform/USB inputs enumerated; physical capture not qualified. Owned PulseAudio fixture planned.",
+    "camera": "MACROSILICON 534d:2109 UVC device enumerated; not qualified",
+    "gpu": "NVIDIA Tegra driver R36.4.7 present; hardware encoding unqualified"
+  },
+  "remaining": [
+    "Exact packaged GUI launch, moving capture, software H.264 and mixed audio reception, mute, Stop/restart, settings and clean Quit",
+    "Native physical X11/Wayland and PipeWire portal workflows",
+    "Physical microphones, cameras and application-audio routing",
+    "VDO.Ninja/WebRTC, WHIP and other external outputs on ARM64",
+    "Hardware encoder API initialization and independently decoded output before any hardware support claim",
+    "Raspberry Pi and other ARM64 systems; higher profiles, calibrated timing and endurance",
+    "amd64, Windows and macOS packaged runtime regression qualification"
+  ],
+  "evidence": [],
+  "buildEnvironment": {
+    "kind": "User-owned Ubuntu 24.04.5 ARM64 root filesystem; Bubblewrap namespaces on the native Jetson CPU, no emulation",
+    "baseUrl": "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz",
+    "baseSha256": "a91d5a93010193712d346d761372b7c9db6dfcf093893161c64ca107f05914f2",
+    "compiler": "GCC 13.3.0",
+    "cmake": "3.28.3",
+    "qt": "6.4.2",
+    "ffmpeg": "6.1.1",
+    "buildJobs": 2,
+    "hostServicesChanged": false,
+    "packageList": "reports/linux-arm64-bringup/build-environment-packages.txt",
+    "packageListSha256": "9a43805c457c64df167a0751676450e39eaf0755e7fe5913dbd9be1b1fa26d0e"
+  }
+}

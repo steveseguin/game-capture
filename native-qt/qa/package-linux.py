@@ -20,6 +20,25 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def native_architecture(binary):
+    """Reject cross-built/mislabelled payloads before using host shlibdeps."""
+    architecture = subprocess.check_output(["dpkg", "--print-architecture"], text=True).strip()
+    if architecture not in ("amd64", "arm64"):
+        raise SystemExit(f"Unsupported Linux package architecture: {architecture}")
+    with binary.open("rb") as stream:
+        header = stream.read(64)
+    # ELF64, little endian, current ELF version; ET_EXEC or PIE (ET_DYN).
+    if (len(header) != 64 or header[:7] != b"\x7fELF\x02\x01\x01"
+            or int.from_bytes(header[16:18], "little") not in (2, 3)):
+        raise SystemExit("Package payload must be a little-endian ELF64 executable")
+    machine = int.from_bytes(header[18:20], "little")
+    expected = {"amd64": 62, "arm64": 183}[architecture]
+    if machine != expected:
+        raise SystemExit(f"ELF machine {machine} does not match native {architecture}; "
+                         "build and package in the target architecture's environment")
+    return architecture
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--build", required=True, type=Path)
@@ -31,9 +50,7 @@ def main():
     binary = build / "bin/game-capture"
     if not binary.is_file():
         raise SystemExit("Build game-capture first")
-    architecture = subprocess.check_output(["dpkg", "--print-architecture"], text=True).strip()
-    if architecture != "amd64":
-        raise SystemExit("Only the amd64 package is currently qualified for development")
+    architecture = native_architecture(binary)
     version = re.search(r"project\(game-capture-native-qt VERSION ([0-9.]+)", (native / "CMakeLists.txt").read_text())[1]
     # Increment the Linux package revision for installation-layout changes.
     version += "~linux.2"
@@ -59,6 +76,10 @@ def main():
         notices.mkdir(parents=True)
         shutil.copy2(root / "LICENSE", notices / "copyright")
         shutil.copy2(native / "qa/linux-parity.json", notices / "linux-parity.json")
+        qualification = "development; see linux-parity.json"
+        if architecture == "arm64":
+            shutil.copy2(native / "qa/linux-arm64.json", notices / "linux-arm64.json")
+            qualification = "experimental ARM64; see linux-arm64.json and linux-parity.json"
         desktop = stage / "usr/share/applications/game-capture.desktop"
         desktop.parent.mkdir(parents=True)
         desktop.write_text("[Desktop Entry]\nType=Application\nName=Game Capture\nComment=Publish windows and cameras to VDO.Ninja and OBS\nExec=game-capture\nIcon=game-capture\nTerminal=false\nCategories=AudioVideo;Video;Network;\nStartupWMClass=game-capture\n")
@@ -67,7 +88,7 @@ def main():
         shutil.copy2(native / "resources/vdoninja.png", icon)
         debian = work / "debian"
         debian.mkdir()
-        (debian / "control").write_text("Source: game-capture\nSection: video\nPriority: optional\nMaintainer: Game Capture contributors <noreply@vdo.ninja>\n\nPackage: game-capture\nArchitecture: amd64\nDescription: Native Game Capture Linux development package\n")
+        (debian / "control").write_text(f"Source: game-capture\nSection: video\nPriority: optional\nMaintainer: Game Capture contributors <noreply@vdo.ninja>\n\nPackage: game-capture\nArchitecture: {architecture}\nDescription: Native Game Capture Linux development package\n")
         dependencies = subprocess.check_output(["dpkg-shlibdeps", "-O", "-e" + str(stage / "usr/bin/game-capture")], cwd=work, text=True).strip()
         dependencies = dependencies.removeprefix("shlibs:Depends=")
         dependencies += ", ffmpeg (>= 7:6.1), qt6-wayland, xdg-desktop-portal, pipewire, ca-certificates"
@@ -102,7 +123,7 @@ def main():
                     "sourceSha256": sha(source_archive), "buildDirectory": str(build),
                     "artifact": {"path": "usr/bin/game-capture", "sha256": sha(binary)},
                     "dependencies": dependencies, "materials": materials,
-                    "qualification": "development; see linux-parity.json", "payload": {"files": payload, "fileCount": len(payload)}}
+                    "qualification": qualification, "payload": {"files": payload, "fileCount": len(payload)}}
         installed_manifest = notices / "release-artifact-manifest.json"
         installed_manifest.write_text(json.dumps(manifest, indent=2) + "\n")
         # Never inherit the builder's umask or group-write bits into system

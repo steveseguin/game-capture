@@ -57,6 +57,9 @@ def main():
     manifest_path = bundle/'release-artifact-manifest.json'
     assert sha(manifest_path) == args.manifest_sha256
     manifest = json.loads(manifest_path.read_text())
+    architecture = manifest['architecture']
+    assert architecture in ('amd64', 'arm64')
+    other_architecture = 'amd64' if architecture == 'arm64' else 'arm64'
     assert sha(exe) == manifest['artifact']['sha256']
     for item in manifest['payload']['files']:
         file = (bundle/item['relativePath']).resolve()
@@ -143,7 +146,7 @@ def main():
             self.close_connection = True
         def log_message(self,*args): pass
 
-    def release(version='99.0.0', arch='amd64'):
+    def release(version='99.0.0', arch=architecture):
         tag='v'+version; name=f'game-capture-{version}~linux.2-{arch}-0123456789ab-abcdef012345.deb'
         asset={'name':name,'state':'uploaded','size':12345,
                'browser_download_url':f'https://github.com/steveseguin/game-capture/releases/download/{tag}/{name}'}
@@ -220,7 +223,7 @@ def main():
         run('warm-compatible','New version available: v99.0.0',release(),valid,settings=settings,warm=True)
         current=manifest['version'].split('~')[0]
         run('current-compatible','You’re up to date',release(current),valid)
-        run('other-architecture','Latest release has no compatible Linux download',release(arch='arm64'),valid)
+        run('other-architecture','Latest release has no compatible Linux download',release(arch=other_architecture),valid)
         run('redirect','Update check unavailable',release(),valid,status=302)
         cache=settings/'update-check.ini';old=int(time.time())-86410
         stale=re.sub(r'^LastAttempt=\d+$',f'LastAttempt={old}',cache.read_text(),flags=re.M)

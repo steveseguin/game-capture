@@ -59,6 +59,9 @@ def main():
     manifest_path = bundle / 'release-artifact-manifest.json'
     assert sha(manifest_path) == args.manifest_sha256
     manifest = json.loads(manifest_path.read_text())
+    architecture = manifest['architecture']
+    assert architecture in ('amd64', 'arm64')
+    other_architecture = 'amd64' if architecture == 'arm64' else 'arm64'
     assert sha(exe) == manifest['artifact']['sha256']
     for entry in manifest['payload']['files']:
         file = (bundle / entry['relativePath']).resolve()
@@ -155,14 +158,16 @@ def main():
         original = sha(cache)
         observe('old-version-only-cache', MISSING, hold=6)
         assert sha(cache) == original; stop()
-        name = 'game-capture-99.0.0~linux.2-amd64-0123456789ab-abcdef012345.deb'
+        name = f'game-capture-99.0.0~linux.2-{architecture}-0123456789ab-abcdef012345.deb'
         asset = {'name': name, 'size': 1000, 'state': 'uploaded',
                  'browser_download_url': 'https://github.com/steveseguin/game-capture/releases/download/v99.0.0/'+name}
         release['assets'] = [asset]; seed(release)
         for label in ['compatible-cache', 'compatible-cache-relaunch']:
             launch(label); observe(label, 'New version available: v99.0.0', True, hold=6)
             assert read_cache(cache)['release'] == release; stop()
-        for label, altered in [('wrong-architecture', {**asset, 'name': name.replace('amd64', 'arm64')}),
+        foreign = {key: value.replace(architecture, other_architecture) if isinstance(value, str) else value
+                   for key, value in asset.items()}
+        for label, altered in [('wrong-architecture', foreign),
                                ('untrusted-asset-url', {**asset, 'browser_download_url': 'https://example.com/'+name})]:
             seed({**release, 'assets': [altered]}); launch(label)
             observe(label, MISSING); stop()
