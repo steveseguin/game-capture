@@ -17,6 +17,46 @@ builds accept only matching-architecture portable archives. DEB builds accept
 only matching-architecture DEBs. Neither accepts a source archive as an update.
 The application opens the existing Releases page; it does not install updates.
 
+## Verified ARM64 development archive
+
+The same archive passed packaged GUI/media and update workflows in both rows:
+
+| Environment | Media workflow | Update/cache workflow |
+| --- | --- | --- |
+| Ubuntu 22.04.5 Jetson host, relocated into a path containing spaces | Passed all four phases | Passed all ten cases |
+| Ubuntu 24.04.5 ARM64 userland on the same CPU/kernel | Passed all four phases | Passed all ten cases |
+
+Artifact: `game-capture-0.2.65~linux.2-arm64-fbe38782f547-0f4c374ec4e1-portable.tar.gz`
+in `native-qt/dist/`. Extract the archive and run `./AppRun`.
+
+- Archive SHA-256: `bd067965acb79c73b76a9a0bbdf53d378d2080e340070a688a9554a810dd797c`
+- Manifest SHA-256: `e4b791f35b6fb6746d5d5b7c6e39430589a97c69d6ea09805a812cb66d844ae6`
+- Source commit: `c2c635d1533c885c6487bb29a4d90963d9cf7061`
+- Required host ABI: glibc 2.35 and GLIBCXX 3.4.30 or newer.
+
+The media profile was software H.264, 960x540 at 30 fps / 4000 kbps, with
+128 kbps stereo AAC over loopback UDP/MPEG-TS. An independent system FFmpeg
+decoded moving window video and verified system/microphone mixing,
+mute/unmute, stereo separation and clipping checks across four five-second
+received samples, including Stop/restart. Saved settings, idle relaunch,
+File-menu Quit and helper/audio cleanup passed. The observer also verified
+loaded bundled Qt, media and audio libraries and the bundled FFmpeg helper.
+All 204 ELF files passed separate integrity/linkage gates in both environments.
+
+The update workflows exercised cache migration/relaunch, matching and foreign
+architectures, wrong package format, untrusted URLs, public GitHub HTTPS,
+warm cache, failed refresh and recovery of the cached failure state. Future
+release metadata was seeded only into private settings; no update was installed.
+
+These runs used owned Xvfb/xfwm4 desktops and virtual PulseAudio sources on the
+Jetson. They establish compatibility across these two userlands, not across
+different hardware, kernels or physical desktop/device combinations. The
+ledger links exact reports, decoded-media hashes and preserved preview failures.
+Its final results were committed after packaging; the archive contains the
+earlier ledger snapshot from the source commit above. Production source files
+match the packaged source archive; only this document and the evidence ledger
+were updated afterward.
+
 ## Build on Ubuntu 22.04
 
 Build natively on the desired architecture (`arm64` or `amd64`). Use an isolated
