@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import urllib.request
 import uuid
 
@@ -51,14 +52,15 @@ def main():
     result = {'scope':__doc__, 'passed':False, 'architecture':manifest['architecture'],
               'kernel':platform.release(), 'packageManifestSha256':sha(manifest_path),
               'executableSha256':sha(exe), 'sourceTreeSha256':manifest['sourceTreeSha256'],
-              'profile':{'resolution':'960x540', 'fps':30, 'encoder':'software libx264',
+              'profile':{'resolution':'960x540', 'fps':30, 'bitrateKbps':4000, 'encoder':'software libx264',
                          'transport':'loopback UDP/MPEG-TS', 'audio':'system + microphone, AAC stereo'},
               'phases':[], 'harnesses':{}}
     for name in [Path(__file__).name, 'linux-ui-control.py', 'linux-installed-desktop.py']:
         shutil.copy2(helpers/name, report/name); result['harnesses'][name] = sha(helpers/name)
     settings = report/'settings'; settings.mkdir()
     discovery = report/'private-control.json'
-    processes = []; logs = []; app = None; control = None; helper_pids = set()
+    processes = []; logs = []; app = None; control = None; helper_pids = {}
+    audio_baseline = set()
     direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     env = dict(os.environ)
     def save(): (report/'results.json').write_text(json.dumps(result, indent=2)+'\n')
@@ -84,6 +86,11 @@ def main():
         with direct.open(request, timeout=5) as response: return json.load(response)
     def screenshot(name): ImageGrab.grab().save(report/(name+'.png'))
     def pactl(*values): return subprocess.check_output(['pactl', *values], env=env, text=True, timeout=5).strip()
+    def process_identity(pid):
+        try:
+            fields = Path(f'/proc/{pid}/stat').read_text().rsplit(') ',1)[1].split()
+            return int(fields[1]), fields[19]  # parent PID, start time ticks
+        except FileNotFoundError: return None
     def idle():
         d = diagnostics()
         assert not d['app']['live'] and not d['app']['capturing']
@@ -102,7 +109,7 @@ def main():
         if restore:
             controls = rows()
             for name in ['Software (x264 / VP9 / AV1 / HEVC)', '960x540', '30',
-                         'System audio (all apps)', 'ARMBringupMicrophone', 'UDP / MPEG-TS (LAN)']:
+                         'System audio (all apps)', result['microphoneLabel'], 'UDP / MPEG-TS (LAN)']:
                 assert any(r['role']=='combo box' and r['name']==name for r in controls), 'Saved setting missing: '+name
             assert json.loads(ui('read-text', 'Output URL')) == destination
             result['settingsRestoredWithoutCapture'] = True
@@ -114,13 +121,20 @@ def main():
             audio = next(r['name'] for r in rows() if r['role']=='combo box' and r['name'] in ['No audio', 'Selected window/app audio'])
             ui('choose', audio, 'System audio (all apps)')
             ui('choose-prefix', 'No microphone', 'ARMBringupMicrophone')
+            # The device label includes its default marker and sample format.
+            result['microphoneLabel'] = next(r['name'] for r in rows()
+                if r['role']=='combo box' and r['name'].startswith('ARMBringupMicrophone'))
         ui('source', 'Game Capture Installed Source'); screenshot(label+'-ready')
     def stop():
         ui('press', 'Stop streaming')
         wait(lambda:not diagnostics()['app']['capturing'], 'Stop did not retire capture')
         idle()
-        assert json.loads(pactl('--format=json', 'list', 'source-outputs')) == [], 'Audio capture leaked after Stop'
-        wait(lambda:all(not Path(f'/proc/{pid}').exists() for pid in helper_pids), 'Encoder/output helper survived Stop')
+        # The fixture's remapped microphone itself owns a monitor stream.
+        # Require restoration of that baseline, with no application captures.
+        wait(lambda:{s['index'] for s in json.loads(pactl('--format=json','list','source-outputs'))} == audio_baseline,
+             'Audio capture leaked after Stop')
+        wait(lambda:all(process_identity(pid) != identity for pid, identity in helper_pids.items()),
+             'Encoder/output helper survived Stop')
         helper_pids.clear()
         screenshot('stopped')
     def quit_app():
@@ -135,11 +149,16 @@ def main():
             '-analyzeduration','1000000','-probesize','1000000','-i',destination+'?fifo_size=8192&overrun_nonfatal=1',
             '-map','0:v:0','-map','0:a:0','-c','copy','-t','5','-f','mpegts',str(transport)],label+'-receiver')
         receiver.wait(timeout=30); assert receiver.returncode == 0
-        for task in Path(f'/proc/{app.pid}/task').iterdir():
-            for pid in (task/'children').read_text().split():
+        # Some Tegra kernels omit /proc/PID/task/TID/children. Parent/start
+        # identities work on those kernels and also protect against PID reuse.
+        for process in Path('/proc').iterdir():
+            if not process.name.isdigit(): continue
+            identity = process_identity(process.name)
+            if identity and identity[0] == app.pid:
                 try:
-                    if Path(f'/proc/{pid}/exe').resolve(strict=True).name == 'ffmpeg': helper_pids.add(int(pid))
+                    if (process/'exe').resolve(strict=True).name == 'ffmpeg': helper_pids[int(process.name)] = identity
                 except FileNotFoundError: pass
+        assert helper_pids, 'No output helper observed during live MPEG-TS publication'
         probe = json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(transport)], text=True))
         video = next(s for s in probe['streams'] if s['codec_type']=='video')
         audio = next(s for s in probe['streams'] if s['codec_type']=='audio')
@@ -220,6 +239,9 @@ def main():
                 sock.bind(('127.0.0.1',0)); port = sock.getsockname()[1]
             destination = f'udp://127.0.0.1:{port}'
             wait(lambda:len(json.loads(pactl('--format=json','list','sink-inputs')))==2, 'Owned tone fixtures failed')
+            baseline_streams = json.loads(pactl('--format=json','list','source-outputs'))
+            audio_baseline = {s['index'] for s in baseline_streams}
+            result['fixtureAudioBaseline'] = baseline_streams
             time.sleep(1); launch('initial')
             ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Go live failed')
             receive('mixed')
@@ -234,6 +256,7 @@ def main():
             result['passed'] = True
         except Exception as error:
             result['error'] = repr(error)
+            result['traceback'] = traceback.format_exc()
             try: screenshot('failure')
             except Exception: pass
         finally:

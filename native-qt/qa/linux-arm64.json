@@ -26,7 +26,98 @@
     "Raspberry Pi and other ARM64 systems; higher profiles, calibrated timing and endurance",
     "amd64, Windows and macOS packaged runtime regression qualification"
   ],
-  "evidence": [],
+  "evidence": [
+    {
+      "kind": "preserved-failed-workflow",
+      "report": "reports/arm64-media/c12f93ee-22c1-48bc-b2a7-3e63144916dd/results.json",
+      "sha256": "4fbe17cfdf75ab8983fb265588fe6ed65b0faf7c922dc7c184b94a66526811fb",
+      "error": "FileNotFoundError(2, 'No such file or directory')",
+      "diagnosis": "Observer assumption: Tegra kernel omits /proc/PID/task/TID/children. Received H.264/AAC file probed successfully, but validation was incomplete. Use /proc/PID/stat parent/start identities for helper cleanup.",
+      "passedMediaPhases": [],
+      "forcedCleanup": true,
+      "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+    },
+    {
+      "kind": "preserved-failed-workflow",
+      "report": "reports/arm64-media/49b2dd93-2969-40e3-a57b-0df4d5d02223/results.json",
+      "sha256": "1e71c070e217b8e9cf0cf06cb71683c66783c78bd909f5f822f535b88d72962b",
+      "error": "AssertionError('Audio capture leaked after Stop')",
+      "diagnosis": "Observer assumption: remapped microphone fixture owns a permanent monitor stream; requiring no Pulse source outputs is incorrect. Mixed, muted and unmuted media passed. Require return to the recorded fixture baseline.",
+      "passedMediaPhases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 149,
+          "uniqueSourceIdentities": 114
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 149,
+          "uniqueSourceIdentities": 114
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 121
+        }
+      ],
+      "forcedCleanup": true,
+      "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+    },
+    {
+      "kind": "preserved-failed-workflow",
+      "report": "reports/arm64-media/7a5b6514-a150-4693-9b99-7534b6a48303/results.json",
+      "sha256": "39336a47411b2638650823e92a45b65f08bcab73de76a1bfb5efb19d9566e807",
+      "error": "AssertionError('Saved setting missing: ARMBringupMicrophone')",
+      "diagnosis": "Observer assumption: saved microphone label includes default marker/sample format. All four media phases, Stop/restart and first clean Quit passed. Saved device ID pulse:arm_input and screenshot prove selection persisted. Compare the full initially selected label on relaunch.",
+      "passedMediaPhases": [
+        {
+          "name": "mixed",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 136
+        },
+        {
+          "name": "muted",
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 117
+        },
+        {
+          "name": "unmuted",
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 148,
+          "uniqueSourceIdentities": 133
+        }
+      ],
+      "forcedCleanup": true,
+      "executableSha256": "8405e3e8e14fca70d8034f8caaab1323b7185c1db51c619979a1a10c0f6b5073"
+    },
+    {
+      "kind": "packaged-update-gui",
+      "report": "reports/arm64-updates/84cd4982-5738-486a-b31e-d29dde094ef8/results.json",
+      "sha256": "fc78ff6f7fedefe606381195e9d8c73b0be3cc2313492608f4936e6fa7e0a2f8",
+      "passed": true,
+      "cases": [
+        "old-version-only-cache",
+        "compatible-cache",
+        "compatible-cache-relaunch",
+        "wrong-architecture",
+        "untrusted-asset-url",
+        "cold-online",
+        "warm-online",
+        "failed-refresh",
+        "warm-after-failure"
+      ],
+      "package": {
+        "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-88021d1c5933.deb",
+        "sha256": "11f559cb3e97ae2150d9d7541321763b128062aeb516d36fcd0ab7c8c63b9ae8",
+        "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8405e3e8e14f-88021d1c5933",
+        "manifestSha256": "9d0f5879228daebeac936242b053173778b299b4d0350009263df40a14c71eb9"
+      }
+    }
+  ],
   "buildEnvironment": {
     "kind": "User-owned Ubuntu 24.04.5 ARM64 root filesystem; Bubblewrap namespaces on the native Jetson CPU, no emulation",
     "baseUrl": "https://cdimage.ubuntu.com/ubuntu-base/releases/24.04/release/ubuntu-base-24.04.5-base-arm64.tar.gz",
@@ -39,5 +130,39 @@
     "hostServicesChanged": false,
     "packageList": "reports/linux-arm64-bringup/build-environment-packages.txt",
     "packageListSha256": "9a43805c457c64df167a0751676450e39eaf0755e7fe5913dbd9be1b1fa26d0e"
+  },
+  "gates": {
+    "classification": "Build, logic and syntax gates; not application testing",
+    "nativeReleaseBuild": true,
+    "passed": [
+      "UpdateCheckerTest (ARM64 native selection, amd64/arm64 asset and foreign-cache cases)",
+      "AudioSampleClockGate",
+      "PlatformCapabilitiesGate",
+      "PosixFfmpegGate",
+      "package-linux-gate.py (amd64/arm64 and wrong ELF rejection)",
+      "Python syntax",
+      "git diff --check"
+    ],
+    "logs": {
+      "configure.log": "d8a17ede2bbc835ba6afde35d5bb0b4c40a18e89d14da17b7ca47d4a7330c4c9",
+      "build.log": "4de4e2dc09318893c12c7b294898c5a282759b14963936b43e3a9e6c7105fcca",
+      "early-gates.log": "e59c99fc1731b3130cc8056224eda7aaf0eac5207509b7c4912fda0513e570c7",
+      "remaining-gates.log": "698578c70dec4581ebad2c40d222f2a0e54eed2a721201ca2edb6dbaee558634",
+      "package-gate.log": "9f75add94930d82f86f40553d972627172fa9fcad2415eaa9947d6de3d460011"
+    },
+    "warnings": "GCC 13 reports stringop-overflow in the unchanged spdlog bundled fmt implementation; compilation/link succeeded. dpkg-shlibdeps reports the Ubuntu merged-/usr loader diversion and staging-layout warnings; generated ARM64 dependencies inspected."
+  },
+  "setupFindings": [
+    "Host CMake 3.22.1 fails the existing CMake >=3.24 requirement; host Qt/media development dependencies missing and FFmpeg 4.4 is older than the Linux package requirement.",
+    "Passwordless sudo and Docker socket access unavailable. Used an unprivileged Ubuntu 24.04 filesystem with Bubblewrap; no host service or driver changes.",
+    "Old host proot crashed; switched to Bubblewrap. Single-UID namespace package setup required FAKEROOTDONTTRYCHOWN=1 for ownership operations. Dependency configuration completed and dpkg --audit was clean."
+  ],
+  "memory": {
+    "blocker": false,
+    "initialAvailableGiB": 5.8,
+    "downloadCacheReleasedKiB": 334000,
+    "method": "posix_fadvise(DONTNEED) for completed task-owned downloads; no host processes stopped",
+    "report": "reports/linux-arm64-bringup/memory-cache-reclaim.json",
+    "reportSha256": "72811db5f208d871449e8501acc2f4893327351e5129719106200ae4fdf560fb"
   }
 }
