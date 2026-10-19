@@ -42,6 +42,8 @@ def main():
     parser.add_argument('--manifest-sha256', required=True)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--isolated-report', type=Path)
+    parser.add_argument('--first-save-cycles', type=int, default=0,
+                        help='Run only repeated fresh-settings save/relaunch workflows')
     args = parser.parse_args()
     if not args.isolated_report:
         report = args.reports.resolve() / str(uuid.uuid4())
@@ -71,6 +73,8 @@ def main():
     assert sha(manifest_path) == args.manifest_sha256
     manifest = json.loads(manifest_path.read_text())
     assert sha(exe) == manifest['artifact']['sha256']
+    launcher = (bundle / manifest.get('launcher', manifest['artifact']['path'])).resolve()
+    assert launcher.is_relative_to(bundle)
     for entry in manifest['payload']['files']:
         file = (bundle / entry['relativePath']).resolve()
         assert file.is_relative_to(bundle) and file.stat().st_size == entry['size'] and sha(file) == entry['sha256']
@@ -80,7 +84,7 @@ def main():
         shutil.copyfile(source, report / source.name)
     helper = report / helper.name
     fixture = report / fixture.name
-    result = {'scope': 'Extracted Ubuntu DEB; actual X11 Qt output-profile editing, switching, relaunch, locked/unavailable store and reset workflows. Real GNOME keyring on an isolated session bus. Excludes media publishing, Wayland GUI, other Secret Service providers and Windows/macOS regression.',
+    result = {'scope': 'Extracted Linux package; actual X11 Qt output-profile editing, switching, relaunch, locked/unavailable store and reset workflows. Real GNOME keyring on an isolated session bus. Excludes media publishing, Wayland GUI, other Secret Service providers and Windows/macOS regression.',
               'executableSha256': sha(exe), 'manifestSha256': sha(manifest_path), 'harnessSha256': sha(__file__),
               'guiHelperSha256': sha(helper), 'failureFixtureSha256': sha(fixture), 'phases': [], 'passed': False}
     save = lambda: (report / 'results.json').write_text(json.dumps(result, indent=2) + '\n')
@@ -141,7 +145,7 @@ def main():
         count += 1
         discovery = report / f'private-control-{count}.json'
         with (report / f'private-app-{count}.log').open('wb') as log:
-            publisher = subprocess.Popen([str(exe), '--settings-dir=' + str(settings), '--local-control', '--local-control-port=0', '--local-control-discovery=' + str(discovery)], stdout=log, stderr=log)
+            publisher = subprocess.Popen([str(launcher), '--settings-dir=' + str(settings), '--local-control', '--local-control-port=0', '--local-control-discovery=' + str(discovery)], stdout=log, stderr=log)
         wait(lambda: discovery.exists() or publisher.poll() is not None, 15)
         assert publisher.poll() is None
         control = json.loads(discovery.read_text())
@@ -158,6 +162,9 @@ def main():
             api('/commands', {'command': 'quit'})
             assert publisher.wait(timeout=10) == 0
         assert not (report / f'private-control-{count}.json').exists()
+        debug = Path(os.environ['XDG_STATE_HOME']) / 'GameCapture/logs/game-capture-debug.log'
+        if debug.exists():
+            shutil.copy2(debug, report / f'private-debug-{count}.log')
         publisher = None
 
     def config():
@@ -219,6 +226,27 @@ def main():
                  ('rtsp-udp', 'RTSP (UDP)', None), ('udp', 'UDP / MPEG-TS (LAN)', None), ('rist', 'RIST', None)]
     try:
         service, collection = start_keyring()
+        if args.first_save_cycles:
+            assert 1 <= args.first_save_cycles <= 10
+            for cycle in range(args.first_save_cycles):
+                settings = report / f'private-settings-{cycle}'
+                start()
+                ui('press', 'Show advanced settings')
+                select('UDP / MPEG-TS (LAN)')
+                destination = f'udp://127.0.0.1:{46000+cycle}'
+                ui('text', 'Output URL', destination)
+                assert not visible_error(), 'First save showed a password-store failure'
+                saved_reference = reference()
+                assert saved_reference.startswith('linux-secret-service-v1:')
+                assert read_saved()['udp']['url'] == destination
+                stop()
+                start()
+                assert json.loads(ui('read-text', 'Output URL')) == destination
+                assert not api('/diagnostics')['app']['capturing']
+                stop()
+                record('fresh-settings-save-relaunch', cycle=cycle+1)
+            result['passed'] = True
+            return 0
         started = time.monotonic()
         start()
         baseline_startup = time.monotonic() - started

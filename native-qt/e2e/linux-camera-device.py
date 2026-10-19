@@ -10,7 +10,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shutil
 import socket
 import subprocess
@@ -128,7 +127,10 @@ def main():
         helper_pids.clear()
     def quit_app():
         nonlocal app
-        ui('quit-menu');assert app.wait(timeout=15)==0 and not discovery.exists();app=None
+        ui('quit-menu');assert app.wait(timeout=15)==0 and not discovery.exists()
+        log=Path(os.environ['XDG_STATE_HOME'])/'GameCapture/logs/game-capture-debug.log'
+        if log.exists():shutil.copy2(log,report/f'publisher-{app.pid}-debug.log')
+        app=None
     def receive(label):
         transport=report/(label+'.ts');before=diag();t=time.monotonic()
         receiver=start(['ffmpeg','-nostdin','-hide_banner','-loglevel','warning','-threads','2',
@@ -152,6 +154,7 @@ def main():
             assert not after['audio']['capture_warning']
         captured=after['video']['frames_captured']-before['video']['frames_captured']
         result.setdefault('captureObservations',[]).append({'name':label,'before':before,'after':after,'elapsedSeconds':elapsed,'capturedFrames':captured})
+        result['profileStorageWarnings']=[r['name'] for r in rows() if 'Output destinations could not be saved' in r['name']]
         save()
         probe=json.loads(subprocess.check_output(['ffprobe','-v','error','-show_streams','-of','json',str(transport)],text=True))
         video=next(s for s in probe['streams'] if s['codec_type']=='video')
@@ -180,13 +183,15 @@ def main():
     print('Report:',report,flush=True);save()
     try:
         launch('initial');live();receive('initial');stop()
-        owner=start(['ffmpeg','-nostdin','-hide_banner','-loglevel','info','-f','v4l2','-input_format','mjpeg',
-                     '-video_size','1280x720','-framerate','30','-i',str(a.camera_device),'-c:v','copy','-f','null','-'],'busy-owner')
-        wait(lambda:'frame=' in (report/'busy-owner.log').read_text(),'Independent camera owner not ready')
+        owner_output=report/'busy-owner.framehash'
+        owner=start(['ffmpeg','-nostdin','-hide_banner','-loglevel','warning','-f','v4l2','-input_format','mjpeg',
+                     '-video_size','1280x720','-framerate','30','-i',str(a.camera_device),'-threads','2','-filter_threads','1',
+                     '-vf','scale=32:18','-pix_fmt','gray','-c:v','rawvideo','-flush_packets','1','-f','framehash',str(owner_output)],'busy-owner')
+        def owner_frames():return sum(line.startswith('0,') for line in owner_output.read_text().splitlines()) if owner_output.exists() else 0
+        wait(lambda:owner_frames()>=3,'Independent camera owner not ready')
         ui('press','Go live')
         wait(lambda:any('Device or resource busy' in r['name'] for r in rows()),'Missing actionable busy-camera error')
         idle();assert owner.poll() is None;shot('busy-error');result['busyCameraRejected']=True
-        def owner_frames():return int(re.findall(r'frame=\s*(\d+)',(report/'busy-owner.log').read_text())[-1])
         before=owner_frames();time.sleep(2);after=owner_frames()
         assert owner.poll() is None and after-before>=30,'Existing camera stream interrupted'
         result['busyOwnerFramesDuringTwoSeconds']=after-before

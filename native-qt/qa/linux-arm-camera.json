@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "scope": "Bounded physical UVC capture on native ARM64; shared Linux format negotiation and portable package robustness",
-  "status": "preview physical camera lifecycle passed; final exact-artifact matrix pending",
-  "recordedAtUtc": "2026-10-19T06:09:30.860047+00:00",
+  "status": "bounded final camera and regression workflows passed on Ubuntu 22.04/24.04; one earlier output-URL persistence failure remains unresolved",
+  "recordedAtUtc": "2026-10-19T06:21:54.180602+00:00",
   "parentLedgers": [
     "linux-parity.json",
     "linux-arm64.json",
@@ -34,7 +34,8 @@
       "sha256": "4284ae6d03a9156377cb8274fc6aa4f130c4692dc3eacf9abdf23e658cfb1c26",
       "error": "AssertionError()",
       "passed": false,
-      "phases": []
+      "phases": [],
+      "diagnosis": "Observer initially expected the window resolution rather than the separate camera resolution; corrected observer. The actual rate defect is captured in the second baseline report."
     },
     {
       "report": "reports/arm-camera-baseline/a79cb39c-a389-45f9-9237-edf603f4f555/results.json",
@@ -58,7 +59,32 @@
           "audioPeak": 0.0,
           "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
         }
-      ]
+      ],
+      "diagnosis": "Application selected raw YUYV 1080p at 5 fps despite available 30 fps MJPEG; fixed by format/cadence ranking."
+    },
+    {
+      "report": "reports/arm-camera-final-host/bca525cd-b8e5-4d29-bd03-85ad97d5c01c/results.json",
+      "sha256": "d29fb9f3b2132c81b90cd411ad18086753225a056b3f2dceedcdc93b32953f04",
+      "passed": false,
+      "error": "AssertionError()",
+      "classification": "unresolved application-or-store behavior",
+      "diagnosis": "Three physical media phases passed, then the saved output URL was absent on relaunch. No secret-store reference remained. Original first-process debug log was overwritten by relaunch, so cause is not established. Observer now preserves logs. Subsequent same-artifact camera, 15 storage scenarios and three fresh-save cycles pass; this failure is not waived."
+    },
+    {
+      "report": "reports/arm-camera-final-noble/21e5359a-afc1-45f7-8239-39867ad4ca0e/results.json",
+      "sha256": "feaf4361408dadeca0fc27fb94a031093324a754736a68d8482139393887a838",
+      "passed": false,
+      "error": "RuntimeError('Independent camera owner not ready')",
+      "classification": "observer defect",
+      "diagnosis": "FFmpeg 6 stream-copy console output omits frame= counters. Independent owner was receiving at speed 1x. Observer now counts decoded framehash records, passing with 60 owner frames across the two-second busy check."
+    },
+    {
+      "report": "reports/arm-camera-final-unavailable/e5ee3845-9155-4a28-b6ca-97faf97d0101/results.json",
+      "sha256": "1a5924833c65a07ffae64482008959553497fb772bf1490722dceaaf2a875194",
+      "passed": false,
+      "error": "RuntimeError('No owned publisher discovery')",
+      "classification": "fixture setup defect",
+      "diagnosis": "Root bind in user mount namespace made /dev/null inaccessible to AppRun. Explicit device bind restores ordinary device access before masking only V4L2 nodes. Corrected packaged workflow passed; no host device changes."
     }
   ],
   "previewPackage": {
@@ -144,11 +170,434 @@
       "scope": "Corrected development library path: platform, POSIX FFmpeg and camera gates pass; no camera stress gate enabled",
       "report": "reports/linux-arm-camera/native-gates-library-path.log",
       "sha256": "3827bc67511c38451d98b810fdf84064e862904ae3ee555b08f185d14686febe"
+    },
+    {
+      "scope": "Final executable linkage gate on Ubuntu 22.04",
+      "report": "reports/linux-arm-camera/final-host-executable-linkage.log",
+      "sha256": "43ac2b8056b401eaaf16b28b8b37225d33d9b5ca92b0841bfa572ee82c0b0cae"
+    },
+    {
+      "scope": "Final executable linkage gate on Ubuntu 24.04",
+      "report": "reports/linux-arm-camera/final-noble-executable-linkage.log",
+      "sha256": "60ae86d67adf04eea86db425421676f997a652f40e0172add6fe1c1b89edf31f"
+    },
+    {
+      "scope": "Exact archived source; production source unchanged",
+      "report": "reports/linux-arm-camera/source-integrity-gate.json",
+      "sha256": "b92737ba14b171623ce49f925858f74542dc94e45a0be10755e73d263af12af0"
     }
   ],
-  "finalPackage": null,
-  "finalTesting": [],
+  "finalPackage": {
+    "package": "native-qt/dist/game-capture-0.2.65~linux.2-arm64-8769adb956b6-d16a9b442b76-portable.tar.gz",
+    "sha256": "b4ecc75941472bc328acf53b79fcbfd79c942796ca023423adecbb4521436caf",
+    "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-8769adb956b6-d16a9b442b76-portable",
+    "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+    "sizeBytes": 71722214,
+    "sourceRevision": "230ab696d2d78eef61c18898f35da58d143b09e0",
+    "sourceTreeSha256": "d16a9b442b765ce867dfa922cfa878080204d3220c51df3bd41576b398729f02",
+    "sourceSha256": "d35957b3450552e5f587ee8fc351751e0fd5cf0500cad616f5ebcf7a48103072",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-8769adb956b6-d16a9b442b76-portable-source.tar.gz",
+    "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+    "abiRequirements": {
+      "GLIBC": "2.35",
+      "GLIBCXX": "3.4.30"
+    },
+    "evidenceSnapshot": "Package source commit includes initial observer/evidence versions. Later observer-only fixes and final evidence are hashed in the reports; production sources are unchanged."
+  },
+  "finalTesting": [
+    {
+      "environment": "Ubuntu 22.04.5 host; physical camera 1920x1080/30 and USB audio",
+      "report": "reports/arm-camera-final-host/87445889-3ac1-43c8-b412-d5ee26af9595/results.json",
+      "sha256": "4588a1e24438cd31f7931ee3d005b1c218f050b2225f2582b36a8f9b3600c677",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "harnessSha256": "c67b153500d173dd8e7ed7d5af8f6cf39c3c2db2eff7ffa0f879219c21f07b9f",
+      "guiHelperSha256": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+      "initialWindowFps": 30,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "hostDeviceUnchanged": true,
+      "busyCameraRejected": true,
+      "busyOwnerFramesDuringTwoSeconds": 59,
+      "profileStorageWarnings": [],
+      "phases": [
+        {
+          "name": "initial",
+          "decodedFrames": 148,
+          "capturedFrames": 192,
+          "elapsedSeconds": 6.401013452006737,
+          "captureFps": 29.99525019585882,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 0.0,
+          "decodedMax": 0,
+          "transportSha256": "90c430103a2fde159b0263f04d56aca5861b4849edd95d1b6a04268b1daeb832",
+          "decodedVideoSha256": "d0bdbf5c59eb0e1b20ff34316bcc9d42dfd743e14a86c2b406904793785053e1",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
+        },
+        {
+          "name": "busy-retry",
+          "decodedFrames": 149,
+          "capturedFrames": 193,
+          "elapsedSeconds": 6.415453624998918,
+          "captureFps": 30.083609247511717,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 0.0,
+          "decodedMax": 0,
+          "transportSha256": "be509775352832012e9ed577195f26a8ff760a02ad3bb7b12d7e7dc075028bd5",
+          "decodedVideoSha256": "ef51c27112fbce64424d3da6d6fed8bcf6e2bb64a0991e7a6bc5ad88f17f427d",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 152,
+          "capturedFrames": 194,
+          "elapsedSeconds": 6.452200715997606,
+          "captureFps": 30.06726054243722,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 0.0,
+          "decodedMax": 0,
+          "transportSha256": "3f5d5635309f58278ba4b789daf793866ba25d8d5115abc6e6bfc2dd2e1c9e15",
+          "decodedVideoSha256": "9f0c341239649f72bdc961260ed458dac9a21d56ff2528f34cad1076c43c406c",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "8681371c5ecd70d5dad73638c2d233dea6dfee07d4dbff2a0741666f2e358fc1"
+        }
+      ],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-final-host-desktop/b85ea4d2-d6de-4ff9-9be4-f99978f1b0b2/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    },
+    {
+      "environment": "Ubuntu 24.04.5 userland, same CPU/kernel; physical camera 1280x720/30 and USB audio",
+      "report": "reports/arm-camera-final-noble/8c7cb579-d399-44b1-a1a0-54dfb4718458/results.json",
+      "sha256": "052697fdf7152d7aef93dec1e1727756b0d60c2794492595c9c0f2f6c3feba1b",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "harnessSha256": "c67b153500d173dd8e7ed7d5af8f6cf39c3c2db2eff7ffa0f879219c21f07b9f",
+      "guiHelperSha256": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+      "initialWindowFps": 30,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "hostDeviceUnchanged": true,
+      "busyCameraRejected": true,
+      "busyOwnerFramesDuringTwoSeconds": 60,
+      "profileStorageWarnings": [],
+      "phases": [
+        {
+          "name": "initial",
+          "decodedFrames": 150,
+          "capturedFrames": 188,
+          "elapsedSeconds": 6.249702827000874,
+          "captureFps": 30.081430302217743,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 5.0,
+          "decodedMax": 5,
+          "transportSha256": "dcaa3e0877e4fb0c17e99d54faf96af9cd3db3ec6c039be6827f5c12abf16d1a",
+          "decodedVideoSha256": "7e66b44ab6e2d7dcfd2dfc40b44fea21ad959935c3620afdcc59595b6106494d",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "b65aadb6f9dc07c7b0bc32c2164a85fea386dfd2dc471f6419ce7fbe21c2cc34"
+        },
+        {
+          "name": "busy-retry",
+          "decodedFrames": 150,
+          "capturedFrames": 188,
+          "elapsedSeconds": 6.248852550001175,
+          "captureFps": 30.085523461417672,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 5.0,
+          "decodedMax": 5,
+          "transportSha256": "5b8ec7753a273f345eca03c1de8f389cc0804c81919a987bbd616e7fb1b4a239",
+          "decodedVideoSha256": "7e66b44ab6e2d7dcfd2dfc40b44fea21ad959935c3620afdcc59595b6106494d",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "b65aadb6f9dc07c7b0bc32c2164a85fea386dfd2dc471f6419ce7fbe21c2cc34"
+        },
+        {
+          "name": "restarted",
+          "decodedFrames": 151,
+          "capturedFrames": 188,
+          "elapsedSeconds": 6.25451182800316,
+          "captureFps": 30.058301138431393,
+          "uniqueDecodedFrames": 1,
+          "decodedMean": 5.0,
+          "decodedMax": 5,
+          "transportSha256": "dc2ed5bd1a93be8beb9a4f7ebba87a943953157923fa0dd6ea56f951ea6430be",
+          "decodedVideoSha256": "18b4ce747a16b77d022e14575961fc7d239a312ddfa7e9c744d961d7c677c061",
+          "audioSamplesPerChannel": 240640,
+          "audioRms": 0.0,
+          "audioPeak": 0.0,
+          "decodedAudioSha256": "b65aadb6f9dc07c7b0bc32c2164a85fea386dfd2dc471f6419ce7fbe21c2cc34"
+        }
+      ],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-final-noble-desktop/5ea423da-bb52-482c-afbc-cfef8f60fba6/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    },
+    {
+      "environment": "Ubuntu 22.04.5 host; moving window and private mixed audio at 1280x720/30",
+      "report": "reports/arm-camera-final-window-host/658e1333-23cc-4805-9db7-5c980d2066d2/results.json",
+      "sha256": "e703456e3a2c55e0f58897380ff023c44cf26be48118241152bc5dac6a56caab",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "initialWindowFps": 30,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 103,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "0f9deab06d812bcb71ae9cf8aa6dacf44763ba36ce1c4fe6432159d39ca8b249",
+          "decodedVideoSha256": "4f8eadf470cd918d242020a53f3892fa73a5c58f00156200d14e38b1e4876c03",
+          "decodedAudioSha256": "e9159c5bc292c5ed25d534c5784e3674323afa5c5c0f396b4c9c7d94dba703e2",
+          "spectralWindows": 8
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 99,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "08d1b62ba2a6f5ad6a57b37fc0dc43b1125df7d0d9a210b56972dcbca3821c42",
+          "decodedVideoSha256": "baceca2deacf6499ac93965f7a7c41d2cbd9ac5acb07d7c43ee440987e1df575",
+          "decodedAudioSha256": "4c5671c18eec6a8a95278f3a8c176c9e2a4522b9a1babdd51e620a58121835d0",
+          "spectralWindows": 8
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 96,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "2faa3a3c3d37bca34c879ab99aefadf4f7ca319f502f3c22dbd0fbc5fc5ced51",
+          "decodedVideoSha256": "d837308478ab239fbe885e3b74bbb5d5602ffc82ed4688324d64fe74844588f1",
+          "decodedAudioSha256": "2f479d7b1729e117131771985e1169835c550c03a972e9d5ff19b2ea109caa64",
+          "spectralWindows": 8
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 97,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "86e4a43941b00946b1472d948c05a41ea9b2cea2562f57c90d25710c31aa2b28",
+          "decodedVideoSha256": "fbc4e7ad3c1b2349bb0d2e04627f7c829a29336dee71a9d0102642c539419390",
+          "decodedAudioSha256": "3e48687a2ad0f7baa562334b6bc5416ccd98b4037b39e048a3d87395469985ca",
+          "spectralWindows": 8
+        }
+      ],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-final-window-host-desktop/0b9f73ad-c7b1-4547-8b98-21f7209207c2/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    },
+    {
+      "environment": "Ubuntu 24.04.5 userland; moving window and private mixed audio at 1280x720/30",
+      "report": "reports/arm-camera-final-window-noble/4495ba72-c045-42de-b149-2f681767bd42/results.json",
+      "sha256": "f88f425a31ba81a75d46127d704ca251f8c02151ceaf3ae3f78fcbdb615bc85d",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "initialWindowFps": 30,
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 91,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "43c85807a8899ab2125f9609baedf8c5a1a30636eda02f9e0b04ea643c90d4e3",
+          "decodedVideoSha256": "09c7a9ebdc4ac17b9906249f30fe2a94bdbe41c4c56cd874d392a1626da93029",
+          "decodedAudioSha256": "198d2ce2422cf785a477bc075b30f6dd762dbc4347a08e115fec9ee75fb48c42",
+          "spectralWindows": 8
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 106,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "20a6d74324d79e059b6fe36e773d7be1d91018e2b8918cd473482e5407bc1f61",
+          "decodedVideoSha256": "18b62cd74d782397a131bb620e9fc7df84c5b04ab955145776f6987fb8a08a70",
+          "decodedAudioSha256": "91bfdb64cde4150f52d3b8ba025007548cc5271b8298f3708ca2a8572b7cfc43",
+          "spectralWindows": 8
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 94,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "caf5b748908618591e84e07b8a86bca22930585a9c0df59e8948fe9408e33060",
+          "decodedVideoSha256": "8245e0081686b9d7a3e60165a1cf7b095a2b1c5cbb148188818016f7429ceb8b",
+          "decodedAudioSha256": "187486f61e33beedadf4d2381213682271f8cb060f9a39dcd364fe97087c77a5",
+          "spectralWindows": 8
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 89,
+          "audioSamplesPerChannel": 227328,
+          "transportSha256": "58cec506df9e23860b2f87b3e4cc49e1b70c476331d6d3aa3a5e586c7bc5162d",
+          "decodedVideoSha256": "f81c103621dd5b1a6b13b44d49ccca49f168f1a885a5cf149f7066d736f17cf5",
+          "decodedAudioSha256": "acf25311cda6883107f1e02151653d28c8708f96756a66e1ab7b5c78d72dd872",
+          "spectralWindows": 7
+        }
+      ],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-final-window-noble-desktop/4c63629c-493e-4958-adbf-0b6b2001931d/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    },
+    {
+      "environment": "Ubuntu 22.04.5 host; camera nodes masked only in owned app namespace",
+      "report": "reports/arm-camera-final-unavailable/dff4243e-7037-4602-9687-2ba638f57197/results.json",
+      "sha256": "f5edd2dd5c53970751be42c388e9139c2744f5f06ff288737561b9e79d2c0955",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "harnessSha256": "14c84393e6781f12536b296297a09c73c96c88d8de9e316d7da980ef10e6f4a6",
+      "guiHelperSha256": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+      "guidance": "No cameras found. Check connection and permissions, then Refresh.",
+      "goLiveDisabled": true,
+      "hostDevicesUnchanged": true,
+      "phases": [],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-final-unavailable-desktop/d826df31-0131-4e18-b7b7-243df97df4a6/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    },
+    {
+      "environment": "Ubuntu 22.04.5 host; 15 private real password-store scenarios",
+      "report": "reports/arm-camera-profile-storage/124a9b12-a1bb-497e-baf0-92d012f36cea/results.json",
+      "sha256": "fe3064119760bbdc0ff688c5a2197609d1f07269ea32823eaf7267069e7c75dd",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "harnessSha256": "b0886a69761f67cee55ef3cee5a43abbeadd3c425044a5ab6dcd00e1d328ca6d",
+      "guiHelperSha256": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+      "phases": [
+        {
+          "name": "ordinary-startup",
+          "startupSeconds": 1.983700361000956
+        },
+        {
+          "name": "seven-profiles-stored",
+          "referenceSha256": "339916035e6702792cdda49d90bb1c2a04d3df300fbb9b34a6a2b812ec9d966a",
+          "itemCount": 1
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        },
+        {
+          "name": "locked-relaunch-and-reset-preserved-reference"
+        },
+        {
+          "name": "store-restart-unlocked-and-relaunch-restored-preserved-profiles"
+        },
+        {
+          "name": "missing-item-not-recreated-by-autosave"
+        },
+        {
+          "name": "corrupt-profile-not-overwritten"
+        },
+        {
+          "name": "ambiguous-reference-not-overwritten"
+        },
+        {
+          "name": "unsupported-reference-preserved"
+        },
+        {
+          "name": "unavailable-store-bounded-and-preserved",
+          "startupSeconds": 4.101361774002726,
+          "firstSaveSeconds": 0.6239430450004875
+        },
+        {
+          "name": "stall-store-bounded-and-preserved",
+          "startupSeconds": 6.401875548996031,
+          "firstSaveSeconds": 3.667878540996753
+        },
+        {
+          "name": "reset-deleted-owned-item-and-reference"
+        },
+        {
+          "name": "no-plaintext-credentials-in-settings-logs-or-keyring-files"
+        }
+      ],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-profile-storage-desktop/ddb3cd88-bd1c-4ae8-8727-c859c36806e0/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    },
+    {
+      "environment": "Ubuntu 22.04.5 host; three additional fresh-settings save/relaunch cycles",
+      "report": "reports/arm-camera-storage-fresh/ad4f6931-4705-4660-92ae-6e3a13f33daa/results.json",
+      "sha256": "6b50cd08c4d645eb78ac2d388e5218655b56cac9dfc16ff885044de87f6a89ad",
+      "passed": true,
+      "executableSha256": "4957682ff9dc04b966560d3a131b4452a32fbec0834c022d7d9960a70db980fa",
+      "manifestSha256": "32a36b48f25504965876e51a56265ac7df7c12a9a8775db808a198a77d358dd0",
+      "harnessSha256": "8ddf136488f4c77c3f034e1b4000f8ccbf59587eac696bc5293fbb88d3efcfe7",
+      "guiHelperSha256": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+      "phases": [
+        {
+          "name": "fresh-settings-save-relaunch",
+          "cycle": 1
+        },
+        {
+          "name": "fresh-settings-save-relaunch",
+          "cycle": 2
+        },
+        {
+          "name": "fresh-settings-save-relaunch",
+          "cycle": 3
+        }
+      ],
+      "ownedDesktop": {
+        "report": "reports/arm-camera-storage-fresh-desktop/e9627a86-1107-4a2e-a16f-41c248d8a360/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c"
+      }
+    }
+  ],
   "remaining": [
+    "Single earlier final-artifact output URL first-save/relaunch failure remains unexplained; subsequent storage coverage passed, but the failure is retained and not waived.",
     "Current HDMI input is black and silent: moving-image/color/audio fidelity, mute with audible HDMI, A/V sync and sustained performance unqualified",
     "Physical desktop/Wayland portals, unplug/replug, permission denial, other cameras/formats/drivers and Raspberry Pi unqualified",
     "amd64 packaged camera regression and hardware encoders unqualified; Windows/macOS production code unchanged"

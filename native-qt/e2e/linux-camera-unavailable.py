@@ -57,7 +57,9 @@ def main():
             return json.load(response)
     try:
         with (report / 'publisher.log').open('wb') as log:
-            command = ['bwrap', '--die-with-parent', '--unshare-user', '--bind', '/', '/']
+            # Preserve normal device access (including AppRun's /dev/null)
+            # before masking only the camera nodes in this mount namespace.
+            command = ['bwrap', '--die-with-parent', '--unshare-user', '--bind', '/', '/', '--dev-bind', '/dev', '/dev']
             for device in devices:
                 command += ['--ro-bind', '/dev/null', str(device)]
             command += ['--', str(launcher), '--settings-dir=' + str(report / 'private-settings'), '--local-control', '--local-control-port=0', '--local-control-discovery=' + str(discovery)]

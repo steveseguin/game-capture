@@ -117,8 +117,8 @@ encoded stream advertised 30 fps.
 
 Linux format selection now checks the driver's frame intervals for each format
 at the negotiated size. It preserves the closest resolution, prefers modes
-that meet the requested frame rate, and retains raw video when rates are equal
-or enumeration is unavailable. Fractional 29.97 fps counts as meeting a 30 fps
+that meet the requested frame rate, and retains raw video for equal or
+unknown-rate ties. Fractional 29.97 fps counts as meeting a 30 fps
 request. MJPEG is considered only when its decoder is available; the actual
 negotiated interval is logged and known shortfalls produce a warning. This
 reuses the V4L2 backend on both ARM and amd64. Windows and Mac are unaffected.
@@ -140,3 +140,35 @@ capture cadence and lifecycle results do not qualify moving HDMI content,
 color accuracy, audible input, A/V synchronization or sustained performance.
 The separate moving-window and mixed-tone workflow remains the content oracle;
 it accepts `--resolution=1280x720` to exercise the ARM first-run window profile.
+
+The current camera development artifact is
+`game-capture-0.2.65~linux.2-arm64-8769adb956b6-d16a9b442b76-portable.tar.gz`
+in `native-qt/dist/`, built from commit
+`230ab696d2d78eef61c18898f35da58d143b09e0`. Its SHA-256 is
+`b4ecc75941472bc328acf53b79fcbfd79c942796ca023423adecbb4521436caf`.
+Extract it and run `./AppRun`.
+
+The final archive passed physical-camera GUI/lifecycle workflows at 1080p/30
+on the Ubuntu 22.04 Jetson host and at 720p/30 in Ubuntu 24.04 userland on the
+same CPU/kernel. Actual captured cadence was about 30 fps in all six received
+phases. A separate owner continued decoding during rejected busy-camera starts;
+explicit retry, Stop/restart, saved settings, Quit, camera FD and output helper
+retirement passed. The no-camera workflow also passed with nodes masked only
+inside the application's owned namespace.
+
+The same archive also passed the 1280x720/30 moving-window workflow on both
+userlands: mixed, muted, unmuted and restarted media were independently decoded,
+with source identities and stereo tone frequencies checked. Settings, idle
+relaunch, File-menu Quit, capture/audio/helper cleanup and bundled-library use
+passed. This establishes bounded regression coverage alongside the physical
+adapter's black/silent-input results.
+
+One earlier same-archive run lost its saved output URL on relaunch; the cause
+remains unexplained and the failure is retained. The subsequent camera run,
+all 15 output-profile storage scenarios (including locked, missing, corrupt,
+unavailable and stalled stores), and three additional fresh-settings save/
+relaunch cycles passed. These later passes do not erase the initial failure.
+The observer now preserves application logs before relaunch, and counts decoded
+frames from the independent camera owner instead of parsing FFmpeg's
+version-dependent console progress. Production sources still match the archive;
+later commits update observers, documentation and evidence only.
