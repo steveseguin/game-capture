@@ -54,13 +54,13 @@
       "id": "microphone",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, long-run clock drift remain. Native Wayland GUI explicit owned input selection, mute/unmute, input removal, video continuity, no silent reopen, mixing and persisted settings passed. This remains virtual-device routing evidence, not physical microphone qualification. X11 packaged input-removal notice now stays visible while video continues and clears on Stop; this adds no physical microphone qualification. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open."
+      "remaining": "Packaged CLI and X11 GUI owned virtual input selection, isolated decoded stereo, silence, mute/unmute, mixing, input removal with video continuing, and no silent replacement/reopening passed. Physical microphone signal, permissions, default-input changes, audio-server loss, long-run clock drift remain. Native Wayland GUI explicit owned input selection, mute/unmute, input removal, video continuity, no silent reopen, mixing and persisted settings passed. This remains virtual-device routing evidence, not physical microphone qualification. X11 packaged input-removal notice now stays visible while video continues and clears on Stop; this adds no physical microphone qualification. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_external_output_microphone_checkpoint: actual GUI mute/unmute with moving video passes for UDP/AAC and WHIP/Opus using a virtual primary microphone in owned GNOME; other protocols/mixes and physical inputs remain open."
     },
     {
       "id": "audio-codecs",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged Opus/PCM/RED mono/stereo, decoded channel content, 128 kbps Opus, authenticated 96 kbps override/restoration, simultaneous Opus fallback viewers and RTCP sender reports passed. Broader receiver compatibility, packet loss/reconnect and endurance remain."
+      "remaining": "Packaged Opus/PCM/RED mono/stereo, decoded channel content, 128 kbps Opus, authenticated 96 kbps override/restoration, simultaneous Opus fallback viewers and RTCP sender reports passed. Broader receiver compatibility, packet loss/reconnect and endurance remain. See linux_external_output_microphone_checkpoint: actual GUI mute/unmute with moving video passes for UDP/AAC and WHIP/Opus using a virtual primary microphone in owned GNOME; other protocols/mixes and physical inputs remain open."
     },
     {
       "id": "software-encoding",
@@ -90,13 +90,13 @@
       "id": "whip",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged 640x360/30 software H264/stereo Opus passed authenticated HTTP/HTTPS, moving/static content, silence, late viewer, server restart and session deletion. Local UDP TURN advertised through OPTIONS and POST passed with relay-only offers and relayed recovery. Silent advertised STUN now succeeds with 30-second Linux gathering allowance; pending ICE cancellation took 410 ms. Unauthorized endpoints, untrusted TLS, malformed/oversized answers and pending POST cancellation passed. HTTPS trust root was isolated in a publisher mount namespace; host trust unchanged. Redirects and origin credential rules, public CA/WAN/TURN TCP/TLS, no-audio/mono, packet loss, default 720p60 and endurance remain. Packaged X11 GUI at 960x540/30 passed authenticated HTTP WHIP with saved profile/relaunch, media phases, server recovery, Stop/Go live and successful session DELETE; GUI TLS/TURN combinations remain unqualified. Native Wayland GUI authenticated HTTP WHIP now passed saved-profile relaunch without capture, H264/stereo Opus/silence/late viewer, server recovery, Stop/session DELETE, fresh-consent restart and cleanup. GUI TLS/TURN/WAN, 720p60/endurance and other combinations remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open."
+      "remaining": "Packaged 640x360/30 software H264/stereo Opus passed authenticated HTTP/HTTPS, moving/static content, silence, late viewer, server restart and session deletion. Local UDP TURN advertised through OPTIONS and POST passed with relay-only offers and relayed recovery. Silent advertised STUN now succeeds with 30-second Linux gathering allowance; pending ICE cancellation took 410 ms. Unauthorized endpoints, untrusted TLS, malformed/oversized answers and pending POST cancellation passed. HTTPS trust root was isolated in a publisher mount namespace; host trust unchanged. Redirects and origin credential rules, public CA/WAN/TURN TCP/TLS, no-audio/mono, packet loss, default 720p60 and endurance remain. Packaged X11 GUI at 960x540/30 passed authenticated HTTP WHIP with saved profile/relaunch, media phases, server recovery, Stop/Go live and successful session DELETE; GUI TLS/TURN combinations remain unqualified. Native Wayland GUI authenticated HTTP WHIP now passed saved-profile relaunch without capture, H264/stereo Opus/silence/late viewer, server recovery, Stop/session DELETE, fresh-consent restart and cleanup. GUI TLS/TURN/WAN, 720p60/endurance and other combinations remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_external_output_microphone_checkpoint: actual GUI mute/unmute with moving video passes for UDP/AAC and WHIP/Opus using a virtual primary microphone in owned GNOME; other protocols/mixes and physical inputs remain open."
     },
     {
       "id": "mux-outputs",
       "required": true,
       "status": "bounded-e2e-passed",
-      "remaining": "Packaged CLI 640x360/30 software H264 + 192 kbps configured AAC stereo passed RTMP, encrypted SRT, RTSP TCP/UDP, UDP MPEG-TS and RIST. Moving/static/silence, decoded identities and timestamps, server restart (RTMP/SRT/RTSP), late direct receivers and owned helper retirement passed. RTMP SIGSTOP helper watchdog recovery passed. RTMPS/TLS/authentication, WAN/loss, no-audio/mono/default AAC variants, A/V calibration, default 720p60 and endurance remain. Custom PATH FFmpeg N-122322 AAC/FLV EINVAL reproduces independently with max_interleave_delta=100000; custom helper compatibility remains open. Linux defaults to the declared distribution helper, with explicit overrides retained. Packaged X11 GUI at 960x540/30 now passed for all six protocols: saved profile/relaunch, moving/static/silence, restart or late receiver, RTMP helper stall, Stop/Go live and helper cleanup. All six outputs now passed native GNOME Wayland GUI destination editing, saved-profile relaunch, decoded H264/stereo AAC/silence, recovery or late direct receiver, Stop/fresh-portal restart and helper retirement. RTMP helper-stall recovery also passed; separate repeated RTSP cases verified publisher TCP/UDP transport against the actual owned session reported by the server. No WAN/TLS/physical-input/endurance qualification is added. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open."
+      "remaining": "Packaged CLI 640x360/30 software H264 + 192 kbps configured AAC stereo passed RTMP, encrypted SRT, RTSP TCP/UDP, UDP MPEG-TS and RIST. Moving/static/silence, decoded identities and timestamps, server restart (RTMP/SRT/RTSP), late direct receivers and owned helper retirement passed. RTMP SIGSTOP helper watchdog recovery passed. RTMPS/TLS/authentication, WAN/loss, no-audio/mono/default AAC variants, A/V calibration, default 720p60 and endurance remain. Custom PATH FFmpeg N-122322 AAC/FLV EINVAL reproduces independently with max_interleave_delta=100000; custom helper compatibility remains open. Linux defaults to the declared distribution helper, with explicit overrides retained. Packaged X11 GUI at 960x540/30 now passed for all six protocols: saved profile/relaunch, moving/static/silence, restart or late receiver, RTMP helper stall, Stop/Go live and helper cleanup. All six outputs now passed native GNOME Wayland GUI destination editing, saved-profile relaunch, decoded H264/stereo AAC/silence, recovery or late direct receiver, Stop/fresh-portal restart and helper retirement. RTMP helper-stall recovery also passed; separate repeated RTSP cases verified publisher TCP/UDP transport against the actual owned session reported by the server. No WAN/TLS/physical-input/endurance qualification is added. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_external_output_microphone_checkpoint: actual GUI mute/unmute with moving video passes for UDP/AAC and WHIP/Opus using a virtual primary microphone in owned GNOME; other protocols/mixes and physical inputs remain open."
     },
     {
       "id": "alpha",
@@ -108,7 +108,7 @@
       "id": "gui",
       "required": true,
       "status": "partial-e2e-passed",
-      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission now passed linux_local_window_preview_checkpoint; other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Camera disconnect and initial permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial connection rejection/TLS timeout now return to visible failure with Go live available and capture stopped on both desktops; explicit retry produces decoded HQ/LQ video and stereo audio. Local-control Stop through GUI startup and actual File-menu Quit now cancel a pending initial TLS handshake promptly on both desktops. Cancellation status and fresh decoded retry pass; the shared Starting button remains disabled. Post-TLS startup cancellation races and other fault modes remain open. Native GNOME Wayland physical camera selection, live/restarted preview identities, idle/Stop clearing, publication and persisted settings without capture now pass on an owned virtual monitor; matching X11 camera regression passed. Camera initial permission errors and hotplug remain open. Camera busy-device error visibility, enabled retry, isolation of an existing publisher and explicit successful retry after release now pass on both desktops, including a second application launch with saved settings. Camera permission failure no longer disappears during automatic source refresh on Linux. Packaged X11 and native Wayland verify retained visible error through 6.5 seconds of denial, disabled startup after source removal, explicit reselection/retry and full preview/Stop/restart/relaunch. Other permission mechanisms/initial denial and hotplug remain open. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_update_notification_checkpoint: Linux now requires a matching uploaded amd64 DEB from the fixed repository before advertising an update. Nine packaged isolated-X11 footer/cache/HTTPS/failure/relaunch workflows pass; browser handoff, actual release/install delivery and native desktop integration remain open. See linux_update_browser_checkpoint: packaged fixed Releases link opens the actual public page through the system default-browser handoff on X11 (mouse/keyboard) and owned GNOME Wayland (keyboard); actual Linux release/install delivery and physical desktop remain open. See linux_update_https_checkpoint: packaged cold compatible-release TLS/cache path and eight related certificate/version/redirect/failure/relaunch cases pass using an isolated HTTPS fixture with peer verification intact and host trust unchanged. Actual public Linux distribution/install delivery remains open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open."
+      "remaining": "X11 packaged audio source/input selection, Go live/Stop streaming, microphone mute/unmute and gains passed. Exact audio source/input and gains persisted across relaunch without starting capture; idle/stopped microphone status corrected and verified. Broader Wayland GUI coverage, other tray hosts/host-loss recovery, update links, permission errors and full keyboard/accessibility parity remain. Linux FFmpeg help and optional custom VP9/AV1 helper fields corrected; packaged custom helper/path/options and Go live/Stop passed for both codecs. Audio-app selection, refresh, stale selection and explicit reselection passed with actual Qt controls; app selection is session-specific. All seven external output types now passed actual X11 Qt destination editing, saved-profile relaunch without capture, Go live/Stop, independent media reception, recovery and cleanup. Native Wayland GUI source/settings selection and H264/no-audio VDO.Ninja publishing now passed, including portal cancellation/retry and Stop/fresh-portal/restart. Qt 6.4 direct AT-SPI focus is unsupported; the fixture uses verified normal keyboard navigation. Native Wayland GUI source-loss status, re-enabled Go live, explicit replacement source and decoded restart passed. Pending startup cancellation remains unqualified because of the GNOME portal crash. Native Wayland GUI audio selection, explicit app selection/refresh/stale-reselection, mute/unmute, gains and persisted audio settings without capture now passed. Other tray hosts/host-loss recovery, full keyboard/accessibility, remaining errors and other output combinations stay open. Communications-output/device selection, missing-choice validation, refresh/restart and persisted settings now passed on X11 and Wayland; its row is hidden in other audio modes. Persistent Linux audio notices now sit above scrolling settings and independently retain primary/microphone failures; X11 combined-loss and native 800x600 Wayland missing-output screenshots verified visibility. Fallback microphone primary meter labels passed X11 packaged GUI. Broader accessibility and other error paths remain open. X11 covered-window idle/live preview and native Wayland live/resized preview, Stop/source-loss clearing, accessible permission guidance and explicit replacement/restart now passed actual screenshot identities. Wayland preview before publishing after permission now passed linux_local_window_preview_checkpoint; other display scales, other tray hosts and full keyboard/accessibility remain open. GNOME Wayland tray close/hide/show, live/idle icon, copied-link paste, Stop, hidden Go Live with fresh portal, and hidden-live Quit now passed from the final package. Wayland tray copy restores the app window and writes once it gains focus; automatic completion passed on GNOME 46. Private X11 without a tray host disabled close-to-tray and exited cleanly on window close while publishing. Other tray hosts, host disappearance/reappearance, launch-again reopen, minimized-window and denied-focus/deferred-copy cancellation, Open Share Link, and Windows/macOS regression remain open. Physical Cam Link X11 GUI camera preview, Stop/restart and saved settings now passed from the final package, including actual preview pixel identities and accessible camera guidance. Native Wayland window-preview/source-mode regression passed on the same binary. No-camera X11 UI also passed with devices hidden only in the owned publisher namespace: Linux guidance fits the source list, Go live is disabled and no capture starts. Camera disconnect and initial permission-denied UX remain open. Linux camera help now describes Linux access rather than Windows Settings. All seven external output workflows now passed native GNOME Wayland GUI controls, saved destinations after relaunch, fresh screen-sharing consent, decoded media, Stop/restart and cleanup. Remaining GUI TLS/TURN/WAN, network/permission failure combinations and broad accessibility remain open. Conditional qualification now passed pending Stop/retry, pending Quit, and Cancel/preview/publishing regression using upstream GNOME 46.2 plus fixes 9a4dffaf and 056029c6. The temporary service was restored to the unchanged distribution binary afterward. A maintained Ubuntu delivery path for the portal fix remains required; the installed 46.2-0ubuntu1 failure is not waived. Linux system CPU/RAM display now uses the shared health contract with a host-wide procfs sampler. Exact packaged X11 and native Wayland GUI streaming/preview workflows displayed numeric percentages and memory values matched free(1). Protected room configuration now passed through actual Qt controls on X11 and native Wayland, including explicit microphone, room/password/control token, enabled/disabled controls and Stop/restart with decoded media. The shared control-token field now has an accessible name. Room settings relaunch, HQ-only mode and protected share-link browser launch subsequently passed on both desktops, as recorded in their checkpoints. Protected standalone/room Copy Link via focused Tab/Space and Open Link through actual system launcher/private Chrome association now passed on X11 and native Wayland. Direct AT-SPI Copy without a fresh compositor input event retained a stale clipboard after Wayland portal restart; follow-up accessibility qualification remains required. No production clipboard behavior changed or waived. Packaged X11 and native Wayland room signaling outages now preserve live media and show reconnecting/reconnected status while Stop stays available; full shared recovery, late joins and GUI restart passed. Packaged Stop and File-menu Quit (X11) or GNOME tray Quit (Wayland) now pass during sustained refusal and stalled TLS reconnects, without restoring signaling; capture/media shutdown and fresh decoded restart are verified. Initial connection rejection/TLS timeout now return to visible failure with Go live available and capture stopped on both desktops; explicit retry produces decoded HQ/LQ video and stereo audio. Local-control Stop through GUI startup and actual File-menu Quit now cancel a pending initial TLS handshake promptly on both desktops. Cancellation status and fresh decoded retry pass; the shared Starting button remains disabled. Post-TLS startup cancellation races and other fault modes remain open. Native GNOME Wayland physical camera selection, live/restarted preview identities, idle/Stop clearing, publication and persisted settings without capture now pass on an owned virtual monitor; matching X11 camera regression passed. Camera initial permission errors and hotplug remain open. Camera busy-device error visibility, enabled retry, isolation of an existing publisher and explicit successful retry after release now pass on both desktops, including a second application launch with saved settings. Camera permission failure no longer disappears during automatic source refresh on Linux. Packaged X11 and native Wayland verify retained visible error through 6.5 seconds of denial, disabled startup after source removal, explicit reselection/retry and full preview/Stop/restart/relaunch. Other permission mechanisms/initial denial and hotplug remain open. See linux_local_window_preview_checkpoint: Bounded packaged E2E passed on native GNOME Wayland and isolated X11: explicit local preview, real permission Cancel/retry, no audio recording or publishing during preview, actual screenshot identities, Stop/source-mode/source-loss retirement, same PipeWire node and serial on Go live, decoded moving/static/resized/late/restarted media, and File-menu Quit. Initial-candidate idle relaunch passed. Final package repeats full Wayland and X11 workflows and verifies permission-pending is not reported as active. The initial candidate passed Quit/idle relaunch; final-package Quit succeeded but relaunch failed when GNOME Shell crashed. Five of six workflow attempts passed. Final-package idle relaunch remains failed after the newly observed GNOME Shell SIGSEGV; its trigger needs investigation and a successful rerun on a working desktop. Programmatic Stop/Quit during pending permission remains unqualified on installed GNOME 46.2 because Request.Close crashes that portal backend; maintained fix delivery is still required. Other compositors/scales, preview promotion with audio and external outputs, failed-promotion recovery, Windows/macOS runtime, calibrated A/V, 60 fps delivery and final-package endurance remain open. No parity row is waived. See linux_gnome_popup_crash_checkpoint: File-menu Quit/relaunch crash strongly matches Mutter3501 / Ubuntu2125460 (Noble Triaged). Upstream lifecycle fix identified; maintained delivery and packaged rerun remain required. Isolated reproduction fixture remained incomplete; no successful application workaround is claimed. See linux_audio_server_recovery_checkpoint: Exact existing11a590 DEB passed two X11 Qt GUI workflows with private PipeWire1.0.5/Pulse service and WirePlumber0.4.17, hardware monitors disabled. Real decoded stereo440/880Hz system audio plus1200Hz virtual-microphone mix, mute/unmute, half gains, silence and late viewer passed. Stopping all publisher audio services retains both visible warnings, retires audio capture and stops audio packets while decoded moving video continues. Services returning do not silently reopen inputs. Explicit Stop/Go live restores both decoded sources and clears warnings. Second workflow additionally stops successfully while services remain unavailable; saved mix/gains relaunch idle without capture. Bounded owned-server X11 evidence only. Native Wayland, physical microphones, selected-process audio and external-output server-loss combinations, startup while server unavailable, Quit during outage, server stalls, permission/auth failures, actual PulseAudio daemon fallback, calibrated timing and endurance remain unqualified. All other full-goal requirements remain. See linux_owned_menu_quit_checkpoint: three idle File-menu Quit/relaunch cycles passed in owned headless GNOME with reviewed menu screenshots. This narrow result does not resolve the native active-preview crash; owned AT-SPI frame enumeration remains unavailable. See linux_owned_active_preview_checkpoint: two packaged active-preview File-menu Quit/relaunch cycles passed in an owned GNOME46 software compositor, including real grant, pixel identities, settings popups and Cancel/retry. Native compositor crash remains unresolved; no production workaround is claimed. See linux_audio_input_retention_checkpoint: Linux now preserves a saved explicit microphone while its audio service is unavailable. Packaged X11 startup, real File-menu Quit during outage, idle persistence, explicit decoded recovery and primary-microphone removal passed. Native Wayland, physical inputs, other fault combinations and endurance remain open. See linux_owned_accessibility_checkpoint: corrected GTK/Qt accessibility-root selection enables the standard packaged Cancel/retry/active-preview/File-menu Quit/idle-relaunch workflow in isolated GNOME; X11 microphone GUI regression also passes. This supersedes the isolated AT-SPI limitation, not the unresolved physical GNOME crash or installed portal failure. See linux_wayland_pulse_recovery_checkpoint: current packaged isolated-GNOME GUI passes Pulse-only loss with unchanged video node, visible audio warnings, Stop/Quit while unavailable, saved-input startup while down, and explicit decoded mixed-audio recovery after restoration. Whole PipeWire loss, physical desktop/device qualification and existing GNOME/portal failures remain open. See linux_pipewire_fatal_warning_checkpoint: full owned PipeWire outage exposed a stale audio banner after fatal capture cleanup; Linux UI refresh fix passes packaged automatic retirement/retry and Quit/relaunch with fresh portal and decoded mixed audio/video after service restoration. No automatic capture reopen. X11 microphone warning/removal regression passes. Physical desktop, pending-permission/preview outage and other service-fault variants remain unqualified; original GNOME/portal failures remain open. See linux_preview_mixed_audio_checkpoint: packaged owned-GNOME local preview with system/microphone mix configured opens no recording streams and publishes no packets, verifies actual preview pixels/Stop clearing, then promotes the same grant to decoded mixed audio/video. Subsequent whole-PipeWire and Pulse-only outage recovery pass. Preview faults before promotion, failed promotion, other audio/output modes and physical desktop/device coverage remain open. See linux_update_notification_checkpoint: Linux now requires a matching uploaded amd64 DEB from the fixed repository before advertising an update. Nine packaged isolated-X11 footer/cache/HTTPS/failure/relaunch workflows pass; browser handoff, actual release/install delivery and native desktop integration remain open. See linux_update_browser_checkpoint: packaged fixed Releases link opens the actual public page through the system default-browser handoff on X11 (mouse/keyboard) and owned GNOME Wayland (keyboard); actual Linux release/install delivery and physical desktop remain open. See linux_update_https_checkpoint: packaged cold compatible-release TLS/cache path and eight related certificate/version/redirect/failure/relaunch cases pass using an isolated HTTPS fixture with peer verification intact and host trust unchanged. Actual public Linux distribution/install delivery remains open. See linux_preview_service_loss_checkpoint: mixed-audio local preview now passes whole-PipeWire retirement/retry and Pulse-only preview continuity plus video-only promotion while audio is down, followed by fresh-grant decoded mixed-media recovery. Pending-permission/core-startup/fatal-promotion failures and physical variants remain open. See linux_core_unavailable_startup_checkpoint: packaged saved-settings startup with whole PipeWire unavailable passes both Preview and direct Go live permission/failure paths, then explicit fresh-grant mixed-media recovery. Pending-permission outages, fatal promotion failures and physical variants remain open. See linux_preview_helper_preflight_checkpoint: packaged missing-helper rejection preserves active local preview without audio/publication; corrected H.264 settings promote the same grant to decoded mixed media. Fatal encoder initialization, helper runtime failures and physical variants remain open. See linux_preview_audio_routes_checkpoint: packaged owned-GNOME preview now passes communications output plus microphone and selected-app routing, with no audio/publication during preview, same-grant promotion, isolated decoded media and route-specific recovery. Physical/continuous timing/native-stream/external-output preview variants remain open. See linux_preview_external_outputs_checkpoint: all seven external outputs now pass explicit local preview and same-grant promotion with virtual primary microphone, received media and transport/profile/Stop-restart checks in owned GNOME. Other audio mixes, physical/WAN/timing/failure variants remain open. See linux_external_output_microphone_checkpoint: actual GUI mute/unmute with moving video passes for UDP/AAC and WHIP/Opus using a virtual primary microphone in owned GNOME; other protocols/mixes and physical inputs remain open."
     },
     {
       "id": "profiles",
@@ -33871,5 +33871,245 @@
       "classification": "Package/archive identity, 131 archived production inputs, JavaScript syntax and whitespace gates; not application testing."
     },
     "remaining": "Isolated software GNOME, local receivers and virtual primary microphone only. Other external-output audio mixes, physical inputs/desktop, preview promotion failure/races, WAN/TLS/TURN combinations, calibrated A/V, default 720p60/Wayland 60 fps/endurance and hardware remain open. Original installed portal pending-cancellation and physical Mutter active-preview Quit/relaunch failures, delivery and Windows/macOS runtime gaps remain unresolved. Full 23-row scope retained."
+  },
+  "linux_external_output_microphone_checkpoint": {
+    "timestamp": "2026-10-19T01:46:45.163985+00:00",
+    "passed": true,
+    "classification": "Packaged owned-GNOME GUI E2E: primary microphone mute/unmute while external-output video keeps moving. QA-only changes.",
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-64fd58d01163-a9235e93e1ea.deb",
+      "sha256": "f6e5f12448025c89c9545f0cae7bc910e4a8283a9e7200e34eb7de6697673874",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-64fd58d01163-a9235e93e1ea",
+      "manifestSha256": "43617759a6d05b4b62deea396bad52f26b3c22c3827342cd1d9557355a4af2c0"
+    },
+    "executableSha256": "64fd58d011632009ac4d4ef5e1c4c0b7cf1b9e0f3af3557f4cda52524faa5752",
+    "qualification": "UDP MPEG-TS H.264/AAC and authenticated local HTTP WHIP H.264/Opus pass actual GUI microphone mute/unmute. Source tone and video remain running: independent receivers verify silence while muted, restored left/right 440/880 Hz tones after unmute, and changing video identities in both phases. Existing preview privacy/same-grant promotion, saved encrypted profiles, late reception, silence/static pacing, transport recovery where applicable, Stop/fresh-consent restart and cleanup checks pass.",
+    "attempts": [
+      {
+        "kind": "mux",
+        "handle": 40137,
+        "terminalExitCode": 1,
+        "reports": {
+          "workflow": "native-qt/qa/reports/linux-output-microphone-mux/07896807-f5ac-4db7-8768-3e3424d83d66/results.json",
+          "compositor": "native-qt/qa/reports/linux-output-microphone-mux-compositor/305591b1-808b-4b46-ba8b-31ae9abb39a4/results.json",
+          "keyring": "native-qt/qa/reports/linux-output-microphone-mux-keyring/810ab1be-ccfa-4cf2-b734-d339e054eaaf/results.json"
+        },
+        "outcome": "Application and keyring workflows passed; outer fixture exited 1 removing a transient owned document-portal FUSE mount. Original report predates cleanup failure and is not a fully passing run.",
+        "reportHashes": {
+          "workflow": "a3c74d1b0c424cff7beeb0b9d8620afc879e8716b951e180fb410b50286aa705",
+          "compositor": "2c791d10a05854e28b06fdd8778fee1c1f70f79ab87512cab302333fb2c9185c",
+          "keyring": "0d73ecb592498a3939f77542c7d022adf037f0488e9051548feae3b771e758bb"
+        }
+      }
+    ],
+    "workflows": [
+      {
+        "kind": "mux",
+        "reports": {
+          "workflow": {
+            "file": "native-qt/qa/reports/linux-output-microphone-mux/db86ffd8-fa96-432a-a359-8dfb5e980a3c/results.json",
+            "sha256": "0f6f08768d3501d057ae4214437d1306e86626f1896d42b842c35c0937d8aabe"
+          },
+          "compositor": {
+            "file": "native-qt/qa/reports/linux-output-microphone-mux-compositor/ffd37169-a51c-400f-b6bf-22cea5740e20/results.json",
+            "sha256": "7caae0c6a5d720e89950664d48ee5a170134bb2f1f493aac1fadb32b2930d652"
+          },
+          "keyring": {
+            "file": "native-qt/qa/reports/linux-output-microphone-mux-keyring/c74e20d0-b3f5-48f2-86d3-8f7c26876a1a/results.json",
+            "sha256": "7b35f4540e5901dfd195ce3a46fb2000bec68dc20b9878fb781f7c28ecb0810f"
+          }
+        },
+        "media": {
+          "protocol": "udp",
+          "phases": [
+            {
+              "phase": "moving",
+              "frames": 179,
+              "distinctFrames": 179,
+              "file": "udp-software-moving.mkv",
+              "sha256": "47cb9a522b35d791d86ff04ab96f466c57437f98203f949cf16dfd6609462b52",
+              "audio": [
+                {
+                  "rms": 0.105881351054343,
+                  "tones": [
+                    -17.725961601048144,
+                    -78.49557195897619
+                  ]
+                },
+                {
+                  "rms": 0.10581944774249027,
+                  "tones": [
+                    -77.15094255048203,
+                    -22.014280048173624
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "gui-muted-moving",
+              "frames": 119,
+              "distinctFrames": 119,
+              "file": "udp-software-gui-muted-moving.mkv",
+              "sha256": "f761261fe9de7bf985f156892c6fa799215d7601c25a511c97bda6c2dd47146e",
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "gui-unmuted-moving",
+              "frames": 119,
+              "distinctFrames": 119,
+              "file": "udp-software-gui-unmuted-moving.mkv",
+              "sha256": "ee2871fb7d9367e44b1f956086af128b900325315ba9d50a05fefb6bd8b6cd51",
+              "audio": [
+                {
+                  "rms": 0.10558308440088905,
+                  "tones": [
+                    -20.887802620722038,
+                    -82.7028532183133
+                  ]
+                },
+                {
+                  "rms": 0.10560006712407126,
+                  "tones": [
+                    -81.18020574554366,
+                    -31.21011994941524
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "static-silence",
+              "frames": 90,
+              "distinctFrames": 1,
+              "file": "udp-software-static-silence.mkv",
+              "sha256": "6dd0a884295a0e956d61cac4e548706648e55ad7f1252037edf5a81dcac70425",
+              "audio": [
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                },
+                {
+                  "rms": 0,
+                  "tones": [
+                    -240,
+                    -240
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "late-receiver",
+              "frames": 119,
+              "distinctFrames": 119,
+              "file": "udp-software-late-receiver.mkv",
+              "sha256": "efed12edf545592f47e03a9e9ccc017be77774ad30372b618adb8205225d55ae",
+              "audio": [
+                {
+                  "rms": 0.10568691862183383,
+                  "tones": [
+                    -19.46231953768314,
+                    -72.92747683936126
+                  ]
+                },
+                {
+                  "rms": 0.10576499359472658,
+                  "tones": [
+                    -78.33967561018396,
+                    -31.617517105740976
+                  ]
+                }
+              ]
+            },
+            {
+              "phase": "gui-restarted",
+              "frames": 119,
+              "distinctFrames": 119,
+              "file": "udp-software-gui-restarted.mkv",
+              "sha256": "fcfebddb767caf5e586e891cc3f7a25dd6059cb198933e903c8be5f42d2f093e",
+              "audio": [
+                {
+                  "rms": 0.1057450661651367,
+                  "tones": [
+                    -17.07755025712348,
+                    -83.96114128433744
+                  ]
+                },
+                {
+                  "rms": 0.10564057522083985,
+                  "tones": [
+                    -75.84490009795576,
+                    -18.25259554001503
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "kind": "whip",
+        "reports": {
+          "workflow": {
+            "file": "native-qt/qa/reports/linux-output-microphone-whip/5f74d0b0-49fd-4aef-9e28-710835a2f02b/results.json",
+            "sha256": "ce1c6bbf435437f12a99a589b8b6a6520a803589c12d95c911c6e4b3055f7752"
+          },
+          "compositor": {
+            "file": "native-qt/qa/reports/linux-output-microphone-whip-compositor/cb471a57-419e-4e16-b9a6-20deb0855be6/results.json",
+            "sha256": "f7e02af9ff5c2417fe6c47314d0479c9fef2dc311de6cd7d5704abd7ab2d8d3b"
+          },
+          "keyring": {
+            "file": "native-qt/qa/reports/linux-output-microphone-whip-keyring/d02341d6-43b7-4bf2-898b-0e670e3dd199/results.json",
+            "sha256": "fdcb4e994bc37b896fd51bca671ebc27e67f3ceb03c8359a797c857fbe4d4694"
+          }
+        },
+        "media": {
+          "protocol": "whip",
+          "decodedAudioGoodSamples": {
+            "audio": 30,
+            "mutedAudio": 30,
+            "unmutedAudio": 30,
+            "silence": 30,
+            "lateAudio": 30,
+            "reconnectedAudio": 30,
+            "guiRestartedAudio": 30
+          },
+          "distinctVideoFrames": {
+            "mutedVideo": 88,
+            "unmutedVideo": 90
+          },
+          "successfulSessionDeletes": 2,
+          "serverRestartRecovered": true
+        }
+      }
+    ],
+    "harnessChanges": "Optional --microphone-controls=true exercises real Qt buttons and verifies live capture state. Mux decoder now takes independent static-video and silent-audio expectations; existing thresholds retained. WHIP observes received video and audio concurrently during each button state. Owned compositor wrapper now removes only its own document-portal FUSE mount before deleting the temporary directory, retries bounded cleanup races and records cleanup failures in the report. Initial UDP application workflow passed but outer cleanup failed; its evidence is retained separately.",
+    "cleanup": {
+      "allRunsTerminal": true,
+      "ownedProcessesRemaining": [],
+      "hostDesktopAudioUnchanged": true
+    },
+    "gates": {
+      "file": "native-qt/qa/reports/linux-output-microphone-checkpoint/b2dbe4b9-bea1-4ee3-af21-4546072dd5e7/linux-output-microphone-gates.json",
+      "sha256": "ccb62a0ac091d1a518a3a7f5c63fd6263cb486be751312fe05d5e040d2323f96",
+      "classification": "Package/source identity, JavaScript syntax and whitespace gates; not application testing."
+    },
+    "remaining": "Only UDP/AAC and WHIP/Opus with a virtual primary microphone, local receivers and isolated software GNOME are qualified here. Other output protocols and audio mixes, physical inputs/desktop, fatal promotion rollback/races, WAN/TLS/TURN combinations, calibrated A/V, default 720p60/endurance, hardware and Windows/macOS runtime remain open. Full 23-row scope retained."
   }
 }

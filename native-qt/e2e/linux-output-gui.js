@@ -154,5 +154,16 @@ module.exports=function({exe,report,env,launch,api,title,inputLabel,previewBefor
   }
   async function stop(session){session.ui('press','Stop streaming');await waitFor(async()=>{const d=await api(session.control,'/diagnostics');return !d.app.live&&!d.app.capturing;},10000,'GUI did not stop');privacy();}
   async function restart(session){await goLive(session);}
-  return {start,stop,restart,quit,privacy,close,evidence};
+  async function microphoneMuted(session,muted){
+    const before=await api(session.control,'/diagnostics');
+    assert.equal(before.audio.microphone_muted,!muted,'Microphone is already in the requested state');
+    assert(before.app.live&&before.app.capturing&&before.app.microphone_capturing);
+    session.ui('press',muted?'Mute microphone':'Unmute microphone');
+    await waitFor(async()=>(await api(session.control,'/diagnostics')).audio.microphone_muted===muted,5000,'GUI microphone state did not change');
+    const after=await api(session.control,'/diagnostics');
+    assert(after.app.live&&after.app.capturing&&after.app.microphone_capturing,'Microphone control stopped capture');
+    assert.equal(after.output.state,2);assert.equal(after.output.reconnects,before.output.reconnects);
+    return {muted,before,after};
+  }
+  return {start,stop,restart,quit,privacy,close,evidence,microphoneMuted};
 };

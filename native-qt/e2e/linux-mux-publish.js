@@ -12,6 +12,7 @@ const {chromium}=require('playwright');
 const wayland=opts.backend==='wayland';assert(!wayland||opts.gui==='true','Wayland output fixture requires actual GUI');
 const previewBeforeLive=opts['preview-before-live']==='true';assert(!previewBeforeLive||(wayland&&opts.gui==='true'&&process.env.GC_QA_OWNED_WAYLAND),'Preview requires the owned Wayland GUI fixture');
 const gui=opts.gui==='true';if(gui)assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires the matching owned desktop fixture');
+const microphoneControls=opts['microphone-controls']==='true';assert(!microphoneControls||gui,'Microphone controls require the actual GUI');
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const manifestFile=path.join(bundle,'release-artifact-manifest.json');
@@ -22,7 +23,7 @@ const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,
 fs.copyFileSync(__filename,path.join(report,'harness.js'));
 fs.copyFileSync(path.join(__dirname,'macos-media-receiver.js'),path.join(report,'receiver-helper.js'));
 const ffmpeg='/usr/bin/ffmpeg',ffprobe='/usr/bin/ffprobe',helper=ffmpeg;
-const result={gui,previewBeforeLive,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),
+const result={gui,previewBeforeLive,microphoneControls,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),
  requestedHelper:opts.helper||'distribution-default',requestedHelperSha256:opts.helper?hash(path.resolve(opts.helper)):null,
  receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),receiverSha256:hash(ffmpeg),probeSha256:hash(ffprobe),serverSha256:hash(path.resolve(opts.server)),
  scope:'Extracted Ubuntu DEB; X11 window, software H264 and owned virtual stereo microphone to local mux receivers. Moving/static video, AAC, late receivers, server restart and cleanup. Excludes GUI, Wayland, physical microphone, WAN/TLS, default 720p60, endurance and calibrated A/V synchronization.',cases:[],passed:false};
@@ -49,7 +50,7 @@ async function port(udp=false){const s=udp?dgram.createSocket('udp4'):net.create
 async function rtpPorts(){for(let attempt=0;attempt<100;attempt++){const first=await port(true);if(first%2||first===65535)continue;
   const s=dgram.createSocket('udp4');const available=await new Promise(resolve=>{s.once('error',()=>resolve(false));s.bind(first+1,'127.0.0.1',()=>resolve(true));});try{s.close();}catch(e){if(e.code!=='ERR_SOCKET_DGRAM_NOT_RUNNING')throw e;}if(available)return {rtp:first,rtcp:first+1};}throw Error('No available RTP/RTCP port pair');}
 async function api(control,route,body){const r=await fetch(control.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok,'Control HTTP '+r.status);return r.json();}
-function decode(file,seconds,staticAndSilent=false){
+function decode(file,seconds,{staticVideo=false,silent=false}={}){
   const run=(program,args)=>execFileSync(program,args,{timeout:20000,maxBuffer:32*1024*1024,stdio:['ignore','pipe','pipe']});
   const metadata=JSON.parse(run(ffprobe,['-v','error','-show_streams','-show_packets','-of','json',file]));
   const video=metadata.streams.find(s=>s.codec_type==='video'),audio=metadata.streams.find(s=>s.codec_type==='audio');
@@ -96,7 +97,7 @@ function decode(file,seconds,staticAndSilent=false){
   }
   assert(identities.length>seconds*24,'Too few decoded frames');
   const distinct=new Set(identities).size;
-  if(staticAndSilent)assert.equal(distinct,1,'Static source changed');else{
+  if(staticVideo)assert.equal(distinct,1,'Static source changed');else{
     assert(distinct>seconds*18,'Moving source froze');
     for(let i=1;i<identities.length;i++)assert((identities[i]-identities[i-1]+65536)%65536<90,'Reversed/corrupt frames');
   }
@@ -108,7 +109,7 @@ function decode(file,seconds,staticAndSilent=false){
       for(let f=0;f<2;f++){const phase=2*Math.PI*[440,880][f]*i/48000;sums[f][0]+=v*Math.cos(phase);sums[f][1]+=v*Math.sin(phase);}}
     return {rms:Math.sqrt(square/samples),tones:sums.map(([x,y])=>20*Math.log10(Math.max(1e-12,2*Math.hypot(x,y)/samples)))};
   });
-  if(staticAndSilent)for(const level of levels)assert(level.rms<.0005,'Expected received silence');
+  if(silent)for(const level of levels)assert(level.rms<.0005,'Expected received silence');
   else for(let channel=0;channel<2;channel++){assert(levels[channel].rms>.001,'Audio silent');assert(levels[channel].tones[channel]>-65&&levels[channel].tones[channel]>levels[channel].tones[1-channel]+20,'Stereo channels crossed or mixed');}
   return {file:path.basename(file),sha256:hash(file),frames:identities.length,distinctFrames:distinct,firstIdentity:identities[0],lastIdentity:identities.at(-1),timelines,audio:levels,
     geometry,videoProfile:video.profile,bFrames:decoded.filter(frame=>frame.pict_type==='B').length,
@@ -167,10 +168,10 @@ function decode(file,seconds,staticAndSilent=false){
     currentControl=control;
     await waitFor(async()=>{assert.equal(publisher.exitCode,null,'Publisher exited');return(await api(control,'/diagnostics')).output?.state===2;},30000,'Output did not publish');
     if(!direct)await waitFor(async()=>{const paths=await fetch(`http://127.0.0.1:${ports.api}/v3/paths/list`).then(r=>r.json());return paths.items.some(p=>p.name===(protocol==='rtmp'?'live/':'')+stream&&p.ready);},15000,'Server has no media');
-    async function finishRecording(recording,seconds,phase,silent=false){
+    async function finishRecording(recording,seconds,phase,expectations={}){
       await waitFor(()=>{assert.equal(publisher.exitCode,null,'Publisher exited during reception');return recording.process.exitCode!==null;},25000,'Receiver timed out');
       assert.equal(await recording.process.closed,0,'Receiver failed');
-      try { entry.phases.push({phase,...decode(recording.file,seconds,silent)}); }
+      try { entry.phases.push({phase,expectations,...decode(recording.file,seconds,expectations)}); }
       catch(error) {
         // Preserve sender counters when receive/decode fails before the final
         // diagnostics snapshot. Logs alone cannot distinguish a silent input
@@ -179,8 +180,16 @@ function decode(file,seconds,staticAndSilent=false){
       }
     }
     await finishRecording(recording||record(6,'moving'),6,'moving');
+    if(microphoneControls){
+      assert(!toneSilent);assert.equal(await source.evaluate(()=>fixture.paused),false);
+      entry.mute=await desktop.microphoneMuted(session,true);
+      await finishRecording(record(4,'gui-muted-moving'),4,'gui-muted-moving',{silent:true});
+      entry.unmute=await desktop.microphoneMuted(session,false);
+      await finishRecording(record(4,'gui-unmuted-moving'),4,'gui-unmuted-moving');
+      entry.microphoneControlsPassed=true;
+    }
     await source.evaluate(()=>fixture.paused=true);toneSilent=true;await sleep(2000);
-    await finishRecording(record(3,'static-silence'),3,'static-silence',true);
+    await finishRecording(record(3,'static-silence'),3,'static-silence',{staticVideo:true,silent:true});
     await source.evaluate(()=>fixture.paused=false);toneSilent=false;await sleep(1000);
     if(!direct){
       server.kill('SIGTERM');await server.closed;await sleep(1500);await startServer();

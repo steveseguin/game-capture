@@ -6,7 +6,7 @@ Hardware monitors are disabled. Keyboard input targets only this compositor's
 RemoteDesktop session; it never uses the host keyboard or /dev/uinput.
 """
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 import hashlib
 import json
 import os
@@ -30,6 +30,42 @@ KEYS = {
     'LEFT': [105], 'RIGHT': [106], 'UP': [103], 'DOWN': [108],
     'HOME': [102], 'SPACE': [57], 'TAB': [15], 'ENTER': [28],
 }
+
+
+@contextmanager
+def owned_runtime(result, save):
+    root = Path(tempfile.mkdtemp(prefix='gc-gnome-'))
+    try:
+        yield str(root)
+    finally:
+        # D-Bus activated document portals can outlive the session bus briefly.
+        # Never recurse into their FUSE filesystem or report success before the
+        # temporary tree is gone. Only unmount this fixture's exact portal path.
+        deadline = time.monotonic() + 10
+        last_error = None
+        while True:
+            try:
+                mounts = []
+                for line in Path('/proc/self/mountinfo').read_text().splitlines():
+                    fields = line.split(); mount = fields[4]
+                    if mount == str(root) or mount.startswith(str(root) + '/'):
+                        mounts.append((mount, fields[fields.index('-') + 1]))
+                for mount, filesystem in mounts:
+                    assert mount == str(root/'runtime/doc') and filesystem == 'fuse.portal', 'Unexpected fixture mount'
+                    subprocess.run(['fusermount3', '-u', '--', mount], check=True,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=3)
+                shutil.rmtree(root)
+                result['temporaryDirectoryRemoved'] = True
+                break
+            except (OSError, subprocess.SubprocessError, AssertionError) as error:
+                last_error = repr(error)
+                if time.monotonic() >= deadline:
+                    result['temporaryDirectoryRemoved'] = False
+                    result['cleanupError'] = last_error
+                    result['passed'] = False
+                    break
+                time.sleep(.2)
+        save()
 
 
 def main():
@@ -65,7 +101,7 @@ def main():
                 else: process.kill()
                 process.wait(timeout=5)
 
-    with tempfile.TemporaryDirectory(prefix='gc-gnome-') as temporary:
+    with owned_runtime(result, save) as temporary:
         root = Path(temporary)
         env = {k:v for k,v in os.environ.items() if k not in [
             'DISPLAY', 'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'SESSION_MANAGER',

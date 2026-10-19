@@ -14,6 +14,7 @@ const tls=opts.tls==='true'||failure==='invalid-tls';assert(!(unresponsiveStun&&
 const wayland=opts.backend==='wayland';assert(!wayland||opts.gui==='true','Wayland output fixture requires actual GUI');
 const previewBeforeLive=opts['preview-before-live']==='true';assert(!previewBeforeLive||(wayland&&opts.gui==='true'&&process.env.GC_QA_OWNED_WAYLAND),'Preview requires the owned Wayland GUI fixture');
 const gui=opts.gui==='true';if(gui){assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'GUI requires the matching owned desktop fixture');assert(!tls&&!failure&&!unresponsiveStun&&turnDiscovery==='none','GUI fixture currently covers authenticated HTTP publishing');}
+const microphoneControls=opts['microphone-controls']==='true';assert(!microphoneControls||gui,'Microphone controls require the actual GUI');
 const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'../..');
 const hash=f=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
 const manifestFile=path.join(bundle,'release-artifact-manifest.json');assert.equal(hash(manifestFile),opts['manifest-sha256']);
@@ -21,7 +22,7 @@ const manifest=JSON.parse(fs.readFileSync(manifestFile));assert.equal(hash(exe),
 for(const item of manifest.payload.files){const file=path.resolve(bundle,item.relativePath);assert(file.startsWith(bundle+path.sep));assert.equal(fs.statSync(file).size,item.size);assert.equal(hash(file),item.sha256);}
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
 for(const name of ['linux-whip-publish.js','macos-media-receiver.js'])fs.copyFileSync(path.join(__dirname,name),path.join(report,name));
-const result={gui,previewBeforeLive,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
+const result={gui,previewBeforeLive,microphoneControls,backend:wayland?'wayland':'x11',executableSha256:hash(exe),manifestSha256:hash(manifestFile),harnessSha256:hash(__filename),receiverHarnessSha256:hash(path.join(__dirname,'macos-media-receiver.js')),
  serverSha256:hash(path.resolve(opts.server)),turnDiscovery,tls,failure,unresponsiveStun:unresponsiveStun?{requests:0}:null,
  scope:'Extracted Ubuntu DEB; X11 software H264 and owned virtual stereo microphone through local authenticated WHIP. Browser decoded media, late viewer, restart recovery and session cleanup. HTTPS uses an isolated publisher mount namespace with a private CA when requested. Excludes GUI, Wayland, physical microphone, public CA/WAN/TURN deployment, default 720p60 and endurance.',cases:[],trace:[],passed:false};
 if(gui){for(const name of ['linux-output-gui.js','linux-ui-control.py',...(wayland?['linux-wayland-desktop.py','linux-portal-select.py']:['linux-private-desktop.py'])]){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));result[name+'Sha256']=hash(path.join(report,name));}result.scope=result.scope.replace('Excludes GUI, Wayland','Actual Qt GUI, saved-profile relaunch and Stop/Go live cycles. Excludes Wayland');}
@@ -166,6 +167,16 @@ function audioCheck(value,silent=false){
     }
     const url=`http://127.0.0.1:${webPort}/${stream}/?muted=true`;
     let page=await receiverAt(browser,url,publisher);entry.moving=await observe(page,6000);entry.distinctFrames=requireMoving(entry.moving,encoder);assert.equal(entry.moving.width,gui?960:640);assert.equal(entry.moving.height,gui?540:360);entry.audio=await observeAudio(page);audioCheck(entry.audio);
+    if(microphoneControls){
+      assert(!toneSilent);assert.equal(await source.evaluate(()=>fixture.paused),false);
+      entry.mute=await desktop.microphoneMuted(session,true);await sleep(800);
+      [entry.mutedAudio,entry.mutedVideo]=await Promise.all([observeAudio(page),observe(page,3000)]);
+      audioCheck(entry.mutedAudio,true);requireMoving(entry.mutedVideo,'GUI mute preserves WHIP video');
+      entry.unmute=await desktop.microphoneMuted(session,false);await sleep(800);
+      [entry.unmutedAudio,entry.unmutedVideo]=await Promise.all([observeAudio(page),observe(page,3000)]);
+      audioCheck(entry.unmutedAudio);requireMoving(entry.unmutedVideo,'GUI unmute preserves WHIP video');
+      entry.microphoneControlsPassed=true;
+    }
     toneSilent=true;await sleep(700);entry.silence=await observeAudio(page);audioCheck(entry.silence,true);toneSilent=false;
     await source.evaluate(()=>fixture.paused=true);await sleep(700);entry.static=await observe(page,2500);if(new Set(entry.static.observations.map(f=>f.id)).size!==1||entry.static.observations.length<10)throw Error('Static video did not stay paced');await source.evaluate(()=>fixture.paused=false);
     const late=await receiverAt(browser,url,publisher);entry.late=await observe(late,3000);requireMoving(entry.late,'Late WHIP viewer');entry.lateAudio=await observeAudio(late);audioCheck(entry.lateAudio);await late.close();
