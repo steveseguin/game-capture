@@ -10,6 +10,7 @@ qualification. Optional bounded fuzz and comparative CPU/decoded-frame observati
 exercise the same packaged GUI workflow without changing acceptance thresholds.
 """
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import os
@@ -33,6 +34,52 @@ from PIL import Image, ImageGrab
 
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+@contextmanager
+def recorded_phase(result, phase, save, diagnostics):
+    """Keep failed observations in the same summary artifact as successful ones."""
+    phase['passed'] = False
+    result['phases'].append(phase)
+    try:
+        yield
+        phase['diagnostics'] = diagnostics()
+        phase['passed'] = True
+    except Exception as error:
+        phase['error'] = repr(error)
+        try:
+            phase['diagnostics'] = diagnostics()
+        except Exception as diagnostic_error:
+            phase['diagnosticsError'] = repr(diagnostic_error)
+        raise
+    finally:
+        save()
+
+
+def verify_audio(samples, microphone, phase):
+    """Record numeric tone observations before enforcing the original gates."""
+    assert len(samples)>=48000*3 and np.isfinite(samples).all()
+    spectra = phase['spectra']
+    for offset in range(48000,len(samples)-24000,24000):
+        block = samples[offset:offset+24000].astype(float)
+        spectrum = np.abs(np.fft.rfft(block*np.hanning(len(block))[:,None],axis=0))*4/len(block)
+        levels = {}
+        spectra.append(levels)
+        crosstalk = []
+        for channel, frequencies in enumerate([(440,660),(880,1320)]):
+            for frequency in frequencies:
+                index = round(frequency*len(block)/48000)
+                levels[str(frequency)] = float(spectrum[index-1:index+2,channel].max())
+            for frequency in [(880,1320),(440,660)][channel]:
+                index = round(frequency*len(block)/48000)
+                crosstalk.append(float(spectrum[index-1:index+2,channel].max()))
+        phase.setdefault('crosstalk', []).append(crosstalk)
+        for level in crosstalk: assert level<.003, 'Stereo channel crosstalk'
+        for frequency in ('440','880'): assert levels[frequency]>.02, 'System audio missing'
+        for frequency in ('660','1320'):
+            assert levels[frequency]>.02 if microphone else levels[frequency]<.003, 'Microphone mix/mute incorrect'
+        assert float(np.max(np.abs(block)))<.99, 'Clipped audio'
+    assert len(spectra)>=4
 
 
 def main():
@@ -320,33 +367,15 @@ def main():
             identities.append(identity)
         assert len(set(identities))>=30, 'Decoded video is frozen'
         samples = np.fromfile(pcm,dtype='<f4').reshape(-1,2)
-        assert len(samples)>=48000*3 and np.isfinite(samples).all()
-        spectra = []
-        for offset in range(48000,len(samples)-24000,24000):
-            block = samples[offset:offset+24000].astype(float)
-            spectrum = np.abs(np.fft.rfft(block*np.hanning(len(block))[:,None],axis=0))*4/len(block)
-            levels = {}
-            for channel, frequencies in enumerate([(440,660),(880,1320)]):
-                for frequency in frequencies:
-                    index = round(frequency*len(block)/48000)
-                    levels[str(frequency)] = float(spectrum[index-1:index+2,channel].max())
-                for frequency in [(880,1320),(440,660)][channel]:
-                    index = round(frequency*len(block)/48000)
-                    assert float(spectrum[index-1:index+2,channel].max())<.003, 'Stereo channel crosstalk'
-            for frequency in ('440','880'): assert levels[frequency]>.02, 'System audio missing'
-            for frequency in ('660','1320'):
-                assert levels[frequency]>.02 if microphone else levels[frequency]<.003, 'Microphone mix/mute incorrect'
-            assert float(np.max(np.abs(block)))<.99, 'Clipped audio'
-            spectra.append(levels)
-        assert len(spectra)>=4
-        Image.fromarray(frames[len(frames)//2]).save(report/(label+'-decoded.png'))
-        screenshot(label+'-gui')
-        phase = {'name':label,'passed':True,'microphoneExpected':microphone,
+        phase = {'name':label,'microphoneExpected':microphone,
                  'decodedFrames':len(frames),'uniqueSourceIdentities':len(set(identities)),
-                 'audioSamplesPerChannel':len(samples),'spectra':spectra,
-                 'transportSha256':sha(transport),'decodedVideoSha256':sha(raw),'decodedAudioSha256':sha(pcm),
-                 'diagnostics':diagnostics()}
-        result['phases'].append(phase); save(); print(json.dumps({'phase':label,'passed':True}),flush=True)
+                 'audioSamplesPerChannel':len(samples),'spectra':[],
+                 'transportSha256':sha(transport),'decodedVideoSha256':sha(raw),'decodedAudioSha256':sha(pcm)}
+        with recorded_phase(result, phase, save, diagnostics):
+            verify_audio(samples, microphone, phase)
+            Image.fromarray(frames[len(frames)//2]).save(report/(label+'-decoded.png'))
+            screenshot(label+'-gui')
+        print(json.dumps({'phase':label,'passed':True}),flush=True)
 
     def endurance():
         if not args.endurance_seconds: return
