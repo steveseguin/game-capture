@@ -1,6 +1,7 @@
 # Experimental Linux ARM64 development
 
-The `linux-arm64` branch starts from `linux-parity` and reuses its Qt/POSIX core,
+ARM64 support is integrated into `linux-parity`; its initial branch was
+`linux-arm64`. It reuses the Qt/POSIX core,
 X11/PipeWire capture, Pulse audio, V4L2 camera and FFmpeg encoder implementations.
 There is no separate ARM application. The first target is **Ubuntu 24.04 arm64**
 with software H.264. This is a development package, not a qualified release.
@@ -105,6 +106,75 @@ GPU enumeration alone do not establish working capture or hardware encoding.
 The initial ARM64 and portable-package work was merged into `linux-parity`.
 Full ARM parity, physical desktop/device coverage, Raspberry Pi measurements
 and other-platform regressions remain work for subsequent milestones.
+
+## Live fuzz and comparative performance workflows
+
+The packaged WebRTC workflow also accepts `--fuzz-seed=2601019` and
+`--performance-seconds=45`. Supply `--webrtc`, an ARM Chromium executable with
+`--browser`, and Node with `--node`; Playwright must be available on `NODE_PATH`.
+Use `--resolution=1280x720 --source-size=1280x720` for the recorded comparison.
+These options extend the ordinary-user private-desktop command above and launch
+the portable package through its verified `AppRun` launcher.
+
+Fuzzing reuses the existing seeded Mac local-control corpus and Windows framing,
+capacity, deadline and recovery cases. Three consecutive seeds generate 384
+fragmented malformed/authentication/health requests. Additional cases cover
+invalid lengths and headers, a pipelined Quit that must never execute, 48 held
+connections against the 32-connection limit, trickled requests against the
+absolute ten-second deadline, and 128 requests in batches of eight. Traffic is
+restricted to this run's owned loopback publisher. It records seeds, corpus
+source hashes and request outcomes without tokens or response bodies.
+
+The independent browser decodes moving identities and mixed audio during the
+stress, then the GUI exercises microphone mute/unmute, viewer reconnection,
+Stop/restart, persisted settings and Quit. This is bounded application testing;
+the corpus is not a coverage-guided fuzzer or proof of parser safety. Syntax,
+build and isolated corpus checks remain gates only.
+
+Performance observation uses `MediaStreamTrackProcessor` decoded frames and
+publisher `/proc` CPU/RSS samples. One fully occupied core is 100% CPU. Compare
+the same profile, source size, userland and observation duration, without
+concurrent builds or other workflows. Preserve the baseline package and repeat
+it after the candidate to check run-order effects. The simple 30 fps barcode,
+owned Xvfb display and same-host browser do not establish game throughput,
+physical-display latency, calibrated A/V sync or a 60 fps qualification.
+
+Exact artifacts, measurements, failures and a requirement-by-requirement Windows
+comparison are in the [fuzz/performance/parity ledger](../native-qt/qa/linux-arm-fuzz-performance.json).
+On this Jetson, two 45-second observations per package in baseline/candidate/
+baseline/candidate order reduced mean publisher CPU from 169.0% to 147.0%
+(13.0%) by caching the writable X11 image-row pointer once per row. Decoded
+rates were 29.75 fps for the baseline and 29.55–29.71 fps for the candidate;
+the corpus and GUI/media workflows passed. These are scoped measurements, not
+a new acceptance threshold. The ledger separately identifies the final package
+that also preserves upstream Stop-time allocator trimming and its ARM reruns.
+The observer records publisher RSS before and after each GUI Stop.
+
+## Windows feature alignment
+
+The audit compares the native Qt implementation with the Windows code in
+`origin/main`, the Windows guide and all 23 required Linux parity rows. An
+ancestor check establishes shared source history; it does not establish runtime
+parity. Linux implementation evidence and ARM workflow evidence are separate.
+
+| Area | Linux/ARM difference or remaining work |
+| --- | --- |
+| Window and camera capture | Linux reuses X11/PipeWire and V4L2. ARM has owned-X11 moving-media evidence; physical Wayland and moving HDMI input remain unqualified. |
+| Spout2 and transparency | Spout2 is Windows-only. Linux desktop capture is opaque; a transparent Linux producer and an independently verified OBS alpha receiver remain missing. |
+| Hardware encoding | Windows offers NVENC, Quick Sync and AMF. Linux exposes NVENC and software; QSV/AMF/VAAPI/V4L2 hardware paths are not implemented here. amd64 NVENC evidence does not qualify Jetson or Pi encoding. |
+| Audio | Shared mixing, mute and codec controls exist. Linux application audio uses playback-stream monitors; native-client route-move stalls, a received PCM continuity failure and physical ARM devices remain open. Per-JACK-client isolation is unqualified. |
+| Rooms and outputs | Shared VDO.Ninja rooms, director controls, WHIP and mux outputs exist. ARM has bounded direct WebRTC and UDP evidence; amd64 evidence for other protocols does not qualify ARM. |
+| Settings and lifecycle | ARM exercises persistence, idle relaunch, Stop/restart and Quit. Earlier intermittent first-save external URL loss remains unresolved. Windows/macOS regression workflows still require those systems. |
+| Packaging and updates | ARM/amd64 assets are separated. Portable Ubuntu 22.04/24.04 userland results share one Jetson kernel; Pi and other distributions need qualification. |
+| Crash diagnostics | Windows has minidumps. Linux has bounded logs and issue export, without equivalent in-app crash dump collection. |
+
+The Windows guide also mentions Desktop Studio, mixer and independent recording.
+Those controls are absent from the audited native Qt source on both this branch
+and its Windows/main baseline. They are a documentation/scope discrepancy, not
+evidence of implemented ARM functionality. The guide's 192 kbps audio default
+also differs from the shared source's 128 kbps default on both platforms; it is
+not an ARM-only setting change. No parity requirement is waived and
+no overall percentage is inferred from the number of shared source files.
 
 ## Physical USB capture on ARM64
 

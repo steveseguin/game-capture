@@ -5,7 +5,9 @@ Run under linux-private-desktop.py on an owned Xvfb display. Uses the existing
 Tk moving source, real GUI actions, a private PulseAudio server and independent
 FFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC
 receiver with --webrtc. No host audio/device changes. This is not physical
-desktop, hardware encoder, calibrated A/V synchronization or performance qualification.
+desktop, hardware encoder, calibrated A/V synchronization or game-performance
+qualification. Optional bounded fuzz and comparative CPU/decoded-frame observations
+exercise the same packaged GUI workflow without changing acceptance thresholds.
 """
 import argparse
 import hashlib
@@ -39,6 +41,11 @@ def main():
     parser.add_argument('--manifest-sha256', required=True)
     parser.add_argument('--reports', required=True, type=Path)
     parser.add_argument('--resolution', choices=['960x540', '1280x720'], default='960x540')
+    parser.add_argument('--source-size', choices=['640x360', '1280x720'], default='640x360')
+    parser.add_argument('--performance-seconds', type=int, default=0,
+                        help='Bounded same-host decoded-frame and publisher CPU observation (10..120 seconds)')
+    parser.add_argument('--fuzz-seed', type=int,
+                        help='Exercise bounded seeded malformed local-control requests while receiving media')
     parser.add_argument('--failure-recovery', action='store_true',
                         help='Also exercise output-helper death/stall and source-window loss')
     parser.add_argument('--webrtc', action='store_true', help='Receive through VDO.Ninja in a native Chromium browser')
@@ -50,6 +57,9 @@ def main():
     assert 0 <= args.endurance_seconds <= 3600
     assert not args.webrtc or (args.browser and not args.failure_recovery)
     assert not args.endurance_seconds or args.webrtc
+    assert args.performance_seconds == 0 or 10 <= args.performance_seconds <= 120
+    assert not (args.performance_seconds or args.fuzz_seed is not None) or args.webrtc
+    assert args.fuzz_seed is None or 0 <= args.fuzz_seed <= 0xffffffff
     assert os.getuid() != 0 and os.environ.get('GC_QA_PRIVATE_DESKTOP')
     assert os.environ.get('QT_QPA_PLATFORM') == 'xcb'
     exe = args.publisher.resolve(); bundle = exe.parent.parent.parent
@@ -68,13 +78,14 @@ def main():
     result = {'scope':__doc__, 'passed':False, 'architecture':manifest['architecture'],
               'kernel':platform.release(), 'packageManifestSha256':sha(manifest_path),
               'executableSha256':sha(exe), 'sourceTreeSha256':manifest['sourceTreeSha256'],
-              'profile':{'resolution':args.resolution, 'fps':30, 'bitrateKbps':4000, 'encoder':'software libx264',
+              'profile':{'resolution':args.resolution, 'sourceSize':args.source_size, 'fps':30, 'bitrateKbps':4000, 'encoder':'software libx264',
                          'transport':'loopback UDP/MPEG-TS', 'audio':'system + microphone, AAC stereo'},
               'phases':[], 'harnesses':{}}
     if args.webrtc:
         result['profile'].update(transport='VDO.Ninja WebRTC', audio='system + microphone, Opus stereo')
     harnesses = [Path(__file__).name, 'linux-ui-control.py', 'linux-installed-desktop.py']
     if args.webrtc: harnesses += ['linux-webrtc-observer.js', 'macos-media-receiver.js']
+    if args.fuzz_seed is not None: harnesses += ['linux-live-control-stress.js', 'macos-live-control-fuzz.js']
     for name in harnesses:
         shutil.copy2(helpers/name, report/name); result['harnesses'][name] = sha(helpers/name)
     settings = report/'settings'; settings.mkdir()
@@ -187,6 +198,10 @@ def main():
                 if r['role']=='combo box' and r['name'].startswith('ARMBringupMicrophone'))
         ui('source', 'Game Capture Installed Source'); screenshot(label+'-ready')
     def stop():
+        def rss_kib():
+            return int(next(line.split()[1] for line in Path(f'/proc/{app.pid}/status').read_text().splitlines()
+                            if line.startswith('VmRSS:')))
+        before_rss = rss_kib(); started = time.monotonic()
         ui('press', 'Stop streaming')
         wait(lambda:not diagnostics()['app']['capturing'], 'Stop did not retire capture')
         idle()
@@ -197,6 +212,9 @@ def main():
         wait(lambda:all(not same_process(pid, identity) for pid, identity in helper_pids.items()),
              'Encoder/output helper survived Stop')
         helper_pids.clear()
+        result.setdefault('stops', []).append({'elapsedSeconds':time.monotonic()-started,
+            'publisherRssBeforeKiB':before_rss, 'publisherRssAfterKiB':rss_kib()})
+        save()
         screenshot('stopped')
     def quit_app():
         nonlocal app
@@ -338,6 +356,35 @@ def main():
         result['endurance'].update(completed=True, elapsedSeconds=time.monotonic()-started)
         save()
 
+    def performance():
+        if not args.performance_seconds: return
+        # One core fully occupied is 100%; sample the publisher only. The
+        # source, desktop and independent receiver still compete on this host.
+        samples = []
+        def sample():
+            fields = Path(f'/proc/{app.pid}/stat').read_text().rsplit(') ',1)[1].split()
+            samples.append({'monotonic':time.monotonic(),
+                'cpuSeconds':(int(fields[11])+int(fields[12]))/os.sysconf('SC_CLK_TCK'),
+                'rssBytes':int(fields[21])*os.sysconf('SC_PAGE_SIZE'),
+                'diagnostics':diagnostics()})
+        sample()
+        observer.stdin.write(json.dumps({'op':'performance','seconds':args.performance_seconds})+'\n')
+        observer.stdin.flush()
+        deadline = time.monotonic()+args.performance_seconds+20
+        with selectors.DefaultSelector() as selector:
+            selector.register(observer.stdout, selectors.EVENT_READ)
+            while not selector.select(1):
+                assert time.monotonic() < deadline, 'Performance observer timed out'
+                sample()
+        observation = json.loads(observer.stdout.readline())
+        assert observation.get('ok'), observation
+        sample()
+        result['performance'] = {'receiver':observation, 'publisherSamples':samples,
+            'publisherCpuPercent':100*(samples[-1]['cpuSeconds']-samples[0]['cpuSeconds']) /
+                (samples[-1]['monotonic']-samples[0]['monotonic']),
+            'scope':'Simple moving barcode on owned Xvfb; same-host browser; no game/WAN/physical-display qualification'}
+        save(); print(json.dumps({'performance':result['performance']['publisherCpuPercent']}),flush=True)
+
     print('Report:',report,flush=True); save()
     with tempfile.TemporaryDirectory(prefix='gc-arm-audio-') as temporary:
         root = Path(temporary)
@@ -360,7 +407,8 @@ def main():
                 start(['ffmpeg','-v','error','-re','-f','lavfi','-i',
                     f'aevalsrc=0.15*sin(2*PI*{frequencies[0]}*t)|0.15*sin(2*PI*{frequencies[1]}*t):s=48000',
                     '-f','pulse','-device',sink,'ARM bringup owned tone'],sink+'-tone')
-            source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source'],'source')
+            source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source',
+                            '--source-size='+args.source_size],'source')
             with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
                 sock.bind(('127.0.0.1',0)); port = sock.getsockname()[1]
             destination = 'gcarm'+uuid.uuid4().hex if args.webrtc else f'udp://127.0.0.1:{port}'
@@ -378,6 +426,12 @@ def main():
                 processes.append(observer); result['browser'] = observer_reply()
                 browser_command('connect')
             receive('mixed')
+            performance()
+            if args.fuzz_seed is not None:
+                result['fuzz'] = browser_command('fuzz', discovery=str(discovery), seed=args.fuzz_seed)
+                assert diagnostics()['app']['live'], 'Malformed control traffic interrupted publication'
+                receive('after-fuzz')
+                save()
             ui('press','Mute microphone'); time.sleep(1)
             assert diagnostics()['audio']['microphone_muted']
             receive('muted',microphone=False)
@@ -415,7 +469,8 @@ def main():
                 (report/'source-loss-ui.json').write_text(json.dumps(failure_ui,indent=2)+'\n')
                 screenshot('source-loss')
                 result['sourceLossRetiredCaptureAudioAndOutput'] = True
-                source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source'],'replacement-source')
+                source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source',
+                                '--source-size='+args.source_size],'replacement-source')
                 # Tk does not consistently set _NET_WM_PID on X11. This title
                 # is unique on our private display, and the old source exited.
                 wait(lambda:source.poll() is None and subprocess.run(

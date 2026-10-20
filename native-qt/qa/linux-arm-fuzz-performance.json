@@ -1,0 +1,1259 @@
+{
+  "schema": 1,
+  "recordedAtUtc": "2026-10-20T01:54:31.591422+00:00",
+  "scope": "Bounded packaged ARM64 X11 GUI live-control fuzz/media workflows, comparative publisher CPU measurement and Windows/native-Qt feature audit. No full platform or game-performance qualification.",
+  "status": "bounded-packaged-workflows-passed; full-parity-unqualified",
+  "branch": "linux-parity",
+  "sourceHeadBeforeCommit": "81035edc19d6393f63b2a9735fafe9b9ae908c87",
+  "parentLedgers": [
+    "linux-parity.json",
+    "linux-arm64.json",
+    "linux-portable.json",
+    "linux-arm-camera.json",
+    "linux-arm-robustness.json",
+    "linux-arm-webrtc.json"
+  ],
+  "hardware": {
+    "report": "reports/linux-arm-camera/hardware-inventory.json",
+    "sha256": "ef4dafdcf432c8cc3eb64a9fa5a9ac45d6b6fad41a43273869e770bf47de481f"
+  },
+  "hostPolicySnapshot": {
+    "report": "reports/linux-arm-camera/fuzz-performance-host-policy.json",
+    "sha256": "a356106852d695dc47ac3af6dd3d48e67e94887843062bde6a60046391495dca",
+    "scope": "Read-only schedutil/clock-policy and temperature snapshot during candidate; not continuous clock/thermal calibration."
+  },
+  "baselinePackage": {
+    "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable.tar.gz",
+    "sha256": "4c75e785b985a7b9ae3993c1c5367ea0ccb76c763dd65c6c36c141129ecadae6",
+    "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable",
+    "manifestSha256": "a14c5123019acaeb396e99a6608b850cf3dd9f41489d3c09917b7b236f2287af",
+    "executableSha256": "e3f7292ad4bd331fc122007a505040d3ff9fa72bde0505bcb63c5c37a37134df",
+    "sourceRevisionBase": "e22b0b7d56014eb6963db5ed6249c5d0e374f757",
+    "sourceTreeSha256": "113aa0211addf585446083516ba9c1a13e53ee9595b4fc20e5c514b8cbf4dd25",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable-source.tar.gz",
+    "sourceArchiveSha256": "45ca751d273365aad7488953c5c2f336d3cc945da302f428a237528f59f65d68"
+  },
+  "measuredCandidatePackage": {
+    "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-d9a6e3c44e3c-62d32f5d2f11-portable.tar.gz",
+    "sha256": "8ea2b3ebc58ecd0f7d48bfba2743d928507fb2ce2aea2454e10cc4c833345937",
+    "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-d9a6e3c44e3c-62d32f5d2f11-portable",
+    "manifestSha256": "c207b8136983c09ed7c7fd654a26c9b2dd85fe0d19244b87e66ed96ede844cf4",
+    "executableSha256": "c4a2024862434a605d2be183e831580d6593d79eacf678734241bcc996d409d3",
+    "sourceRevisionBase": "d47f11a5b4deef83b97ae52ce7c4b082c4e94271",
+    "sourceTreeSha256": "62d32f5d2f115bfe2f74966394bbdac699e308d3b8d2991a6b6e39d6d0f4cf4a",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-d9a6e3c44e3c-62d32f5d2f11-portable-source.tar.gz",
+    "sourceArchiveSha256": "3b4212bef1ea2afc469482b680950411e491e9cd46e769ecb1d3459b8ed69e93"
+  },
+  "finalIntegratedPackage": {
+    "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-0caf6bc4a599-9caa3a7a737a-portable.tar.gz",
+    "sha256": "f3472bfea253308dc8a6f1eef9af7f0ab70d8a34993a8dc7ab5c774cdc2eba2b",
+    "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-0caf6bc4a599-9caa3a7a737a-portable",
+    "manifestSha256": "92ada801d36f10e468b6db2e66cf6506cedbb6d4ac49f5dd0d15cb7227dba3e4",
+    "executableSha256": "ec9b65f8d24a880e735d9eedb8b1d6be41ac67f2321a4dd207744d5c208197f4",
+    "sourceRevisionBase": "81035edc19d6393f63b2a9735fafe9b9ae908c87",
+    "sourceTreeSha256": "9caa3a7a737a9940d17be853cdef8f54f406a4a013df23906ed2c6849e81efcd",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-0caf6bc4a599-9caa3a7a737a-portable-source.tar.gz",
+    "sourceArchiveSha256": "02498278bfeeacc3b92fb5563caa3abf847470a13149cedfcb7b6118591c59c4"
+  },
+  "upstreamIntegration": {
+    "commit": "81035edc19d6393f63b2a9735fafe9b9ae908c87",
+    "change": "Preserve concurrent Linux/glibc malloc_trim(0) after Stop, plus upstream amd64 evidence and harness additions.",
+    "scope": "A/B/A/B comparisons use the earlier isolated X11 candidate. The combined current package is rebuilt and separately exercised on both ARM userlands, with Stop RSS recorded. No earlier result is relabelled as the combined package."
+  },
+  "productionChange": "Cache writable QImage scanLine pointer once per X11 row while forcing opaque alpha. Preserve all pixel writes, capture scheduling, encoder settings and global defaults. Linux-only source; affects ARM64 and amd64 X11.",
+  "sourceIntegrity": {
+    "report": "reports/linux-arm-camera/fuzz-performance-source-integrity.json",
+    "sha256": "3ed40f83525a8036307acbb123c7e2ec21705cc2cc8b2cc1c5aad20b384b0693",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-d9a6e3c44e3c-62d32f5d2f11-portable-source.tar.gz",
+    "sourceArchiveSha256": "3b4212bef1ea2afc469482b680950411e491e9cd46e769ecb1d3459b8ed69e93",
+    "sourceTreeSha256": "62d32f5d2f115bfe2f74966394bbdac699e308d3b8d2991a6b6e39d6d0f4cf4a",
+    "executableSha256": "c4a2024862434a605d2be183e831580d6593d79eacf678734241bcc996d409d3",
+    "productionFilesCompared": 136,
+    "differences": []
+  },
+  "integratedSourceIntegrity": {
+    "report": "reports/linux-arm-camera/fuzz-performance-integrated-source-integrity.json",
+    "sha256": "add3b6a1201373b815017b7e4a96b005fbfb56a9db15fd33764263b254cd26f1",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-0caf6bc4a599-9caa3a7a737a-portable-source.tar.gz",
+    "sourceArchiveSha256": "02498278bfeeacc3b92fb5563caa3abf847470a13149cedfcb7b6118591c59c4",
+    "sourceTreeSha256": "9caa3a7a737a9940d17be853cdef8f54f406a4a013df23906ed2c6849e81efcd",
+    "executableSha256": "ec9b65f8d24a880e735d9eedb8b1d6be41ac67f2321a4dd207744d5c208197f4",
+    "productionFilesCompared": 136,
+    "differences": []
+  },
+  "artifactComparison": {
+    "report": "reports/linux-arm-camera/fuzz-performance-package-comparison.json",
+    "sha256": "7fd4d42422d7b92230798b56fdeae4fae068c934b080d0fda7d5c49c0e71976f",
+    "productionDifferences": [
+      "native-qt/src/platform/linux/window_capture.cpp"
+    ],
+    "payloadDifferences": [
+      "usr/bin/game-capture"
+    ]
+  },
+  "gates": {
+    "classification": "Gates only, not application testing.",
+    "nativeReleaseBuild": {
+      "report": "reports/linux-arm-camera/fuzz-performance-build.log",
+      "sha256": "09485a24debcfff8da634471208fe86c6ad0b0f17e7f7b20692687ff057955fe",
+      "passed": true,
+      "command": ".tools/portable/run /opt/cmake/cmake/data/bin/cmake --build /workspace/native-qt/build-linux-arm64-portable --target game-capture -j 2"
+    },
+    "integratedReleaseBuild": {
+      "report": "reports/linux-arm-camera/fuzz-performance-integrated-build.log",
+      "sha256": "4c68386b7da95b69f32b366ee293256d8e9ed8cd606e6293ea30195389aeb1dd",
+      "passed": true
+    },
+    "syntax": {
+      "passed": true,
+      "commands": [
+        "python3 -m py_compile native-qt/e2e/linux-arm64-bringup.py native-qt/e2e/linux-installed-desktop.py",
+        "node --check native-qt/e2e/linux-webrtc-observer.js",
+        "node --check native-qt/e2e/linux-live-control-stress.js"
+      ]
+    },
+    "sourceAndPayloadIntegrity": "For the isolated baseline/candidate comparison, only usr/bin/game-capture differs in payload and only window_capture.cpp differs in production sources. The final integrated package separately includes upstream versus_app.cpp Stop-time trimming; its copied production sources match the final workspace."
+  },
+  "applicationTesting": [
+    {
+      "name": "arm-fuzz-perf-baseline",
+      "report": "reports/arm-fuzz-perf-baseline/08f4886c-e203-4706-a96f-d675f0442dc1/results.json",
+      "sha256": "8f1d32277b7e022a9a6eaa984bea7eb22877105bf2d57750b9be205328d4ae59",
+      "passed": true,
+      "environment": "Ubuntu 22.04.5 Jetson host",
+      "packageManifestSha256": "a14c5123019acaeb396e99a6608b850cf3dd9f41489d3c09917b7b236f2287af",
+      "executableSha256": "e3f7292ad4bd331fc122007a505040d3ff9fa72bde0505bcb63c5c37a37134df",
+      "sourceTreeSha256": "113aa0211addf585446083516ba9c1a13e53ee9595b4fc20e5c514b8cbf4dd25",
+      "harnesses": {
+        "linux-arm64-bringup.py": "e3a4408366097c145fdfbaa31cb27bb10ae112e77c3229926b1b2b5abac94177",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "linux-live-control-stress.js": "929054b6cf68ca1f6898a2b69467aa5ca68a9b4c26c9bfca07f47f9d0f74abd0",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 29,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-fuzz-perf-baseline/08f4886c-e203-4706-a96f-d675f0442dc1/performance-browser.json",
+        "sha256": "ae4e9d2d60be6629aecab48b6ebbf74cc5a32829155e21e716ac95b09d4d4726",
+        "publisherCpuPercent": 168.42193275148185,
+        "rssMinMiB": 157.78515625,
+        "rssMaxMiB": 161.375,
+        "decodedFps": 29.754762127518138,
+        "uniqueIdentities": 1280,
+        "mediaGapP95Ms": 35.99999999278225,
+        "maxMediaGapMs": 50.00000000291038,
+        "publisherCountersDelta": {
+          "frames_captured": 1291,
+          "frames_sent": 1350,
+          "frames_dropped": 0,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      },
+      "fuzz": {
+        "passed": true,
+        "seed": 2601019,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 10456.897804000007
+        },
+        "uniqueIdentities": 426,
+        "report": "reports/arm-fuzz-perf-baseline/08f4886c-e203-4706-a96f-d675f0442dc1/live-fuzz.json",
+        "sha256": "8b99eb86c8bb46e71f64dd7157a82e99f0982fffd8685b7b89f302ecedde6246",
+        "allSeeds": [
+          2601019,
+          2601020,
+          2601021
+        ],
+        "duringStressStereoSamples": 30
+      }
+    },
+    {
+      "name": "arm-fuzz-perf-candidate",
+      "report": "reports/arm-fuzz-perf-candidate/67276f64-e64c-41b7-a9db-9515a5eb10ca/results.json",
+      "sha256": "ab3a99ad843a75c6f32a6adcba02122e604ea86d640a2389d9749b70614f4a44",
+      "passed": true,
+      "environment": "Ubuntu 22.04.5 Jetson host",
+      "packageManifestSha256": "c207b8136983c09ed7c7fd654a26c9b2dd85fe0d19244b87e66ed96ede844cf4",
+      "executableSha256": "c4a2024862434a605d2be183e831580d6593d79eacf678734241bcc996d409d3",
+      "sourceTreeSha256": "62d32f5d2f115bfe2f74966394bbdac699e308d3b8d2991a6b6e39d6d0f4cf4a",
+      "harnesses": {
+        "linux-arm64-bringup.py": "95537ac78c54d155bb31941562b14544bae6bebd67dc65c2f788abd7d59896f0",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "linux-live-control-stress.js": "929054b6cf68ca1f6898a2b69467aa5ca68a9b4c26c9bfca07f47f9d0f74abd0",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 29,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-fuzz-perf-candidate/67276f64-e64c-41b7-a9db-9515a5eb10ca/performance-browser.json",
+        "sha256": "d394cf34b3abbc267c0ca91a875c40e7285ff1b5790404a44c5539ec1201fecd",
+        "publisherCpuPercent": 145.13056899627375,
+        "rssMinMiB": 157.76953125,
+        "rssMaxMiB": 158.02734375,
+        "decodedFps": 29.553913671462695,
+        "uniqueIdentities": 1278,
+        "mediaGapP95Ms": 36.999999996623956,
+        "maxMediaGapMs": 99.99999999126885,
+        "publisherCountersDelta": {
+          "frames_captured": 1287,
+          "frames_sent": 1338,
+          "frames_dropped": 1,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      },
+      "fuzz": {
+        "passed": true,
+        "seed": 2601022,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 10217.548744
+        },
+        "uniqueIdentities": 425,
+        "report": "reports/arm-fuzz-perf-candidate/67276f64-e64c-41b7-a9db-9515a5eb10ca/live-fuzz.json",
+        "sha256": "2068843193f30eee4d5c8b5b2c966479574a58213ff761b4348b33802e1e5b41",
+        "allSeeds": [
+          2601022,
+          2601023,
+          2601024
+        ],
+        "duringStressStereoSamples": 30
+      }
+    },
+    {
+      "name": "arm-perf-baseline-repeat",
+      "report": "reports/arm-perf-baseline-repeat/5a345a61-b775-460e-b99a-07916c36a47b/results.json",
+      "sha256": "08013fc4244daa8e651bb94246c8a4771fd8ae674ab9b4c3394cc32c5936cda8",
+      "passed": true,
+      "environment": "Ubuntu 22.04.5 Jetson host",
+      "packageManifestSha256": "a14c5123019acaeb396e99a6608b850cf3dd9f41489d3c09917b7b236f2287af",
+      "executableSha256": "e3f7292ad4bd331fc122007a505040d3ff9fa72bde0505bcb63c5c37a37134df",
+      "sourceTreeSha256": "113aa0211addf585446083516ba9c1a13e53ee9595b4fc20e5c514b8cbf4dd25",
+      "harnesses": {
+        "linux-arm64-bringup.py": "95537ac78c54d155bb31941562b14544bae6bebd67dc65c2f788abd7d59896f0",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-perf-baseline-repeat/5a345a61-b775-460e-b99a-07916c36a47b/performance-browser.json",
+        "sha256": "f4d0187dcafb801cb0b79d20a151fce3e73230d54e917ca5ca362b668b72c1b8",
+        "publisherCpuPercent": 169.58823874825262,
+        "rssMinMiB": 158.359375,
+        "rssMaxMiB": 167.51171875,
+        "decodedFps": 29.753902560968836,
+        "uniqueIdentities": 1279,
+        "mediaGapP95Ms": 35.99999999278225,
+        "maxMediaGapMs": 51.00000000675209,
+        "publisherCountersDelta": {
+          "frames_captured": 1288,
+          "frames_sent": 1349,
+          "frames_dropped": 0,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      }
+    },
+    {
+      "name": "arm-perf-candidate-repeat",
+      "report": "reports/arm-perf-candidate-repeat/8a37bf0c-a518-4073-b831-b6d6f6935131/results.json",
+      "sha256": "5777aa8643c849fa3e4514cdd4555c8616a447e0d38ad3f20317b78211e9404b",
+      "passed": true,
+      "environment": "Ubuntu 22.04.5 Jetson host",
+      "packageManifestSha256": "c207b8136983c09ed7c7fd654a26c9b2dd85fe0d19244b87e66ed96ede844cf4",
+      "executableSha256": "c4a2024862434a605d2be183e831580d6593d79eacf678734241bcc996d409d3",
+      "sourceTreeSha256": "62d32f5d2f115bfe2f74966394bbdac699e308d3b8d2991a6b6e39d6d0f4cf4a",
+      "harnesses": {
+        "linux-arm64-bringup.py": "95537ac78c54d155bb31941562b14544bae6bebd67dc65c2f788abd7d59896f0",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "linux-live-control-stress.js": "929054b6cf68ca1f6898a2b69467aa5ca68a9b4c26c9bfca07f47f9d0f74abd0",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-perf-candidate-repeat/8a37bf0c-a518-4073-b831-b6d6f6935131/performance-browser.json",
+        "sha256": "758b427984488d7ae6c325b0a1cc1acdefeee2fe5efd9316a5a6fbf186c220d9",
+        "publisherCpuPercent": 148.91561062738444,
+        "rssMinMiB": 155.234375,
+        "rssMaxMiB": 166.27734375,
+        "decodedFps": 29.708338365099312,
+        "uniqueIdentities": 1277,
+        "mediaGapP95Ms": 36.000000007334165,
+        "maxMediaGapMs": 51.00000000675209,
+        "publisherCountersDelta": {
+          "frames_captured": 1287,
+          "frames_sent": 1348,
+          "frames_dropped": 0,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      },
+      "fuzz": {
+        "passed": true,
+        "seed": 2601025,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 9962.314819
+        },
+        "uniqueIdentities": 425,
+        "report": "reports/arm-perf-candidate-repeat/8a37bf0c-a518-4073-b831-b6d6f6935131/live-fuzz.json",
+        "sha256": "308115fd0cba476985e16d15e7266c2558656b8e33bdd0d7b971ac567b0ab8aa",
+        "allSeeds": [
+          2601025,
+          2601026,
+          2601027
+        ],
+        "duringStressStereoSamples": 30
+      }
+    },
+    {
+      "name": "arm-fuzz-perf-noble",
+      "report": "reports/arm-fuzz-perf-noble/f732c05b-e9d0-4402-875d-ef368110b5ac/results.json",
+      "sha256": "4977d4c251e9a6a8f9ad803162a08702936a71d290e2a357bacec21a45561864",
+      "passed": true,
+      "environment": "Ubuntu 24.04 owned userland, same Jetson kernel",
+      "packageManifestSha256": "c207b8136983c09ed7c7fd654a26c9b2dd85fe0d19244b87e66ed96ede844cf4",
+      "executableSha256": "c4a2024862434a605d2be183e831580d6593d79eacf678734241bcc996d409d3",
+      "sourceTreeSha256": "62d32f5d2f115bfe2f74966394bbdac699e308d3b8d2991a6b6e39d6d0f4cf4a",
+      "harnesses": {
+        "linux-arm64-bringup.py": "95537ac78c54d155bb31941562b14544bae6bebd67dc65c2f788abd7d59896f0",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "linux-live-control-stress.js": "929054b6cf68ca1f6898a2b69467aa5ca68a9b4c26c9bfca07f47f9d0f74abd0",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 29,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 29,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-fuzz-perf-noble/f732c05b-e9d0-4402-875d-ef368110b5ac/performance-browser.json",
+        "sha256": "33a04aa4457720bb0ced24b5a837d1754d1fe450932c08e4115bc2b3703d72a6",
+        "publisherCpuPercent": 146.49868698477283,
+        "rssMinMiB": 142.57421875,
+        "rssMaxMiB": 146.2265625,
+        "decodedFps": 29.596908799417875,
+        "uniqueIdentities": 1273,
+        "mediaGapP95Ms": 36.999999996623956,
+        "maxMediaGapMs": 48.99999999906868,
+        "publisherCountersDelta": {
+          "frames_captured": 1284,
+          "frames_sent": 1343,
+          "frames_dropped": 0,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      },
+      "fuzz": {
+        "passed": true,
+        "seed": 2601028,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 10458.996076000003
+        },
+        "uniqueIdentities": 424,
+        "report": "reports/arm-fuzz-perf-noble/f732c05b-e9d0-4402-875d-ef368110b5ac/live-fuzz.json",
+        "sha256": "2b4c7369ae1e34fb614da8f4ffd580a16d423fcd0d58faededb7b73daa4386b4",
+        "allSeeds": [
+          2601028,
+          2601029,
+          2601030
+        ],
+        "duringStressStereoSamples": 30
+      }
+    },
+    {
+      "name": "arm-fuzz-integrated-host",
+      "report": "reports/arm-fuzz-integrated-host/ddabbeb0-3361-4a18-b09e-fcaee4562c1c/results.json",
+      "sha256": "45cf0da504edb5266b271a7dba68e58724f3bbbd45e859e6398658d62167caea",
+      "passed": true,
+      "environment": "Ubuntu 22.04.5 Jetson host",
+      "packageManifestSha256": "92ada801d36f10e468b6db2e66cf6506cedbb6d4ac49f5dd0d15cb7227dba3e4",
+      "executableSha256": "ec9b65f8d24a880e735d9eedb8b1d6be41ac67f2321a4dd207744d5c208197f4",
+      "sourceTreeSha256": "9caa3a7a737a9940d17be853cdef8f54f406a4a013df23906ed2c6849e81efcd",
+      "harnesses": {
+        "linux-arm64-bringup.py": "1264e52693eba3a82ecb1518509fad43b64cd261d566de6a0f626b85c4c6d001",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "linux-live-control-stress.js": "929054b6cf68ca1f6898a2b69467aa5ca68a9b4c26c9bfca07f47f9d0f74abd0",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "stops": [
+        {
+          "elapsedSeconds": 1.2624042249954073,
+          "publisherRssBeforeKiB": 165884,
+          "publisherRssAfterKiB": 141168
+        },
+        {
+          "elapsedSeconds": 1.1853972950048046,
+          "publisherRssBeforeKiB": 180340,
+          "publisherRssAfterKiB": 147616
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-fuzz-integrated-host/ddabbeb0-3361-4a18-b09e-fcaee4562c1c/performance-browser.json",
+        "sha256": "42ec7b2a3a2d8f179e24debd4b2481887ae6eefb3baf49e559000d9c59287975",
+        "publisherCpuPercent": 145.471580485024,
+        "rssMinMiB": 158.4296875,
+        "rssMaxMiB": 163.87890625,
+        "decodedFps": 29.666139236445975,
+        "uniqueIdentities": 1277,
+        "mediaGapP95Ms": 36.999999996623956,
+        "maxMediaGapMs": 47.99999999522697,
+        "publisherCountersDelta": {
+          "frames_captured": 1286,
+          "frames_sent": 1344,
+          "frames_dropped": 0,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      },
+      "fuzz": {
+        "passed": true,
+        "seed": 2601031,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 10712.599032000006
+        },
+        "uniqueIdentities": 426,
+        "report": "reports/arm-fuzz-integrated-host/ddabbeb0-3361-4a18-b09e-fcaee4562c1c/live-fuzz.json",
+        "sha256": "88a63b6d3a359195c17efe2357f4b3ae9f94694be3053f0aabc344523416fa89",
+        "allSeeds": [
+          2601031,
+          2601032,
+          2601033
+        ],
+        "duringStressStereoSamples": 30
+      }
+    },
+    {
+      "name": "arm-fuzz-integrated-noble",
+      "report": "reports/arm-fuzz-integrated-noble/f8ef20ff-5770-4dcc-913e-1082151bf857/results.json",
+      "sha256": "e8d2933229c604577f307e879cf37de40fbd5456ada005351348cb66eaeb9d35",
+      "passed": true,
+      "environment": "Ubuntu 24.04 owned userland, same Jetson kernel",
+      "packageManifestSha256": "92ada801d36f10e468b6db2e66cf6506cedbb6d4ac49f5dd0d15cb7227dba3e4",
+      "executableSha256": "ec9b65f8d24a880e735d9eedb8b1d6be41ac67f2321a4dd207744d5c208197f4",
+      "sourceTreeSha256": "9caa3a7a737a9940d17be853cdef8f54f406a4a013df23906ed2c6849e81efcd",
+      "harnesses": {
+        "linux-arm64-bringup.py": "1264e52693eba3a82ecb1518509fad43b64cd261d566de6a0f626b85c4c6d001",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "535b93136a98b1bc1805a861dfc8f43238f2fdabde4f21c81616dca0e3e9a924",
+        "linux-webrtc-observer.js": "bb8a01a8ecb8b19e28fe1e2b8f69f4904a5f050cea0e4983767e5bd505a37597",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "linux-live-control-stress.js": "929054b6cf68ca1f6898a2b69467aa5ca68a9b4c26c9bfca07f47f9d0f74abd0",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "browser": {
+        "ready": true,
+        "browserVersion": "156.0.8078.4",
+        "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+        "playwrightVersion": "1.64.1",
+        "nodeVersion": "v22.23.3"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 111,
+          "goodAudioSamples": 30,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ],
+      "stops": [
+        {
+          "elapsedSeconds": 1.2388113959896145,
+          "publisherRssBeforeKiB": 157468,
+          "publisherRssAfterKiB": 121084
+        },
+        {
+          "elapsedSeconds": 1.1878055939887417,
+          "publisherRssBeforeKiB": 159668,
+          "publisherRssAfterKiB": 126420
+        }
+      ],
+      "performance": {
+        "report": "reports/arm-fuzz-integrated-noble/f8ef20ff-5770-4dcc-913e-1082151bf857/performance-browser.json",
+        "sha256": "292acfc5079a9f58a248eff53c530396a7bc20d4dc7ffa1aced7f501a6e5e602",
+        "publisherCpuPercent": 150.05773636743837,
+        "rssMinMiB": 142.0859375,
+        "rssMaxMiB": 152.8359375,
+        "decodedFps": 29.73247452422761,
+        "uniqueIdentities": 1277,
+        "mediaGapP95Ms": 36.000000007334165,
+        "maxMediaGapMs": 38.00000000046566,
+        "publisherCountersDelta": {
+          "frames_captured": 1287,
+          "frames_sent": 1349,
+          "frames_dropped": 0,
+          "encode_failures": 0,
+          "encode_hard_failures": 0,
+          "encode_timeouts": 0,
+          "send_failures": 0
+        }
+      },
+      "fuzz": {
+        "passed": true,
+        "seed": 2601034,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 9948.210678999996
+        },
+        "uniqueIdentities": 424,
+        "report": "reports/arm-fuzz-integrated-noble/f8ef20ff-5770-4dcc-913e-1082151bf857/live-fuzz.json",
+        "sha256": "c5d5b68395153b678fd73aaa0983122836152a93549c2e09ccf32b57271cfbc5",
+        "allSeeds": [
+          2601034,
+          2601035,
+          2601036
+        ],
+        "duringStressStereoSamples": 30
+      }
+    }
+  ],
+  "performanceComparison": {
+    "order": [
+      "arm-fuzz-perf-baseline",
+      "arm-fuzz-perf-candidate",
+      "arm-perf-baseline-repeat",
+      "arm-perf-candidate-repeat"
+    ],
+    "secondsPerObservation": 45,
+    "profile": "1280x720 source and output, 30 fps, software libx264 H.264, 4000 kbps target, system+microphone Opus",
+    "baselineMeanPublisherCpuPercent": 169.00508574986725,
+    "candidateMeanPublisherCpuPercent": 147.0230898118291,
+    "relativePublisherCpuReductionPercent": 13.006706774831727,
+    "baselineDecodedFps": [
+      29.754762127518138,
+      29.753902560968836
+    ],
+    "candidateDecodedFps": [
+      29.553913671462695,
+      29.708338365099312
+    ],
+    "limits": "Two observations per package in A/B/A/B order on one Jetson; one core is 100%. Same-host browser and source compete for CPU. Simple moving barcode, no physical display, high-motion/game, 60fps, latency or A/V sync qualification. Ubuntu24.04 result is separate, not pooled. Raw gaps, capture/drop counters and RSS are retained."
+  },
+  "fuzzSummary": {
+    "classification": "Bounded black-box malformed-request and connection-pressure corpus; not coverage-guided fuzzing or a security proof.",
+    "completedSeededRequests": 2304,
+    "completedFramingCases": 72,
+    "completedConcurrentRequests": 768,
+    "scope": "Owned loopback publisher only, with independent decoded video/audio during and after pressure, then GUI mute/reconnect/Stop/restart/settings/Quit. No tokens/response bodies saved in fuzz corpus."
+  },
+  "windowsParityAudit": {
+    "windowsMain": "988e1f1975c85bebba00f5d5d8c258d0e767e7e3",
+    "sourceHead": "81035edc19d6393f63b2a9735fafe9b9ae908c87",
+    "windowsMainIsAncestor": true,
+    "fullParityQualified": false,
+    "requiredRows": 23,
+    "waivedRows": [],
+    "requirements": [
+      {
+        "id": "shared-core",
+        "required": true,
+        "existingLinuxStatus": "implemented-unqualified",
+        "armAssessment": "shared; regression unqualified",
+        "finding": "Shared Qt/POSIX application and protocol code; current Windows/main is an ancestor. Windows/macOS runtime regressions cannot be qualified on this ARM host."
+      },
+      {
+        "id": "wayland-window",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "ARM unqualified",
+        "finding": "PipeWire/ScreenCast portal implementation exists. No ARM Wayland session exercised. Preserve existing GNOME cancellation/crash, covered-browser and cadence failures."
+      },
+      {
+        "id": "x11-window",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "bounded ARM evidence",
+        "finding": "Packaged ARM moving-window capture and independent H.264 reception on owned Xvfb. Physical Xorg, other visuals/scales and visibility behavior remain unqualified."
+      },
+      {
+        "id": "camera",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "bounded transport/lifecycle only",
+        "finding": "V4L2 ARM MJPEG and YUYV package evidence exists, including busy/reopen/lifecycle. Connected HDMI input is black/silent: moving picture, colors and audible HDMI remain unqualified."
+      },
+      {
+        "id": "application-audio",
+        "required": true,
+        "existingLinuxStatus": "partial-e2e-passed",
+        "armAssessment": "ARM unqualified",
+        "finding": "Linux isolates playback streams via Pulse monitors; Windows uses process loopback. Preserve intermittent native PipeWire source stalls during repeated output moves. Per-JACK-client capture remains open."
+      },
+      {
+        "id": "system-audio",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "bounded ARM virtual audio evidence",
+        "finding": "Private Pulse system mix independently decoded as stereo AAC/Opus. Physical endpoints, routing changes and hardware latency remain open."
+      },
+      {
+        "id": "communications-output",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "ARM unqualified",
+        "finding": "Explicit output-monitor selection is implemented and has amd64 evidence; no ARM workflow transfer is inferred."
+      },
+      {
+        "id": "microphone",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "bounded ARM virtual audio evidence",
+        "finding": "Selected virtual microphone mixed, muted/unmuted, persisted and retired. Physical microphone quality/disconnect behavior remains unqualified."
+      },
+      {
+        "id": "audio-codecs",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "partial ARM evidence",
+        "finding": "Stereo AAC over UDP and Opus over WebRTC verified. Mono, PCM, RED recovery and codec negotiation variants require ARM workflows."
+      },
+      {
+        "id": "software-encoding",
+        "required": true,
+        "existingLinuxStatus": "partial-e2e-passed",
+        "armAssessment": "partial ARM evidence",
+        "finding": "Software libx264 H.264 actually received/decoded. VP9/AV1/HEVC and dual alpha ARM workflows remain unqualified."
+      },
+      {
+        "id": "hardware-encoding",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "implementation gap and ARM unqualified",
+        "finding": "Windows NVENC/QSV/AMF versus Linux NVENC/software. Linux QSV/AMF/VAAPI/V4L2 hardware encoding absent. No Jetson/Pi encoder output verified; amd64 GTX750Ti result is not ARM evidence."
+      },
+      {
+        "id": "vdo-direct",
+        "required": true,
+        "existingLinuxStatus": "partial-e2e-passed",
+        "armAssessment": "bounded ARM evidence",
+        "finding": "Packaged direct WebRTC moving video, mixed Opus, fresh viewer, mute and restart. Public signaling with same-host media is not WAN/loss/browser diversity qualification."
+      },
+      {
+        "id": "vdo-rooms",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "ARM unqualified",
+        "finding": "Shared room passwords, HQ/LQ tiers and director controls exist. Protected-room/dynamic tier/authorization workflows require ARM reception evidence."
+      },
+      {
+        "id": "whip",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "ARM unqualified",
+        "finding": "Shared WHIP implementation and amd64 endpoint/recovery evidence exist. ARM HTTP(S)/TURN/auth/recovery workflows remain open."
+      },
+      {
+        "id": "mux-outputs",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "partial ARM evidence",
+        "finding": "ARM UDP/MPEG-TS H.264/AAC and helper recovery verified. RTMP(S), SRT, RIST and RTSP TCP/UDP need ARM receiver workflows."
+      },
+      {
+        "id": "alpha",
+        "required": true,
+        "existingLinuxStatus": "partial",
+        "armAssessment": "implementation gap and ARM unqualified",
+        "finding": "Spout2 is Windows-only; Linux desktop capture emits opaque pixels. Linux transparent producer sharing and paired OBS alpha receiver qualification remain missing."
+      },
+      {
+        "id": "gui",
+        "required": true,
+        "existingLinuxStatus": "partial-e2e-passed",
+        "armAssessment": "partial ARM evidence",
+        "finding": "Owned-X11 GUI source/profile/audio/mute/Stop/restart/persistence/Quit. Physical desktop, tray/accessibility/scaling variants need evidence. ARM first-run 720p30 versus Windows/amd64 720p60 is intentional and saved selections persist."
+      },
+      {
+        "id": "profiles",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "partial ARM evidence; retained failure",
+        "finding": "Current idle relaunch restores chosen settings. Earlier first-save external-output URL loss remains unresolved; Secret Service failure/lock/reset breadth needs ARM qualification."
+      },
+      {
+        "id": "automation",
+        "required": true,
+        "existingLinuxStatus": "partial",
+        "armAssessment": "partial ARM evidence",
+        "finding": "Owned packaged live local-control malformed/auth/framing/capacity/deadline recovery cases plus real media observation. MCP integration, headless permissions and broad command/URL/configuration fuzzing remain open."
+      },
+      {
+        "id": "recovery",
+        "required": true,
+        "existingLinuxStatus": "partial-e2e-passed",
+        "armAssessment": "partial ARM evidence",
+        "finding": "ARM UDP helper death/stall, source loss/reselection, plus WebRTC receiver reconnect and GUI restart. Physical service/device/network failures remain unqualified."
+      },
+      {
+        "id": "packaging",
+        "required": true,
+        "existingLinuxStatus": "bounded-e2e-passed",
+        "armAssessment": "bounded ARM evidence",
+        "finding": "Native ARM package and portable ELF/ABI/payload/source hashes; Ubuntu 22.04 and 24.04 userlands on one Jetson kernel. Architecture-separated updates. No universal distro/Pi/installer qualification."
+      },
+      {
+        "id": "endurance",
+        "required": true,
+        "existingLinuxStatus": "partial-e2e-passed",
+        "armAssessment": "partial ARM evidence",
+        "finding": "Earlier exact package passed thirty-minute same-host WebRTC observation. Do not transfer it to this candidate; calibrated A/V, native-client and high-motion endurance remain open."
+      },
+      {
+        "id": "arm-portability",
+        "required": true,
+        "existingLinuxStatus": "in-progress",
+        "armAssessment": "in progress",
+        "finding": "One Jetson ARM64 host; portable and native dependency paths reuse Linux backends. Raspberry Pi, other drivers/desktops and full ARM feature matrix remain unqualified."
+      }
+    ],
+    "supplementalFindings": [
+      "Windows in-app minidump collection has no equivalent Linux crash reporter; Linux bounded logging and issue export exist.",
+      "Windows guide mentions Desktop Studio, Mixer program and independent recording absent from audited native Qt source in both current branch and Windows/main. Documentation/scope discrepancy; not counted as implemented ARM functionality.",
+      "Windows guide states 192 kbps audio defaults, while media_defaults.h sets 128 kbps in both origin/main and Linux. This is documentation/source drift, not an ARM-only difference; Windows release runtime is not requalified here.",
+      "Preserve linux_performance_validation_checkpoint: one received PCM channel-separation/phase continuity failure and another native-client route-move stall remain unresolved; passing repeats do not waive them."
+    ],
+    "reviewedSources": {
+      "native-qt/qa/linux-parity.json": "896ba8f1081bf65f1b19a8d4306c8da01789cc8aa12a3ca4512f9e4988d8c319",
+      "docs/windows-guide.md": "48659ae90f0dd5b119a5929109dd08d9dcf154a5d9c5d58c6b7bc1a6cc7ae3ef",
+      "native-qt/src/platform/capabilities.cpp": "86bd4125171b6ed443ea6e978a9ec717ed5dd2e1ad220ea5fddc20df26e6ab48",
+      "native-qt/include/versus/platform/capabilities.h": "171660e7e467285982d73ff23eca54b61bbb670f55c7aa09774b63bd704108b1",
+      "native-qt/cmake/platform-linux.cmake": "4f8ea4bf4836864c69528a20fa902b6eac6f237b090e73f4cd3fc374f497d451",
+      "native-qt/src/ui/main_window.cpp": "9866fb8e563cd37d86b37bf701d0e19581eec5720a6e547c2e618b9ba171c40d",
+      "native-qt/src/platform/linux/video_encoder.cpp": "8a8e3981f0924e3f9a1dd9317b5da2c5bd60825f6f087090c89d3e85c3499ae4",
+      "native-qt/src/platform/linux/window_capture.cpp": "4013f89954bdece560dfa372856f9d6ae04ae48553bfc15893bcf26e8fefb3bf",
+      "native-qt/src/platform/linux/audio_capture.cpp": "2c8716ee4f4aec5bf7a1c705b75683e7fddb46a0c7e6bffa08b93e62dba12b2d",
+      "native-qt/src/diagnostics/crash_reporter.cpp": "d67bdb98832b458a5d254ee0c16449db41a5b470afe4df694fbdb8661b7e8872",
+      "native-qt/src/app/versus_app.cpp": "b338a4f9cc402870835dbed29956cc8f672570da4422447c3703c65e503522f4",
+      "native-qt/include/versus/media_defaults.h": "8eb507678de25058b9c7fecf6bc3ead09ff68cadd9ac0bf43b6234a9f7c6ae52"
+    },
+    "initialSourceHead": "d47f11a5b4deef83b97ae52ce7c4b082c4e94271",
+    "windowsRuntimeFollowup": {
+      "workflow": ".github/workflows/windows-packaged-media.yml",
+      "workflowSha256": "c88ab4ee53572edfc39ddbb11c3893c1f5d9d6824b47dc551ee6d9bb98ec64e2",
+      "status": "not run for this candidate",
+      "reason": "No local Windows runtime; available connected GitHub tools expose no new-workflow dispatch, and this host has no authenticated gh CLI. Existing designated CI branches were not overwritten."
+    }
+  },
+  "hostAudioServices": {
+    "before": {
+      "7002": {
+        "name": "pipewire",
+        "startTimeTicks": "3406519"
+      },
+      "7003": {
+        "name": "pipewire-media-",
+        "startTimeTicks": "3406519"
+      },
+      "7004": {
+        "name": "pulseaudio",
+        "startTimeTicks": "3406519"
+      }
+    },
+    "after": {
+      "7002": {
+        "name": "pipewire",
+        "startTimeTicks": "3406519"
+      },
+      "7003": {
+        "name": "pipewire-media-",
+        "startTimeTicks": "3406519"
+      },
+      "7004": {
+        "name": "pulseaudio",
+        "startTimeTicks": "3406519"
+      }
+    },
+    "unchanged": true
+  },
+  "preservedFailuresAndLimits": [
+    "Earlier first-save external-output URL loss remains unresolved.",
+    "Native PipeWire output-move source stalls, physical GNOME/portal failures and covered-browser freezes remain open in linux-parity.json.",
+    "Upstream received PCM phase/channel-separation continuity failure remains unresolved. Bounded FFT samples here do not constitute continuous PCM or calibrated A/V qualification.",
+    "Thirty-minute endurance applies to the earlier exact package in linux-arm-webrtc.json; not transferred to this candidate.",
+    "Windows/macOS and amd64 runtime regression not executed on this ARM host. No host desktop/audio services restarted; no driver changes.",
+    "Raspberry Pi, ARM hardware encoding, physical Wayland and moving/audible HDMI input remain unqualified."
+  ],
+  "reproduction": "See docs/linux-arm64.md live fuzz/performance section. Verified portable AppRun, owned Xvfb/xfwm4/private session bus/keyring/private Pulse, native ARM Chromium/Playwright and independent decoded media. Source archive records exact build snapshot; later ledger/docs do not alter production binary."
+}

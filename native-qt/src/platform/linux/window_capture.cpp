@@ -177,8 +177,12 @@ QImage readXImage(XConnection &x, xcb_drawable_t drawable) {
     if (xcb_get_setup(x.connection)->image_byte_order == XCB_IMAGE_ORDER_LSB_FIRST &&
         xcb_get_image_data_length(reply) == width * height * 4) {
         image = QImage(xcb_get_image_data(reply), width, height, width * 4, QImage::Format_RGB32).copy();
-        for (int y = 0; y < height; ++y)
-            for (int x = 0; x < width; ++x) image.scanLine(y)[x * 4 + 3] = 255;
+        for (int y = 0; y < height; ++y) {
+            // scanLine() checks writable QImage ownership. Do that once per
+            // row instead of once per pixel on every captured frame.
+            auto *row = image.scanLine(y);
+            for (int x = 0; x < width; ++x) row[x * 4 + 3] = 255;
+        }
     }
     std::free(reply); return image;
 }

@@ -78,6 +78,46 @@ async function observe(command) {
   if (!result.passed) throw Error(result.error);
   return {passed:true, report:file, sha256:hash(file), uniqueIdentities:result.uniqueIdentities, goodAudioSamples:result.goodAudioSamples};
 }
+async function performanceObservation(seconds) {
+  assert(Number.isInteger(seconds) && seconds >= 10 && seconds <= 120);
+  const video = await media.observeDecoded(page, seconds*1000);
+  const unique = media.requireMoving(video, 'performance');
+  const intervals = video.observations.slice(1).map((frame,i) =>
+    (frame.mediaTime-video.observations[i].mediaTime)*1000).sort((a,b)=>a-b);
+  const result = {video, stats:await stats(), uniqueIdentities:unique,
+    decodedFps:video.observations.length*1000/(video.ended-video.started),
+    mediaGapP95Ms:intervals[Math.floor(intervals.length*.95)], maxMediaGapMs:intervals.at(-1)};
+  const file = path.join(report, 'performance-browser.json');
+  fs.writeFileSync(file, JSON.stringify(result,null,2)+'\n');
+  return {report:file, sha256:hash(file), decodedFps:result.decodedFps,
+    uniqueIdentities:unique, mediaGapP95Ms:result.mediaGapP95Ms, maxMediaGapMs:result.maxMediaGapMs};
+}
+async function liveFuzz(command) {
+  const evidence = {passed:false};
+  const file = path.join(report, 'live-fuzz.json');
+  try {
+    const control = JSON.parse(fs.readFileSync(command.discovery));
+    // Wait for both operations even if one fails, then preserve all evidence.
+    const results = await Promise.allSettled([
+      require('./linux-live-control-stress')(control, command.seed, evidence),
+      (async () => { evidence.video = await media.observeDecoded(page,15000); })(),
+      (async () => { evidence.audio = await media.observeAudio(page); })()
+    ]);
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
+    evidence.uniqueIdentities = media.requireMoving(evidence.video,'during-fuzz');
+    assert(evidence.audio.spectra.filter(s => s.rms > .005 && s.microphone1200 > -55 &&
+      s.channels[0].tone440 > -55 && s.channels[1].tone880 > -55).length >= 25,
+      'Audio stopped during malformed control traffic');
+    evidence.passed = true;
+  } catch (error) { evidence.passed = false; evidence.error = String(error.stack || error); }
+  fs.writeFileSync(file, JSON.stringify(evidence,null,2)+'\n');
+  if (!evidence.passed) throw Error(evidence.error);
+  return {passed:true, report:file, sha256:hash(file), seed:command.seed,
+    seededRequests:evidence.corpora.reduce((sum,c)=>sum+c.requests.length,0),
+    framingRequests:evidence.framing.length, concurrentRequests:evidence.concurrent.length,
+    heldConnections:evidence.capacity, deadline:evidence.deadline,
+    uniqueIdentities:evidence.uniqueIdentities};
+}
 (async () => {
   browser = await chromium.launch({executablePath, headless:true,
     env:{...process.env, PULSE_SINK:'arm_receiver'},
@@ -92,6 +132,8 @@ async function observe(command) {
       if (command.op === 'connect') result = await connect();
       else if (command.op === 'observe') result = await observe(command);
       else if (command.op === 'stats') result = await stats();
+      else if (command.op === 'performance') result = await performanceObservation(command.seconds);
+      else if (command.op === 'fuzz') result = await liveFuzz(command);
       else if (command.op === 'close') { await closeBrowser(); process.stdout.write('{"closed":true}\n'); break; }
       else throw Error('Unknown observer command');
       process.stdout.write(JSON.stringify({ok:true, ...result}) + '\n');

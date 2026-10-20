@@ -16,9 +16,11 @@ import sys
 import time
 
 
-def source_window():
+def source_window(size='640x360'):
     import tkinter as tk
-    root = tk.Tk(); root.title('Game Capture Installed Source'); root.geometry('640x360+30+30')
+    width, height = map(int, size.split('x'))
+    assert 160 <= width <= 1920 and 90 <= height <= 1080
+    root = tk.Tk(); root.title('Game Capture Installed Source'); root.geometry(size+'+30+30')
     canvas = tk.Canvas(root, width=640, height=360, highlightthickness=0); canvas.pack(fill='both', expand=True)
     identity = 0
     def draw():
@@ -38,10 +40,11 @@ def source_window():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', action='store_true')
+    parser.add_argument('--source-size', default='640x360')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--single', action='store_true', help='Clean-install launch and saved-settings relaunch without package transitions')
     args = parser.parse_args()
-    if args.source: return source_window()
+    if args.source: return source_window(args.source_size)
     assert os.getuid() != 0 and args.output and os.environ.get('GC_QA_PRIVATE_DESKTOP')
     report = args.output.resolve(); report.mkdir(parents=True, exist_ok=True)
     result = {'scope':__doc__, 'uid':os.getuid(), 'passed':False, 'phases':[],
