@@ -10,6 +10,10 @@ assert.equal(process.platform,'linux');const backend=opts.backend||'x11';assert(
 assert(wayland?process.env.GC_QA_WAYLAND_DESKTOP:process.env.GC_QA_PRIVATE_DESKTOP,'Use the matching owned desktop wrapper');
 for(const k of ['publisher','manifest-sha256','reports'])assert(opts[k],k);
 const seconds=Number(opts.seconds||60),hold=Number(opts['hold-seconds']||0),analysisPython=opts['analysis-python']||'python3';
+const encoder=opts.encoder||'software';assert(['software','nvenc'].includes(encoder));
+const pressureSeed=opts['control-pressure-seed']===undefined?null:Number(opts['control-pressure-seed']);
+assert(pressureSeed===null||(Number.isInteger(pressureSeed)&&pressureSeed>=0&&pressureSeed<=0xffffffff),'Expected an unsigned 32-bit pressure seed');
+const pressureSeconds=pressureSeed===null?0:30;
 const sourceReference=opts['source-reference']||'canvas';assert(['canvas','desktop'].includes(sourceReference));
 const receiverPlayback=opts['receiver-playback']||'muted';assert(['muted','owned-sink'].includes(receiverPlayback));
 const audibleReceiver=receiverPlayback==='owned-sink';
@@ -25,8 +29,8 @@ if(Object.values(fixtureTimingControl).some(Boolean))assert(desktopReference,'St
 // One receiver produces about 240 native trace rows/second at this fixed
 // 60fps profile. Six minutes leaves room for startup below the 100,000-row
 // limit; the offline analyzer also rejects an actually truncated trace.
-const traceCapture=opts['trace-capture']==='true';if(traceCapture)assert(seconds*(hold?2:1)+hold<=360,'Keep the opt-in native trace below its 100,000-row bound');
-if(traceCapture&&wayland)assert(seconds*(hold?2:1)+hold<=120,'Wayland producer/copy/return stages require a shorter bounded trace');
+const traceCapture=opts['trace-capture']==='true';if(traceCapture)assert(seconds*(hold?2:1)+hold+pressureSeconds<=360,'Keep the opt-in native trace below its 100,000-row bound');
+if(traceCapture&&wayland)assert(seconds*(hold?2:1)+hold+pressureSeconds<=120,'Wayland producer/copy/return stages require a shorter bounded trace');
 const pauseMonitorConsumer=opts['pause-monitor-consumer']==='true';
 if(pauseMonitorConsumer)assert(wayland&&hold===0&&seconds<=60,'Paused monitor consumer is a bounded Wayland diagnostic');
 const traceAudio=opts['trace-audio']==='true';if(traceAudio)assert(desktopReference,'Native audio timing traces require the bounded desktop diagnostic');
@@ -36,20 +40,31 @@ const exe=path.resolve(opts.publisher),bundle=path.resolve(path.dirname(exe),'..
 assert.equal(sha(manifestFile),opts['manifest-sha256']);const manifest=JSON.parse(fs.readFileSync(manifestFile));assert.equal(sha(exe),manifest.artifact.sha256);
 for(const item of manifest.payload.files){const file=path.resolve(bundle,item.relativePath);assert(file.startsWith(bundle+path.sep));assert.equal(sha(file),item.sha256);assert.equal(fs.statSync(file).size,item.size);}
 const report=path.resolve(opts.reports,crypto.randomUUID());fs.mkdirSync(report,{recursive:true,mode:0o700});
-const harnesses={};for(const name of ['linux-av-sync.js','linux-av-probe.js','macos-av-source.html','macos-continuous-audio.js','macos-media-receiver.js','macos-analyze-av-sync.py','macos-calibrate-av-sync.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
+const harnesses={};for(const name of ['linux-av-sync.js','linux-av-probe.js','macos-av-source.html','macos-continuous-audio.js','macos-media-receiver.js','macos-analyze-av-sync.py','macos-calibrate-av-sync.py','macos-control-pressure.js','macos-live-control-fuzz.js']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(wayland)for(const name of ['linux-av-wayland.js','linux-source-monitor.py','linux-virtual-monitor.py','linux-portal-select.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(traceCapture){const name='linux-av-trace-report.js';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(desktopReference)for(const name of ['linux-av-desktop-reference.js','linux-av-compare-references.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(traceAudio){const name='linux-audio-timing-report.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(rtpTiming)for(const name of ['linux-encoded-audio.js','linux-decode-opus-report.py','linux-av-rtp-report.py']){fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
 if(receiverDesktop){const name='linux-av-compare-playback.py';fs.copyFileSync(path.join(__dirname,name),path.join(report,name));harnesses[name]=sha(path.join(report,name));}
-const result={backend,traceCapture,traceAudio,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, software H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
+const result={backend,traceCapture,traceAudio,scope:`Exact Ubuntu DEB, owned ${wayland?'native GNOME Wayland':'X11'} window and selected Chrome-process Pulse audio to hosted VDO.Ninja browser. Default video 1280x720/60, ${encoder} H264 4000 kbps, stereo Opus 128 kbps without RED. Paired software-reference/received-media recordings, decoded pulse identities, continuous PCM windows and resources. Excludes physical display/speaker latency, physical microphone and OBS.`,
   sourceReference,receiverPlayback,receiverDesktop,rtpTiming,pauseMonitorConsumer,diagnosticOnly:desktopReference||pauseMonitorConsumer,fixtureTimingControl,
-  executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
+  executableSha256:sha(exe),manifestSha256:sha(manifestFile),harnessSha256:sha(__filename),harnesses,seconds,holdSeconds:hold,requested:{encoder,controlPressureSeed:pressureSeed,width:1280,height:720,fps:60,bitrateKbps:4000},phases:[],samples:[],passed:false};
 const save=()=>{fs.writeFileSync(path.join(report,'results.pending.json'),JSON.stringify(result,null,2)+'\n');fs.renameSync(path.join(report,'results.pending.json'),path.join(report,'results.json'));};
 const pactl=(...a)=>execFileSync('pactl',a,{encoding:'utf8',timeout:5000}).trim();
 const modules=[],browsers=[],recordings=new Set();let server,child,log,control,discovery,page,continuous=false,launchError,logError,waylandFixture;
 let encodedAudio;
+const clockTicks=Number(execFileSync('getconf',['CLK_TCK'],{encoding:'utf8',timeout:5000}));
+assert(clockTicks>0);
+function resources(){
+  const stat=fs.readFileSync(`/proc/${child.pid}/stat`,'utf8');
+  const fields=stat.slice(stat.lastIndexOf(')')+2).trim().split(/\s+/);
+  const status=fs.readFileSync(`/proc/${child.pid}/status`,'utf8');
+  return {monotonicMs:performance.now(),cpuTicks:Number(fields[11])+Number(fields[12]),startTicks:fields[19],
+    rssKiB:Number(/^VmRSS:\s+(\d+)/m.exec(status)[1]),threads:Number(/^Threads:\s+(\d+)/m.exec(status)[1]),
+    fileDescriptors:fs.readdirSync(`/proc/${child.pid}/fd`).length};
+}
+result.resourceScope='Publisher process only; CPU 100% equals one logical CPU. Excludes browser, compositor and kernel/device allocations. RSS is resident memory, not leak attribution.';
 const defaultSink=pactl('get-default-sink');result.defaultSink=defaultSink;
 const api=async(route,body)=>{const r=await fetch(control.base_url+route,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+control.token,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined,signal:AbortSignal.timeout(5000)});assert(r.ok);return r.json();};
 async function quit(){if(child&&child.exitCode===null){await api('/commands',{command:'quit'});await waitFor(()=>child.exitCode!==null,10000,'Publisher did not quit');}if(child){await child.closed;assert.equal(child.exitCode,0);assert(!fs.existsSync(discovery));}}
@@ -119,7 +134,7 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
       ...(audibleReceiver?{ignoreDefaultArgs:['--mute-audio']}:{}),
       args:['--autoplay-policy=no-user-gesture-required',...(audibleReceiver?[]:['--mute-audio']),...(receiverDesktop?['--window-position=1440,0','--window-size=1400,900']:[])]});browsers.push(viewer);result.browserVersion=viewer.version();
     const stream='gclinuxav'+crypto.randomBytes(12).toString('hex');discovery=path.join(report,'private-control.json');
-    child=spawn(exe,['--headless','--source=window','--window='+(wayland?'Choose a window':title),'--stream='+stream,'--password=false','--video-encoder=software','--video-codec=h264','--resolution=1280x720','--fps=60','--bitrate-kbps=4000','--audio-source=selected-window','--audio-process='+sourcePid,'--audio-codec=opus','--no-audio-red','--audio-channels=2','--audio-bitrate-kbps=128','--duration-ms='+((seconds*(hold?2:1)+hold+180)*1000),'--local-control','--local-control-port=0','--local-control-discovery='+discovery],{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
+    child=spawn(exe,['--headless','--source=window','--window='+(wayland?'Choose a window':title),'--stream='+stream,'--password=false','--video-encoder='+encoder,'--video-codec=h264','--resolution=1280x720','--fps=60','--bitrate-kbps=4000','--audio-source=selected-window','--audio-process='+sourcePid,'--audio-codec=opus','--no-audio-red','--audio-channels=2','--audio-bitrate-kbps=128','--duration-ms='+((seconds*(hold?2:1)+hold+180)*1000),'--local-control','--local-control-port=0','--local-control-discovery='+discovery],{cwd:bundle,env,stdio:['ignore','pipe','pipe']});
     child.on('error',e=>launchError=String(e));log=fs.createWriteStream(path.join(report,'private-publisher.log'));log.on('error',e=>logError=String(e));child.stdout.pipe(log,{end:false});child.stderr.pipe(log,{end:false});child.closed=new Promise(resolve=>child.once('close',()=>log.end(resolve)));
     if(wayland)waylandFixture.selectPortal(title);
     await waitFor(()=>{assert(!launchError,launchError);assert.equal(child.exitCode,null);return fs.existsSync(discovery);},15000,'No publisher discovery');control=JSON.parse(fs.readFileSync(discovery));assert.equal(control.pid,child.pid);
@@ -149,20 +164,27 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
     }
     result.continuousAudio=await audio.start(page);continuous=true;
     let previous=null,index=0;
-    async function sample(duration=5000){
+    async function sample(duration=5000,stress=false){
       assert(!logError,logError);assert.equal(child.exitCode,null);await source.evaluate(()=>{fixture.trace=[];});
-      const observed=await video.observe(page,duration,{rtpMetadata:rtpTiming}),trace=await source.evaluate(()=>fixture.trace),pcm=await audio.drain(page),diagnostics=await api('/diagnostics');
+      const before=resources();
+      const pressureTask=stress?require('./macos-control-pressure')(control,pressureSeed,result.controlPressure).then(()=>null,error=>error):null;
+      const observed=await video.observe(page,duration,{rtpMetadata:rtpTiming}),trace=await source.evaluate(()=>fixture.trace),pcm=await audio.drain(page);
+      const after=resources();
+      if(pressureTask){const error=await pressureTask;assert(!error,String(error));assert(result.controlPressure.ended<=observed.ended,'Pressure outlasted media observation');}
+      const diagnostics=await api('/diagnostics');
+      assert.equal(after.startTicks,before.startTicks,'Publisher process identity changed');
+      const cpuPercent=100*(after.cpuTicks-before.cpuTicks)/clockTicks/((after.monotonicMs-before.monotonicMs)/1000);
       const audioCheck=audio.analyze(pcm,duration/1000-.35),elapsed=(observed.ended-observed.started)/1000;
       const stamps=observed.observations.filter(f=>f.stamp!==null).map(f=>f.stamp),distinct=new Set(stamps).size,sourceDistinct=new Set(trace.map(f=>f.stamp)).size;
       const gaps=observed.observations.slice(1).map((f,i)=>(f.mediaTime-observed.observations[i].mediaTime)*1000).sort((a,b)=>a-b);
       const reverse=stamps.slice(1).filter((s,i)=>s<stamps[i]).length;
-      const rssKiB=Number(execFileSync('ps',['-p',String(child.pid),'-o','rss='],{encoding:'utf8'}).trim());
+      const rssKiB=after.rssKiB;
       const inbound=await page.evaluate(async()=>{const rows=[];for(const pc of reviewPCs)if(pc.connectionState==='connected'){const stats=await pc.getStats();for(const row of stats.values())if(row.type==='inbound-rtp')rows.push({...row,codec:stats.get(row.codecId)?.mimeType});}return rows;});
-      const raw={observed,trace,pcm,diagnostics,inbound};const file=path.join(report,'sample-'+String(index++).padStart(4,'0')+'.json.gz');fs.writeFileSync(file,gzipSync(JSON.stringify(raw)),{flag:'wx'});
-      const summary={wall:Date.now(),seconds:elapsed,rssKiB,sourceFps:sourceDistinct/elapsed,receivedFps:distinct/elapsed,deliveryRatio:distinct/Math.min(sourceDistinct,60*elapsed),p95MediaGapMs:gaps[Math.floor(gaps.length*.95)],invalid:observed.invalid,reverse,audio:audioCheck,observationGapMs:previous?observed.started-previous:0,file:path.basename(file),sha256:sha(file)};previous=observed.ended;
+      const raw={observed,trace,pcm,diagnostics,inbound,resources:{before,after,clockTicks,cpuPercent}};const file=path.join(report,'sample-'+String(index++).padStart(4,'0')+'.json.gz');fs.writeFileSync(file,gzipSync(JSON.stringify(raw)),{flag:'wx'});
+      const summary={wall:Date.now(),seconds:elapsed,rssKiB,cpuPercent,threads:after.threads,fileDescriptors:after.fileDescriptors,controlPressure:stress,sourceFps:sourceDistinct/elapsed,receivedFps:distinct/elapsed,deliveryRatio:distinct/Math.min(sourceDistinct,60*elapsed),p95MediaGapMs:gaps[Math.floor(gaps.length*.95)],invalid:observed.invalid,reverse,audio:audioCheck,observationGapMs:previous?observed.started-previous:0,file:path.basename(file),sha256:sha(file)};previous=observed.ended;
       summary.passed=observed.width===1280&&observed.height===720&&observed.invalid===0&&reverse===0&&summary.sourceFps>=57&&summary.deliveryRatio>=.95&&summary.p95MediaGapMs<=2000/60+2&&summary.observationGapMs<=250&&audioCheck.passed;
-      result.samples.push(summary);save();
-      assert(diagnostics.app.live&&diagnostics.app.capturing);assert.equal(diagnostics.video.configured_width,1280);assert.equal(diagnostics.video.configured_height,720);assert.equal(diagnostics.video.configured_fps,60);assert.equal(diagnostics.video.hardware_encoder,false);assert.equal(diagnostics.audio.source_mode,'selected-window');
+      if(stress)result.controlPressure.media=summary;else result.samples.push(summary);save();
+      assert(diagnostics.app.live&&diagnostics.app.capturing);assert.equal(diagnostics.video.configured_width,1280);assert.equal(diagnostics.video.configured_height,720);assert.equal(diagnostics.video.configured_fps,60);assert.equal(diagnostics.video.hardware_encoder,encoder==='nvenc');assert.equal(diagnostics.video.active_encoder,encoder==='nvenc'?'h264_nvenc':'libx264');result.activeEncoder=diagnostics.video.active_encoder;assert.equal(diagnostics.audio.source_mode,'selected-window');
       for(const k of ['encode_failures','encode_timeouts','send_failures'])assert.equal(diagnostics.video[k],0,k);assert.equal(diagnostics.audio.send_failures,0);
       console.log(JSON.stringify({sample:index,...summary}));
       // Preserve all observations when a performance target fails; continue the
@@ -187,6 +209,12 @@ async function quit(){if(child&&child.exitCode===null){await api('/commands',{co
       for(const [kind,target,settings] of [[desktopReference?'browserSource':'source',source,{includeVideo:true,sourceStreamKey:'fixtureReference'}],['receiver',page,{includeVideo:true}]]){const r=await audio.record(target,path.join(report,name+'-'+kind+'.webm'),settings);pair.push(r);recordings.add(r);entry[kind]=r.metadata;save();}
       for(let n=0;n<seconds;n+=5)await sample(Math.min(5,seconds-n)*1000);
       for(const r of pair){await r.stop();recordings.delete(r);}entry.ended=Date.now();save();
+    }
+    if(pressureSeed!==null){
+      result.controlPressure={};await sample(pressureSeconds*1000,true);
+      assert(result.controlPressure.passed&&result.controlPressure.media.passed,'Media or control pressure failed');
+      // Start a new observer for the performance baseline after deliberate load.
+      await audio.stop(page);continuous=false;result.continuousAudio=await audio.start(page);continuous=true;previous=null;
     }
     await phase('initial');if(hold){for(let n=0;n<hold;n+=5)await sample(Math.min(5,hold-n)*1000);await phase('final');}
     result.sourceFixture=await source.evaluate(()=>({frames:fixture.frames,epoch:fixture.epoch,events:fixture.events}));await page.screenshot({path:path.join(report,'receiver.png')});

@@ -38,8 +38,14 @@ def main():
     parser.add_argument('--encoder', choices=['software', 'nvenc'], default='software')
     parser.add_argument('--camera-label')
     parser.add_argument('--camera-id')
+    parser.add_argument('--allocator-probe', type=Path, help='Opt-in glibc diagnostic library; excludes ordinary release qualification')
+    parser.add_argument('--allocator-trim', action='store_true', help='Diagnostic-only trim after the final stopped cycle')
+    parser.add_argument('--max-stopped-rss-growth-mib', type=int)
+    parser.add_argument('--restart-cycles', type=int, default=1, choices=range(1, 21))
     parser.add_argument('--expected-cursor', choices=['included', 'excluded'])
     args = parser.parse_args()
+    assert not args.allocator_trim or args.allocator_probe
+    assert args.max_stopped_rss_growth_mib is None or 1 <= args.max_stopped_rss_growth_mib <= 2048
     assert bool(args.camera_label) == bool(args.camera_id)
     assert not args.expected_cursor or (not args.camera_id and args.backend == 'wayland')
     assert os.environ.get('GC_QA_PRIVATE_DESKTOP') if args.backend == 'x11' else os.environ.get('GC_QA_OWNED_WAYLAND')
@@ -55,6 +61,12 @@ def main():
     helpers = Path(__file__).parent
     result = dict(scope=__doc__, passed=False, manifestSha256=sha(manifest_path),
                   executableSha256=sha(exe), requested=vars(args).copy(), phases=[], harnesses={})
+    result['diagnosticOnly'] = bool(args.allocator_probe)
+    if args.allocator_probe:
+        result['allocatorProbeSha256'] = sha(args.allocator_probe.resolve())
+        shutil.copy2(args.allocator_probe.resolve(), report/'allocator-probe.so')
+        shutil.copy2(helpers.parent/'qa/linux-allocator-probe.c', report/'linux-allocator-probe.c')
+        result['allocatorProbeSourceSha256'] = sha(report/'linux-allocator-probe.c')
     if args.expected_cursor:
         result['scope'] = 'Packaged native Wayland GUI window capture with a controlled native cursor, positive desktop screenshot, independently decoded moving/static/late/restarted video and clean Stop/Quit. Owned software GNOME only; no resize, physical desktop or other compositor qualification.'
     result['requested'] = {k:str(v) if isinstance(v, Path) else v for k,v in result['requested'].items()}
@@ -71,7 +83,11 @@ def main():
     def save(): (report/'results.json').write_text(json.dumps(result, indent=2)+'\n')
     def start(argv, label, interactive=False):
         log = (report/(label+'.log')).open('wb'); logs.append(log)
-        child = subprocess.Popen(argv, env=env, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL,
+        child_env = env.copy()
+        if label == 'app' and args.allocator_probe:
+            child_env.update(LD_PRELOAD=str(report/'allocator-probe.so'), GC_QA_HEAP_EXECUTABLE=str(exe),
+                GC_QA_HEAP_COMMAND=str(report/'heap-command'), GC_QA_HEAP_REPORT=str(report/'heap-response.json'))
+        child = subprocess.Popen(argv, env=child_env, stdin=subprocess.PIPE if interactive else subprocess.DEVNULL,
             stdout=subprocess.PIPE if interactive else log, stderr=log, text=interactive)
         children.append(child); return child
     def wait(check, message, seconds=25):
@@ -115,6 +131,14 @@ def main():
         before = api(); time.sleep(.6); after = api()
         assert not after['app']['live'] and not after['app']['primary_audio_capturing'] and not after['app']['microphone_capturing']
         assert before['video']['frames_captured'] == after['video']['frames_captured']
+    def allocator_snapshot(sequence, trim=False):
+        assert not api()['app']['capturing'], 'Heap diagnostic requires stopped capture'
+        command_file = report/'heap-command'
+        temporary = report/'heap-command.tmp'; temporary.write_text(str(sequence)+' '+str(int(trim))+'\n')
+        temporary.replace(command_file)
+        response = report/'heap-response.json'
+        wait(lambda:response.exists() and json.loads(response.read_text())['sequence']==sequence, 'Allocator probe did not respond', 5)
+        return json.loads(response.read_text())
     def position_cursor(label):
         def input_event(value):
             with socket.socket(socket.AF_UNIX) as pointer:
@@ -251,9 +275,32 @@ def main():
             assert result['livePreview']['centerStandardDeviation'] > 5 and result['livePreview']['uniqueCenterColors'] > 100, 'Camera preview is blank'
             receive('late')
         stop(); result['stopPassed'] = True
-        go_live('restart')
-        if args.expected_cursor: position_cursor('restart')
-        receive('restarted'); stop(); result['restartPassed'] = True
+        result['restartCycles'] = []
+        for cycle in range(args.restart_cycles):
+            label = 'restart' if cycle == 0 else 'restart-'+str(cycle+1)
+            started = time.monotonic()
+            go_live(label)
+            if args.expected_cursor: position_cursor(label)
+            receive('restarted' if cycle == 0 else label); stop()
+            status = dict(line.split(':',1) for line in Path('/proc/'+str(app.pid)+'/status').read_text().splitlines() if ':' in line)
+            memory = report/(label+'-smaps-rollup.txt')
+            memory.write_text(Path('/proc/'+str(app.pid)+'/smaps_rollup').read_text())
+            result['restartCycles'].append(dict(cycle=cycle+1, seconds=time.monotonic()-started,
+                memoryReport=memory.name, memoryReportSha256=sha(memory),
+                stoppedRssKiB=int(status['VmRSS'].split()[0]), stoppedThreads=int(status['Threads']),
+                stoppedFileDescriptors=len(list(Path('/proc/'+str(app.pid)+'/fd').iterdir())), passed=True))
+            if args.allocator_probe: result['restartCycles'][-1]['allocator'] = allocator_snapshot(cycle+1)
+            save()
+        if args.max_stopped_rss_growth_mib is not None:
+            rss = [cycle['stoppedRssKiB'] for cycle in result['restartCycles']]
+            result['stoppedRssGrowth'] = dict(measuredMiB=(max(rss)-rss[0])/1024,
+                limitMiB=args.max_stopped_rss_growth_mib,
+                scope='Peak stopped-process RSS above the first restart, after moving/static/resize/late warm-up; not a general leak proof')
+            result['stoppedRssGrowth']['passed'] = result['stoppedRssGrowth']['measuredMiB'] <= args.max_stopped_rss_growth_mib
+            save(); assert result['stoppedRssGrowth']['passed'], 'Stopped publisher RSS growth exceeded the requested bound'
+        if args.allocator_trim:
+            result['allocatorTrim'] = allocator_snapshot(args.restart_cycles+1, True); save()
+        result['restartPassed'] = True
         if args.expected_cursor: ui('activate')
         ui('quit-menu'); app.wait(timeout=15)
         assert app.returncode == 0 and not discovery.exists()

@@ -18,6 +18,9 @@
 #endif
 #ifdef __linux__
 #include "versus/platform/linux_system_resources.h"
+#if defined(__GLIBC__)
+#include <malloc.h>
+#endif
 #endif
 
 #include <nlohmann/json.hpp>
@@ -1345,6 +1348,12 @@ void VersusApp::stopCapture() {
         pendingVideoFrames_.clear();
         cachedVideoFrame_.reset();
     }
+#if defined(__linux__) && defined(__GLIBC__)
+    // Repeated capture sessions leave large freed frame/encoder allocations in
+    // glibc arenas. Return unused pages once workers and queues are retired;
+    // keep allocator trimming out of capture, encode and resize hot paths.
+    malloc_trim(0);
+#endif
 }
 
 void VersusApp::setSelectedWindow(const std::string &windowId) {

@@ -37161,5 +37161,2559 @@
     "limits": "Standalone baseline plus 20 moves passed with a separate direct monitor, two busy outputs and virtual input. This does not reproduce or waive the packaged failure. No production audio change or fix claimed. Older synchronous reference captures paused the JavaScript unrelated-tone producers; the new asynchronous recorder preserves that control.",
     "remaining": "Establish a minimal reproduction and root cause of native-client route-move stalls; qualify a remedy without regressing healthy Pulse stream monitor retention. Calibrated timing, native-client endurance and per-JACK-client capture remain open.",
     "latestRepeat": "The cursor-fix package passed the full native GUI workflow with 20 output moves, including late reception, source closure and reselection, with verbose native-source diagnostics enabled. This passing repeat does not waive the two stalled-source failures above or establish a routing fix."
+  },
+  "linux_performance_validation_checkpoint": {
+    "date": "2026-10-19",
+    "change": "Release unused Linux/glibc heap pages after capture workers, encoders and queues retire. Extend packaged validation with encoder/resource measurement, live seeded control pressure and repeated GUI restarts; retain the baseline memory finding and the separate allocator diagnostic.",
+    "sourceBuildCommit": "e22b0b7",
+    "package": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c.deb",
+      "sha256": "7be5f2d51f8afedb0243f979b81f403791ea04efe32c69aefa873348ff34cf1e",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c",
+      "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b"
+    },
+    "environment": {
+      "os": "Ubuntu 24.04 x86-64",
+      "kernel": "6.8.0-147-generic",
+      "cpu": "AMD Ryzen 5 5500",
+      "logicalCpus": 12,
+      "gpu": "NVIDIA GeForce GTX 750 Ti",
+      "nvidiaDriver": "580.178.04",
+      "browser": "Google Chrome 143.0.7499.169"
+    },
+    "performanceScope": "Sequential exact-DEB X11 controlled browser window, 1280x720/60 H.264 4000 kbps, selected Chrome-process Pulse stereo Opus 128 kbps. Each encoder has a separate 30-second live pressure phase and ten-minute baseline. CPU 100% is one logical CPU. Process RSS excludes browser/compositor/device allocations. Not demanding gameplay, isolated encoder efficiency, physical A/V latency, ARM or long-run qualification.",
+    "performance": [
+      {
+        "encoder": "software",
+        "report": "native-qt/qa/reports/validation-performance-software/6da60ce2-e777-4cd8-abbe-1fd8bce0fa55/results.json",
+        "reportSha256": "48f667d65acfef0b41f198491f0ebc0960501204c6a1b090aa975f97aedbcd45",
+        "passed": true,
+        "error": null,
+        "verifiedRawIntervals": 121,
+        "intervals": 120,
+        "failedIntervals": 0,
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "harnesses": {
+          "linux-av-sync.js": "c73a341bc54726fe0c7d85f5f70f9086bef259fff28704d280d99151cfb39662",
+          "linux-av-probe.js": "8369aba41d427c13dc973cdf508adb16bd71a9599ce8f4f9484ff3d2e64c8a63",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "283a56508cda730ea952ad06d6d14d1f34c050cd7a374ae359a64212f34cc0a3",
+          "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "macos-control-pressure.js": "06f2424f272fb9365e7f4289da8094b667708969d4c13ef1b7663661aeb04a4b",
+          "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+        },
+        "cpuPercent": {
+          "minimum": 107.84801393437053,
+          "median": 119.77156018749562,
+          "maximum": 137.40918127833348
+        },
+        "rssMiB": {
+          "minimum": 113.5,
+          "median": 121.47265625,
+          "maximum": 125.4296875
+        },
+        "receivedFps": {
+          "minimum": 59.78804239152169,
+          "median": 59.99639963011985,
+          "maximum": 59.997600681886794
+        },
+        "minDeliveryRatio": 0.9966068605225464,
+        "maxP95GapMs": 17.000000007101335,
+        "audioWindows": 6042,
+        "threads": {
+          "minimum": 44,
+          "median": 44.0,
+          "maximum": 44
+        },
+        "fileDescriptors": {
+          "minimum": 35,
+          "median": 35.0,
+          "maximum": 35
+        },
+        "firstMinuteMedianRssMiB": 121.39453125,
+        "lastMinuteMedianRssMiB": 121.4765625,
+        "controlPressure": {
+          "passed": true,
+          "seed": 20261019,
+          "durationMs": 12070.195196,
+          "mediaPassed": true,
+          "seededBatches": 3,
+          "framingCases": 24,
+          "slowClients": 3,
+          "admission": {
+            "accepted": 32,
+            "rejected": 16
+          }
+        },
+        "analysis": {
+          "passed": true,
+          "longRunDriftQualified": false,
+          "medianDriftMs": -18.00000000000823,
+          "phaseOffsets": [
+            {
+              "name": "initial",
+              "medianAdditionalOffsetMs": -12.999999999991019,
+              "passed": true
+            },
+            {
+              "name": "final",
+              "medianAdditionalOffsetMs": -30.99999999999925,
+              "passed": true
+            }
+          ]
+        },
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1440x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-performance-software-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-private-audio.py",
+          "--reports=native-qt/qa/reports/validation-performance-software-server",
+          "--",
+          "node",
+          "native-qt/e2e/linux-av-sync.js",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--reports=native-qt/qa/reports/validation-performance-software",
+          "--backend=x11",
+          "--seconds=60",
+          "--hold-seconds=480",
+          "--encoder=software",
+          "--control-pressure-seed=20261019"
+        ]
+      },
+      {
+        "encoder": "nvenc",
+        "report": "native-qt/qa/reports/validation-performance-nvenc/a6e56447-58d6-41f1-ac4e-d0ebf9370f4c/results.json",
+        "reportSha256": "5c61d9a93590be6600e2fc16d075c2437d8ffd2dcd7b81725f3e446512613de5",
+        "passed": true,
+        "error": null,
+        "verifiedRawIntervals": 121,
+        "intervals": 120,
+        "failedIntervals": 0,
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "harnesses": {
+          "linux-av-sync.js": "ac38133ff759dddd223e42ab7b65a93d40c0d6d813ec45de01f86f6363aa5afb",
+          "linux-av-probe.js": "8369aba41d427c13dc973cdf508adb16bd71a9599ce8f4f9484ff3d2e64c8a63",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "283a56508cda730ea952ad06d6d14d1f34c050cd7a374ae359a64212f34cc0a3",
+          "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "macos-control-pressure.js": "06f2424f272fb9365e7f4289da8094b667708969d4c13ef1b7663661aeb04a4b",
+          "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+        },
+        "cpuPercent": {
+          "minimum": 88.02483114120214,
+          "median": 93.98867897321927,
+          "maximum": 107.50294435114678
+        },
+        "rssMiB": {
+          "minimum": 171.63671875,
+          "median": 183.3828125,
+          "maximum": 187.34375
+        },
+        "receivedFps": {
+          "minimum": 59.741454541374736,
+          "median": 59.99639963011985,
+          "maximum": 60.11343723742339
+        },
+        "minDeliveryRatio": 0.9966666666666667,
+        "maxP95GapMs": 17.000000007101335,
+        "audioWindows": 6045,
+        "threads": {
+          "minimum": 41,
+          "median": 41.0,
+          "maximum": 41
+        },
+        "fileDescriptors": {
+          "minimum": 63,
+          "median": 63.0,
+          "maximum": 63
+        },
+        "firstMinuteMedianRssMiB": 183.357421875,
+        "lastMinuteMedianRssMiB": 183.3984375,
+        "controlPressure": {
+          "passed": true,
+          "seed": 20261019,
+          "durationMs": 12256.147314000002,
+          "mediaPassed": true,
+          "seededBatches": 3,
+          "framingCases": 24,
+          "slowClients": 3,
+          "admission": {
+            "accepted": 32,
+            "rejected": 16
+          }
+        },
+        "analysis": {
+          "passed": true,
+          "longRunDriftQualified": false,
+          "medianDriftMs": 4.999999999996341,
+          "phaseOffsets": [
+            {
+              "name": "initial",
+              "medianAdditionalOffsetMs": -17.000000000000348,
+              "passed": true
+            },
+            {
+              "name": "final",
+              "medianAdditionalOffsetMs": -12.000000000004007,
+              "passed": true
+            }
+          ]
+        },
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1440x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-performance-nvenc-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-private-audio.py",
+          "--reports=native-qt/qa/reports/validation-performance-nvenc-server",
+          "--",
+          "node",
+          "native-qt/e2e/linux-av-sync.js",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--reports=native-qt/qa/reports/validation-performance-nvenc",
+          "--backend=x11",
+          "--seconds=60",
+          "--hold-seconds=480",
+          "--encoder=nvenc",
+          "--control-pressure-seed=20261019"
+        ]
+      }
+    ],
+    "applicationWorkflows": [
+      {
+        "name": "validation-wayland-restarts",
+        "command": [
+          "python3",
+          "native-qt/e2e/linux-owned-wayland-desktop.py",
+          "--timeout=600",
+          "--reports=native-qt/qa/reports/validation-wayland-restarts-compositor",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-wayland-desktop.py",
+          "--reports=native-qt/qa/reports/validation-wayland-restarts-keyring",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--backend=wayland",
+          "--encoder=nvenc",
+          "--reports=native-qt/qa/reports/validation-wayland-restarts",
+          "--restart-cycles=10"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-wayland-restarts/c3299876-3a06-4659-bbfb-8ad944cccd56/results.json",
+        "reportSha256": "7df478eda7d863c2cfc436bf423ec2fa7e76b3c67eeeacd55b0b767ebc179481",
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 132
+          },
+          {
+            "name": "resized",
+            "passed": true,
+            "decodedFrames": 145
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 126
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-4",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-5",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-6",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-7",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-8",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-9",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-10",
+            "passed": true,
+            "decodedFrames": 151
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 10,
+          "first": {
+            "cycle": 1,
+            "seconds": 9.078969187001348,
+            "stoppedRssKiB": 193824,
+            "stoppedThreads": 17,
+            "stoppedFileDescriptors": 48,
+            "passed": true
+          },
+          "last": {
+            "cycle": 10,
+            "seconds": 9.013610413996503,
+            "stoppedRssKiB": 282408,
+            "stoppedThreads": 18,
+            "stoppedFileDescriptors": 49,
+            "passed": true
+          },
+          "rssMiB": [
+            189.28125,
+            209.51953125,
+            225.35546875,
+            240.96484375,
+            243.4765625,
+            243.95703125,
+            257.6875,
+            269.73828125,
+            272.4375,
+            275.7890625
+          ],
+          "fileDescriptors": [
+            48,
+            48,
+            49,
+            49,
+            49,
+            49,
+            49,
+            49,
+            49,
+            49
+          ],
+          "threads": [
+            17,
+            17,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18
+          ]
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-facecam",
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1600x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-facecam-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--backend=x11",
+          "--encoder=software",
+          "--camera-id=v4l2:/dev/video0",
+          "--camera-label=Elgato Facecam 4K [USB2]",
+          "--reports=native-qt/qa/reports/validation-facecam",
+          "--restart-cycles=3"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-facecam/10340498-f181-4af6-9714-73b3e0aa74b3/results.json",
+        "reportSha256": "294b8f38fe6cba1dd02240dffc27d6d41d0bf243d000a108c6834374c53fc153",
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 122
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 131
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 123
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 3,
+          "first": {
+            "cycle": 1,
+            "seconds": 8.393221446996904,
+            "stoppedRssKiB": 119240,
+            "stoppedThreads": 22,
+            "stoppedFileDescriptors": 34,
+            "passed": true
+          },
+          "last": {
+            "cycle": 3,
+            "seconds": 8.384883382997941,
+            "stoppedRssKiB": 137060,
+            "stoppedThreads": 21,
+            "stoppedFileDescriptors": 32,
+            "passed": true
+          },
+          "rssMiB": [
+            116.4453125,
+            118.375,
+            133.84765625
+          ],
+          "fileDescriptors": [
+            34,
+            33,
+            32
+          ],
+          "threads": [
+            22,
+            21,
+            21
+          ]
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-camlink",
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1600x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-camlink-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--backend=x11",
+          "--encoder=nvenc",
+          "--camera-id=v4l2:/dev/video2",
+          "--camera-label=Cam Link 4K: Cam Link 4K",
+          "--reports=native-qt/qa/reports/validation-camlink",
+          "--restart-cycles=3"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-camlink/caad42e3-e6e0-4a7f-8034-a3796d0ee086/results.json",
+        "reportSha256": "48d2220b5edf262341921f0277c2845e73809e786102b573188e7483ac2b835e",
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 131
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 151
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 3,
+          "first": {
+            "cycle": 1,
+            "seconds": 7.354778983994038,
+            "stoppedRssKiB": 222096,
+            "stoppedThreads": 23,
+            "stoppedFileDescriptors": 45,
+            "passed": true
+          },
+          "last": {
+            "cycle": 3,
+            "seconds": 7.3016885010001715,
+            "stoppedRssKiB": 239916,
+            "stoppedThreads": 22,
+            "stoppedFileDescriptors": 43,
+            "passed": true
+          },
+          "rssMiB": [
+            216.890625,
+            229.8125,
+            234.29296875
+          ],
+          "fileDescriptors": [
+            45,
+            45,
+            43
+          ],
+          "threads": [
+            23,
+            23,
+            22
+          ]
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-native-audio-progress-verbose",
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1600x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-native-audio-progress-verbose-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-private-audio.py",
+          "--reports=native-qt/qa/reports/validation-native-audio-progress-verbose-server",
+          "--",
+          "node",
+          "native-qt/e2e/linux-audio-publish.js",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--backend=x11",
+          "--reports=native-qt/qa/reports/validation-native-audio-progress-verbose",
+          "--matrix=apps-gui",
+          "--app-playback-backend=pipewire",
+          "--audio-warnings=true",
+          "--capture-audio-diagnostics=true",
+          "--app-output-moves=20",
+          "--capture-native-source=true"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-native-audio-progress-verbose/305ba4ef-f87f-4eb6-9253-ff099673ddcb/results.json",
+        "reportSha256": "6c4ec5b498a02c8095e9112a97f12d05f4a81193d694f39bdcb0d2328814c262",
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "error": null,
+        "cases": [
+          {
+            "name": "selected-app",
+            "passed": true,
+            "completedOutputMoves": 20
+          }
+        ],
+        "audioCleanupPassed": null
+      },
+      {
+        "name": "validation-wayland-memory-nvenc",
+        "command": [
+          "python3",
+          "native-qt/e2e/linux-owned-wayland-desktop.py",
+          "--timeout=600",
+          "--reports=native-qt/qa/reports/validation-wayland-memory-nvenc-compositor",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-wayland-desktop.py",
+          "--reports=native-qt/qa/reports/validation-wayland-memory-nvenc-keyring",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--backend=wayland",
+          "--encoder=nvenc",
+          "--reports=native-qt/qa/reports/validation-wayland-memory-nvenc",
+          "--restart-cycles=20"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-wayland-memory-nvenc/8a7a49ad-1533-4420-ad1e-5b66a6316e19/results.json",
+        "reportSha256": "6c529d8663f338502cd6c04f686c8543451cb16894a8f4130175e6258ac5a690",
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 133
+          },
+          {
+            "name": "resized",
+            "passed": true,
+            "decodedFrames": 145
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 126
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-4",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-5",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-6",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-7",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-8",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-9",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-10",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-11",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-12",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-13",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-14",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-15",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-16",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-17",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-18",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-19",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-20",
+            "passed": true,
+            "decodedFrames": 151
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 20,
+          "first": {
+            "cycle": 1,
+            "seconds": 9.076102741004433,
+            "memoryReport": "restart-smaps-rollup.txt",
+            "memoryReportSha256": "931abe5d857166e68d2290dd4fce71647940e932c1991f5e7d66a6183763c598",
+            "stoppedRssKiB": 203708,
+            "stoppedThreads": 19,
+            "stoppedFileDescriptors": 50,
+            "passed": true
+          },
+          "last": {
+            "cycle": 20,
+            "seconds": 9.039343880998786,
+            "memoryReport": "restart-20-smaps-rollup.txt",
+            "memoryReportSha256": "e61db0a9cb83cbc115bc975bda4b928af482bf0f45b3b69df6140abb5d93953c",
+            "stoppedRssKiB": 337208,
+            "stoppedThreads": 22,
+            "stoppedFileDescriptors": 53,
+            "passed": true
+          },
+          "rssMiB": [
+            198.93359375,
+            219.6171875,
+            225.203125,
+            237.3125,
+            249.44140625,
+            251.41796875,
+            263.46484375,
+            266.23046875,
+            266.953125,
+            270.33203125,
+            271.5703125,
+            283.60546875,
+            295.671875,
+            297.16015625,
+            309.171875,
+            311.72265625,
+            311.91015625,
+            323.9453125,
+            327.32421875,
+            329.3046875
+          ],
+          "fileDescriptors": [
+            50,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53,
+            53
+          ],
+          "threads": [
+            19,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22,
+            22
+          ]
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-wayland-memory-software",
+        "command": [
+          "python3",
+          "native-qt/e2e/linux-owned-wayland-desktop.py",
+          "--timeout=600",
+          "--reports=native-qt/qa/reports/validation-wayland-memory-software-compositor",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-wayland-desktop.py",
+          "--reports=native-qt/qa/reports/validation-wayland-memory-software-keyring",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-7aedaf2d40ae-3849c365b51c/usr/bin/game-capture",
+          "--manifest-sha256=6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+          "--backend=wayland",
+          "--encoder=software",
+          "--reports=native-qt/qa/reports/validation-wayland-memory-software",
+          "--restart-cycles=20"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-wayland-memory-software/99783fea-92a8-4828-9915-8481b69b5229/results.json",
+        "reportSha256": "85236a3f72fbc1158ba876c838e96af77f17f5b2782af7bb659412d1e99d287c",
+        "manifestSha256": "6439954b4c048b61f0ca6d2fed7794c5ed57db45f382ed89f7561f191b8d245b",
+        "executableSha256": "7aedaf2d40ae04dcf471d85771a3dcc41efe621f2da30fe6168da96cce3d97e9",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 132
+          },
+          {
+            "name": "resized",
+            "passed": true,
+            "decodedFrames": 146
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 128
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-4",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-5",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-6",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-7",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-8",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-9",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-10",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-11",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-12",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-13",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-14",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-15",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-16",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-17",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-18",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-19",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-20",
+            "passed": true,
+            "decodedFrames": 150
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 20,
+          "first": {
+            "cycle": 1,
+            "seconds": 8.865431969010388,
+            "memoryReport": "restart-smaps-rollup.txt",
+            "memoryReportSha256": "4add924146c65c456000d7475472899106717c63782e98eb64a0d526ac2fbe50",
+            "stoppedRssKiB": 175428,
+            "stoppedThreads": 16,
+            "stoppedFileDescriptors": 37,
+            "passed": true
+          },
+          "last": {
+            "cycle": 20,
+            "seconds": 8.7980308910046,
+            "memoryReport": "restart-20-smaps-rollup.txt",
+            "memoryReportSha256": "aee94e3ebf33cb61032f46d15277712e66d7d9766f0959974c66c7cc506f2c14",
+            "stoppedRssKiB": 295004,
+            "stoppedThreads": 18,
+            "stoppedFileDescriptors": 39,
+            "passed": true
+          },
+          "rssMiB": [
+            171.31640625,
+            171.79296875,
+            174.9921875,
+            186.22265625,
+            205.1875,
+            205.23046875,
+            224.0,
+            228.06640625,
+            229.0859375,
+            238.1171875,
+            241.0703125,
+            256.98046875,
+            258.97265625,
+            262.0078125,
+            267.94140625,
+            275.01171875,
+            279.171875,
+            279.171875,
+            288.0703125,
+            288.08984375
+          ],
+          "fileDescriptors": [
+            37,
+            37,
+            37,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39
+          ],
+          "threads": [
+            16,
+            16,
+            16,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18
+          ]
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      }
+    ],
+    "gates": [
+      {
+        "command": "cmake --build native-qt/build-linux --target game-capture -j4",
+        "passed": true,
+        "logSha256": "8c35b1682f73592d30612d7b0fabdb384fcfff35cb5a076cb48b85b1368aa794"
+      },
+      {
+        "command": "python3 native-qt/qa/package-linux.py --build native-qt/build-linux",
+        "passed": true,
+        "logSha256": "1210b63dbf330ebf6cc388d92af79b7466c2552fb6600adb3cd55115d89011c8"
+      },
+      {
+        "command": "node --check native-qt/e2e/linux-av-sync.js; python3 -m py_compile native-qt/e2e/linux-input-publish.py; git diff --check",
+        "scope": "Syntax/whitespace gates only, not application testing."
+      }
+    ],
+    "scope": "Actual packaged capture/publish/receive and GUI workflows. Baseline observations remain artifact-bound; final-package results are recorded separately. Linux/glibc teardown memory retention improved without changing encoder defaults. The retained received-audio continuity failure, earlier native PipeWire stalls, GNOME pending-permission/occlusion issues, physical timing/device scenarios, longer final-package endurance, ARM and Windows/macOS runtime qualification remain open. All 23 parity rows remain required.",
+    "allocatorDiagnostic": {
+      "report": "native-qt/qa/reports/validation-allocator-nvenc/c8b86005-30b3-47a2-87a4-f4f1b6117a31/results.json",
+      "reportSha256": "290c4aea711abc35e4e2be28169723bda344cbf7730acf57d6d29658856563ab",
+      "diagnosticOnly": true,
+      "librarySha256": "302e9ae6977901a45f299b17cf7f5fb800b83247a6b1a4d8d48e41d65e07adfb",
+      "sourceSha256": "00ebcbe740c413455e7fe4d6beb0aecc205238f70df029b215b559a8fb749a78",
+      "cycles": [
+        {
+          "cycle": 1,
+          "allocator": {
+            "sequence": 1,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 60,
+            "before": {
+              "allocatedBytes": 20697904,
+              "freeArenaBytes": 50232528,
+              "arenaBytes": 70930432,
+              "mmapBytes": 606208,
+              "rssKiB": 198380
+            },
+            "after": {
+              "allocatedBytes": 20698944,
+              "freeArenaBytes": 50231488,
+              "arenaBytes": 70930432,
+              "mmapBytes": 606208,
+              "rssKiB": 198380
+            }
+          }
+        },
+        {
+          "cycle": 2,
+          "allocator": {
+            "sequence": 2,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 50,
+            "before": {
+              "allocatedBytes": 20797520,
+              "freeArenaBytes": 74061744,
+              "arenaBytes": 94859264,
+              "mmapBytes": 606208,
+              "rssKiB": 219276
+            },
+            "after": {
+              "allocatedBytes": 20797520,
+              "freeArenaBytes": 74061744,
+              "arenaBytes": 94859264,
+              "mmapBytes": 606208,
+              "rssKiB": 219276
+            }
+          }
+        },
+        {
+          "cycle": 3,
+          "allocator": {
+            "sequence": 3,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 50,
+            "before": {
+              "allocatedBytes": 20871008,
+              "freeArenaBytes": 93046944,
+              "arenaBytes": 113917952,
+              "mmapBytes": 606208,
+              "rssKiB": 235324
+            },
+            "after": {
+              "allocatedBytes": 20871008,
+              "freeArenaBytes": 93046944,
+              "arenaBytes": 113917952,
+              "mmapBytes": 606208,
+              "rssKiB": 235324
+            }
+          }
+        },
+        {
+          "cycle": 4,
+          "allocator": {
+            "sequence": 4,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 50,
+            "before": {
+              "allocatedBytes": 21017536,
+              "freeArenaBytes": 112000064,
+              "arenaBytes": 133017600,
+              "mmapBytes": 606208,
+              "rssKiB": 251332
+            },
+            "after": {
+              "allocatedBytes": 21017536,
+              "freeArenaBytes": 112000064,
+              "arenaBytes": 133017600,
+              "mmapBytes": 606208,
+              "rssKiB": 251332
+            }
+          }
+        },
+        {
+          "cycle": 5,
+          "allocator": {
+            "sequence": 5,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 50,
+            "before": {
+              "allocatedBytes": 21142208,
+              "freeArenaBytes": 112674112,
+              "arenaBytes": 133816320,
+              "mmapBytes": 606208,
+              "rssKiB": 253372
+            },
+            "after": {
+              "allocatedBytes": 21142208,
+              "freeArenaBytes": 112674112,
+              "arenaBytes": 133816320,
+              "mmapBytes": 606208,
+              "rssKiB": 253372
+            }
+          }
+        },
+        {
+          "cycle": 6,
+          "allocator": {
+            "sequence": 6,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 50,
+            "before": {
+              "allocatedBytes": 21132112,
+              "freeArenaBytes": 128019632,
+              "arenaBytes": 149151744,
+              "mmapBytes": 606208,
+              "rssKiB": 265676
+            },
+            "after": {
+              "allocatedBytes": 21132112,
+              "freeArenaBytes": 128019632,
+              "arenaBytes": 149151744,
+              "mmapBytes": 606208,
+              "rssKiB": 265676
+            }
+          }
+        },
+        {
+          "cycle": 7,
+          "allocator": {
+            "sequence": 7,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 70,
+            "before": {
+              "allocatedBytes": 21166640,
+              "freeArenaBytes": 128771536,
+              "arenaBytes": 149938176,
+              "mmapBytes": 606208,
+              "rssKiB": 269104
+            },
+            "after": {
+              "allocatedBytes": 21166640,
+              "freeArenaBytes": 128771536,
+              "arenaBytes": 149938176,
+              "mmapBytes": 606208,
+              "rssKiB": 269104
+            }
+          }
+        },
+        {
+          "cycle": 8,
+          "allocator": {
+            "sequence": 8,
+            "trimRequested": 0,
+            "trimReleasedMemory": 0,
+            "trimNanoseconds": 50,
+            "before": {
+              "allocatedBytes": 21220112,
+              "freeArenaBytes": 128771312,
+              "arenaBytes": 149991424,
+              "mmapBytes": 606208,
+              "rssKiB": 270436
+            },
+            "after": {
+              "allocatedBytes": 21220112,
+              "freeArenaBytes": 128771312,
+              "arenaBytes": 149991424,
+              "mmapBytes": 606208,
+              "rssKiB": 270436
+            }
+          }
+        }
+      ],
+      "trim": {
+        "sequence": 9,
+        "trimRequested": 1,
+        "trimReleasedMemory": 1,
+        "trimNanoseconds": 9146909,
+        "before": {
+          "allocatedBytes": 21220480,
+          "freeArenaBytes": 128770944,
+          "arenaBytes": 149991424,
+          "mmapBytes": 606208,
+          "rssKiB": 270436
+        },
+        "after": {
+          "allocatedBytes": 21220480,
+          "freeArenaBytes": 124797824,
+          "arenaBytes": 146018304,
+          "mmapBytes": 606208,
+          "rssKiB": 177912
+        }
+      },
+      "interpretation": "Most observed restart RSS growth was freed glibc arena memory. Live malloc chunks rose by about 0.5 MiB over eight cycles while free arena bytes rose by about 75 MiB. A final diagnostic trim returned about 90 MiB resident memory in 9.15 ms; this does not prove absence of all leaks or measure ordinary release behavior."
+    },
+    "memoryFix": {
+      "source": "native-qt/src/app/versus_app.cpp",
+      "sourceSha256": "b338a4f9cc402870835dbed29956cc8f672570da4422447c3703c65e503522f4",
+      "sourceBaseCommit": "d47f11a",
+      "implementation": "malloc_trim(0) at the end of stopCapture, guarded by Linux and glibc. No trimming in capture/encode/resize paths. Other libc implementations, Windows and macOS omit this call.",
+      "reference": "https://man7.org/linux/man-pages/man3/malloc_trim.3.html",
+      "validationScope": "Uninstrumented packaged Ubuntu 24.04 x86-64 runtime; ARM runtime and other libc implementations are not newly qualified."
+    },
+    "fixedPackage": {
+      "package": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949.deb",
+      "sha256": "f591984588a16f29ee0219467339588d427e059a35f838e2268516a9a396f881",
+      "payload": "/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949",
+      "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7"
+    },
+    "fixedPerformance": [
+      {
+        "encoder": "software",
+        "report": "native-qt/qa/reports/validation-fixed-performance-software/d6a9e56e-44e7-4d8d-9a3b-dfcfeb7eab5f/results.json",
+        "reportSha256": "4b14c8083375c87b83c59314e835c65b135e25dd3eb62225d215a8def67e81d1",
+        "passed": true,
+        "error": null,
+        "verifiedRawIntervals": 37,
+        "intervals": 36,
+        "failedIntervals": 0,
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "harnesses": {
+          "linux-av-sync.js": "ac38133ff759dddd223e42ab7b65a93d40c0d6d813ec45de01f86f6363aa5afb",
+          "linux-av-probe.js": "8369aba41d427c13dc973cdf508adb16bd71a9599ce8f4f9484ff3d2e64c8a63",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "283a56508cda730ea952ad06d6d14d1f34c050cd7a374ae359a64212f34cc0a3",
+          "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "macos-control-pressure.js": "06f2424f272fb9365e7f4289da8094b667708969d4c13ef1b7663661aeb04a4b",
+          "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+        },
+        "cpuPercent": {
+          "minimum": 112.66061226307042,
+          "median": 121.64047722912056,
+          "maximum": 140.99037108104898
+        },
+        "rssMiB": {
+          "minimum": 121.51953125,
+          "median": 121.64453125,
+          "maximum": 125.6015625
+        },
+        "receivedFps": {
+          "minimum": 59.779675494117896,
+          "median": 59.98560279242541,
+          "maximum": 59.997600681886794
+        },
+        "minDeliveryRatio": 0.9966666666666667,
+        "maxP95GapMs": 17.000000007101335,
+        "audioWindows": 1814,
+        "threads": {
+          "minimum": 44,
+          "median": 44.0,
+          "maximum": 44
+        },
+        "fileDescriptors": {
+          "minimum": 35,
+          "median": 35.0,
+          "maximum": 35
+        },
+        "firstMinuteMedianRssMiB": 121.599609375,
+        "lastMinuteMedianRssMiB": 121.6484375,
+        "controlPressure": {
+          "passed": true,
+          "seed": 20261020,
+          "durationMs": 12131.144913,
+          "mediaPassed": true,
+          "seededBatches": 3,
+          "framingCases": 24,
+          "slowClients": 3,
+          "admission": {
+            "accepted": 32,
+            "rejected": 16
+          }
+        },
+        "analysis": {
+          "passed": true,
+          "longRunDriftQualified": false,
+          "medianDriftMs": -1.0000000000047748,
+          "phaseOffsets": [
+            {
+              "name": "initial",
+              "medianAdditionalOffsetMs": -14.999999999998792,
+              "passed": true
+            },
+            {
+              "name": "final",
+              "medianAdditionalOffsetMs": -16.000000000003567,
+              "passed": true
+            }
+          ]
+        },
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1440x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-fixed-performance-software-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-private-audio.py",
+          "--reports=native-qt/qa/reports/validation-fixed-performance-software-server",
+          "--",
+          "node",
+          "native-qt/e2e/linux-av-sync.js",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--reports=native-qt/qa/reports/validation-fixed-performance-software",
+          "--backend=x11",
+          "--seconds=60",
+          "--hold-seconds=60",
+          "--encoder=software",
+          "--control-pressure-seed=20261020"
+        ]
+      },
+      {
+        "encoder": "nvenc",
+        "report": "native-qt/qa/reports/validation-fixed-performance-nvenc/aa8dfceb-62cc-4b6b-8565-440377533138/results.json",
+        "reportSha256": "39fa5f2cce1e29fbf833d87bdacb45b8c8c0e771c293ce10fa638bd0d81e603b",
+        "passed": false,
+        "error": null,
+        "verifiedRawIntervals": 37,
+        "intervals": 36,
+        "failedIntervals": 1,
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "harnesses": {
+          "linux-av-sync.js": "ac38133ff759dddd223e42ab7b65a93d40c0d6d813ec45de01f86f6363aa5afb",
+          "linux-av-probe.js": "8369aba41d427c13dc973cdf508adb16bd71a9599ce8f4f9484ff3d2e64c8a63",
+          "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+          "macos-continuous-audio.js": "283a56508cda730ea952ad06d6d14d1f34c050cd7a374ae359a64212f34cc0a3",
+          "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+          "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+          "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+          "macos-control-pressure.js": "06f2424f272fb9365e7f4289da8094b667708969d4c13ef1b7663661aeb04a4b",
+          "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+        },
+        "cpuPercent": {
+          "minimum": 92.82413123123776,
+          "median": 100.35787613445049,
+          "maximum": 109.0365563428198
+        },
+        "rssMiB": {
+          "minimum": 175.3984375,
+          "median": 179.4453125,
+          "maximum": 183.3984375
+        },
+        "receivedFps": {
+          "minimum": 59.72713464555083,
+          "median": 59.995800592888344,
+          "maximum": 59.997600681886794
+        },
+        "minDeliveryRatio": 0.9966666666666667,
+        "maxP95GapMs": 17.000000007101335,
+        "audioWindows": 1814,
+        "threads": {
+          "minimum": 41,
+          "median": 41.0,
+          "maximum": 41
+        },
+        "fileDescriptors": {
+          "minimum": 63,
+          "median": 63.0,
+          "maximum": 63
+        },
+        "firstMinuteMedianRssMiB": 179.35546875,
+        "lastMinuteMedianRssMiB": 179.4453125,
+        "controlPressure": {
+          "passed": true,
+          "seed": 20261020,
+          "durationMs": 11286.585509,
+          "mediaPassed": true,
+          "seededBatches": 3,
+          "framingCases": 24,
+          "slowClients": 3,
+          "admission": {
+            "accepted": 32,
+            "rejected": 16
+          }
+        },
+        "analysis": {
+          "passed": true,
+          "longRunDriftQualified": false,
+          "medianDriftMs": -6.500000000001727,
+          "phaseOffsets": [
+            {
+              "name": "initial",
+              "medianAdditionalOffsetMs": -7.4999999999967315,
+              "passed": true
+            },
+            {
+              "name": "final",
+              "medianAdditionalOffsetMs": -13.999999999998458,
+              "passed": true
+            }
+          ]
+        },
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1440x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-fixed-performance-nvenc-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-private-audio.py",
+          "--reports=native-qt/qa/reports/validation-fixed-performance-nvenc-server",
+          "--",
+          "node",
+          "native-qt/e2e/linux-av-sync.js",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--reports=native-qt/qa/reports/validation-fixed-performance-nvenc",
+          "--backend=x11",
+          "--seconds=60",
+          "--hold-seconds=60",
+          "--encoder=nvenc",
+          "--control-pressure-seed=20261020"
+        ]
+      }
+    ],
+    "fixedNvencRepeat": {
+      "encoder": "nvenc",
+      "report": "native-qt/qa/reports/validation-fixed-performance-nvenc-repeat/69317996-fe6a-4669-8048-0faccb97fc8e/results.json",
+      "reportSha256": "4c405a4e1cb64791075fcda27a84a6dbae0e1c918017ee2293724bcd509dbc7c",
+      "passed": true,
+      "error": null,
+      "verifiedRawIntervals": 37,
+      "intervals": 36,
+      "failedIntervals": 0,
+      "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+      "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+      "harnesses": {
+        "linux-av-sync.js": "ac38133ff759dddd223e42ab7b65a93d40c0d6d813ec45de01f86f6363aa5afb",
+        "linux-av-probe.js": "8369aba41d427c13dc973cdf508adb16bd71a9599ce8f4f9484ff3d2e64c8a63",
+        "macos-av-source.html": "5a1e975dc119e81013802861bb0e1c3172ac240846dc15a9bf1dd3dd8e1004eb",
+        "macos-continuous-audio.js": "283a56508cda730ea952ad06d6d14d1f34c050cd7a374ae359a64212f34cc0a3",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f",
+        "macos-analyze-av-sync.py": "018805d45f2db67a27513153cc5522a0f6c0345e86ede2348fede92b6eff0bdb",
+        "macos-calibrate-av-sync.py": "6f901a89f1f5abf15059643db152970a6affea3ecbb9d82668143bbef3af2432",
+        "macos-control-pressure.js": "06f2424f272fb9365e7f4289da8094b667708969d4c13ef1b7663661aeb04a4b",
+        "macos-live-control-fuzz.js": "de154748764e393777b0ba9831578770752535fff39c86709a960a706651f791"
+      },
+      "cpuPercent": {
+        "minimum": 87.54390157793972,
+        "median": 92.05928159883494,
+        "maximum": 103.9695899358324
+      },
+      "rssMiB": {
+        "minimum": 179.37109375,
+        "median": 183.33203125,
+        "maximum": 183.375
+      },
+      "receivedFps": {
+        "minimum": 59.74861560709532,
+        "median": 59.98200539838049,
+        "maximum": 60.11343723742339
+      },
+      "minDeliveryRatio": 0.9958102601182554,
+      "maxP95GapMs": 17.000000007101335,
+      "audioWindows": 1814,
+      "threads": {
+        "minimum": 41,
+        "median": 41.0,
+        "maximum": 41
+      },
+      "fileDescriptors": {
+        "minimum": 63,
+        "median": 63.0,
+        "maximum": 63
+      },
+      "firstMinuteMedianRssMiB": 183.328125,
+      "lastMinuteMedianRssMiB": 183.375,
+      "controlPressure": {
+        "passed": true,
+        "seed": 20261020,
+        "durationMs": 12180.580077,
+        "mediaPassed": true,
+        "seededBatches": 3,
+        "framingCases": 24,
+        "slowClients": 3,
+        "admission": {
+          "accepted": 32,
+          "rejected": 16
+        }
+      },
+      "analysis": {
+        "passed": true,
+        "longRunDriftQualified": false,
+        "medianDriftMs": -20.000000000010232,
+        "phaseOffsets": [
+          {
+            "name": "initial",
+            "medianAdditionalOffsetMs": -3.9999999999906777,
+            "passed": true
+          },
+          {
+            "name": "final",
+            "medianAdditionalOffsetMs": -24.00000000000091,
+            "passed": true
+          }
+        ]
+      },
+      "command": [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1440x1000x24",
+        "python3",
+        "native-qt/e2e/linux-private-desktop.py",
+        "--window-manager",
+        "--reports=native-qt/qa/reports/validation-fixed-performance-nvenc-repeat-desktop",
+        "--",
+        "python3",
+        "native-qt/e2e/linux-private-audio.py",
+        "--reports=native-qt/qa/reports/validation-fixed-performance-nvenc-repeat-server",
+        "--",
+        "node",
+        "native-qt/e2e/linux-av-sync.js",
+        "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+        "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "--reports=native-qt/qa/reports/validation-fixed-performance-nvenc-repeat",
+        "--backend=x11",
+        "--seconds=60",
+        "--hold-seconds=60",
+        "--encoder=nvenc",
+        "--control-pressure-seed=20261020"
+      ]
+    },
+    "audioContinuityFinding": {
+      "status": "unresolved",
+      "firstRunPassed": false,
+      "rejectedIntervals": [
+        {
+          "wall": 1792458839747,
+          "seconds": 5.000400146484375,
+          "rssKiB": 179608,
+          "cpuPercent": 101.87984717534836,
+          "threads": 41,
+          "fileDescriptors": 63,
+          "controlPressure": false,
+          "sourceFps": 60.195182621859516,
+          "receivedFps": 59.995198626438054,
+          "deliveryRatio": 0.999919977107301,
+          "p95MediaGapMs": 17.000000007101335,
+          "invalid": 0,
+          "reverse": 0,
+          "audio": {
+            "passed": false,
+            "seconds": 5.1,
+            "wallSeconds": 5.03789990234375,
+            "windows": 51,
+            "gaps": 0,
+            "silentWindows": 0,
+            "channelErrors": 1,
+            "isolationErrors": 0,
+            "clippedSamples": 0,
+            "missingChannelFrames": 0,
+            "invalidSamples": 0,
+            "errors": [
+              "Received PCM content/continuity assertion failed"
+            ]
+          },
+          "observationGapMs": 35,
+          "file": "sample-0007.json.gz",
+          "sha256": "5dc97265d0cafb4447b543cd21f5b8d64a87b1d48ff34f489ae8275ff85cb474",
+          "passed": false
+        }
+      ],
+      "phaseDiagnostic": "native-qt/qa/reports/validation-fixed-performance-nvenc/aa8dfceb-62cc-4b6b-8565-440377533138/audio-window-phase-diagnostic.json",
+      "phaseDiagnosticSha256": "39ab1f1d732babf114526cac4d407204569ff89e1d02ef7690dfa0fbaab38c98",
+      "finding": "One 100 ms received PCM window failed the unchanged 20 dB channel-separation criterion. Retained 25 ms nominal-tone projections show a phase discontinuity; silence, clipping and missing-channel counts were zero. Audio RTP loss/concealment counters did not increase across neighboring intervals. Video delivery, native error counters and paired-recording A/V analysis passed. Source/monitor/capture/codec/receiver attribution is unresolved; the repeat result does not waive this failure.",
+      "repeatPassed": true
+    },
+    "fixedPerformanceScope": "Each fixed-package encoder receives a fresh 30-second pressure phase with seed 20261020, followed by three minutes of 720p60 A/V. These 72 intervals plus two pressure intervals are separately hash/delta/identity verified. Earlier ten-minute baseline runs do not qualify ten-minute endurance of the new bytes.",
+    "fixedApplicationWorkflows": [
+      {
+        "name": "validation-fixed-wayland-nvenc",
+        "command": [
+          "python3",
+          "native-qt/e2e/linux-owned-wayland-desktop.py",
+          "--timeout=600",
+          "--reports=native-qt/qa/reports/validation-fixed-wayland-nvenc-compositor",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-wayland-desktop.py",
+          "--reports=native-qt/qa/reports/validation-fixed-wayland-nvenc-keyring",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--backend=wayland",
+          "--encoder=nvenc",
+          "--reports=native-qt/qa/reports/validation-fixed-wayland-nvenc",
+          "--restart-cycles=20",
+          "--max-stopped-rss-growth-mib=32"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-fixed-wayland-nvenc/2e2de182-487b-458e-b1cb-d8458ff86e6d/results.json",
+        "reportSha256": "1874c2673297dd6b65c5ccb291db01604dd9106a3c71acf307817337122fab2d",
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 132
+          },
+          {
+            "name": "resized",
+            "passed": true,
+            "decodedFrames": 145
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 126
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-4",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-5",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-6",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-7",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-8",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-9",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-10",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-11",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-12",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-13",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-14",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-15",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-16",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-17",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-18",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-19",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-20",
+            "passed": true,
+            "decodedFrames": 150
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 20,
+          "first": {
+            "cycle": 1,
+            "seconds": 9.124186835004366,
+            "memoryReport": "restart-smaps-rollup.txt",
+            "memoryReportSha256": "5e70aaa827b64be4de86228521abcbc04b32facc3f0f9c06b3cb21b0d0478120",
+            "stoppedRssKiB": 162012,
+            "stoppedThreads": 17,
+            "stoppedFileDescriptors": 48,
+            "passed": true
+          },
+          "last": {
+            "cycle": 20,
+            "seconds": 8.996688308005105,
+            "memoryReport": "restart-20-smaps-rollup.txt",
+            "memoryReportSha256": "f57341ae2ee39180b639ec272c695091b1d0ad8027f4872ec70123837cfc9d6a",
+            "stoppedRssKiB": 175808,
+            "stoppedThreads": 19,
+            "stoppedFileDescriptors": 50,
+            "passed": true
+          },
+          "rssMiB": [
+            158.21484375,
+            159.94140625,
+            161.8125,
+            163.65625,
+            163.796875,
+            164.69140625,
+            164.8984375,
+            165.83203125,
+            165.65234375,
+            165.828125,
+            166.11328125,
+            166.42578125,
+            166.66015625,
+            166.51953125,
+            167.28515625,
+            167.2890625,
+            167.55859375,
+            167.60546875,
+            170.5234375,
+            171.6875
+          ],
+          "fileDescriptors": [
+            48,
+            48,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50,
+            50
+          ],
+          "threads": [
+            17,
+            17,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19,
+            19
+          ]
+        },
+        "stoppedRssGrowth": {
+          "measuredMiB": 13.47265625,
+          "limitMiB": 32,
+          "scope": "Peak stopped-process RSS above the first restart, after moving/static/resize/late warm-up; not a general leak proof",
+          "passed": true
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-fixed-wayland-software",
+        "command": [
+          "python3",
+          "native-qt/e2e/linux-owned-wayland-desktop.py",
+          "--timeout=600",
+          "--reports=native-qt/qa/reports/validation-fixed-wayland-software-compositor",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-wayland-desktop.py",
+          "--reports=native-qt/qa/reports/validation-fixed-wayland-software-keyring",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--backend=wayland",
+          "--encoder=software",
+          "--reports=native-qt/qa/reports/validation-fixed-wayland-software",
+          "--restart-cycles=20",
+          "--max-stopped-rss-growth-mib=32"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-fixed-wayland-software/27cffc3e-50c6-40bd-ada5-02bcd5370d9e/results.json",
+        "reportSha256": "7f921fc8ae1ba92ec2d22a0276fb455f0f795fc0edc583ca9a516ac5b1ccb191",
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "static",
+            "passed": true,
+            "decodedFrames": 131
+          },
+          {
+            "name": "resized",
+            "passed": true,
+            "decodedFrames": 146
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 127
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-4",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-5",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-6",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-7",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-8",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-9",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-10",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-11",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-12",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-13",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-14",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-15",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-16",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-17",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-18",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-19",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-20",
+            "passed": true,
+            "decodedFrames": 151
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 20,
+          "first": {
+            "cycle": 1,
+            "seconds": 8.946023903990863,
+            "memoryReport": "restart-smaps-rollup.txt",
+            "memoryReportSha256": "141a9eaad3cf87b540ece2473364ec52c9d10cc42a098d1cec6998519598e936",
+            "stoppedRssKiB": 158296,
+            "stoppedThreads": 18,
+            "stoppedFileDescriptors": 39,
+            "passed": true
+          },
+          "last": {
+            "cycle": 20,
+            "seconds": 8.832698776997859,
+            "memoryReport": "restart-20-smaps-rollup.txt",
+            "memoryReportSha256": "89e234048626094752740bc5bbf07b14c55971043123fe22ea18ad320bd896d5",
+            "stoppedRssKiB": 186240,
+            "stoppedThreads": 18,
+            "stoppedFileDescriptors": 39,
+            "passed": true
+          },
+          "rssMiB": [
+            154.5859375,
+            156.11328125,
+            156.91015625,
+            159.0546875,
+            161.15234375,
+            161.25390625,
+            161.3125,
+            163.4375,
+            161.55078125,
+            161.56640625,
+            163.578125,
+            167.39453125,
+            167.44921875,
+            169.515625,
+            173.58203125,
+            173.65234375,
+            177.6953125,
+            181.8203125,
+            181.86328125,
+            181.875
+          ],
+          "fileDescriptors": [
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39,
+            39
+          ],
+          "threads": [
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18,
+            18
+          ]
+        },
+        "stoppedRssGrowth": {
+          "measuredMiB": 27.2890625,
+          "limitMiB": 32,
+          "scope": "Peak stopped-process RSS above the first restart, after moving/static/resize/late warm-up; not a general leak proof",
+          "passed": true
+        },
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-fixed-facecam",
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1600x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-fixed-facecam-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--backend=x11",
+          "--encoder=software",
+          "--camera-id=v4l2:/dev/video0",
+          "--camera-label=Elgato Facecam 4K [USB2]",
+          "--reports=native-qt/qa/reports/validation-fixed-facecam",
+          "--restart-cycles=3"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-fixed-facecam/94a939ce-374d-4d08-9739-366a774a6d44/results.json",
+        "reportSha256": "5e11d2c83ff2581531d971e7caf8f7cea84794ec5b4613711956762382b8c455",
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 131
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 124
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 151
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 3,
+          "first": {
+            "cycle": 1,
+            "seconds": 8.410758487007115,
+            "memoryReport": "restart-smaps-rollup.txt",
+            "memoryReportSha256": "35fe0a86285201ddc741331d6114483818b6022a47252a153b364af124dc3d51",
+            "stoppedRssKiB": 100380,
+            "stoppedThreads": 22,
+            "stoppedFileDescriptors": 34,
+            "passed": true
+          },
+          "last": {
+            "cycle": 3,
+            "seconds": 8.37865589899593,
+            "memoryReport": "restart-3-smaps-rollup.txt",
+            "memoryReportSha256": "8ebd560c85629f1c8b42b7af9770c004383939ec01ed6fe809cac795e31a81b7",
+            "stoppedRssKiB": 112888,
+            "stoppedThreads": 21,
+            "stoppedFileDescriptors": 32,
+            "passed": true
+          },
+          "rssMiB": [
+            98.02734375,
+            98.1796875,
+            110.2421875
+          ],
+          "fileDescriptors": [
+            34,
+            33,
+            32
+          ],
+          "threads": [
+            22,
+            21,
+            21
+          ]
+        },
+        "stoppedRssGrowth": null,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-fixed-camlink",
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1600x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-fixed-camlink-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-input-publish.py",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--backend=x11",
+          "--encoder=nvenc",
+          "--camera-id=v4l2:/dev/video2",
+          "--camera-label=Cam Link 4K: Cam Link 4K",
+          "--reports=native-qt/qa/reports/validation-fixed-camlink",
+          "--restart-cycles=3"
+        ],
+        "exitCode": 0,
+        "passed": true,
+        "report": "native-qt/qa/reports/validation-fixed-camlink/66e7f107-456f-463b-a341-9156ae640196/results.json",
+        "reportSha256": "349341cf2b89d3b43f091f5354bcd5e290e00f0ce68efca323f90ad319e379da",
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "error": null,
+        "phases": [
+          {
+            "name": "moving",
+            "passed": true,
+            "decodedFrames": 150
+          },
+          {
+            "name": "late",
+            "passed": true,
+            "decodedFrames": 133
+          },
+          {
+            "name": "restarted",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-2",
+            "passed": true,
+            "decodedFrames": 151
+          },
+          {
+            "name": "restart-3",
+            "passed": true,
+            "decodedFrames": 150
+          }
+        ],
+        "lifecycleResources": {
+          "cycles": 3,
+          "first": {
+            "cycle": 1,
+            "seconds": 7.311345362992142,
+            "memoryReport": "restart-smaps-rollup.txt",
+            "memoryReportSha256": "4f85852605c482f648d4a84c14e1e995f94584ff34a7df19db4577d6c0bfd6b2",
+            "stoppedRssKiB": 129484,
+            "stoppedThreads": 23,
+            "stoppedFileDescriptors": 45,
+            "passed": true
+          },
+          "last": {
+            "cycle": 3,
+            "seconds": 7.263666793005541,
+            "memoryReport": "restart-3-smaps-rollup.txt",
+            "memoryReportSha256": "459c336f1d2c4716f4c26216ea74ed3341633a572bfed6d9aa9302a8ec2abbce",
+            "stoppedRssKiB": 133872,
+            "stoppedThreads": 22,
+            "stoppedFileDescriptors": 43,
+            "passed": true
+          },
+          "rssMiB": [
+            126.44921875,
+            130.48046875,
+            130.734375
+          ],
+          "fileDescriptors": [
+            45,
+            45,
+            43
+          ],
+          "threads": [
+            23,
+            23,
+            22
+          ]
+        },
+        "stoppedRssGrowth": null,
+        "ownedProcessesRetired": true,
+        "discoveryRemoved": true
+      },
+      {
+        "name": "validation-fixed-native-audio-progress-verbose",
+        "command": [
+          "xvfb-run",
+          "-a",
+          "-s",
+          "-screen 0 1600x1000x24",
+          "python3",
+          "native-qt/e2e/linux-private-desktop.py",
+          "--window-manager",
+          "--reports=native-qt/qa/reports/validation-fixed-native-audio-progress-verbose-desktop",
+          "--",
+          "python3",
+          "native-qt/e2e/linux-private-audio.py",
+          "--reports=native-qt/qa/reports/validation-fixed-native-audio-progress-verbose-server",
+          "--",
+          "node",
+          "native-qt/e2e/linux-audio-publish.js",
+          "--publisher=/home/ubuntu/code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-amd64-c4900cf551e8-617806b32949/usr/bin/game-capture",
+          "--manifest-sha256=0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+          "--backend=x11",
+          "--reports=native-qt/qa/reports/validation-fixed-native-audio-progress-verbose",
+          "--matrix=apps-gui",
+          "--app-playback-backend=pipewire",
+          "--audio-warnings=true",
+          "--capture-audio-diagnostics=true",
+          "--app-output-moves=20",
+          "--capture-native-source=true"
+        ],
+        "exitCode": 1,
+        "passed": false,
+        "report": "native-qt/qa/reports/validation-fixed-native-audio-progress-verbose/3ea6bf91-a365-479a-b97d-f4af4725cbd7/results.json",
+        "reportSha256": "c7fb6b1601807f3e342cbfed0ec9e417c4c39aded982fca24c73029c09024fc1",
+        "manifestSha256": "0d13e1c3492e4bce976febd093343842a1e9f7c400f2e31124c77aa24a3361e7",
+        "executableSha256": "c4900cf551e81254762f3f02beaeae9318f4c9a1e69e2a7bb4d33ec772b24f0b",
+        "error": "AssertionError [ERR_ASSERTION]: outputMoved13: decoded stereo tone/silence/routing differs from the fixture (0/30)\n    at requireAudio (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:182:3)\n    at sample (/home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:659:15)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async /home/ubuntu/code/game-capture/native-qt/e2e/linux-audio-publish.js:765:11",
+        "cases": [
+          {
+            "name": "selected-app",
+            "passed": false,
+            "attemptedOutputMoves": 13,
+            "completedOutputMoves": 12
+          }
+        ],
+        "fixtureCleanupError": "AssertionError [ERR_ASSERTION]: Traceback (most recent call last):\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-app-audio-source.py\", line 254, in <module>\n    main()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-app-audio-source.py\", line 250, in main\n    tone.close()\n  File \"/home/ubuntu/code/game-capture/native-qt/e2e/linux-app-audio-source.py\", line 107, in close\n    raise RuntimeError('Native PipeWire writer did not stop')\nRuntimeError: Native PipeWire writer did not stop\n\n\n1 !== 0\n"
+      }
+    ],
+    "nativeRoutingFinding": {
+      "status": "unresolved; prior source/graph-stall pattern reproduced",
+      "failedMove": 13,
+      "requestedMoves": 20,
+      "report": "native-qt/qa/reports/validation-fixed-native-audio-progress-verbose/3ea6bf91-a365-479a-b97d-f4af4725cbd7/results.json",
+      "reportSha256": "c7fb6b1601807f3e342cbfed0ec9e417c4c39aded982fca24c73029c09024fc1",
+      "sourceFramesFrozen": 4092000,
+      "referenceRecordings": [
+        {
+          "path": "outputMoved13-owned-output.f32le",
+          "sha256": "5f2621bd4de16decad05f76d5ce3b0d24d774a1a18d3b4da27f450380d8e5187",
+          "channels": [
+            {
+              "rms": 0.1056459104528898,
+              "toneAmplitudes": {
+                "440": 1.7394442064118438e-05,
+                "880": 5.608607851989869e-05,
+                "2000": 0.06978722349923719
+              }
+            },
+            {
+              "rms": 0.1056459104528898,
+              "toneAmplitudes": {
+                "440": 1.7394442064118438e-05,
+                "880": 5.608607851989869e-05,
+                "2000": 0.06978722349923719
+              }
+            }
+          ],
+          "frames": 96006
+        },
+        {
+          "path": "outputMoved13AfterCaptureQuit-owned-output.f32le",
+          "sha256": "9d07d4446876829d500a623329809aaf2a018431d003f2198a5282e61750f24d",
+          "channels": [
+            {
+              "rms": 0.10578869871307486,
+              "toneAmplitudes": {
+                "440": 1.9778194244637843e-05,
+                "880": 2.4315290537247096e-05,
+                "2000": 0.04777342592318205
+              }
+            },
+            {
+              "rms": 0.10578869871307486,
+              "toneAmplitudes": {
+                "440": 1.9778194244637843e-05,
+                "880": 2.4315290537247096e-05,
+                "2000": 0.04777342592318205
+              }
+            }
+          ],
+          "frames": 96145
+        }
+      ],
+      "observation": "Native writer progress stopped while its client remained alive. Independent owned-output recordings before and after publisher Quit contained the unrelated 2 kHz playback but no meaningful selected 440/880 Hz tones. Quitting capture did not restore writer progress. This establishes a source/graph stall, not its initiating cause or application innocence. The source fixture reported a blocked writer on close; owned-server cleanup retired all owned processes.",
+      "serverReport": "native-qt/qa/reports/validation-fixed-native-audio-progress-verbose-server/240f4e1b-a820-4060-9187-3797900e164d/results.json",
+      "serverReportSha256": "1d247adbe88af35dc7df2f303b8a81d6724c52a77af7db90a2b4d07d8206ae77",
+      "ownedProcessesRetired": true
+    },
+    "fixedGates": [
+      {
+        "command": "cmake --build native-qt/build-linux --target game-capture -j4",
+        "passed": true,
+        "logSha256": "562cbad5024341e3a27b44cb00320c8a4095f6691f39fa82072ecf767345b55f"
+      },
+      {
+        "command": "python3 native-qt/qa/package-linux.py --build native-qt/build-linux",
+        "passed": true,
+        "logSha256": "c851d8bc0414e0b749fbc664661c964834107dfc03f834e56040f3af39f67851"
+      },
+      {
+        "command": "cc -shared -fPIC -O2 -Wall -Wextra -Werror -pthread native-qt/qa/linux-allocator-probe.c -o /tmp/linux-allocator-probe.so",
+        "passed": true,
+        "scope": "Diagnostic helper compilation gate only"
+      }
+    ]
   }
 }

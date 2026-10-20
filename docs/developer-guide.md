@@ -160,6 +160,89 @@ late reception and Stop/restart. Add `--camera-id=v4l2:/dev/videoN` and the exac
 and screenshots stay in the private ignored report directory; uncontrolled
 camera scenes do not establish frame cadence or optical motion fidelity.
 
+Add `--restart-cycles=10` to repeat GUI Go live, fresh portal selection where
+needed, independently decoded reception and Stop ten times in one publisher
+process. The harness retains stopped-process RSS, thread and file-descriptor
+counts after each cycle. This is a bounded lifecycle observation; uncontrolled
+camera images still do not qualify optical frame cadence.
+Use `--max-stopped-rss-growth-mib=32` to require that peak stopped RSS stays
+within 32 MiB of the first restart after the initial workflow has warmed up.
+Each cycle also retains a hashed `/proc` memory-accounting snapshot. This bound
+checks the measured restart scenario; it is not a general memory-leak proof.
+
+For a glibc allocator investigation, build the optional helper with
+`cc -shared -fPIC -O2 -Wall -Wextra -Werror -pthread native-qt/qa/linux-allocator-probe.c -o /tmp/linux-allocator-probe.so`
+and pass `--allocator-probe=/tmp/linux-allocator-probe.so` to the GUI workflow.
+It preloads only into the owned publisher and samples allocator accounting after
+capture stops. `--allocator-trim` additionally requests one `malloc_trim(0)`
+after the final stopped cycle and records before/after RSS and allocator fields.
+The harness marks these runs `diagnosticOnly`; an extra observer thread and
+explicit heap trimming are not ordinary release behavior. The helper is never
+linked into or shipped with the application. Field meanings follow the
+[glibc allocator statistics documentation](https://sourceware.org/glibc/manual/latest/html_node/Statistics-of-Malloc.html).
+
+`linux-av-sync.js` accepts `--encoder=software|nvenc` (default software),
+`--seconds=60 --hold-seconds=480` for ten minutes of 720p60 capture, and optional
+`--control-pressure-seed=20261019`. Run it inside the private X11 desktop and
+private audio wrappers above. It verifies the selected active H.264 encoder,
+decoded identities/cadence, continuous stereo PCM, and paired source/receiver
+A/V recordings. Each interval records publisher CPU time from `/proc`, RSS,
+threads and file descriptors. CPU 100% means one logical CPU; browser,
+compositor and device memory are outside these process measurements.
+
+The 2026-10-19 x86-64 packaged comparison passed both ten-minute workflows
+and their live pressure phases at 1280x720/60, H.264 4 Mbps and stereo Opus.
+Publisher median CPU was 1.20 logical cores for x264 and 0.94 for the GTX 750 Ti's
+NVENC; peak RSS was 125.4 MiB and 187.3 MiB respectively. All 240 five-second
+intervals passed, with minimum source-identity delivery above 99.66%, clean
+continuous PCM and passing paired-recording A/V analysis. Thread and descriptor
+counts stayed constant. These are sequential same-host X11 fixture measurements,
+not isolated encoder efficiency or a demanding-game benchmark. Exact artifacts,
+resource ranges and timing evidence are bound in
+`native-qt/qa/linux-parity.json` under `linux_performance_validation_checkpoint`.
+Ten minutes does not qualify the analyzer's thirty-minute drift requirement.
+
+Repeated GUI capture exposed a separate teardown issue: after twenty restarts,
+stopped RSS reached 329.3 MiB with NVENC and 288.1 MiB with software. An opt-in
+allocator diagnostic found mostly freed arena memory; a single trim returned
+90.4 MiB resident memory in 9.15 ms. Linux/glibc now calls `malloc_trim(0)` after
+capture workers, encoders and frame queues retire. It never trims in the frame
+or resize path. Other libc implementations omit this call.
+
+The new uninstrumented DEB passed twenty restarts per encoder, including native
+Wayland portal selection, decoded moving/static/resized/late/restarted output,
+Stop and Quit. Final stopped RSS was 171.7 MiB for NVENC and 181.9 MiB for
+software; peak growth above the first restart was 13.5 and 27.3 MiB, both within
+the explicit 32 MiB scenario limit. This reduces retained-memory growth; it is
+not proof against every leak, longer run, different compositor or ARM runtime.
+Baseline and corrected-package evidence remain separate in the ledger.
+
+Corrected-package validation also retains two unresolved audio failures. The
+first NVENC A/V run failed one 100 ms received PCM channel-separation window;
+video, native counters and paired-recording A/V timing passed. Saved PCM shows
+a tone-phase discontinuity without an increase in receiver loss/concealment
+counters. The native PipeWire GUI route workflow stalled on output move 13:
+source-writer progress froze, and independent owned-output recordings lacked
+the selected tones both before and after publisher Quit. Unrelated playback
+continued. Owned-server cleanup retired all processes despite the fixture's
+blocked-writer error. These findings do not identify the initiating cause, and
+successful video/memory workflows do not waive either audio failure.
+The exact-package NVENC repeat passed all 36 five-second intervals and its A/V
+analysis with unchanged thresholds; both attempts remain recorded. Fresh
+three-minute software and NVENC-repeat runs used median publisher CPU of 1.22
+and 0.92 logical cores, with peak RSS of 125.6 and 183.4 MiB. Both passed live
+control pressure. These shorter corrected-package runs do not replace longer
+endurance or resolve the retained audio failures.
+
+The optional pressure phase reuses the Mac loopback control helpers: three
+128-request seeded batches, invalid HTTP framing, incomplete-client deadlines,
+48 simultaneous connections and pipeline/recovery checks. Audio/video are
+observed continuously during that separate thirty-second phase; normal API
+polling resumes after pressure ends. The performance baseline then starts a
+fresh audio observer. Thresholds remain unchanged. This bounded fuzz campaign
+does not establish exhaustive parser safety, physical latency, gameplay
+performance, other compositors or ARM behavior.
+
 For the owned Wayland window workflow, `--expected-cursor=excluded` adds a
 controlled native cursor and a desktop screenshot that proves it is present.
 Decoded video must omit that cursor during moving/static pictures, late
