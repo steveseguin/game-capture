@@ -1,0 +1,1466 @@
+{
+  "schema": 1,
+  "recordedAtUtc": "2026-10-20T00:17:29.789033+00:00",
+  "scope": "Bounded packaged ARM64 Linux X11 GUI WebRTC workflows and a thirty-minute same-machine receiver run. No production changes authored in this work; newer upstream changes have separate package coverage. No full platform/performance qualification.",
+  "status": "bounded-packaged-webrtc-and-endurance-passed",
+  "parentLedgers": [
+    "linux-arm64.json",
+    "linux-arm-camera.json",
+    "linux-arm-robustness.json",
+    "linux-parity.json"
+  ],
+  "branch": "linux-parity",
+  "sourceHeadBeforeEvidenceCommit": "e22b0b7d56014eb6963db5ed6249c5d0e374f757",
+  "endurancePackage": {
+    "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-f43f75191068-1c549f92f9bf-portable.tar.gz",
+    "sha256": "b7ff6be60824f01840c5873c41d6fd0d5caa425178f58519fdec4dab8b51be0d",
+    "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-f43f75191068-1c549f92f9bf-portable",
+    "manifestSha256": "1272d9a592377b67d030d1273033dde960c184212e3377543ea7d323e915491c",
+    "executableSha256": "102bb727ee14d9b27b4ccbcaa850be2188e2463d004cd129042fe6d9499b7dd2",
+    "sourceRevisionBase": "f761c6634c8f0d9387e00cae8a30881092ba3dc9",
+    "sourceTreeSha256": "1c549f92f9bf11f1068dc2222beff2ad3973ba3e34f86e3929b03d9b0456bc3e",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-f43f75191068-1c549f92f9bf-portable-source.tar.gz",
+    "sourceArchiveSha256": "08bd46823fbc9f137c71698f417a6406568baed1d10e3517999aef567b27c944",
+    "note": "Built from the recorded base revision plus changes captured exactly in the source archive. Later documentation/evidence files do not alter production sources."
+  },
+  "productionSourceComparisonAtEnduranceStart": {
+    "sourceArchive": "native-qt/dist/game-capture-0.2.65~linux.2-arm64-f43f75191068-1c549f92f9bf-portable-source.tar.gz",
+    "sha256": "08bd46823fbc9f137c71698f417a6406568baed1d10e3517999aef567b27c944",
+    "productionFilesCompared": 138,
+    "differences": []
+  },
+  "enduranceSourceHead": "6b5f7b5e0eb1196e89c6ade4dde9f5f880e4ea3d",
+  "currentPackage": {
+    "package": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable.tar.gz",
+    "sha256": "4c75e785b985a7b9ae3993c1c5367ea0ccb76c763dd65c6c36c141129ecadae6",
+    "payload": "/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable",
+    "manifestSha256": "a14c5123019acaeb396e99a6608b850cf3dd9f41489d3c09917b7b236f2287af",
+    "executableSha256": "e3f7292ad4bd331fc122007a505040d3ff9fa72bde0505bcb63c5c37a37134df",
+    "sourceRevision": "e22b0b7d56014eb6963db5ed6249c5d0e374f757",
+    "sourceTreeSha256": "113aa0211addf585446083516ba9c1a13e53ee9595b4fc20e5c514b8cbf4dd25",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable-source.tar.gz",
+    "sourceArchiveSha256": "45ca751d273365aad7488953c5c2f336d3cc945da302f428a237528f59f65d68"
+  },
+  "currentProductionSourceComparison": {
+    "sourceArchive": "native-qt/dist/game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable-source.tar.gz",
+    "sourceSha256": "45ca751d273365aad7488953c5c2f336d3cc945da302f428a237528f59f65d68",
+    "sourceTreeSha256": "113aa0211addf585446083516ba9c1a13e53ee9595b4fc20e5c514b8cbf4dd25",
+    "sourceFileCount": 677,
+    "productionFilesCompared": 137,
+    "differences": []
+  },
+  "upstreamIntegration": {
+    "sourceHead": "e22b0b7d56014eb6963db5ed6249c5d0e374f757",
+    "change": "Preserved upstream trace/evidence work and the Wayland cursor exclusion change in window_capture.cpp. The latter is the only production change after the endurance package.",
+    "coverage": "Rebuilt and packaged the integrated ARM64 app, then repeated bounded GUI WebRTC workflows on Ubuntu 22.04 and 24.04 userlands. Thirty-minute endurance applies to the earlier exact artifact; native Wayland remains unqualified here."
+  },
+  "hardware": {
+    "report": "reports/linux-arm-camera/hardware-inventory.json",
+    "sha256": "ef4dafdcf432c8cc3eb64a9fa5a9ac45d6b6fad41a43273869e770bf47de481f"
+  },
+  "environments": [
+    "Ubuntu 22.04.5 / JetPack R36.4.7 host",
+    "Ubuntu 24.04 ARM64 owned userland on the same Jetson CPU/kernel"
+  ],
+  "runtimeScope": "Owned Xvfb/xfwm4 desktop, isolated session bus and GNOME keyring, private PulseAudio null sinks and remapped microphone. Native ARM browser and publisher on the same Jetson, using public VDO.Ninja signaling. No physical desktop or WAN/outage qualification.",
+  "browser": {
+    "ready": true,
+    "browserVersion": "156.0.8078.4",
+    "browserSha256": "2b3a2bb9c4308ce74cb680dcd50305cfae1f79589305dc92b993f876b5a94f65",
+    "playwrightVersion": "1.64.1",
+    "nodeVersion": "v22.23.3"
+  },
+  "nodeDownload": {
+    "url": "https://nodejs.org/dist/latest-v22.x/node-v22.23.3-linux-arm64.tar.xz",
+    "sha256": "a44aeb94849a299b22df10b9e622ec2f605c2183501bc40590705131de7c740f"
+  },
+  "nobleBrowserDependencies": [
+    {
+      "file": ".tools/webrtc/noble-browser-deps/libnss3_2%3a3.98-1ubuntu0.2_arm64.deb",
+      "sha256": "daf32de5e12139aa84fde7a3e2784d5d7277259e22f14affcd82d81545b5312e"
+    },
+    {
+      "file": ".tools/webrtc/noble-browser-deps/libnspr4_2%3a4.35-1.1build1_arm64.deb",
+      "sha256": "0bd5994126c41aa05aa380954a3cb2ae56a0a8ebe368a0e01a411fdcc0cb9c68"
+    }
+  ],
+  "changes": [
+    "Reuse linux-arm64-bringup.py and the shared browser video/audio observer; optional WebRTC mode keeps the default UDP workflow.",
+    "Native browser records decoded video identities, stereo tone separation, microphone mix/mute, receiver connection, statistics and screenshots; its private output sink prevents feedback into captured audio.",
+    "Optional sustained reception records app RSS/anonymous memory, receiver progress, periodic decoded content/audio, then real GUI Stop/restart and saved-settings idle relaunch/Quit.",
+    "Close receiver/browser on normal EOF and signals; read saved fixture passwords through their GUI Show control."
+  ],
+  "productionChangesAuthoredThisWork": [],
+  "gates": [
+    {
+      "command": [
+        "python3",
+        "-m",
+        "py_compile",
+        "native-qt/e2e/linux-arm64-bringup.py"
+      ],
+      "exitCode": 0,
+      "output": "",
+      "classification": "gate, not application testing"
+    },
+    {
+      "command": [
+        ".tools/webrtc/node/bin/node",
+        "--check",
+        "native-qt/e2e/linux-webrtc-observer.js"
+      ],
+      "exitCode": 0,
+      "output": "",
+      "classification": "gate, not application testing"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "exitCode": 0,
+      "output": "",
+      "classification": "gate, not application testing"
+    },
+    {
+      "command": [
+        ".tools/portable/run",
+        "/opt/cmake/cmake/data/bin/cmake",
+        "--build",
+        "/workspace/native-qt/build-linux-arm64-portable",
+        "--target",
+        "game-capture",
+        "-j",
+        "2"
+      ],
+      "exitCode": 0,
+      "classification": "native ARM64 build gate, not application testing",
+      "sourceRevision": "e22b0b7d56014eb6963db5ed6249c5d0e374f757"
+    },
+    {
+      "command": [
+        ".tools/portable/run",
+        "python3",
+        "native-qt/qa/package-linux-portable.py",
+        "--build",
+        "native-qt/build-linux-arm64-portable",
+        "--ffmpeg-prefix",
+        "/workspace/.tools/portable/ffmpeg"
+      ],
+      "exitCode": 0,
+      "classification": "package construction and native ABI/provenance gates, not application testing"
+    }
+  ],
+  "testing": {
+    "hostWebRtcEndurance": {
+      "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/results.json",
+      "sha256": "3d06faf00604e3d5ef5d26e8717c13e2b14efa2d6db2d94f20010b597aa83877",
+      "bytes": 6437813,
+      "passed": true,
+      "desktop": {
+        "report": "reports/arm-webrtc-endurance-clean-desktop/8ba97ba2-e7cc-4f89-af7b-4ef4fc2517fb/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "bytes": 305
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "0d56b9cdee89dc2b6a5107480d0ed7f53f09312e4118a6f21c503e89a2aa37a1",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/mixed-browser.json",
+            "sha256": "0c846495266719d69ac52bbab4c8f83ff0345165399ade1ad664b5674d0a7b28",
+            "bytes": 40100
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/muted-browser.json",
+            "sha256": "60d3da8cce2768d97ef1a2d247c3f1288c97ba2d98999099d783ae1f2db2de3f",
+            "bytes": 40512
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/unmuted-browser.json",
+            "sha256": "6c6dabd9ae5d3e14c40aada0e6f2e03c683fdfc5e47d7e428c362c3f037f7f74",
+            "bytes": 40540
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "viewer-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/viewer-reconnected-browser.json",
+            "sha256": "1c07f611865faa4f876ddcfa422589933fd83041a3a1d39958960be3b26519db",
+            "bytes": 41015
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-0",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-0-browser.json",
+            "sha256": "15b145aaf28e9ffadb0e757e0b5d569baffcb25aa8203aaadd659519ed078a91",
+            "bytes": 40934
+          },
+          "decodedObservationFrames": 109,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-68",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-68-browser.json",
+            "sha256": "fdc61714f7bc0026955c72f9041d1cdbe3e0bffc4c3e64085522bf93beb19d41",
+            "bytes": 38746
+          },
+          "decodedObservationFrames": 105,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-136",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 103,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-136-browser.json",
+            "sha256": "1eaa63f1ea820752b8884cc94774b5d4619b3f1793ccbb2e5a0db180ad274a62",
+            "bytes": 39209
+          },
+          "decodedObservationFrames": 106,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-205",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-205-browser.json",
+            "sha256": "054ac9626765df5d2f910657de964a89c69ae27a1b781764bd7fe6beca4fcc58",
+            "bytes": 39585
+          },
+          "decodedObservationFrames": 109,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-273",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-273-browser.json",
+            "sha256": "9bb4ecaaa7836c9eb71210f89b85c7ad6545528b0c4019071d2cdf0f0365eae4",
+            "bytes": 39908
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-342",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-342-browser.json",
+            "sha256": "3bf2c1e285b39469cfd9d4fb3961dd60afd4c21aac7315c4bc1da2e209a8ce6e",
+            "bytes": 39431
+          },
+          "decodedObservationFrames": 107,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-412",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-412-browser.json",
+            "sha256": "5580335697b4a0afce5f46eebf7d9b6498625107b9ee80e35a8095e7c5bf2257",
+            "bytes": 39961
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-481",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-481-browser.json",
+            "sha256": "6cf3452acc92105d1909df09dbb87e1644d6bc05c07412ba8168506b94c48ffa",
+            "bytes": 39860
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-551",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-551-browser.json",
+            "sha256": "ba1e59675d975e3762710cc54857c331d8254fc27361d207f2e41e732c5c9a0a",
+            "bytes": 40340
+          },
+          "decodedObservationFrames": 114,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-621",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-621-browser.json",
+            "sha256": "8a386c60c5e6e861c5cec644b07c8d7bc756bc42dfc0764c165893bf27d6f81b",
+            "bytes": 40124
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-691",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-691-browser.json",
+            "sha256": "e32244c59662345dc2877af253704a227a7c8f22ea128fe7e29388a6147d287c",
+            "bytes": 39855
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-761",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-761-browser.json",
+            "sha256": "767a90c814d656341126183a2ede1de409c126dc66f2150984e2fc30bad462e0",
+            "bytes": 40201
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-832",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-832-browser.json",
+            "sha256": "944832c9d2663165202589a8caeb0a882e2730dc8e6a2cfba6322fb654ed1287",
+            "bytes": 40308
+          },
+          "decodedObservationFrames": 114,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-903",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-903-browser.json",
+            "sha256": "e412f46a60ddad674ca78f5a8e935a3034041b1b3c00e2d3e6e1681735850db2",
+            "bytes": 39835
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-974",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-974-browser.json",
+            "sha256": "361a46581ea79570b5568eaf845dbe7237693840553b464557181f03001c44fd",
+            "bytes": 40189
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1045",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1045-browser.json",
+            "sha256": "b5952a35feb43b0b005ecb1141e0b4361ef76b3384f5e5b05e5340ff33d7cb50",
+            "bytes": 40750
+          },
+          "decodedObservationFrames": 115,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1117",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 103,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1117-browser.json",
+            "sha256": "da938c09e437b874d5bffdeb689fc3d0fc36f140729fd872d5546cb1823528bf",
+            "bytes": 40402
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1189",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1189-browser.json",
+            "sha256": "d5af290fc6e31865e5aed7e9a5a2a0cb7bec803c5cef5998ef57996564465d5e",
+            "bytes": 40173
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1261",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 103,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1261-browser.json",
+            "sha256": "cf0d019b0721e75319f432778cffa2a90421904c7dd7c578ec14692e6b793bf4",
+            "bytes": 40330
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1333",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1333-browser.json",
+            "sha256": "4ff39d94c9aa823b9bf20e9c245e13a9e58a0f0e5e8dca1f542f29d5f0ac99b0",
+            "bytes": 40279
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1405",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1405-browser.json",
+            "sha256": "77dd105b61d61ecb05511490b5adf33dd65b04063c4e0b5c6737fa4c0275e9b3",
+            "bytes": 40744
+          },
+          "decodedObservationFrames": 115,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1478",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1478-browser.json",
+            "sha256": "b3fa888c80f7127dd24e9ae149fdd03dfafbee6e0bcd8e3532fddf066a865c32",
+            "bytes": 40268
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1551",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 103,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1551-browser.json",
+            "sha256": "6e1fcfc1b4a9dfecd2aa7e5c9c684c0edc937c41f2fa6ee3433da39fdbcda9de",
+            "bytes": 40436
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1624",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 102,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1624-browser.json",
+            "sha256": "0b0aba47dcad9a800cfe37ebcb42b859ee2160830dd1137964a255d2efff0692",
+            "bytes": 40069
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1692",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 96,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1692-browser.json",
+            "sha256": "7498577c2ec0926959d01178aa6482631777e84b8a8ab8f112f02a5250af2056",
+            "bytes": 39740
+          },
+          "decodedObservationFrames": 108,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-1760",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 101,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-1760-browser.json",
+            "sha256": "22b2bfae08f8f22dccb461dad7d0c5322346dd91910e2dcd645151c33068deab",
+            "bytes": 40167
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-final",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 29,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/endurance-final-browser.json",
+            "sha256": "bfbad96b623d58c32bc8a3299e4c192d0289796593cac70b75da00a02f96b6cd",
+            "bytes": 40251
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance-clean/b02e5d83-e11d-411d-824f-250bef629290/restarted-browser.json",
+            "sha256": "045c3e79ff7450e61031854b07af0fad5f1a3394436d10dddaeeba910935b81b",
+            "bytes": 41614
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": null,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "endurance": {
+        "requestedSeconds": 1800,
+        "elapsedSeconds": 1808.0036749519932,
+        "statisticsSamples": 304,
+        "contentAudioObservations": 27,
+        "sampling": "Statistics about every five seconds, with a four-second video plus three-second audio observation followed by a sixty-second pause between content observations. Browser presentation progress watched continuously.",
+        "publisherRssMiB": {
+          "first": 138.22265625,
+          "last": 147.32421875,
+          "minimum": 138.22265625,
+          "maximum": 147.32421875,
+          "firstFiveMinuteMean": 138.4903846153846,
+          "lastFiveMinuteMean": 147.32421875
+        },
+        "publisherAnonymousMiB": {
+          "first": 57.76171875,
+          "last": 66.86328125,
+          "minimum": 57.76171875,
+          "maximum": 66.86328125
+        },
+        "receivedVideoFramesDuringStatisticsWindow": 52324,
+        "receivedVideoFramesPerSecondDuringStatisticsWindow": 29.249651846613364,
+        "finalReceiverVideo": {
+          "codec": "video/H264",
+          "framesDecoded": 53095,
+          "framesDropped": 0,
+          "packetsLost": 0,
+          "freezeCount": 0,
+          "totalFreezesDuration": 0,
+          "pauseCount": 0,
+          "totalPausesDuration": 0
+        },
+        "finalReceiverAudio": {
+          "codec": "audio/opus",
+          "totalSamplesReceived": 87140160,
+          "concealedSamples": 0,
+          "silentConcealedSamples": 0,
+          "packetsLost": 0,
+          "totalSamplesDuration": 1815.5099999984939
+        },
+        "finalPresentationContinuity": {
+          "frames": 50222,
+          "maxPresentationGapMs": 100,
+          "maxMediaGapMs": 100.00000000002274,
+          "started": 1474.7000000029802,
+          "lastFrameAt": 1816222.599999994,
+          "now": 1816244.899999991
+        },
+        "avSynchronizationQualified": false,
+        "performanceQualification": false
+      }
+    },
+    "ubuntu24WebRtc": {
+      "report": "reports/arm-webrtc-noble-clean/3b1103cc-5ebe-411d-a82c-9370eb4ad617/results.json",
+      "sha256": "c73d9f68d5edc18f16496dfdd6eb6f044cda25062a545760382c59a929a0b0ac",
+      "bytes": 69724,
+      "passed": true,
+      "desktop": {
+        "report": "reports/arm-webrtc-noble-clean-desktop/cae3527c-0419-416a-9161-dc41a8eb1b75/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "bytes": 305
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "0d56b9cdee89dc2b6a5107480d0ed7f53f09312e4118a6f21c503e89a2aa37a1",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-clean/3b1103cc-5ebe-411d-a82c-9370eb4ad617/mixed-browser.json",
+            "sha256": "f20b7ce47fd4c6935c7b3a6a10363aabdbbd16ec828b9b9a398c90b4854a7d45",
+            "bytes": 40624
+          },
+          "decodedObservationFrames": 107,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "uniqueIdentities": 107,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-clean/3b1103cc-5ebe-411d-a82c-9370eb4ad617/muted-browser.json",
+            "sha256": "b36f6fdcbab95a81877da0c3bf59efe5c33d426e7d2fee39157fd97e38c1bd0c",
+            "bytes": 40811
+          },
+          "decodedObservationFrames": 107,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-clean/3b1103cc-5ebe-411d-a82c-9370eb4ad617/unmuted-browser.json",
+            "sha256": "a568c307a66c38c9a9b83b51774c65d67671aeb2895957710d3ee61498666272",
+            "bytes": 41200
+          },
+          "decodedObservationFrames": 110,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "viewer-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-clean/3b1103cc-5ebe-411d-a82c-9370eb4ad617/viewer-reconnected-browser.json",
+            "sha256": "b8f937fcd6164f0b1f5355785dfdb7604ccd94a77f89a74cdca170713f812b77",
+            "bytes": 39705
+          },
+          "decodedObservationFrames": 108,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-clean/3b1103cc-5ebe-411d-a82c-9370eb4ad617/restarted-browser.json",
+            "sha256": "ca535eaa8e13d4695dbe0f7abd23f983e81f700cc7f63cdf61312e902777c268",
+            "bytes": 41110
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": null,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true
+    },
+    "hostUdpRegression": {
+      "report": "reports/arm-webrtc-udp-regression/ab888eae-25f0-49c1-9bea-1cafd08987f0/results.json",
+      "sha256": "722de68d5752274891abd205010615f07719fda85cf3a192f15a91cc57667132",
+      "bytes": 54301,
+      "passed": true,
+      "desktop": {
+        "report": "reports/arm-webrtc-udp-regression-desktop/493b2d5a-5bcd-43e1-bf42-89ef813ab413/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "bytes": 305
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "22825d2b2ad034735e6e0e789872e9f557e7cff0a43691ec0ff7b383c0407b57",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 117
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 117
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 117
+        }
+      ],
+      "error": null,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true
+    },
+    "currentHostWebRtc": {
+      "report": "reports/arm-webrtc-current-host/ab66c6d4-476e-40d0-b029-e2f87ad5c559/results.json",
+      "sha256": "2e8ea25871ce386509bb67efd89ec2193ea7e0b546dd476b92a2a7b5b598ff93",
+      "bytes": 70466,
+      "passed": true,
+      "desktop": {
+        "report": "reports/arm-webrtc-current-host-desktop/a7801ff8-c3fd-430c-85a6-b850f9bc67bc/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "bytes": 305
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "0d56b9cdee89dc2b6a5107480d0ed7f53f09312e4118a6f21c503e89a2aa37a1",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 103,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-host/ab66c6d4-476e-40d0-b029-e2f87ad5c559/mixed-browser.json",
+            "sha256": "04a280119d5874e3ec97dd8b2b1755a0fd9bc6d585b36d1ef792452a80ffebc4",
+            "bytes": 39785
+          },
+          "decodedObservationFrames": 108,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "uniqueIdentities": 100,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-host/ab66c6d4-476e-40d0-b029-e2f87ad5c559/muted-browser.json",
+            "sha256": "fde3b58feaba6ba32776b27aaa088b69c1213349b00007df36961c4383f908a7",
+            "bytes": 39693
+          },
+          "decodedObservationFrames": 105,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-host/ab66c6d4-476e-40d0-b029-e2f87ad5c559/unmuted-browser.json",
+            "sha256": "ac5d9109caf1d410cd6075876314e8cd9b7cff5d2a5c986c169c62870831c931",
+            "bytes": 40217
+          },
+          "decodedObservationFrames": 109,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "viewer-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-host/ab66c6d4-476e-40d0-b029-e2f87ad5c559/viewer-reconnected-browser.json",
+            "sha256": "ad96c7ab1afced9fa4edbb0df641536bc84686b0b881f8e29e8d30b1abe2bc97",
+            "bytes": 40452
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-host/ab66c6d4-476e-40d0-b029-e2f87ad5c559/restarted-browser.json",
+            "sha256": "a276974145f59d24538e92d4428cac2483f81d6b9b75ecbc3035bdabd7cfd1d3",
+            "bytes": 40302
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": null,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true
+    },
+    "currentUbuntu24WebRtc": {
+      "report": "reports/arm-webrtc-current-noble/d0773ce5-d0df-4342-a6be-1f2f7259c4b6/results.json",
+      "sha256": "e40c108fb9d7ba9eb5157b1acf8b029597d4b65c349735c4082e2e57c125510e",
+      "bytes": 70460,
+      "passed": true,
+      "desktop": {
+        "report": "reports/arm-webrtc-current-noble-desktop/f40a6e79-b596-4fe5-a035-5745c43ad8f2/results.json",
+        "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+        "bytes": 305
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "0d56b9cdee89dc2b6a5107480d0ed7f53f09312e4118a6f21c503e89a2aa37a1",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-noble/d0773ce5-d0df-4342-a6be-1f2f7259c4b6/mixed-browser.json",
+            "sha256": "851d0d0f72f03001b008d5243be4783fcc980ad5d0ae76e298b1d6a69415b659",
+            "bytes": 41452
+          },
+          "decodedObservationFrames": 115,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-noble/d0773ce5-d0df-4342-a6be-1f2f7259c4b6/muted-browser.json",
+            "sha256": "0d42e41cd23bff1700a53bef40fb903dbb07574b0bb86ebf5c97e70e45454e7d",
+            "bytes": 41334
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 111,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-noble/d0773ce5-d0df-4342-a6be-1f2f7259c4b6/unmuted-browser.json",
+            "sha256": "881ab460c60258f7eb712c5bc1b89c576ecc54af7e28e485d3fc574218636554",
+            "bytes": 42258
+          },
+          "decodedObservationFrames": 119,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "viewer-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 104,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-noble/d0773ce5-d0df-4342-a6be-1f2f7259c4b6/viewer-reconnected-browser.json",
+            "sha256": "a3879f29869afcb8db9204b7b76ded19dfd20d84876f3bf56fc93fb3b7dcabcd",
+            "bytes": 41138
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-current-noble/d0773ce5-d0df-4342-a6be-1f2f7259c4b6/restarted-browser.json",
+            "sha256": "7f7d824a772cffa1fbc686d026f6151ac9cd6a0f2a9a3b04ca44cb5c6032d4ac",
+            "bytes": 40123
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": null,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true
+    }
+  },
+  "preservedAttempts": [
+    {
+      "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/results.json",
+      "sha256": "411099b78657996c531cd8c87358ce4fad82102447f81702a4f2a6e81d8c63a1",
+      "bytes": 320347,
+      "passed": false,
+      "desktop": {
+        "report": "reports/arm-webrtc-first-desktop/bf41140c-2ed0-4b6f-8a90-e23bc6e6170b/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "bytes": 306
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "5b4ddcb03b38cd607afb78f6510c1be06bdb35f4b10f731d0087558802502359",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "f70aad362c132562983541631dd21dd6e9405e708ab9d7fdfa05f4148124bcfd",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/mixed-browser.json",
+            "sha256": "1a682867304ff074da805a14c21c8892bd4909c5850377ead732dd273c7d7cac",
+            "bytes": 41279
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/muted-browser.json",
+            "sha256": "2b9439c08b5c803e4d3a277076563e44db9299850519648cd6fda4eb69440192",
+            "bytes": 41407
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/unmuted-browser.json",
+            "sha256": "b348388ec94c96b71ea614c13136d014c567706c8a624516b8f8b8b5ee45db65",
+            "bytes": 41401
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "viewer-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 109,
+          "goodAudioSamples": 29,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/viewer-reconnected-browser.json",
+            "sha256": "487456c5c3008fef62ae369ad080be4a8b44843b3dd503d7424721dd536bdf32",
+            "bytes": 41107
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-0",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 110,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/endurance-0-browser.json",
+            "sha256": "472c8cfba107f510fd9345ecb09a5f4484960af08e95450fe4d810600db7a4bc",
+            "bytes": 41272
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "endurance-final",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/endurance-final-browser.json",
+            "sha256": "0a7a9b2e50716aeb36026cfd91be662fee8e604a7511a920b45c2ec0080ce394",
+            "bytes": 39719
+          },
+          "decodedObservationFrames": 112,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 111,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-first/64469953-c4fa-441e-a14a-22647d1f5190/restarted-browser.json",
+            "sha256": "2eb1bc6043a50465a39bfd2e2d63bad96efbac2d26db3bb286ab1a89d7cecdfe",
+            "bytes": 41468
+          },
+          "decodedObservationFrames": 114,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": "AssertionError()",
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "settingsRestoredWithoutCapture": null,
+      "classification": "observer-assertion",
+      "explanation": "Media, 67-second pilot and restart passed. The password assertion read protected accessibility bullets; the saved fixture password was present. Fixed by exercising the real Show control before reading and hiding afterward."
+    },
+    {
+      "report": "reports/arm-webrtc-noble/20267520-b987-47c0-8d0f-02d645987fea/results.json",
+      "sha256": "e73ee552ccfbe46aae67117677a5377b524d72922eb2f923e26fef52fe41a4d2",
+      "bytes": 3764,
+      "passed": false,
+      "desktop": {
+        "report": "reports/arm-webrtc-noble-desktop/25405a7f-20ff-456d-82f1-52f6507b696d/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "bytes": 306
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "5b4ddcb03b38cd607afb78f6510c1be06bdb35f4b10f731d0087558802502359",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [],
+      "error": "AssertionError('Browser observer exited: inspect observer.log')",
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "settingsRestoredWithoutCapture": null,
+      "classification": "fixture-dependencies",
+      "explanation": "The isolated Ubuntu 24.04 browser could not load libnspr4.so. Added official Ubuntu libnspr4/libnss3 files only to the owned rootfs; no host libraries changed."
+    },
+    {
+      "report": "reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190/results.json",
+      "sha256": "1e2f23308a59d04aec848626525570654189f898dca3dd9c70641325551dc0da",
+      "bytes": 71099,
+      "passed": false,
+      "desktop": {
+        "report": "reports/arm-webrtc-noble-fixed-desktop/d5ea0788-662b-4731-9c65-2ccf9cb4972b/results.json",
+        "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+        "bytes": 306
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "22825d2b2ad034735e6e0e789872e9f557e7cff0a43691ec0ff7b383c0407b57",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 105,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190/mixed-browser.json",
+            "sha256": "e2296b76d928e8f7bb7e95e35b819f0b5cbcaebafb8ff28c7b12292e55d244ef",
+            "bytes": 40547
+          },
+          "decodedObservationFrames": 107,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190/muted-browser.json",
+            "sha256": "2ceb05e64ecf80622b6517171cbae27d4acdb549eb0491288f37cb894a49d15c",
+            "bytes": 41959
+          },
+          "decodedObservationFrames": 116,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 111,
+          "goodAudioSamples": 29,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190/unmuted-browser.json",
+            "sha256": "fcfac2a795ca10f7837ddea338333d6009c0329ff7d7fe8f8fdd46583c8cda3d",
+            "bytes": 42229
+          },
+          "decodedObservationFrames": 118,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "viewer-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 108,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190/viewer-reconnected-browser.json",
+            "sha256": "226e96111bb1ad0ffba567e4c0e573cf33a6092dcba77c4aedd4a09e01e44d61",
+            "bytes": 41196
+          },
+          "decodedObservationFrames": 111,
+          "width": 960,
+          "height": 540
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 111,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190/restarted-browser.json",
+            "sha256": "a99c9132eff17e61de53c9649c4880bf216405f25fb82c9ff4f7b575c32bd003",
+            "bytes": 41206
+          },
+          "decodedObservationFrames": 113,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": "TimeoutExpired(['/workspace/.tools/webrtc/node/bin/node', '/workspace/native-qt/e2e/linux-webrtc-observer.js', '/workspace/.tools/webrtc/browsers/chromium-1248/chrome-linux-arm64/chrome', 'gcarm9ca36b4d83df425fbb1907776a02b294', '/workspace/native-qt/qa/reports/arm-webrtc-noble-fixed/3e3a71d1-c0c0-4356-b2ea-3650826a8190'], 10)",
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "settingsRestoredWithoutCapture": true,
+      "classification": "observer-cleanup",
+      "explanation": "All five received-media phases, app Stop/Quit and saved-settings relaunch passed. The browser closed but its Node helper retained stdin. Fixed by closing the controller pipe after the close acknowledgement."
+    },
+    {
+      "report": "reports/arm-webrtc-endurance/c7f40c27-5692-4968-b585-8067de6b22e6/results.json",
+      "sha256": "0864bfcab409e504825bb32c8a9df4c6d766a6c890059658b0360f9a9adcb1ac",
+      "bytes": 16680,
+      "passed": false,
+      "desktop": {
+        "report": "reports/arm-webrtc-endurance-desktop/38c159bb-2da6-4514-bb1c-584914c962bb/results.json",
+        "sha256": "0a71ea3b3e2893440cefd9eb7c5a7f6117469000e34444a4e55170dd556d08b6",
+        "bytes": 307
+      },
+      "profile": {
+        "resolution": "960x540",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "harnesses": {
+        "linux-arm64-bringup.py": "22825d2b2ad034735e6e0e789872e9f557e7cff0a43691ec0ff7b383c0407b57",
+        "linux-ui-control.py": "f378030749a1bcf7a58fa838c35654bad2c5ce57b206c0e211c6ab3d0c7de7f8",
+        "linux-installed-desktop.py": "5a6125f8c563e70d15d2d177544abc48ea05e78c868ecae9640f12b1546d78f6",
+        "linux-webrtc-observer.js": "ccf956f9299fd866488ebbd372c9c747a6c175b9cd6e75ed9d4ca56c264df851",
+        "macos-media-receiver.js": "3e4b7b1f8a96f16146baba9e95635c0d4d48bf78d76f50e5eee2c48523f26e7f"
+      },
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "uniqueIdentities": 106,
+          "goodAudioSamples": 30,
+          "browser": {
+            "report": "reports/arm-webrtc-endurance/c7f40c27-5692-4968-b585-8067de6b22e6/mixed-browser.json",
+            "sha256": "63be9b59c1f9a69f6e71718cf2a29c1011c4e904b41c744b87331b1c26df2deb",
+            "bytes": 40626
+          },
+          "decodedObservationFrames": 108,
+          "width": 960,
+          "height": 540
+        }
+      ],
+      "error": null,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "settingsRestoredWithoutCapture": null,
+      "classification": "deliberately-interrupted-fixture",
+      "explanation": "Stopped the first endurance setup after its initial mixed-media phase, before the timed endurance section, to fix the known helper EOF issue. SIGINT triggered owned-process cleanup; abrupt app termination left its report-local discovery file. This is not a completed endurance run."
+    }
+  ],
+  "remaining": [
+    "Calibrated A/V synchronization/drift, continuous per-frame identity/cadence qualification, high-motion and higher profiles remain unqualified. Constant tones and periodic four-second video samples cannot establish those results.",
+    "The viewer reconnection closes/reopens a browser page. Existing-viewer recovery across publisher restart, actual network loss/reconnect, remote receivers, TURN paths and broader browsers remain unqualified.",
+    "Physical Xorg/Wayland/portals, live HDMI picture/audio, hot unplug/replug, suspend/resume and Raspberry Pi remain unqualified.",
+    "The earlier first-save external-output URL failure is still unexplained. WebRTC settings and repeated UDP successes do not erase it; see linux-arm-robustness.json.",
+    "No new hardware encoder, amd64, Windows/macOS or full parity qualification. Ubuntu 24.04 coverage is an owned userland on the same Jetson/kernel."
+  ],
+  "hostChanges": "No desktop/audio service restart, driver replacement or host package installation. Browser tools and Ubuntu container dependencies are user-owned fixtures.",
+  "cleanupAudit": {
+    "recordedAtUtc": "2026-10-20T00:17:29.389243+00:00",
+    "remainingOwnedWorkflowOrBrowserProcesses": [],
+    "hostAudioServiceIdentitiesUnchanged": [
+      {
+        "pid": 7002,
+        "startTimeTicks": "3406519",
+        "command": "pipewire"
+      },
+      {
+        "pid": 7003,
+        "startTimeTicks": "3406519",
+        "command": "pipewire-media-"
+      },
+      {
+        "pid": 7004,
+        "startTimeTicks": "3406519",
+        "command": "pulseaudio"
+      }
+    ],
+    "memory": {
+      "MemTotal": "7802848 kB",
+      "MemAvailable": "5953056 kB",
+      "SwapTotal": "3901416 kB",
+      "SwapFree": "3693032 kB"
+    }
+  }
+}

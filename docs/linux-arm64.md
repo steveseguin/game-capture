@@ -213,3 +213,85 @@ It includes the intervening `linux-parity` native PipeWire audio change from
 `f761c66`, whose existing Linux evidence is preserved. The source archive records
 the exact production and observer sources; the later evidence ledger and final
 documentation are in the repository.
+
+## ARM browser reception and sustained operation
+
+The same packaged moving-window workflow can receive VDO.Ninja WebRTC in a
+native ARM Chromium browser. It uses the shipped `AppRun`, real GUI controls,
+an isolated X11 desktop/keyring, a private PulseAudio server, the existing
+moving barcode source and the shared browser media observer. The receiver has
+its own private output sink to prevent audio feedback into the captured system
+output. No host desktop or audio service is replaced or restarted.
+
+Install Node and Playwright in a user-owned tools directory. The recorded
+receiver uses Node 22.23.3, Playwright 1.64.1 and its native ARM64 Chromium
+156.0.8078.4. For example, with Node on `PATH`:
+
+```bash
+npm install --prefix .tools/webrtc --save-exact playwright@1.64.1
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.tools/webrtc/browsers" \
+  node .tools/webrtc/node_modules/playwright/cli.js install chromium
+```
+
+Set `bundle` to the extracted portable package and obtain `manifest_sha256`
+from the independently recorded package metadata. Run as an ordinary user
+with Xvfb, xfwm4, GNOME keyring, Python GI/AT-SPI/Tk/Pillow/NumPy, PulseAudio,
+FFmpeg and the browser's system libraries available:
+
+```bash
+NODE_PATH="$PWD/.tools/webrtc/node_modules" \
+  xvfb-run -a -s '-screen 0 1600x1000x24' \
+  python3 native-qt/e2e/linux-private-desktop.py \
+    --reports=native-qt/qa/reports/arm-webrtc-desktop --window-manager -- \
+  python3 native-qt/e2e/linux-arm64-bringup.py \
+    --publisher="$bundle/usr/bin/game-capture" \
+    --manifest-sha256="$manifest_sha256" \
+    --reports=native-qt/qa/reports/arm-webrtc \
+    --webrtc --browser="$PWD/.tools/webrtc/browsers/chromium-1248/chrome-linux-arm64/chrome" \
+    --endurance-seconds=1800
+```
+
+An explicit `--node=/path/to/node` is supported. Omit `--endurance-seconds`
+for a bounded workflow before a long run. The default remains loopback
+UDP/MPEG-TS when `--webrtc` is absent. WebRTC and `--failure-recovery` are
+separate workflows because the latter exercises an external-output helper.
+
+The WebRTC workflow checks decoded moving H.264 identities, left/right system
+tones, the microphone tone, microphone mute/unmute, a fresh viewer connection,
+GUI Stop/restart, saved settings and idle relaunch/quit. A sustained run also
+records receiver statistics and publisher memory every five seconds, watches
+presentation progress continuously, and checks decoded content/audio about
+once per minute. Its 960x540/30 software profile is explicit and changes no
+application defaults or existing acceptance thresholds. Constant tones do not
+establish calibrated A/V synchronization, and sampled content checks do not
+qualify every frame's identity or high-motion performance.
+
+Exact artifact and observer hashes, completed workflows, memory/reception
+measurements and retained fixture failures are recorded in
+[the ARM WebRTC ledger](../native-qt/qa/linux-arm-webrtc.json). The thirty-minute
+run uses the combined development artifact above; later packages have their
+own explicitly recorded coverage. Browser
+reconnection here means closing and reopening the receiving page; recovery of
+an existing viewer across publisher restart and actual network outages remain
+separate qualification work.
+
+On the Jetson, the combined `f43f75191068-1c549f92f9bf` artifact completed
+1,808 seconds of sustained WebRTC reception: 27 decoded-content/audio checks,
+53,095 received H.264 frames, and zero browser-reported lost packets, dropped
+video frames, freezes or concealed audio samples. App RSS rose from 138.2 to
+147.3 MiB, then stayed at 147.3 MiB for the final eighteen minutes. GUI
+Stop/restart, saved settings, idle relaunch and cleanup passed afterward.
+These measurements establish this bounded run, not leak-free operation or
+calibrated A/V synchronization. Its Ubuntu 24.04 bounded WebRTC workflow and
+Ubuntu 22.04 UDP regression also passed.
+
+The newer local development archive is
+`game-capture-0.2.65~linux.2-arm64-e714e839d693-113aa0211add-portable.tar.gz`
+in `native-qt/dist/`. Extract it and run `./AppRun`. SHA-256:
+`4c75e785b985a7b9ae3993c1c5367ea0ccb76c763dd65c6c36c141129ecadae6`.
+It preserves upstream work through `e22b0b7`, including the Wayland cursor
+exclusion change. This exact archive passed all five bounded WebRTC media
+phases, saved-settings relaunch and cleanup on both Ubuntu userlands. The
+thirty-minute run was not repeated on this successor; native Wayland remains
+unqualified on this ARM machine. The source archive contains its exact build
+sources and observers; final documentation and evidence are recorded afterward.

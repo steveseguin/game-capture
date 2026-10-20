@@ -3,8 +3,9 @@
 
 Run under linux-private-desktop.py on an owned Xvfb display. Uses the existing
 Tk moving source, real GUI actions, a private PulseAudio server and independent
-FFmpeg reception/decoding of loopback MPEG-TS. No host audio/device changes.
-This is not physical desktop, hardware encoder, WebRTC or performance qualification.
+FFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC
+receiver with --webrtc. No host audio/device changes. This is not physical
+desktop, hardware encoder, calibrated A/V synchronization or performance qualification.
 """
 import argparse
 import hashlib
@@ -12,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import selectors
 import shutil
 import signal
 import socket
@@ -39,7 +41,15 @@ def main():
     parser.add_argument('--resolution', choices=['960x540', '1280x720'], default='960x540')
     parser.add_argument('--failure-recovery', action='store_true',
                         help='Also exercise output-helper death/stall and source-window loss')
+    parser.add_argument('--webrtc', action='store_true', help='Receive through VDO.Ninja in a native Chromium browser')
+    parser.add_argument('--browser', type=Path, help='Native Chromium executable (requires Playwright on NODE_PATH)')
+    parser.add_argument('--node', default='node', help='Node executable for the independent receiver')
+    parser.add_argument('--endurance-seconds', type=int, default=0,
+                        help='WebRTC continuous reception, statistics every 5 s, decoded content/audio every 60 s')
     args = parser.parse_args()
+    assert 0 <= args.endurance_seconds <= 3600
+    assert not args.webrtc or (args.browser and not args.failure_recovery)
+    assert not args.endurance_seconds or args.webrtc
     assert os.getuid() != 0 and os.environ.get('GC_QA_PRIVATE_DESKTOP')
     assert os.environ.get('QT_QPA_PLATFORM') == 'xcb'
     exe = args.publisher.resolve(); bundle = exe.parent.parent.parent
@@ -61,7 +71,11 @@ def main():
               'profile':{'resolution':args.resolution, 'fps':30, 'bitrateKbps':4000, 'encoder':'software libx264',
                          'transport':'loopback UDP/MPEG-TS', 'audio':'system + microphone, AAC stereo'},
               'phases':[], 'harnesses':{}}
-    for name in [Path(__file__).name, 'linux-ui-control.py', 'linux-installed-desktop.py']:
+    if args.webrtc:
+        result['profile'].update(transport='VDO.Ninja WebRTC', audio='system + microphone, Opus stereo')
+    harnesses = [Path(__file__).name, 'linux-ui-control.py', 'linux-installed-desktop.py']
+    if args.webrtc: harnesses += ['linux-webrtc-observer.js', 'macos-media-receiver.js']
+    for name in harnesses:
         shutil.copy2(helpers/name, report/name); result['harnesses'][name] = sha(helpers/name)
     settings = report/'settings'; settings.mkdir()
     discovery = report/'private-control.json'
@@ -69,6 +83,19 @@ def main():
     audio_baseline = set()
     direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     env = dict(os.environ)
+    observer = None
+    def observer_reply(timeout=90):
+        with selectors.DefaultSelector() as selector:
+            selector.register(observer.stdout, selectors.EVENT_READ)
+            assert selector.select(timeout), 'Browser observer timed out'
+            line = observer.stdout.readline()
+        assert line, 'Browser observer exited: inspect observer.log'
+        value = json.loads(line)
+        assert value.get('ok', value.get('ready', value.get('closed', False))), value
+        return value
+    def browser_command(op, **options):
+        observer.stdin.write(json.dumps(dict(op=op, **options))+'\n'); observer.stdin.flush()
+        return observer_reply()
     def save(): (report/'results.json').write_text(json.dumps(result, indent=2)+'\n')
     def start(command, label, **options):
         log = (report/(label+'.log')).open('wb'); logs.append(log)
@@ -123,20 +150,29 @@ def main():
         if restore:
             controls = rows()
             for name in ['Software (x264 / VP9 / AV1 / HEVC)', args.resolution, '30',
-                         'System audio (all apps)', result['microphoneLabel'], 'UDP / MPEG-TS (LAN)']:
+                         'System audio (all apps)', result['microphoneLabel'],
+                         'VDO.Ninja (default)' if args.webrtc else 'UDP / MPEG-TS (LAN)']:
                 assert any(r['role']=='combo box' and r['name']==name for r in controls), 'Saved setting missing: '+name
-            assert json.loads(ui('read-text', 'Output URL')) == destination
+            assert json.loads(ui('read-text', 'Stream ID or VDO.Ninja URL' if args.webrtc else 'Output URL')) == destination
+            if args.webrtc:
+                # Accessibility deliberately returns bullets for a masked
+                # password. Exercise its real Show control before reading.
+                ui('reveal', 'Stream password')
+                assert json.loads(ui('read-text', 'Stream password')) == 'false', 'Saved fixture password missing'
+                ui('reveal', 'Stream password')
             result['settingsRestoredWithoutCapture'] = True
         else:
             ui('press', 'Audio encoding')
             wait(lambda:bitrate_row_visible('Opus bitrate', 'AAC bitrate'), 'Incorrect initial audio form rows')
             (report/'opus-form-ui.json').write_text(json.dumps(rows(), indent=2)+'\n')
-            ui('choose', 'VDO.Ninja (default)', 'UDP / MPEG-TS (LAN)')
-            wait(lambda:bitrate_row_visible('AAC bitrate', 'Opus bitrate'), 'Audio form rows did not follow output mode')
-            (report/'aac-form-ui.json').write_text(json.dumps(rows(), indent=2)+'\n')
-            result['audioFormRowsFollowOutputMode'] = True
+            if not args.webrtc:
+                ui('choose', 'VDO.Ninja (default)', 'UDP / MPEG-TS (LAN)')
+                wait(lambda:bitrate_row_visible('AAC bitrate', 'Opus bitrate'), 'Audio form rows did not follow output mode')
+                (report/'aac-form-ui.json').write_text(json.dumps(rows(), indent=2)+'\n')
+                result['audioFormRowsFollowOutputMode'] = True
             ui('press', 'Audio encoding')
-            ui('text', 'Output URL', destination)
+            ui('text', 'Stream ID or VDO.Ninja URL' if args.webrtc else 'Output URL', destination)
+            if args.webrtc: ui('text', 'Stream password', 'false')
             ui('choose', 'Auto (Hardware, then Software)', 'Software (x264 / VP9 / AV1 / HEVC)')
             expected_fps = '30' if manifest['architecture'] == 'arm64' else '60'
             assert any(r['role']=='combo box' and r['name']==expected_fps for r in rows()), 'Incorrect first-run frame rate'
@@ -180,6 +216,13 @@ def main():
         os.kill(pid, sig)
         return pid, d
     def receive(label, microphone=True):
+        if args.webrtc:
+            phase = browser_command('observe', label=label, microphone=microphone)
+            phase.update(name=label, microphoneExpected=microphone, diagnostics=diagnostics())
+            result['phases'].append(phase); save()
+            screenshot(label+'-gui')
+            print(json.dumps({'phase':label, 'passed':True}), flush=True)
+            return
         # Join an already-running publisher, independently receive, then decode.
         transport = report/(label+'.ts')
         receiver = start(['ffmpeg','-hide_banner','-loglevel','warning','-threads','2',
@@ -264,6 +307,37 @@ def main():
                  'diagnostics':diagnostics()}
         result['phases'].append(phase); save(); print(json.dumps({'phase':label,'passed':True}),flush=True)
 
+    def endurance():
+        if not args.endurance_seconds: return
+        started = time.monotonic(); next_content = started; previous = None
+        result['endurance'] = {'requestedSeconds':args.endurance_seconds, 'completed':False,
+                               'samples':[], 'contentIntervalSeconds':60,
+                               'avSynchronizationQualified':False}
+        while time.monotonic()-started < args.endurance_seconds:
+            now = time.monotonic()
+            if now >= next_content:
+                receive('endurance-'+str(int(now-started)))
+                next_content = time.monotonic()+60
+            stats = browser_command('stats')
+            tracks = [t for peer in stats['peers'] for t in peer['tracks']]
+            video = next(t for t in tracks if t.get('kind') == 'video')
+            audio = next(t for t in tracks if t.get('kind') == 'audio')
+            assert stats['continuity']['now']-stats['continuity']['lastFrameAt'] < 3000, 'Received video stalled'
+            if previous:
+                assert video['framesDecoded'] > previous[0], 'Video decoder stopped advancing'
+                assert audio['totalSamplesReceived'] > previous[1], 'Audio reception stopped advancing'
+            previous = video['framesDecoded'], audio['totalSamplesReceived']
+            memory = {line.split(':',1)[0]:line.split(':',1)[1].strip()
+                      for line in Path(f'/proc/{app.pid}/status').read_text().splitlines()
+                      if line.startswith(('VmRSS:', 'VmHWM:', 'RssAnon:', 'Threads:'))}
+            result['endurance']['samples'].append({'elapsedSeconds':time.monotonic()-started,
+                'publisherMemory':memory, 'receiver':stats, 'diagnostics':diagnostics()})
+            save()
+            time.sleep(min(5, max(0, args.endurance_seconds-(time.monotonic()-started))))
+        receive('endurance-final')
+        result['endurance'].update(completed=True, elapsedSeconds=time.monotonic()-started)
+        save()
+
     print('Report:',report,flush=True); save()
     with tempfile.TemporaryDirectory(prefix='gc-arm-audio-') as temporary:
         root = Path(temporary)
@@ -274,6 +348,7 @@ def main():
         config.write_text(f'load-module module-native-protocol-unix socket={root}/pulse.sock auth-anonymous=1\n'
             'load-module module-null-sink sink_name=arm_system rate=48000 channels=2\n'
             'load-module module-null-sink sink_name=arm_mic rate=48000 channels=2\n'
+            'load-module module-null-sink sink_name=arm_receiver rate=48000 channels=2\n'
             'load-module module-remap-source master=arm_mic.monitor source_name=arm_input source_properties=device.description=ARMBringupMicrophone\n'
             'set-default-sink arm_system\nset-default-source arm_input\n')
         try:
@@ -281,26 +356,36 @@ def main():
             wait(lambda:(root/'pulse.sock').exists(), 'Private Pulse server failed')
             assert pactl('get-default-sink')=='arm_system'
             result['pulseServer'] = pactl('info')
-            for sink, frequencies in [('arm_system',(440,880)),('arm_mic',(660,1320))]:
+            for sink, frequencies in [('arm_system',(440,880)),('arm_mic',(1200,1200) if args.webrtc else (660,1320))]:
                 start(['ffmpeg','-v','error','-re','-f','lavfi','-i',
                     f'aevalsrc=0.15*sin(2*PI*{frequencies[0]}*t)|0.15*sin(2*PI*{frequencies[1]}*t):s=48000',
                     '-f','pulse','-device',sink,'ARM bringup owned tone'],sink+'-tone')
             source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source'],'source')
             with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
                 sock.bind(('127.0.0.1',0)); port = sock.getsockname()[1]
-            destination = f'udp://127.0.0.1:{port}'
+            destination = 'gcarm'+uuid.uuid4().hex if args.webrtc else f'udp://127.0.0.1:{port}'
             wait(lambda:len(json.loads(pactl('--format=json','list','sink-inputs')))==2, 'Owned tone fixtures failed')
             baseline_streams = json.loads(pactl('--format=json','list','source-outputs'))
             audio_baseline = {s['index'] for s in baseline_streams}
             result['fixtureAudioBaseline'] = baseline_streams
             time.sleep(1); launch('initial')
             ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Go live failed')
+            if args.webrtc:
+                log = (report/'observer.log').open('w'); logs.append(log)
+                observer = subprocess.Popen([args.node, str(helpers/'linux-webrtc-observer.js'),
+                    str(args.browser.resolve()), destination, str(report)], env=env,
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1)
+                processes.append(observer); result['browser'] = observer_reply()
+                browser_command('connect')
             receive('mixed')
             ui('press','Mute microphone'); time.sleep(1)
             assert diagnostics()['audio']['microphone_muted']
             receive('muted',microphone=False)
             ui('press','Unmute microphone'); time.sleep(1)
             receive('unmuted')
+            if args.webrtc:
+                browser_command('connect'); receive('viewer-reconnected')
+                endurance()
             if args.failure_recovery:
                 old_pid, before = interrupt_output(signal.SIGKILL)
                 wait(lambda:diagnostics()['output']['reconnects'] > before['output']['reconnects'],
@@ -342,8 +427,14 @@ def main():
                 ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Replacement source failed')
                 receive('replacement-source')
             stop(); ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Restart failed')
+            if args.webrtc: browser_command('connect')
             receive('restarted'); stop(); quit_app()
             launch('relaunched',restore=True); quit_app()
+            if observer:
+                browser_command('close')
+                observer.stdin.close()
+                observer.wait(timeout=10)
+                assert observer.returncode == 0
             result['passed'] = True
         except Exception as error:
             result['error'] = repr(error)
