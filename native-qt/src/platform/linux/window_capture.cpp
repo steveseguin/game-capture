@@ -13,6 +13,9 @@
 #include <QFile>
 #include <QImage>
 #include <QPointer>
+#include <QPainter>
+#include <QSettings>
+#include <QDBusVariant>
 #include <QTimer>
 #include <QUuid>
 #include <algorithm>
@@ -39,6 +42,8 @@
 #include <xcb/xcb.h>
 #include <xcb/composite.h>
 #include <xcb/damage.h>
+#include <xcb/xfixes.h>
+#include <xcb/randr.h>
 #include <spdlog/spdlog.h>
 
 namespace {
@@ -90,7 +95,9 @@ bool portalRequest(const QString &method, QVariantList arguments, QVariantMap op
     if (!request.complete && running.load() && !cancelled.load()) request.loop.exec();
     if (!request.complete || request.code != 0 || !running.load() || cancelled.load()) {
         auto close = QDBusMessage::createMethodCall(portalService, path, "org.freedesktop.portal.Request", "Close");
-        bus.asyncCall(close);
+        // A completed request no longer exists. Closing an already denied
+        // request can also trigger bugs in older portal backends.
+        if (!request.complete) bus.asyncCall(close);
         spdlog::info("[Portal] {} cancelled, denied, or timed out (response {})", method.toStdString(), request.code);
         return false;
     }
@@ -126,10 +133,44 @@ bool xWindowId(const std::string &id, xcb_window_t &window) {
     return error == std::errc{} && end == id.data() + id.size() && window != 0;
 }
 
+struct Monitor { xcb_atom_t id; QString name; QRect bounds; };
+std::vector<Monitor> xMonitors(XConnection &x) {
+    std::vector<Monitor> monitors;
+    auto *version = xcb_randr_query_version_reply(x.connection, xcb_randr_query_version(x.connection, 1, 5), nullptr);
+    const bool supported = version && (version->major_version > 1 || (version->major_version == 1 && version->minor_version >= 5));
+    std::free(version);
+    if (!supported) return monitors;
+    auto *reply = xcb_randr_get_monitors_reply(x.connection, xcb_randr_get_monitors(x.connection, x.screen->root, 1), nullptr);
+    if (!reply) return monitors;
+    for (auto it = xcb_randr_get_monitors_monitors_iterator(reply); it.rem && monitors.size() < 64; xcb_randr_monitor_info_next(&it)) {
+        const auto &m = *it.data;
+        auto *name = xcb_get_atom_name_reply(x.connection, xcb_get_atom_name(x.connection, m.name), nullptr);
+        if (name && m.width > 0 && m.height > 0)
+            monitors.push_back({m.name, QString::fromUtf8(xcb_get_atom_name_name(name), xcb_get_atom_name_name_length(name)),
+                                QRect(m.x, m.y, m.width, m.height)});
+        std::free(name);
+    }
+    std::free(reply); return monitors;
+}
+bool monitorId(const std::string &id, xcb_atom_t &atom) {
+    constexpr std::string_view prefix = "x11:monitor:";
+    if (!id.starts_with(prefix)) return false;
+    const auto [end, error] = std::from_chars(id.data() + prefix.size(), id.data() + id.size(), atom);
+    return error == std::errc{} && end == id.data() + id.size() && atom != 0;
+}
+QRect monitorBounds(XConnection &x, xcb_atom_t atom) {
+    for (const auto &monitor : xMonitors(x)) if (monitor.id == atom) return monitor.bounds;
+    return {};
+}
+
 std::vector<video::WindowInfo> xWindows() {
     XConnection x;
     std::vector<video::WindowInfo> windows;
     if (!x.connection || !x.screen) return windows;
+    windows.push_back({"x11:desktop", "Entire desktop (all monitors)", "X11 desktop", 0,
+                       x.screen->width_in_pixels, x.screen->height_in_pixels});
+    for (const auto &monitor : xMonitors(x)) windows.push_back({"x11:monitor:" + std::to_string(monitor.id),
+        "Monitor: " + monitor.name.toStdString(), "X11 monitor", 0, monitor.bounds.width(), monitor.bounds.height()});
     auto ids = x.property(x.screen->root, "_NET_CLIENT_LIST", XCB_ATOM_WINDOW);
     // Minimal window managers used by packaged fixtures may not implement EWMH.
     if (ids.isEmpty()) {
@@ -162,14 +203,17 @@ std::vector<video::WindowInfo> xWindows() {
     return windows;
 }
 
-QImage readXImage(XConnection &x, xcb_drawable_t drawable) {
+QImage readXImage(XConnection &x, xcb_drawable_t drawable, const QRect &region = {}) {
     auto *geometry = xcb_get_geometry_reply(x.connection, xcb_get_geometry(x.connection, drawable), nullptr);
     if (!geometry) return {};
-    const int width = geometry->width, height = geometry->height, depth = geometry->depth;
+    const QRect full(0, 0, geometry->width, geometry->height);
+    const QRect selected = region.isEmpty() ? full : region;
+    const int width = selected.width(), height = selected.height(), depth = geometry->depth;
     std::free(geometry);
+    if (!full.contains(selected)) return {};
     if (width < 1 || height < 1 || width > 8192 || height > 8192 || (depth != 24 && depth != 32)) return {};
     auto *reply = xcb_get_image_reply(x.connection, xcb_get_image(x.connection, XCB_IMAGE_FORMAT_Z_PIXMAP,
-        drawable, 0, 0, width, height, ~0u), nullptr);
+        drawable, selected.x(), selected.y(), width, height, ~0u), nullptr);
     if (!reply) return {};
     // Ubuntu x86-64 Xorg/XWayland 24/32-bit visuals use little-endian BGRX.
     // Reject other storage rather than reinterpret unqualified pixel layouts.
@@ -249,6 +293,13 @@ struct WindowCapture::Impl {
     std::atomic<bool> startCancelled{false};
     std::atomic<int> fps{60};
     std::atomic<uint64_t> skipped{0};
+    DesktopCaptureOptions options;
+    mutable std::mutex errorMutex;
+    std::string error;
+    void fail(const std::string &message) {
+        { std::lock_guard lock(errorMutex); error = message; }
+        running = false; ready.notify_all();
+    }
     FrameCallback callback;
     FrameAdmissionCallback admission;
     std::thread worker;
@@ -270,6 +321,19 @@ struct WindowCapture::Impl {
     ~Impl() { stop(); }
     void deliver(CapturedFrame frame) {
         if (!running.load()) return;
+        const int left = options.cropLeft, top = options.cropTop;
+        const int width = frame.width - left - options.cropRight;
+        const int height = frame.height - top - options.cropBottom;
+        if (width < 2 || height < 2 || left < 0 || top < 0 || options.cropRight < 0 || options.cropBottom < 0) {
+            fail("Crop removes the entire source. Reduce the crop margins and start again."); return;
+        }
+        if (left || top || options.cropRight || options.cropBottom) {
+            std::vector<uint8_t> pixels(size_t(width) * height * 4);
+            for (int y = 0; y < height; ++y)
+                std::memcpy(pixels.data() + size_t(y) * width * 4,
+                            frame.data.data() + size_t(y + top) * frame.stride + size_t(left) * 4, size_t(width) * 4);
+            frame.data = std::move(pixels); frame.width = width; frame.height = height; frame.stride = width * 4;
+        }
         if (callback) callback(std::move(frame));
         { std::lock_guard lock(readyMutex); firstFrame = true; }
         ready.notify_all();
@@ -384,7 +448,7 @@ struct WindowCapture::Impl {
         }
         self.deliver(std::move(frame));
     }
-    bool startPortal() {
+    bool startPortal(bool monitor) {
         QVariantMap result;
         const auto token = "gc_" + QUuid::createUuid().toString(QUuid::Id128);
         // Keep the documented session handle even if cancellation wins the
@@ -398,10 +462,39 @@ struct WindowCapture::Impl {
         session = handle.canConvert<QDBusObjectPath>() ? qvariant_cast<QDBusObjectPath>(handle).path() : handle.toString();
         if (session.isEmpty()) return false;
         const auto object = QVariant::fromValue(QDBusObjectPath(session));
-        // Match Windows Graphics Capture and ScreenCaptureKit: exclude the
-        // cursor. Hidden is also the portal's default on older backends.
-        if (!portalRequest("SelectSources", {object}, {{"types", uint(2)}, {"multiple", false}}, result, running, startCancelled)) return false;
+        auto property = [](const char *name) {
+            auto call = QDBusMessage::createMethodCall(portalService, portalPath,
+                "org.freedesktop.DBus.Properties", "Get");
+            call.setArguments({QString::fromLatin1(portalInterface), QString::fromLatin1(name)});
+            QDBusReply<QDBusVariant> reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 3000);
+            return reply.isValid() ? reply.value().variant().toUInt() : 0u;
+        };
+        const uint type = monitor ? 1u : 2u;
+        const uint types = property("AvailableSourceTypes");
+        if (types && !(types & type)) { fail("This desktop does not support the selected capture type."); return false; }
+        const uint version = property("version");
+        QVariantMap selection{{"types", type}, {"multiple", false}};
+        if (options.showCursor) {
+            if (!(property("AvailableCursorModes") & 2u)) {
+                fail("This desktop cannot include the cursor. Turn off Show cursor and retry."); return false;
+            }
+            selection.insert("cursor_mode", 2u);
+        }
+        const auto key = QString("capture/portalRestore/%1/%2").arg(monitor ? "monitor" : "window").arg(options.showCursor);
+        std::unique_ptr<QSettings> settings;
+        if (!options.settingsFile.empty()) settings = std::make_unique<QSettings>(QString::fromStdString(options.settingsFile), QSettings::IniFormat);
+        if (settings && options.rememberSource && version >= 4) {
+            selection.insert("persist_mode", 2u);
+            const auto token = settings->value(key).toString();
+            if (!token.isEmpty()) selection.insert("restore_token", token);
+            // Tokens are single-use, including failed/cancelled attempts.
+            settings->remove(key); settings->sync();
+        }
+        if (!portalRequest("SelectSources", {object}, selection, result, running, startCancelled)) return false;
         if (!portalRequest("Start", {object, QString()}, {}, result, running, startCancelled)) return false;
+        if (settings && options.rememberSource && version >= 4 && !result.value("restore_token").toString().isEmpty()) {
+            settings->setValue(key, result.value("restore_token")); settings->sync();
+        }
         const auto streams = qvariant_cast<QDBusArgument>(result.value("streams"));
         uint node = PW_ID_ANY;
         QVariantMap properties;
@@ -447,19 +540,25 @@ struct WindowCapture::Impl {
         std::unique_lock lock(readyMutex);
         return ready.wait_for(lock, std::chrono::seconds(8), [&] { return firstFrame || !running || startCancelled; }) && firstFrame && running && !startCancelled;
     }
-    bool startX11(xcb_window_t window) {
-        worker = std::thread([this, window] {
+    bool startX11(xcb_window_t target, bool desktop, xcb_atom_t monitor) {
+        worker = std::thread([this, target, desktop, monitor] {
             XConnection x;
             if (!x.connection) { running = false; ready.notify_all(); return; }
+            const auto window = desktop ? x.screen->root : target;
+            if (options.showCursor) {
+                auto *version = xcb_xfixes_query_version_reply(x.connection, xcb_xfixes_query_version(x.connection, 4, 0), nullptr);
+                if (!version) { fail("X11 cursor capture is unavailable. Turn off Show cursor and retry."); return; }
+                std::free(version);
+            }
             const auto *extension = xcb_get_extension_data(x.connection, &xcb_composite_id);
             bool redirected = false;
-            if (extension && extension->present) {
+            if (!desktop && extension && extension->present) {
                 auto *error = xcb_request_check(x.connection, xcb_composite_redirect_window_checked(x.connection, window, XCB_COMPOSITE_REDIRECT_AUTOMATIC));
                 redirected = !error; std::free(error);
             }
             xcb_damage_damage_t damage = XCB_NONE;
             const auto *damageExtension = xcb_get_extension_data(x.connection, &xcb_damage_id);
-            if (damageExtension && damageExtension->present) {
+            if (!desktop && !options.showCursor && damageExtension && damageExtension->present) {
                 auto *version = xcb_damage_query_version_reply(x.connection,
                     xcb_damage_query_version(x.connection, 1, 1), nullptr);
                 if (version && version->major_version == 1) {
@@ -498,7 +597,12 @@ struct WindowCapture::Impl {
                 if (!running || xcb_connection_has_error(x.connection)) { running = false; break; }
                 const auto interval = std::chrono::nanoseconds(1000000000 / std::max(1, fps.load()));
                 QImage image;
+                QRect region;
                 if ((!damage || changed) && admit()) {
+                    if (monitor) {
+                        region = monitorBounds(x, monitor);
+                        if (region.isEmpty()) { fail("Selected monitor disconnected. Select a monitor and start again."); break; }
+                    }
                     // Rearm before reading so a later drawing operation remains
                     // pending. Coalesce damage until admission allows readback;
                     // never lose a source's final update when it becomes idle.
@@ -509,8 +613,21 @@ struct WindowCapture::Impl {
                         auto *error = xcb_request_check(x.connection, xcb_composite_name_window_pixmap_checked(x.connection, window, pixmap));
                         if (!error) { image = readXImage(x, pixmap); xcb_free_pixmap(x.connection, pixmap); }
                         std::free(error);
-                    } else image = readXImage(x, window);
-                    if (image.isNull()) { running = false; break; }
+                    } else image = readXImage(x, window, region);
+                    if (image.isNull()) { fail("Capture source is unavailable. Select it again and restart capture."); break; }
+                    if (options.showCursor) {
+                        auto *cursor = xcb_xfixes_get_cursor_image_reply(x.connection, xcb_xfixes_get_cursor_image(x.connection), nullptr);
+                        auto *origin = xcb_translate_coordinates_reply(x.connection,
+                            xcb_translate_coordinates(x.connection, window, x.screen->root, 0, 0), nullptr);
+                        if (cursor && origin && cursor->width && cursor->height) {
+                            QImage cursorImage(reinterpret_cast<const uchar *>(xcb_xfixes_get_cursor_image_cursor_image(cursor)),
+                                cursor->width, cursor->height, cursor->width * 4, QImage::Format_ARGB32_Premultiplied);
+                            QPainter painter(&image);
+                            painter.drawImage(cursor->x - cursor->xhot - origin->dst_x - region.x(),
+                                              cursor->y - cursor->yhot - origin->dst_y - region.y(), cursorImage);
+                        }
+                        std::free(cursor); std::free(origin);
+                    }
                     CapturedFrame frame;
                     frame.width = image.width(); frame.height = image.height(); frame.stride = image.bytesPerLine();
                     frame.timestamp = webrtc::mediaTime100ns();
@@ -568,7 +685,8 @@ WindowCapture::WindowCapture() : impl_(std::make_unique<Impl>()) {}
 WindowCapture::~WindowCapture() = default;
 std::vector<WindowInfo> WindowCapture::getWindows() {
     if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY") || qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland")
-        return {{"portal:window", "Choose a window… (desktop permission dialog)", "Desktop portal", 0, 0, 0}};
+        return {{"portal:window", "Choose a window… (desktop permission dialog)", "Desktop portal", 0, 0, 0},
+                {"portal:monitor", "Choose a monitor… (desktop permission dialog)", "Desktop portal", 0, 0, 0}};
     return xWindows();
 }
 WindowInfo *WindowCapture::findWindowByName(const std::string &filter) {
@@ -583,12 +701,20 @@ bool WindowCapture::startCapture(const std::string &id, int, int, int fps, bool 
     if (preserveAlpha) spdlog::warn("[LinuxCapture] Desktop window capture currently supplies opaque pixels");
     impl_->callback = frameCallback_; impl_->admission = frameAdmissionCallback_;
     impl_->fps = std::clamp(fps, 1, 240); impl_->pacer.reset(impl_->fps); impl_->pacingFps = impl_->fps;
+    { std::lock_guard lock(impl_->errorMutex); impl_->error.clear(); }
     impl_->running = true;
     xcb_window_t window = 0;
-    const bool ok = id == "portal:window" ? impl_->startPortal() : xWindowId(id, window) && impl_->startX11(window);
+    xcb_atom_t monitor = 0;
+    const bool isMonitor = monitorId(id, monitor);
+    const bool ok = (id == "portal:window" || id == "portal:monitor") ? impl_->startPortal(id == "portal:monitor") :
+        (id == "x11:desktop" || isMonitor || xWindowId(id, window)) && impl_->startX11(window, id == "x11:desktop" || isMonitor, monitor);
     if (!ok) impl_->stop();
     return ok;
 }
+void WindowCapture::setDesktopOptions(const DesktopCaptureOptions &options) {
+    if (!impl_->running) impl_->options = options;
+}
+std::string WindowCapture::lastError() const { std::lock_guard lock(impl_->errorMutex); return impl_->error; }
 void WindowCapture::prepareCaptureStart() { impl_->startCancelled = false; }
 void WindowCapture::cancelCaptureStart() {
     {
@@ -606,6 +732,15 @@ void WindowCapture::setFrameAdmissionCallback(FrameAdmissionCallback cb) { frame
 uint64_t WindowCapture::framesSkippedBeforeReadback() const { return impl_->skipped; }
 QPixmap WindowCapture::captureWindowThumbnail(const std::string &id, int width, int height) {
     xcb_window_t window;
+    xcb_atom_t monitor = 0;
+    const bool isMonitor = monitorId(id, monitor);
+    if (id == "x11:desktop" || isMonitor) {
+        XConnection x;
+        if (!x.connection || !x.screen) return {};
+        const auto region = isMonitor ? monitorBounds(x, monitor) : QRect();
+        if (isMonitor && region.isEmpty()) return {};
+        return QPixmap::fromImage(readXImage(x, x.screen->root, region).scaled(width, height, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    }
     if (!xWindowId(id, window)) return {};
     // QPixmap callers are GUI-thread UI code. Parenting to the application
     // closes the X connection (and all its redirects) during application exit.

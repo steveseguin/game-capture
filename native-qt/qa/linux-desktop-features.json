@@ -1,0 +1,2387 @@
+{
+  "schema": 1,
+  "status": "experimental; bounded packaged workflows, not full Linux/Windows parity",
+  "baseline": "354fbd68e9b1873703a1ba30c5e8b81aa7a36f3e",
+  "branch": "linux-parity",
+  "policy": "Build, syntax, package and unit checks are gates. Testing means packaged GUI workflows with independently received/decoded media. Earlier x86/ARM/portable ledgers and failures are retained.",
+  "hardware": {
+    "model": "NVIDIA Jetson Orin Nano Engineering Reference Developer Kit Super",
+    "architecture": "aarch64",
+    "kernel": "5.15.148-tegra",
+    "host": "Ubuntu 22.04.5 Jetson; 6 CPUs; 7.4 GiB usable RAM",
+    "availableMemoryDuringWork": "approximately 4.9\u20135.2 GiB; no RAM blocker",
+    "additionalUserland": "Owned Ubuntu 24.04 ARM64 on the same CPU/kernel; no separate distribution hardware qualification",
+    "services": "All desktop/audio fault injection used owned fixtures; no host service restart or driver replacement"
+  },
+  "implemented": [
+    "X11 entire desktop and individual RandR monitors",
+    "Wayland window/monitor selection and optional single-use restore tokens keyed by source type/cursor",
+    "Cursor inclusion and pixel crop margins before scaling; invalid crop rejected",
+    "Opt-in X11 grabs and Wayland GlobalShortcuts portal with denial/conflict/disconnect feedback",
+    "Start/Stop, mic mute, hold-to-talk; release honored during lifecycle transitions",
+    "Explicit selected-audio reopen while video continues; exact playback monitor recreated after output moves; stalled monitor reported",
+    "Serialized reentrant Secret Service saves and pending-save quit handling",
+    "Experimental explicit VAAPI H.264/HEVC and V4L2 M2M H.264; software/Auto defaults preserved",
+    "Portable FFmpeg/dependency packaging, install/upgrade guide, separate native amd64/arm64 packaged GUI/media CI"
+  ],
+  "finalArtifact": {
+    "archive": "native-qt/dist/game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable.tar.gz",
+    "archiveSha256": "b123d9844735c8e0760514f0abc81526b23b6edad80e43fec81efb2130c54dad",
+    "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+    "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+    "sourceArchive": "game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable-source.tar.gz",
+    "sourceArchiveSha256": "2fb87b8eda9b0db13c8d4a299122e83ddf6c9d1ccc27f2c77ebde4af39af7988",
+    "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+    "abiRequirements": {
+      "GLIBC": "2.35",
+      "GLIBCXX": "3.4.30"
+    }
+  },
+  "gates": [
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-build10.log",
+      "sha256": "666b46c47c964d513a8583f4b2e032380c0854fb5f9526d168bd359ff9399a0f",
+      "result": "passed"
+    },
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-ui-gates7.log",
+      "sha256": "56006cd553e21574d075171764b1897f12bde9cc20abcb1d0ac96bc16fd37e10",
+      "result": "passed"
+    },
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-ui-gates6.log",
+      "sha256": "e7be6508b14721daeaeac567e04b63d76a47195a563dcf28404c6c07ad24baba",
+      "result": "passed"
+    },
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-ui-gates2.log",
+      "sha256": "6578b86c6bef3f3009e3545f52bb658e74a24fb1f7ee9e392423faf4eab272cc",
+      "result": "retained earlier gate failure"
+    },
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-ui-gates3.log",
+      "sha256": "7289890e0e10d5c4980f3aa4eeba08e0290971798bd06ad483d008b0fbfa6e16",
+      "result": "retained earlier gate failure"
+    },
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-ui-gates4.log",
+      "sha256": "6710ddd886e052914085d395c4eec87025a6548757024a09bb52094d3870c841",
+      "result": "retained earlier gate failure"
+    },
+    {
+      "log": "native-qt/qa/reports/linux-desktop-features/gates/gc-ui-gates5.log",
+      "sha256": "153f224e9bf9b8c1b44c42bdda0ce23ba37cfd0d3fe8810ad9742f44165eb048",
+      "result": "retained earlier gate failure"
+    }
+  ],
+  "workflows": [
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1-profiles/7cd97229-7f21-48c9-a095-df539d5774f0/results.json",
+      "sha256": "0a385a2313c32b6657dc7322b04487996ee734c76da6264649e77debdcb7c486",
+      "passed": true,
+      "scope": "Extracted Linux package; actual X11 Qt output-profile editing, switching, relaunch, locked/unavailable store and reset workflows. Real GNOME keyring on an isolated session bus. Excludes media publishing, Wayland GUI, other Secret Service providers and Windows/macOS regression.",
+      "manifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "phases": [
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1d-host/8e6ad724-54c2-416f-af82-6281b5409a7c/results.json",
+      "sha256": "4c3c51a956b80c9e932d2002dc12b9d3580de2de1b681ee4ab21fbacdc2d8832",
+      "passed": true,
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "sourceTreeSha256": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "audioReconnectKeptVideoLive": true,
+      "invalidCropRejected": true,
+      "desktopControlsPassed": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "41d75f71ef81311945b6a3017b8ed15c61138d30f55f0169f01a590e2c1331ed",
+          "decodedVideoSha256": "163b3a7ad1f094ac25bf881abcda125bc03a82e06c65189a7508291010454a6b",
+          "decodedAudioSha256": "9bb673d3ad248c1ce1d701ee578da1eba5d70648181319077d6ae6388010c6e2"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 140,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c1bc25d1fc3c80d7ef80a92be8afbb36af953ae05d64d8f120502ed5c8d3db2c",
+          "decodedVideoSha256": "76053f86558204c0c3ab7f68a7cfbced9b410a2e6d99f7a070e8632cbcb50617",
+          "decodedAudioSha256": "93c50a62ba7c5f884e4b48112a7d05b8a673734aa2b6027d8e1e7f476fee94f5"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 132,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "1cd913a004696ccb8d55c65bca3dc5e53153fd0eeb727ec87a20865f081604f8",
+          "decodedVideoSha256": "ec65891577e7bb52e182411b69da0c870816eb31c0b33d76000cead7fe77f018",
+          "decodedAudioSha256": "47766662c3533ebdcda58a27d0ba62cbe5e078c54de73900210b3915178d28d7"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 112,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "1ef88753fba355a5712d447921c4d12eb931a029273cb16f6814424b67472296",
+          "decodedVideoSha256": "9a6d4c4cc96069ed254666622e3ac53401baee6394a92c725beb69fd3f3e958e",
+          "decodedAudioSha256": "ef16c6dfb594121b5accbaf69dbc650f94d57e406a4cb1053fc409981ef0f3d2"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 134,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "1ca0054107a9709f8ae25e3402de301dad9eff739fa66986908f8560f1346407",
+          "decodedVideoSha256": "687f32510b67a92637abe9cdaebf3187b8684acaa1ed80247f05e9cf0bd2a85c",
+          "decodedAudioSha256": "93c805ecc94875274359acf600ab977d3251ea164e700e61471131a91e578b6e"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "9cf566d8700eafb6bf7188e5a4d78d31089f5ec4cb67c57076125b9f24653bab",
+          "decodedVideoSha256": "78c8fe357ad887e82da34ade89b8aeef5e2a025f8d866aaf906ac330844e9f22",
+          "decodedAudioSha256": "95baffdd3cc90c921d6dd23e482f08d3fb4fefb33afb6611083756835faacd60"
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 127,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "a9230ba0cf065dc88dba8bf1022b8886e6ca531b21934e64ef93ebe8a2690cfc",
+          "decodedVideoSha256": "5ead59ba98018d2014fed4b57f53765db92ef56f75db513f5af03879e821e794",
+          "decodedAudioSha256": "070f1cae9e56bf03285db5d977e39bab82dd888c539f9a7b904087ec22492bd2"
+        },
+        {
+          "name": "cropped-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "46dc13b4652006570f31190c8903253d9e810edc2b632b7381639fc4871561ba",
+          "decodedVideoSha256": "d69a73eb888aaecb3f96c534a984b980a54875cac6d4c40dec3b1be22cc69b43",
+          "decodedAudioSha256": "0bd06b570dfc7ff15ca898bd2aab43c99f58c04a475183ccf162bdd9bee633a4"
+        },
+        {
+          "name": "cropped-no-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "d5a2f7cb981708faa4b8ad2b75d7f3ec07c32e87c012a41b353eb1d0011cf265",
+          "decodedVideoSha256": "da7db2f68b27e382b059c3ce6cdefdea7df576c5c906ae59617a6de741542e6c",
+          "decodedAudioSha256": "81076b478841580399aa51a205f49ef3932182b48ff80319f549d5becfbd8b22"
+        },
+        {
+          "name": "entire-desktop",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 113,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "ffdd12b0fc4c118ae063a100e118ab5eb5a70de16df2234e3d12c7698346bfe5",
+          "decodedVideoSha256": "a2db107edb95d6a1059a47e055a696ac57e6d51789a3493f249ea0c811aaf5d0",
+          "decodedAudioSha256": "9791509621c55f1105b2880ad73981a92180ac617613ff1bd0a895fc34dc29f0"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1d-host-desktop/08c0e364-8b17-47a5-b744-ac56645103ba/results.json",
+      "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final-profiles/4bf725a9-6806-4240-8d72-b7a523c2dd35/results.json",
+      "sha256": "ae355288ddfe4e0c3894d8b0f0757b8462d881babf87bd9d60313a547261c0d5",
+      "passed": true,
+      "scope": "Extracted Linux package; actual X11 Qt output-profile editing, switching, relaunch, locked/unavailable store and reset workflows. Real GNOME keyring on an isolated session bus. Excludes media publishing, Wayland GUI, other Secret Service providers and Windows/macOS regression.",
+      "manifestSha256": "16c0cb00a01692925a1057620488cdfff213f6ef7a5f1f5b3450eb743b6a23af",
+      "executableSha256": "67823fa568312e9cb880f72f886105f7f3c55c49b312bac6d5b0692f163cba5a",
+      "phases": [
+        {
+          "name": "ordinary-startup"
+        },
+        {
+          "name": "cleared-default-alias-save"
+        },
+        {
+          "name": "seven-profiles-stored"
+        },
+        {
+          "name": "gui-relaunch-restored-all-profiles"
+        },
+        {
+          "name": "update-kept-reference-and-single-item"
+        },
+        {
+          "name": "locked-autosave-error-preserved-reference"
+        },
+        {
+          "name": "locked-relaunch-and-reset-preserved-reference"
+        },
+        {
+          "name": "store-restart-unlocked-and-relaunch-restored-preserved-profiles"
+        },
+        {
+          "name": "missing-item-not-recreated-by-autosave"
+        },
+        {
+          "name": "corrupt-profile-not-overwritten"
+        },
+        {
+          "name": "ambiguous-reference-not-overwritten"
+        },
+        {
+          "name": "unsupported-reference-preserved"
+        },
+        {
+          "name": "unavailable-store-bounded-and-preserved"
+        },
+        {
+          "name": "stall-store-bounded-and-preserved"
+        },
+        {
+          "name": "reset-deleted-owned-item-and-reference"
+        },
+        {
+          "name": "no-plaintext-credentials-in-settings-logs-or-keyring-files"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final-wayland/676ca9d6-2038-41e6-a7e7-e41c249549b6/results.json",
+      "sha256": "59186b17f25e3aebce0e119a1264b1f4cdeb0cd3720e448116ff45fcf3c9e731",
+      "passed": true,
+      "scope": "Packaged ARM/amd64 GUI on an owned GNOME desktop: real portal consent,\ncancel/retry, optional source restoration, crop, moving H.264 reception and cleanup.\nRun inside linux-owned-wayland-desktop.py and linux-wayland-desktop.py.\nThis does not qualify physical monitors, hardware encoding or desktop-wide shortcuts.\n",
+      "manifestSha256": "16c0cb00a01692925a1057620488cdfff213f6ef7a5f1f5b3450eb743b6a23af",
+      "executableSha256": "67823fa568312e9cb880f72f886105f7f3c55c49b312bac6d5b0692f163cba5a",
+      "packageSourceTree": "7f47ef1873898136cbe0f4fe3f60bf53463050c49f990bbec5bee76ee66d5146",
+      "ownedProcessesRetired": true,
+      "restoredWithoutChooser": [
+        false,
+        true
+      ],
+      "originalSourceDimensions": [
+        772,
+        569
+      ],
+      "cancelReturnedIdle": true,
+      "portalSurvived": true,
+      "shortcutStatus": [
+        "Global shortcuts are unavailable or denied by this desktop. GUI controls remain available."
+      ],
+      "phases": [
+        {
+          "name": "window-0",
+          "decodedFrames": 124,
+          "uniqueIdentities": 124,
+          "transportSha256": "09358c77f9ca9f3ac76b7ef0df413621e5e682834653675b0a91d1d07bbc029a",
+          "decodedVideoSha256": "74583d49f11a824cda6b5422129c31f45f36a219d0f83e02abe468cf9c56d588"
+        },
+        {
+          "name": "window-1",
+          "decodedFrames": 149,
+          "uniqueIdentities": 149,
+          "transportSha256": "dfcd32219cdae52c6073810d7b18862e1fc0a153639d77fb86126a02fd0b5f5a",
+          "decodedVideoSha256": "a9f5761a59b9a70178e496b2a269bf363706649f6e4f8e7759c5a9a236271ade"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host/b2c26bcf-fe64-4874-a033-1d751824089b/results.json",
+      "sha256": "9291d4130f7c35050afa6613aef35abfa4df3c170d0053ba0603fbc5c47d04cc",
+      "passed": true,
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "invalidCropRejected": true,
+      "desktopControlsPassed": true,
+      "unavailableHardwareRefusedWithoutFallback": true,
+      "selectedAppOutputMovePassed": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 124,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "591b1898ad914a5371a178fa193844c74996addcad286cd202ad7d32ceed3a55",
+          "decodedVideoSha256": "12076143119b4dfac531716f07affdb5d7707ffefd8dd47d3b1e6fc69c153325",
+          "decodedAudioSha256": "72ffb067171fbd0b918a4dd60a82927556fa83c70bdafab6e75dd470a94ef588"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "5d09cc45f7bd6900515f6e7d3051c8b3a8957be35ddbe565da742e266b95e8eb",
+          "decodedVideoSha256": "23a9de476f0c441bb5b96b4ac9af8ff0c40232a7cd4d2f4fd30d0e2ae8b68683",
+          "decodedAudioSha256": "f125dacd74dd21c51d457692b9a7053fe94011fb135ac7f5a4c7741619ef42ad"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 114,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "261f43b0f352aa591bdf4683b4d01f12079447fbe5999c5476d2b85717b562db",
+          "decodedVideoSha256": "b2b89d3868e15b35e2b6413be0aaf5678c4a72cf4833c19001cfd88b4bc1bbc5",
+          "decodedAudioSha256": "9c0bc8b05522f65a7d16d117e0e083ebea19afc288c089727e0b3f849186ee73"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "ee48d29979163080a0c63df2b8fe57a018dbace12ae310392f209ac995493eb7",
+          "decodedVideoSha256": "39de133037cd30fa16c5c3040f57206b6b8a2b7cc5e10b86fd26f7a05caa5b72",
+          "decodedAudioSha256": "7c8d13ef11241ff00e4c5a774341fa275368c65c8162a96f3fdb50b73e673ab0"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 144,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "6d19452e36e9f8345f4a2e13e0811894e24d538fd157b8eda5d7c520f04568d8",
+          "decodedVideoSha256": "0678447de9805e689cfe63cfd9d4fa958dd1dea70d82951ae006231fa655794d",
+          "decodedAudioSha256": "90c4700ad4e672a673d143cecf0c1adc9ed524fc47d825a62a03f11e6491cf42"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 137,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "8ed5437f9b52ab629204d24cb384aaddc09e9017944f30c39494720c883f3960",
+          "decodedVideoSha256": "11e308862e8702c3e74358803dfa1bf10771ff2959467f3d2604b7d02bbef924",
+          "decodedAudioSha256": "2cf1ff66e494e79e308da2075bdef17d8bf9f90688b51dc5836c924dbd2c43b5"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 129,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "de484c0df4446403a55dba0dac299c498a925f34fa5f9f28f2e25200ba5508e6",
+          "decodedVideoSha256": "6008553a1b880dca2c7ac4df24ac8c754a6df1248a44ddcbb723cf79f3ff56d5",
+          "decodedAudioSha256": "4576c6d9b8a18147502e94b801d5440f6baf1a3a7fd23a7a1fe2d0de3da5b664"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 141,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "7ec878b05475f184c7c477cdd571773a315e31b15ecf2fb7e3be64480bc0ed74",
+          "decodedVideoSha256": "a27f4a2e6ee30c22d58218b6e3e2c1ea2da5e6f86d2ab324529812866a584621",
+          "decodedAudioSha256": "4a9caedd1452458d1fabc6bd6de98a192ba71027caf882e1cdb7376205b33c6e"
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "901cb60cba3eff432083c778dd3fd7d7037c8358b14faca9e2ed28d3fcfa7d6b",
+          "decodedVideoSha256": "e3ddb7135846ebaf060b4d6168791f6c3f1108b6f91d3d17b6f8527615d4157f",
+          "decodedAudioSha256": "65f6c8800c139ba2f7825ddc1a946357ade6d144918761a517c79c6621856bc7"
+        },
+        {
+          "name": "cropped-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "319c0edf81bd42d1aeb0424fcfe3ac6c03ae9accf78543ee25f351b373f31a56",
+          "decodedVideoSha256": "ec9597275329260e4a59ee02c553f921d72b060ed8b63d79db3ece5115746084",
+          "decodedAudioSha256": "2206eff63d48d4f447b13f678655a1e807c148ecb8d4e4cd460ab1d2cace2f13"
+        },
+        {
+          "name": "cropped-no-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "d641a7cf650d370d9cfa4d80bd8ca0983f0b3ff96e93a0b33b06f43b88fc4dc5",
+          "decodedVideoSha256": "3b09e6244ad9e57a330c6e08a505712c95cdb2d9be6a674d990d3fe6b60e23da",
+          "decodedAudioSha256": "c616e66054f5fc84e6c8ebcf9f713ca04593a5eac3651882ad943786defb26d5"
+        },
+        {
+          "name": "entire-desktop",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 125,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "3c7143d35de3d46b7897eda0e51b29810d74387bfe99465d11e45ce3b073f3b6",
+          "decodedVideoSha256": "0c0b863b9eca5ce7162ef93d0d4f21a6c49f2d7ce7656040143e6a9e44458eba",
+          "decodedAudioSha256": "5f0ea42c2fb3f65b1fb42b96fd1f38d25c030d26d91b83c650fa3c5276f247ed"
+        },
+        {
+          "name": "selected-monitor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 112,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c9cfb9cafa453a1a09e159b70133b7afcaff4e48d2cfdaafb92c4fc0f964445c",
+          "decodedVideoSha256": "66d8914ce2c0eb1e78cec9ce763cf51125353573f1cdbec1117bcbea3d0a3222",
+          "decodedAudioSha256": "ac8e4613cb4aadcf17b1db7bccce968787913432211c8443d34dfb854db02d7d"
+        },
+        {
+          "name": "software-after-unavailable-hardware",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 113,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "5068a15656ff9444aa50ebe9a5ce2a823e037233e8a4973cab72babd2761176f",
+          "decodedVideoSha256": "2c50a08181139cd8cd4c2e5c876b00e28e9ed27c47a7855d6ad5ba629d725029",
+          "decodedAudioSha256": "7d2d76bbb2466ba2a6ec5cdb8501108c10ce8f3e2524f765ab98a8dc3ed25577"
+        },
+        {
+          "name": "selected-app-before-move",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 110,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "b2ed3c0ca3e43a3284b460db0982bce24e508e27920af8a508d74cbcfe0dd78e",
+          "decodedVideoSha256": "08b9f96e420ec3616af15919173a387e622e471a5dc613898994f1c74ba3a0ec",
+          "decodedAudioSha256": "3e40fe835d3ee910884c0825e1aae293850fb353eea9477c07ce579eef279bc8"
+        },
+        {
+          "name": "selected-app-after-move",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 125,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "89a28bd99415e9fe230e849f21217e6e84970236dac9be5d808eaccbfdf4bdb3",
+          "decodedVideoSha256": "b532730357e43ada67d8029d2fbb4e10d0a56c4a3855c2d59eddea4703af7de4",
+          "decodedAudioSha256": "96ae82bb10b5277c68062afeec497e70fa6e49d151e2d4014224c2286e13cb34"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host-desktop/b3c83c4c-8d84-43da-a4ab-adce7109bf3e/results.json",
+      "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-noble/89d79d60-5736-4468-906b-cb46893f2699/results.json",
+      "sha256": "eb153fba40c51e1df4c3aeb2fe5c7a8f0ddb0e09a248b09484c8674b45c68edc",
+      "passed": true,
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "invalidCropRejected": true,
+      "desktopControlsPassed": true,
+      "unavailableHardwareRefusedWithoutFallback": true,
+      "selectedAppOutputMovePassed": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 116,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "afcd07592b438fe2876c35df5a243a8b10ecfb909e6491817c6432a4cc7c91bc",
+          "decodedVideoSha256": "73e416ef7171dfbe7bd7db033967f4960395506f64f319ee0f46d29eded3dcdb",
+          "decodedAudioSha256": "ef092dbd03966c8167a6a9afddbe661ab795ad2e4a61ac0bdd856a1d0f855ac8"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 125,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "50dc32c7187c8420b8d81ff2381446099239f41301af17c750df814611671696",
+          "decodedVideoSha256": "c3492602047bb35058c90c4b1046ab848007c1935564b538943ed5c242e1f6f0",
+          "decodedAudioSha256": "d95bfc2175ff6d9fe181f3d882a859706931a77352364390cf118d29e19c5bf0"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 132,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "667080ea312d22fdd875e3a585ffe2a5170c98770453e2734d627c9b3ec48bce",
+          "decodedVideoSha256": "f0b756afc21ead1332eee7aaaf968ed50c4a9aa449f2fb8dffd9fe9246ecee98",
+          "decodedAudioSha256": "9744b74c80c2fa86500dbfdb07d9f8e764af0cc014af8a14f439773dc8d02494"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 156,
+          "uniqueSourceIdentities": 118,
+          "audioSamplesPerChannel": 230400,
+          "transportSha256": "80ec1174028cb3e903717db41d61aa90b3ab6aa9876689138b67a18532c84f0c",
+          "decodedVideoSha256": "1a123e5c93178e04302ed3b7cedc642744c983709201e96642704e2be91b14dd",
+          "decodedAudioSha256": "24bf966ca064f19b3425ec3424f501753ef17b43a61401839947d63217d0afa9"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "05d55d044004940b3bf51615f7832d63f2c1b3e8c10bd9b6a8f8e4b3163c4b05",
+          "decodedVideoSha256": "5960e539b3f3a3601b1556ec2da4d233cbed0bbc69c15ee13a4e759a0e5f3a36",
+          "decodedAudioSha256": "f28f3b84a8ac9a94f514e5c89081507caa113256207ffb4d821d79e31b5fc642"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 139,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "9145122fddb5e67608986d572a6bb13d5fe4f5da376e12c6a430052b55a92339",
+          "decodedVideoSha256": "586ca19246578d7f939a1b68f376cc54ca5525201b1fbe3ecdf48a11eae52179",
+          "decodedAudioSha256": "10c06adb6906172f636836957d20e8bfc4c3c88137807bfc04c528df4a71635c"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 142,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "33cd4c96dea5d5e51876286ba92b6b889d34c22f213f4fb6063b9d645d4a7e6c",
+          "decodedVideoSha256": "9fe701535ea20aa3dcd271d24f14ad12d84cf7b6e832c0efda41bad7220d0f22",
+          "decodedAudioSha256": "cdbf00c56be6d6cdc564e61dc0d9142ff3be279bbba4a13a5d1d4b9d5f8b2974"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 130,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "6c27868a928cebd6ac92b928e83d715dc59aa899b4e8b790e41690ee0c6433ab",
+          "decodedVideoSha256": "039259e40bc62089866416d163768332a0f2bf8a585a596897cdbdb578dd1b40",
+          "decodedAudioSha256": "e0fb6ca8613bd826a641972baca40b0190f1472fab66a4d8f55a7a73cac8ecc4"
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 115,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "638a179f1174b379e7972063ade63a757654ea50de8dfed175c65fb37cd252c4",
+          "decodedVideoSha256": "2b6aa960a99fa90921e4fc47e937361e456958ba15448944f10b9c1fb49345ae",
+          "decodedAudioSha256": "0238e609853a633ec9064e748210597416d0adda208d30aae6a7256feabd13fd"
+        },
+        {
+          "name": "cropped-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 124,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "3fee03b1165d409f9da03bc59da876d71a0c8f36d9afafa8f1c9cc063d86873a",
+          "decodedVideoSha256": "c1a67290a799e0f24abb6f6f4880408ec26ecb56511fabe2857bf9071fec07ce",
+          "decodedAudioSha256": "c44962eefd876304d803f2e1762b9ba35dd80739484647c10d2b5c8fbfe8ea95"
+        },
+        {
+          "name": "cropped-no-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 118,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "1900fdf422569fe4c1369d78c4c638976da3f4d1de55fa47b7a17ffce9a363ff",
+          "decodedVideoSha256": "6e17ddf07a33f4c65d7ba136383abe268be5fe2adddcb04ac52bb5cc4589f533",
+          "decodedAudioSha256": "af81a06294b651500c09df3f2b65e2e0f0889c8a18d94dd7e07e26514a282f08"
+        },
+        {
+          "name": "entire-desktop",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 113,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c24c8af2144c58eecf0ea2959494eae2ae9532cf7455a8610e1f25e1b57f5275",
+          "decodedVideoSha256": "e4d95db51db45b3ad536010b7cbd4fc796dbf0779fa925f703d14c4933aa5a2e",
+          "decodedAudioSha256": "eca44aba61a424f46288c4f61fd68e681fd5981ff16f00e7171e4204c5fc94f8"
+        },
+        {
+          "name": "selected-monitor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 115,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "ec6e81675ecbb53df3c67567d29bee17e83c57b700a6b2ccf980099d2f3d44d9",
+          "decodedVideoSha256": "227160cdde6ba4a773bf8a078f12303a7fa5c3fa226e6f13070e68bdc61c942a",
+          "decodedAudioSha256": "cfcdc625ceb0eb43c8c5a4077b52165c548935c168e7f7c60bab7f6570b196ff"
+        },
+        {
+          "name": "software-after-unavailable-hardware",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 114,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "53b342533629880b0086b523d5a564760d5a711cefc8b4ee08a3c59f45bdfb37",
+          "decodedVideoSha256": "7a05451063c39c2cedacf826e31b25651e8ee2bcaba745dd5633f13e5c49a736",
+          "decodedAudioSha256": "ace292229ab20c8dc97baf43b756c80a4a4c56c81042056dc0e8b80a63e03dde"
+        },
+        {
+          "name": "selected-app-before-move",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 130,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "e9c79f44f3682c5b5377f193b2c193789f439ce236834c188aa08703ff5ed946",
+          "decodedVideoSha256": "2153a8e7ce84bfdf6c86ecb0b381ede1b8d8b2987d1e540e99b6356ef6b26127",
+          "decodedAudioSha256": "1e7622ebb0a094efa48a0e0f4923d118c10b29950bbe3603b88ac7274ae430fd"
+        },
+        {
+          "name": "selected-app-after-move",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 111,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "9e3905947a42e591b77822d4236e912b56159441699042c7bf71364ea775285a",
+          "decodedVideoSha256": "3070a7dea36db1bfbf30ca2acbc8332811b392bac7e4168e609f87bb716f31c2",
+          "decodedAudioSha256": "0a764f4069c68547e4c628d683cd0e5dd0ee17bf7c3b7261d5674475060f667b"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-noble-desktop/7ed8f599-b75e-43e4-bd90-5f1c4a0d60d2/results.json",
+      "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-profiles/f85813b1-afc2-4405-b86c-b35fd5cb280c/results.json",
+      "sha256": "038f6e9dc71a009722fd8a741bf86be881d2b57f83f9bfe09103e9aedf926e5f",
+      "passed": true,
+      "scope": "Extracted Linux package; actual X11 Qt output-profile editing, switching, relaunch, locked/unavailable store and reset workflows. Real GNOME keyring on an isolated session bus. Excludes media publishing, Wayland GUI, other Secret Service providers and Windows/macOS regression.",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "phases": [
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        },
+        {
+          "name": "fresh-settings-save-relaunch"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-wayland/14ca3e26-b9f6-4a73-92f0-1f64c1e9afe7/results.json",
+      "sha256": "f25e3b55fa818f3996214f527632716e1dd87cd08db11947a05ffda98809f0cc",
+      "passed": true,
+      "scope": "Packaged ARM/amd64 GUI on an owned GNOME desktop: real portal consent,\ncancel/retry, optional source restoration, crop, moving H.264 reception and cleanup.\nRun inside linux-owned-wayland-desktop.py and linux-wayland-desktop.py.\nThis does not qualify physical monitors, hardware encoding or desktop-wide shortcuts.\n",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "packageSourceTree": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "restoredWithoutChooser": [
+        false,
+        true
+      ],
+      "relaunchedRestoredWithoutChooser": true,
+      "originalSourceDimensions": [
+        772,
+        569
+      ],
+      "cancelReturnedIdle": true,
+      "portalSurvived": true,
+      "shortcutStatus": [
+        "Global shortcuts are unavailable or denied by this desktop. GUI controls remain available."
+      ],
+      "phases": [
+        {
+          "name": "window-0",
+          "decodedFrames": 126,
+          "uniqueIdentities": 126,
+          "transportSha256": "5e47d69f6c65be27ebd8f46cb53cab9c3088bfe88732ef273c503c40c3eae86f",
+          "decodedVideoSha256": "dfb5fafd9e9af35762833e8bd862df8b0d66526c6bccc05958d801a254e3ebd9"
+        },
+        {
+          "name": "window-1",
+          "decodedFrames": 149,
+          "uniqueIdentities": 149,
+          "transportSha256": "3053305d61ba55bf9f1a6de31e80e00be0c904c3218fd9f62f6cd3baccf8164e",
+          "decodedVideoSha256": "efbbb6189a685c6616cf9835a5cf7f70ff220bdbbc69207bcd9edefdb213cb13"
+        },
+        {
+          "name": "relaunched-window",
+          "decodedFrames": 149,
+          "uniqueIdentities": 143,
+          "transportSha256": "7e94feee50d7642076747661df3cac17472a56aec2ca1a117fd2b7c243240542",
+          "decodedVideoSha256": "ecfc9a69e6d78c90f2666b78b1b899c01069a1dbae368494c7e2c81df4a70f8c"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-wayland/547e0f98-629b-4513-92a9-b76b062330e8/results.json",
+      "sha256": "7254865597e1e01fe137dbe89bed97f2ab325afaa75ed480f693468bc8a6e03b",
+      "passed": true,
+      "scope": "Packaged ARM/amd64 GUI on an owned GNOME desktop: real portal consent,\ncancel/retry, optional source restoration, crop, moving H.264 reception and cleanup.\nRun inside linux-owned-wayland-desktop.py and linux-wayland-desktop.py.\nThis does not qualify physical monitors, hardware encoding or desktop-wide shortcuts.\n",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "packageSourceTree": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "ownedProcessesRetired": true,
+      "restoredWithoutChooser": [
+        false,
+        true
+      ],
+      "originalSourceDimensions": [
+        772,
+        569
+      ],
+      "cancelReturnedIdle": true,
+      "portalSurvived": true,
+      "shortcutStatus": [
+        "Global shortcuts are unavailable or denied by this desktop. GUI controls remain available."
+      ],
+      "phases": [
+        {
+          "name": "window-0",
+          "decodedFrames": 128,
+          "uniqueIdentities": 128,
+          "transportSha256": "b50571313720d7d791b56c15614aec30f20df633f237829345bd22ee02e266f9",
+          "decodedVideoSha256": "cd31627903cb2ff94da082472d4a3703c63eb6df15f833dc4b7444318a761416"
+        },
+        {
+          "name": "window-1",
+          "decodedFrames": 147,
+          "uniqueIdentities": 146,
+          "transportSha256": "21a5007fc631dfc206ded6193af65ea02b002c460eac825d5c5705a91054656e",
+          "decodedVideoSha256": "ec8804414a05e68910fe5c4adcc77e327174202d0a93fe3f64f8de76edeecf38"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-wayland-desktop/5c33699e-5a5b-401e-9495-0c48df99b24a/results.json",
+      "sha256": "9d9d2086e04e12492268fc846b53cc193415d5483c8eecceb8cac72a374a6b99",
+      "passed": true,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-wayland-desktop/62def5a8-3a77-47ff-9321-3baa278b38ed/results.json",
+      "sha256": "9cc80a8a563b15e026931d0d2df6ba81d91abcfefa1b053667ec191a9b657eb8",
+      "passed": true,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-wayland-keyring/6b0c3243-fb17-4685-8358-14ec4edeea6e/results.json",
+      "sha256": "6a57f89f4890535a7cbb44f04b71177a7c450a85d135ef1df156aba8d8745cf2",
+      "passed": true,
+      "scope": "Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-wayland-keyring/a8991f12-8e7c-4163-bb77-3cf43560a76d/results.json",
+      "sha256": "97829e2706cc9a24e54c65d854f959ade99542383b63348389a20bfecc127b74",
+      "passed": true,
+      "scope": "Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-webrtc/55f87894-d438-44e1-a89e-e238fa3d6596/results.json",
+      "sha256": "c2c62bd596ddb4330219defabe34953ac47d1b0d0e2a22124b5e2fb5f7178ef8",
+      "passed": true,
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "1280x720",
+        "sourceSize": "1280x720",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "VDO.Ninja WebRTC",
+        "audio": "system + microphone, Opus stereo"
+      },
+      "settingsRestoredWithoutCapture": true,
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": true,
+      "performance": {
+        "publisherCpuPercent": 144.66631535304182,
+        "scope": "Simple moving barcode on owned Xvfb; same-host browser; no game/WAN/physical-display qualification",
+        "receiver": {
+          "ok": true,
+          "report": "/home/steve/Code/game-capture/native-qt/qa/reports/linux-desktop-features/shipped-webrtc/55f87894-d438-44e1-a89e-e238fa3d6596/performance-browser.json",
+          "sha256": "787f5f93e912e9103c7dc1f45c8832522d96d12ead9d6685e9ad8330d6978947",
+          "decodedFps": 29.73244121491895,
+          "uniqueIdentities": 851,
+          "mediaGapP95Ms": 35.99999999278225,
+          "maxMediaGapMs": 50.00000000291038
+        }
+      },
+      "fuzz": {
+        "ok": true,
+        "passed": true,
+        "report": "/home/steve/Code/game-capture/native-qt/qa/reports/linux-desktop-features/shipped-webrtc/55f87894-d438-44e1-a89e-e238fa3d6596/live-fuzz.json",
+        "sha256": "24b572b1040dfc1e9c88599a467326f559e46eeeca1f39543f2018bf2bb75af3",
+        "seed": 20261020,
+        "seededRequests": 384,
+        "framingRequests": 12,
+        "concurrentRequests": 128,
+        "heldConnections": {
+          "opened": 48,
+          "promptlyClosed": 16
+        },
+        "deadline": {
+          "closed": 48,
+          "elapsedMs": 10212.325063999997
+        },
+        "uniqueIdentities": 426
+      },
+      "phases": [
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "name": "mixed",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "name": "after-fuzz",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 106,
+          "name": "muted",
+          "microphoneExpected": false
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 109,
+          "name": "unmuted",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 108,
+          "name": "viewer-reconnected",
+          "microphoneExpected": true
+        },
+        {
+          "passed": true,
+          "uniqueIdentities": 107,
+          "name": "restarted",
+          "microphoneExpected": true
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-webrtc-desktop/9476f3b2-3a16-4b38-9e56-a9ec645f6766/results.json",
+      "sha256": "434ad7af9156d7cc28c68ab65305a83f23fc5fdfa2e12eedd064750f0d562e5c",
+      "passed": true,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/wayland-environment/8eefeab6-5c0c-4016-a2ea-1109862f5851/results.json",
+      "sha256": "940a9c45153a8a4c327039e6bafafbe569ffdb4e1780edc6295dcdddfe0d0285",
+      "passed": true,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    }
+  ],
+  "failedAttempts": [
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1-host/37c3cd15-d3b9-4222-989b-9f15bd062391/results.json",
+      "sha256": "e9dd6ca873d6092af353460a5eef1e4cbcb1af9e69132d2dc1ddec405eb1da33",
+      "passed": false,
+      "error": "CalledProcessError(1, ['/usr/bin/python3', '/home/steve/Code/game-capture/native-qt/e2e/linux-ui-control.py', '150610', 'source', 'Game Capture Installed Source'])",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "sourceTreeSha256": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "phases": []
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1-host-desktop/240899df-afc0-4fa1-add1-57681924cd7d/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1-wayland/f661a527-3342-400f-a5ef-3c3981560edf/results.json",
+      "sha256": "c01377fee7fd0933bd1722a98be72b38b049db36e25628cda35416327ccee559",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/workspace/native-qt/e2e/linux-desktop-wayland.py\", line 112, in main\n    assert picker.wait(timeout=30)==0\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+      "scope": "Packaged ARM/amd64 GUI on an owned GNOME desktop: real portal consent,\ncancel/retry, optional source restoration, crop, moving H.264 reception and cleanup.\nRun inside linux-owned-wayland-desktop.py and linux-wayland-desktop.py.\nThis does not qualify physical monitors, hardware encoding or desktop-wide shortcuts.\n",
+      "manifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "packageSourceTree": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "ownedProcessesRetired": true,
+      "phases": []
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1-wayland-desktop/58228f7f-d64d-430b-89ca-3920d4660411/results.json",
+      "sha256": "6d33929062383f7e0cdd66aed5e01ce5b1a21a8b0c902a46d2a25ea667e2ff31",
+      "passed": false,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1-wayland-keyring/8b8ac7e6-d95b-47b3-a7b9-148cf4762719/results.json",
+      "sha256": "79e5f4e4d589dbc0943c464d927128a26b7d5dc54c4f960255548d24cc43a7bd",
+      "passed": false,
+      "scope": "Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1b-host/b0557948-c5be-4d82-be2d-f9a6508c8851/results.json",
+      "sha256": "f1a4b29fc7e8d917b65e5371196a63d1ca7410c1f9a856807f6b762199a067be",
+      "passed": false,
+      "error": "CalledProcessError(1, ['/usr/bin/python3', '/home/steve/Code/game-capture/native-qt/e2e/linux-ui-control.py', '151244', 'source', 'Game Capture Installed Source'])",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "sourceTreeSha256": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "phases": []
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1b-host-desktop/f5dd6aa7-e4c1-4512-8ff3-324d85ee2156/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1b-wayland/decf5ed7-e9b9-48a6-93b9-fa2afc6751d2/results.json",
+      "sha256": "7da975ed5fb2d4c55a4c03f842b0d1751abde0e642c1b8aaac7bcd6be600c277",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/workspace/native-qt/e2e/linux-desktop-wayland.py\", line 124, in main\n    if not restored:\n                     \nAssertionError\n",
+      "scope": "Packaged ARM/amd64 GUI on an owned GNOME desktop: real portal consent,\ncancel/retry, optional source restoration, crop, moving H.264 reception and cleanup.\nRun inside linux-owned-wayland-desktop.py and linux-wayland-desktop.py.\nThis does not qualify physical monitors, hardware encoding or desktop-wide shortcuts.\n",
+      "manifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "packageSourceTree": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "ownedProcessesRetired": true,
+      "cancelReturnedIdle": true,
+      "phases": []
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1b-wayland-desktop/280d729f-6f50-4d38-88b3-5bf49aede06c/results.json",
+      "sha256": "271c15e9df9b57fc64f8f19dca12d62b3ec88a559e1ee1b88bcb9c2fa5a2c9f6",
+      "passed": false,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1b-wayland-keyring/8a989580-0553-41b9-9f01-c850a5cd08ef/results.json",
+      "sha256": "8719f33c4f9237e70ad78749c2c865f8fdcb970e5b53f5262f8592eac54515c5",
+      "passed": false,
+      "scope": "Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1c-host/07055f7b-63d6-4cf2-93b9-7ec41999ab4e/results.json",
+      "sha256": "4aa4fc5f50a5e569701a6693b9f32fa7937becd352079b52b0a6c4b7ae51cd14",
+      "passed": false,
+      "error": "AssertionError('Microphone mix/mute incorrect')",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "sourceTreeSha256": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "8fe3f777b965809ab7da790ee71ee29f5420df1a98313c9c12f993ad88e8dad0",
+          "decodedVideoSha256": "06be17dba476b9534410eb80f53ac8bdb4e3424829cc14b9083b9b30e8e1a7ef",
+          "decodedAudioSha256": "5e526777b4e0cf1cd8e1abc023bcd691fdaa2cdaf7a0c36d45d35e8147fed88b"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 145,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c8092067ad8bb024fc21931ce7c760565ebe56b4960d3d8e1f4b510048c0ce04",
+          "decodedVideoSha256": "bfd8036bfb2257dae993a8277acf518d85d35ea862341d84b000527a1f8c0beb",
+          "decodedAudioSha256": "72baedd9dc01a937ad8bd363c4c2eb741339b3720e6bb881b5588a7ca7bd7c91"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 144,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "21f36e31ebea1c9a805d47a7017807697690fb9fceb0d002506481c73db64757",
+          "decodedVideoSha256": "6307d2e5c95bb3f6d58f16a9be83c6799e094db0434ea2d4f260640bf0db7e6d",
+          "decodedAudioSha256": "8f8c62cc78c0ae8f440a2195006af1c21f3d1a93fd7f0c57f02c9492a67e075a"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "248d252a737d8345db29949f1b8cd1ebb7c2ec159f98d2b5db3f7a25c40a9b30",
+          "decodedVideoSha256": "1f7874a4eefe0338c29c61d41e10582212d6a2999855758ff72b239f728bd545",
+          "decodedAudioSha256": "37a0e141de5928c1d6652320e93db5ca561c0d40b308d711ae304ec0c52db57b"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "e670dc63a7ab0962c0a9cbf7f5cc81dfab7385337a028b6418513cee0cd71f0c",
+          "decodedVideoSha256": "85d591fe7441cde5c0e9983e8aeca90b22c5ef20ac0674573633c6a0ecd271d0",
+          "decodedAudioSha256": "fc28bdeaff336ff6a4a73b03179006d238bf0e019ca23fd090a83da6eb048995"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1c-host-desktop/04e6eaf1-5e62-4113-82a9-127719a22600/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1c-wayland/e0e8c448-6114-44b8-b8c8-4b0678c25818/results.json",
+      "sha256": "1dae676dfbb3b920373cb4ea7cfc516ba12d016599db92c7c0051ae942e978cd",
+      "passed": false,
+      "error": "Traceback (most recent call last):\n  File \"/workspace/native-qt/e2e/linux-desktop-wayland.py\", line 128, in main\n    assert (diag()['source']['width'],diag()['source']['height'])==(700,460)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError\n",
+      "scope": "Packaged ARM/amd64 GUI on an owned GNOME desktop: real portal consent,\ncancel/retry, optional source restoration, crop, moving H.264 reception and cleanup.\nRun inside linux-owned-wayland-desktop.py and linux-wayland-desktop.py.\nThis does not qualify physical monitors, hardware encoding or desktop-wide shortcuts.\n",
+      "manifestSha256": "96495b5f2537e1a74915dfe8cac18f99ead4a560705c541569e2e25a09cbe8ea",
+      "executableSha256": "a65874d2a26866fe3a171db4acd29ab8de7e45c947ea7be3fea78e544a379702",
+      "packageSourceTree": "7652b6aac979600de52eb3fc7cb34d272431510b816fc66ba43b97c31ea4fb55",
+      "ownedProcessesRetired": true,
+      "cancelReturnedIdle": true,
+      "phases": []
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1c-wayland-desktop/ac3ecf35-94bf-4b99-883b-99dcd6acab63/results.json",
+      "sha256": "8b52a75c9156c3e0f1b0d4f4e5b6755e446642e244a4a9f292890997c4458da7",
+      "passed": false,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/candidate1c-wayland-keyring/0e0f5b32-4772-4240-aa36-5d25adece986/results.json",
+      "sha256": "6dc87d37e262154538ab014b12d4294b392b18aa285291f9762f0d267e8cf7bb",
+      "passed": false,
+      "scope": "Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final-host/c1857585-be8a-483e-93bf-ce0101065a16/results.json",
+      "sha256": "06122d9f3b99b34061d6013c366ca59ed7686961ba1004ad0c39e0a718369c89",
+      "passed": false,
+      "error": "ProcessLookupError(3, 'No such process')",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "16c0cb00a01692925a1057620488cdfff213f6ef7a5f1f5b3450eb743b6a23af",
+      "executableSha256": "67823fa568312e9cb880f72f886105f7f3c55c49b312bac6d5b0692f163cba5a",
+      "sourceTreeSha256": "7f47ef1873898136cbe0f4fe3f60bf53463050c49f990bbec5bee76ee66d5146",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "0abe4f6266723ce2644ed8306138f9c2d5782aa8acbdbff70feee3cf4340852b",
+          "decodedVideoSha256": "80d40152018d501df539470edd1e6eb9a04a36cab80baf6c268df5e220d7a31a",
+          "decodedAudioSha256": "e2f1151509e43977853f72abfaaed03f9bddca113a7d8a946efe2cfd1f3eb659"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 119,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "858c978c5fc0ab982385128188e92474b1ac618c03c01795739de00d3aef4310",
+          "decodedVideoSha256": "abf7f6d4cbd30a4d37169e99b9a8d61e8179b15d3cf118e9301ba1c44ff29124",
+          "decodedAudioSha256": "874d035671fbc9d2a5d8fa4f39d6061a4ca530ff6b8221879d90a840d2475dc3"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 119,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "e43fe23ca1a40aabbf67f399748e7348c5802ca853cbb219d456f5fcd46ee34b",
+          "decodedVideoSha256": "132d06f32638d231477691d2af780500c59a3f55cceda440a7199614c68753cd",
+          "decodedAudioSha256": "a392d5e1d427edfd2a2c4a544a073ac756dfddbcdd36256b5df97416d60c12f1"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 118,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "bc2b74bf51bd24edcb7bc5776b8399dd4e89fcf5b50a7719631c3e51f6708fcf",
+          "decodedVideoSha256": "8b61467dca73c0e65b678129bab62b566911fc8daeda60685f9cdbe592a6a2c1",
+          "decodedAudioSha256": "0218518b666d8e73675cfb81d95be5973e3083aed6f0d8dfa7297fd8d45bfc5d"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final-host-desktop/d2935558-066c-44bc-b094-492189bc92f5/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final-wayland-desktop/f3ce9bcd-8314-4eae-b2f6-e720f64b44e5/results.json",
+      "sha256": "b1c4dfa76859bba3206e9fa078dfce2095e27503c718e09598593b2c29291b9e",
+      "passed": false,
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final-wayland-keyring/36f11bc2-47c8-47bc-9ca9-ccf6289642bc/results.json",
+      "sha256": "7c4a78c9595eded07e17812b62d84acd11163a2079b24fbf043d9697c3cbe0a6",
+      "passed": false,
+      "scope": "Native Wayland desktop and portal with an owned GNOME keyring under a random service name behind an own-name-only D-Bus proxy; existing desktop secret-store owners remain unchanged.",
+      "ownedProcessesRetired": true
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final2-host/60d0d113-2d4a-4f1f-85f5-0af5803b3d54/results.json",
+      "sha256": "8da4aa46d4b1294c01e100c937e74a6e9cb7e1e527dfcf75bfe770dedd66aa67",
+      "passed": false,
+      "error": "KeyError('index')",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "16c0cb00a01692925a1057620488cdfff213f6ef7a5f1f5b3450eb743b6a23af",
+      "executableSha256": "67823fa568312e9cb880f72f886105f7f3c55c49b312bac6d5b0692f163cba5a",
+      "sourceTreeSha256": "7f47ef1873898136cbe0f4fe3f60bf53463050c49f990bbec5bee76ee66d5146",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "audioReconnectKeptVideoLive": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 235520,
+          "transportSha256": "757716ec9980b8f199931d3d19272da0acac5c843e54f2327879a18b966db44d",
+          "decodedVideoSha256": "e1ca8c1eba2d82249f0e51cff4480a551a098c2989d2153d4b9c79996c55bfa2",
+          "decodedAudioSha256": "5591be7fbfc94ccc6f5a5709d9e4a311778c01706f26ff380e9fe237d47173ad"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 114,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "0a80b2bf18d3adce93321cb7679c40b98e49c2cc2309cad3999ceaa763bb5911",
+          "decodedVideoSha256": "9bd108378a9a78d3d25621da3e347ef68974e4912154eb4b91bfbe27b1e905ab",
+          "decodedAudioSha256": "f036ff79f56a330e30df0ae5ff17a957fe0f00f42c3ce0c3abadbda90ebed75e"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 142,
+          "uniqueSourceIdentities": 134,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "91e72198ce14d672d43859b0460ee1931d47ed33c51a1c88be109e0fae0c100d",
+          "decodedVideoSha256": "5fa454d91b9ba8be76f6d26a421304425bab2db78bbe414376425540c498597b",
+          "decodedAudioSha256": "408b8bd44c53e86a64166d6634f085bbe41e1a6b5f10efd869d5943629cbdad7"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 129,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "9fbe3234cb0a00837552232b686caeb78e38f50267b835019098f1ddc5db82a0",
+          "decodedVideoSha256": "d479cbe96cd5076f47b7125016513395bf893558e2b0e7aff80adb27a7a8f5bc",
+          "decodedAudioSha256": "f1cbde3de1b6019ee93671e15f15a5d0d971ef4fa6073908970f5bad5d26e6ce"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 130,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "dcec623e875c1a2e33805bea980da37ce6c690ac9802fc433ad9f62714a73676",
+          "decodedVideoSha256": "28fa58673ac36e43e6b35eb19060804bbd3c262c5f5a4a80d082fc95dbb5262a",
+          "decodedAudioSha256": "0f4fbe3149eb5b24292283630e882a8a1d901cfdaba92288d8495656a64e1a28"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 133,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "229d6a7eb96a4964cac6c2580101f225912d2774541e0e64e636571e1ad2bd8e",
+          "decodedVideoSha256": "b4db3bba74101bb90fc1b0db2425c852fcd9f6459b46dd5fe945afce343b371d",
+          "decodedAudioSha256": "34030a0c0b3487c620db12f3bc48ee7ab7dc8f81e4498c5855697b4f81c15203"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/final2-host-desktop/448c0082-7d81-49e0-879e-9c6abb678cf8/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host/29cae782-2f98-4026-bef9-25bf518140eb/results.json",
+      "sha256": "8c27b7507949648ffacb3df0dcf120bdc7e0c678defa30276c821e70eb3d7727",
+      "passed": false,
+      "error": "CalledProcessError(1, ['/usr/bin/python3', '/home/steve/Code/game-capture/native-qt/e2e/linux-ui-control.py', '179032', 'choose', 'Audio app', 'Lavf58.76.100 (PID 178980)'])",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "invalidCropRejected": true,
+      "unavailableHardwareRefusedWithoutFallback": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f1e725b772e5bf2ad862b735776ff583539fa5f2e09cabbdc9e0a411018e9cca",
+          "decodedVideoSha256": "eda78ba1bf6949fb84fa881adade0dff1b4d58c4a2dcdebd54b066446280a618",
+          "decodedAudioSha256": "0a2670e4b072cd7ef9f8a411b01b2270f54f71309ae3157b2952d5beb874b0cb"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 142,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "fe730e77cf4fb54493f41f1babb6e76aabadf76dac4254716f400fcc3ac7e176",
+          "decodedVideoSha256": "4734ced43b01c03eff18e8e3255d5c2f2cc92556c6293d1297fdc4e925429b88",
+          "decodedAudioSha256": "62bc61fd0e14b557098057c7f1c4787c27f8e6a24e0ec5c77aa541608b2c0bad"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 133,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "b831bf2312d8b2590abfafafdb197f2f74bf850073db5c77670738822e8a8b18",
+          "decodedVideoSha256": "18d42faf655f09af55161b13625aa84d51b89eb0663d465010c1c9c95b16b65a",
+          "decodedAudioSha256": "d3018b242985d604f95074552cc229cba04995e9902b4d0698385723fd871e4f"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 142,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f5fbab8a660ce7c2a1d62d98fbbc2594ee11382b8e568dcf2a571e59a0231c64",
+          "decodedVideoSha256": "ca030d859a92626f6308b50a8db24336df1d427e69b0378917e8257320880649",
+          "decodedAudioSha256": "3faf43fdd017420501ad0b2d8da226cc7fe3936179914e2d3c4d5b330e3d3223"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 136,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "ee8bf7cf6b40d7b3a96615771c920b59a75c7e4bd27ea213ac6f44c74071b656",
+          "decodedVideoSha256": "b2a73f4aea0e743da424a35b1ec6cb170d3be83c89bc5556dfe66b0c5eef0de2",
+          "decodedAudioSha256": "233fce73e28f2416389c10ad3790fbfc3163d5e6a8dcc59479e69bb9fc3b4939"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 103,
+          "audioSamplesPerChannel": 210944,
+          "transportSha256": "ed219a4dbba0b25585258f87d8811b6ada31590a13c77cffc3a22cf609c35eef",
+          "decodedVideoSha256": "37180d5142d0d9bb92ddc4e1e2e442c73300af5fa271b387b74c804396cceea3",
+          "decodedAudioSha256": "0cbba8b00ba098ea53f83039dafe2f8b267ecbc42c9ca6338cc03d50025eba9b"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 130,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "06293f5a8d89ac19a83c76303ac2c3d847cad468018795b1b0e86f012d5f441b",
+          "decodedVideoSha256": "5e64463b7873a47f5e0653b1206463491490596b1dfed68ed04ded1cc580335c",
+          "decodedAudioSha256": "02c2eecfe242d5bcb76190edbadf394828b069d5da959eb970fbc6626aa8150e"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "ae5e1ac93096cd9b7f2f22d97d00713dd7ab6a6daddfec39af3d4d0e2e8946e9",
+          "decodedVideoSha256": "ddeaeac368bcbf31fe1ae60a93c5c3b16df6d9ba7fd82c52f4daa0caa913dd8f",
+          "decodedAudioSha256": "100b92de26087ecef943315b2bf45e616cf23966cb7c8c755151b6aef9c3756b"
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "b9c422710a779f4a60f317d0791f205ad0a8a2f42553ddb95a1775eacf0326ba",
+          "decodedVideoSha256": "8ec882a2b51a493162cc918c3fe2b54e614f807cd9813dd81163fe762043cdb8",
+          "decodedAudioSha256": "b01ce166e3d40afb9f3b0ea94a4943de2382ff63fd01cdd9b97663efc309b657"
+        },
+        {
+          "name": "cropped-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "4c63c6b210ecc600a7d913f72a427701cc2a1bd45ae3ee9ab614fa2affde621d",
+          "decodedVideoSha256": "38baaa3759798e8ac60961b18c2da9e4006e559e1d7eff26e8f1e4fc37317485",
+          "decodedAudioSha256": "bb9fa30309dcba9c50f2ae5889f4a0a8ffd409f1b55b811135e43d334c83a4b0"
+        },
+        {
+          "name": "cropped-no-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 109,
+          "audioSamplesPerChannel": 216064,
+          "transportSha256": "01330785c5edb59769d544a8531ffc7c8b3ad98444b187d2b80a3b164f266575",
+          "decodedVideoSha256": "e030a2b9542ccf9bd91c0d38f94a11555a35c1a39d3942f7c3e55894634fd042",
+          "decodedAudioSha256": "4b3b7ccf808a423d7de14a22993f680dd5c86bfa4531d9e5cb0f259246a792fc"
+        },
+        {
+          "name": "entire-desktop",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 118,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "b73822bcb9774fd5fbc584c17e43150030fd03c41a8c8ac9f848095db45f1f6e",
+          "decodedVideoSha256": "4db715a5639d42ba6a773731945e1925745fa7670564327e0062663cb420d657",
+          "decodedAudioSha256": "1087e3307050cdc490c23824b325e297da4611816226c9ae57ce5b8c10a449c0"
+        },
+        {
+          "name": "selected-monitor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "5cb74e08fec3a78ad07ccc4cb37c74f4551bd1631f2562667cf08d56cf7e775a",
+          "decodedVideoSha256": "abc12c2c4d6b7b0deea126d01150f1982990438500983490edb0bcf229f9c85d",
+          "decodedAudioSha256": "1107068fa6f27166f53756c8b1067f5283931c6fce661929535d3a04286cdd89"
+        },
+        {
+          "name": "software-after-unavailable-hardware",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 116,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "4de854592b837c0b2e94ae6ec13705e323ec0af290eee66399db6d4fe3df7052",
+          "decodedVideoSha256": "43bf3d94fa6faabc7cd814319b287fada66cf04584f7004163dda3e56d364a63",
+          "decodedAudioSha256": "ea2544a4731a1608108054eb30436fc96f00c6ac79c0f558e56988b2155df8ea"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host/8de1ba74-081a-46fd-8481-23175aa85fea/results.json",
+      "sha256": "0d55bd802845ff10a5e8ffa3625dbb2fd283b35e0ff9d73bd5252feb0ae7d1cb",
+      "passed": false,
+      "error": "CalledProcessError(1, ['/usr/bin/python3', '/home/steve/Code/game-capture/native-qt/qa/reports/linux-desktop-features/shipped-host/8de1ba74-081a-46fd-8481-23175aa85fea/linux-ui-control.py', '179707', 'choose', 'Audio app', 'Lavf58.76.100 (PID 179656)'])",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "invalidCropRejected": true,
+      "unavailableHardwareRefusedWithoutFallback": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 116,
+          "audioSamplesPerChannel": 230400,
+          "transportSha256": "523edcfe1ba2f8b833f61c1362928d5bc63a4506143cd4be0c8ee21dc70f5a15",
+          "decodedVideoSha256": "40edbaeffa8ebb41cc4b73c423a5f7a6a5d69ef84e72cb31fbbf483d3a2cf8e6",
+          "decodedAudioSha256": "f51d708e82782c043d00e3da0c692e5c9fde11f3f8aa4dc51e42c6d2048b2ef1"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 135,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "d1aba761107d6de06edbc9afa4d6c86f2b25b3f9396bf1c4ffb676732b8ac03f",
+          "decodedVideoSha256": "df97e22f395040949c2ae33ef82c14ac2e6aa27b5345437d276c4e82b2034c8d",
+          "decodedAudioSha256": "330440ebdd4ec045547aa2f8f0944524d3bdf53c122f3f56186fd1dedfb34f8b"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 133,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "6b987d3cb00b23861c4e4c2eb2cd0530f43cbbad617bf7b2dd811e3f3ed4e676",
+          "decodedVideoSha256": "ed8e392451c1b4252f2b5806b3d23ea4e491b0efab9aa3a873b7fb675425236e",
+          "decodedAudioSha256": "bf5c3ddec6038939260f45a3b4a33e1a390b30c57837b5dbe50afbc7c69a29d2"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "8306eb598e2674130626d9200f9454c5f196ae034820af222d025df29e108aa7",
+          "decodedVideoSha256": "a105717648f724a9b5c06991a8dd8a0651d3a3e2c1b1e51b40f615faf06177a0",
+          "decodedAudioSha256": "3e17f5ad9afed8e247e4f31fadc08377ddfa644a5c4232e9de994a4a6d3b0812"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 136,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "8720f96970160e78427cfd2ef19c0b0899301167ad2f875e5c57495838e8a3d2",
+          "decodedVideoSha256": "0c07d7ef680a2d9bb75b172e94784fed32c9a1d5c8aee14b1e357c9a83097a55",
+          "decodedAudioSha256": "9181f4e772f7b09d5c5e42701872bb8f8e4ac61bcad8240c36dbbc986b039586"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 112,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "074096c98f79b65be764c48f238c6b58689b2b18973093b2e33405ddb08a3d58",
+          "decodedVideoSha256": "be2c8b5f6789ea075ab8553f3f71f8592cfe40cc59e3cdcaa1b8f5f2e497c0df",
+          "decodedAudioSha256": "5d1053e2c23e283a016cec65282c5f2133d3ad678d6f2b95eba38c05d4b973a6"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 141,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f43f2df1ee61a417e78c770ca8822074e6a087355243fb3ef51476d5f117d2a9",
+          "decodedVideoSha256": "441f37d68714eea156d500e5e6b9c43919a476ac230c4f669a48ebc7a1181d1f",
+          "decodedAudioSha256": "3315728324aa0849a193c9ac567b3f25ffdfbc44f125b60d0bec40ea2bff3920"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 122,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "b495b27b9efbec3e1a5335b1fc51bb43942a6cf2c705ee097be16346226b5818",
+          "decodedVideoSha256": "f3f94f69bec52ccfdafe65b3c6449ccde9a6cba182856ae4f08cce815e409a42",
+          "decodedAudioSha256": "fc19a7e61222f9d4141573ed682cc61db27278d4ddf274f0dd70ac6fd9a11bc3"
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f01bf4dd85eeeb802f5a2de24ac2bd1b7a768c3b04abeade9753225713e2a25b",
+          "decodedVideoSha256": "b21056c74b8fe89d1d9c11f3885057a86bcc7fd4b0c7d48810bd37bc172bcede",
+          "decodedAudioSha256": "0ff2cbbef6bca89e410e493c74a90dec80d73b42ffd366c1bd663d65ac50a93b"
+        },
+        {
+          "name": "cropped-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "612c49f618f8ef1cd31fe7c4aa64b938fe1ead5c4a5f664a64f1be02740ec4ca",
+          "decodedVideoSha256": "e65b3bf2f4237b0579e5be4f665077d048bd85aaf23bbaa4b165a52305b17782",
+          "decodedAudioSha256": "641923fbcb516f372db53ae038d7bee7a859adf0682e7fcae66b18ae44d85e21"
+        },
+        {
+          "name": "cropped-no-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 126,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c8f5070ae05b045b22fea8ea65d05cbb8353403cf967d837c720d75079e9f049",
+          "decodedVideoSha256": "9095c705e09500c5f7a051f671fe1dcc56fff32bca9d9b84a00c0dd9cba057af",
+          "decodedAudioSha256": "4152f9ab242a62b9c1eb87a33472b6afee0a13dd2621d09e66bcf2aafd413d14"
+        },
+        {
+          "name": "entire-desktop",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 118,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "2f2d4e3b52a38ef086e72dff658b7c2dc6381185e9fab9f5c941139b294ea2d6",
+          "decodedVideoSha256": "985f0d164b8d7249ea74c52d503ec9210d310072d2cac5996809150384d43af8",
+          "decodedAudioSha256": "a30ddd8239e4f72a168cc59d3204f4a6ce79f007ffae532b17e0733952a3ddb1"
+        },
+        {
+          "name": "selected-monitor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 120,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c00e6ee279cb09466fab4980ff7db025522baaba3d122894531f6122a6e334c7",
+          "decodedVideoSha256": "b5af7d8c053fb8a5660df86be5cae32df52fc7086952555293acd0b9d542ae9c",
+          "decodedAudioSha256": "c9b929062b23ad77bbd045dc4e358373152516a547941d083e586d55cf303896"
+        },
+        {
+          "name": "software-after-unavailable-hardware",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 123,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "bb680ecaa1b9f6a618fb1d3f38933aecf584b53d3d59cddc00547e733eb7ae2c",
+          "decodedVideoSha256": "341957ccbad29e5ebf7db350e901efc85fa94ac54548e3bc9427087022eec0dc",
+          "decodedAudioSha256": "f435b5233bee52e31903973f201dc749b4082bb467367f228ead0ff43a2fe641"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host/ce5e80d6-a2ee-4de0-b3f4-95e4227c84a1/results.json",
+      "sha256": "2f5edda8970041f498089c2a61e0f08180b860919b858e86d25f3b4e3495d157",
+      "passed": false,
+      "error": "RuntimeError('Audio capture leaked after Stop')",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 112,
+          "audioSamplesPerChannel": 222208,
+          "transportSha256": "a59700f7c7534143d07d6ad6e49c82fe86c56bae7f44820d1ca2e27c2b537a1b",
+          "decodedVideoSha256": "cc6796936c67b9d4b9f8afe28e6cfe5d4eb9dbfbf2175cddac1e1d8143838f7f",
+          "decodedAudioSha256": "19cda77715c8a4122ef1e3191e6e8c050b17483fd40f7ac9048bcfdf2bf06413"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 141,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "9391e5ecb818b9bdd9a23c474104cf1a212d292d81cd4a542e26458c04916471",
+          "decodedVideoSha256": "9235103957c01485587dc2cb4cdaec3a949dc3fb9e648b0a3f38bb871eb383e1",
+          "decodedAudioSha256": "094c83893d8ea44cf24c9914e859b3ecede3327057dd0bd34b6709d416dc01f9"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 140,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c2294c30739a04c0f872f948bda2521b320cd2d688001f2792accd4961171003",
+          "decodedVideoSha256": "db01c02dfdbd241f0241e9d5da265d81372bd919ee6ebabe80afc51f3779de00",
+          "decodedAudioSha256": "8a71472b38b6852d7d46dc625ddcaa4d089a0c22ee52dcc7c06f28d96f626065"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 124,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "ee85b51dd9918cc3bd308450ccffb6116c4de286b4b317ff4079c668d7447bea",
+          "decodedVideoSha256": "64ec9a511c59404820ce16f8fbc603dc16df15512f36e76d295d4b8003c6e1c5",
+          "decodedAudioSha256": "05cecf5ffbc4d736754345ceef415556933d4b4929651b6bc64ff2e300d2f2a2"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 128,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "a7308813afa5efbe8da940f802a5c641c86d0ef67f8ff3196613233182fb4fc3",
+          "decodedVideoSha256": "81a7a1fc344b5f63cd82ae91aee5b44fd4a0912839db7153fdb66fec0333c47a",
+          "decodedAudioSha256": "4ca5f035f348cd52fd4f3629ca43a59220c7f96a078f98b56f57f1b146d64dbc"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 134,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "6735e438335cd33cef0c3a42cfdbde0a612474e06c4b17fafc9a11d44cc8065c",
+          "decodedVideoSha256": "227321c4cb0a5fb2f8545d49cbb72764b953424b8efa6376b4a347b639959e6f",
+          "decodedAudioSha256": "354513b4a0eb841f52615f04087bbd95df0b2460c7ce5d51ff805acfb70c60b3"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 133,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "a8d55b2847d4a4cfde6ba64392846d7fe4b088bc89ce48e5ef96007db9a94b5f",
+          "decodedVideoSha256": "380e41248aad65a19eff4c6412bbc10b411f8dd8e77cc8f8e79011f298b7655b",
+          "decodedAudioSha256": "ee85258eb8f06a6b6b166bdbac4cbce7f82996a61ab2bd973ff5bee95663675c"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "e7173790fa390d1ee3ce14297b90c8e682b5f6283fef2b3678308b95cda89e63",
+          "decodedVideoSha256": "2a8861e321ca3d36a48e6364e58517a1cb731ccc7e3091386f9faaf920138816",
+          "decodedAudioSha256": "56b13a15ed9ab7ad57f3e6ac72ba9d9183fd304a492a391cb239ec9ac5ce11e4"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host-desktop/00e48be1-11b5-4bec-9e0b-09818587a6c6/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host-desktop/149e8046-9e19-43ae-8386-dbd13f926451/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-host-desktop/1d36ac5a-3b45-4853-9592-8a266d9798d9/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-noble/17f58063-4611-488e-a409-e9d602959f74/results.json",
+      "sha256": "5788f961edd18e066050adf578cec829e8cdd706fb3606d90d55d51cd7145091",
+      "passed": false,
+      "error": "RuntimeError('Audio capture leaked after Stop')",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 118,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "d35b5ca4204d2f6779aab134dcf0585da71509b21f5a0bfdbfdc09c662be1ee1",
+          "decodedVideoSha256": "4928e8df5d54de83feb5f9cd99cbb647d52a16e0af58836bc1216b6e7575353b",
+          "decodedAudioSha256": "fcef3357c61635f6d7d0e2252c0dae3e5515a82649f9465063583a360dcddeec"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 115,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "dd6a8ec7efd7f30446ec0115d68fd52914cae5761c0891b8ce0cf1d631517d24",
+          "decodedVideoSha256": "bd36b90593eec605434cafd9626f4693ae3938519efc2ea34fbd550cb26086a6",
+          "decodedAudioSha256": "f06ec8d2774c139f691edf6a04a5500287a0b6ee4140e9323ac2cd6bbc50c9e3"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 114,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "b28d13bb31164649edd73822cb092b7a9c8effe50c9adfce0142e8db53127142",
+          "decodedVideoSha256": "e9110015018d41607e4f52756a875b3513ff6cb99314912349447214b98c998c",
+          "decodedAudioSha256": "90ff323d84b2192c3f2e2502a206b1cacf4b38342abd2e8766adbf53735229a6"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 115,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "216cfa40952352f57a2183c71487a5fa8cffcd1aef2f7dec4b1e608a29101e44",
+          "decodedVideoSha256": "3e7b7d5bb63842c340edd3a87587a514812d7ed794b05fb696bae0bfec0422b7",
+          "decodedAudioSha256": "21e6414ac1263585aa5afdc46da9798965e2443658372ea30e644ab76f76c0a2"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "c4b0f1a858faed51236776ffb0ff5fa3f937034d0671424e7d2a97730bec65df",
+          "decodedVideoSha256": "8df92303325500f937ef8dc0ab2f0363f5a8b9605e2b3d59423d7336ed5df524",
+          "decodedAudioSha256": "c93a8e97bdedd2bbf285314356e9e633cae36bf3994e4d5159b6052020bbe78b"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 143,
+          "uniqueSourceIdentities": 140,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "5d5aae1b0c3f362b2ce3a5a6186a008a6f290d05d40ca774ea0b20b3930536e8",
+          "decodedVideoSha256": "8d44e4341f578ca223218f8f2d7f4aa639e7e703bb861112eaecae9be73dfc9d",
+          "decodedAudioSha256": "e9eb2390d722c9defd7a90ead5fba8680e1675ac8083de3e88111844830d90be"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 137,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "02f2cf2d4c9f86e28922cab2e2a731c6636cfd19ed09a497a8cbf685c8684e64",
+          "decodedVideoSha256": "b551b783ec6c2d7450734914a984a6184144af31807d33dbb52db6eb0b826a53",
+          "decodedAudioSha256": "dfaee77c746e6088c5276c6bd3172d494edc6e4f2b94482d8c08a425ab0bdd5f"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 101,
+          "audioSamplesPerChannel": 216064,
+          "transportSha256": "c36da258ecdd739ed55f72b221394eed0ed1003a616961ea17f4b1bd7b6c46c6",
+          "decodedVideoSha256": "8643e29ed497838b03e0db36c727fb5d5c2fde147fda46ba78a96248f141c56c",
+          "decodedAudioSha256": "0e886bc49ea3350dde6a8ddc7cd5226dfe77c0af0b288e08510e91c3395fb8e3"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-noble/46f024ec-3c8c-401e-926e-1c3ba2648f91/results.json",
+      "sha256": "c8c4ab38deceaa3db2ef0cd2df42e07a6ff6489e5cea00a9abd64fca1411d58a",
+      "passed": false,
+      "error": "CalledProcessError(1, ['/usr/bin/python3', '/workspace/native-qt/qa/reports/linux-desktop-features/shipped-noble/46f024ec-3c8c-401e-926e-1c3ba2648f91/linux-ui-control.py', '122', 'choose', 'Audio app', 'Lavf60.16.100 (PID 83)'])",
+      "scope": "Bounded packaged Linux GUI/media workflow, usable on ARM64 and amd64.\n\nRun under linux-private-desktop.py on an owned Xvfb display. Uses the existing\nTk moving source, real GUI actions, a private PulseAudio server and independent\nFFmpeg reception/decoding of loopback MPEG-TS, or an independent Chromium WebRTC\nreceiver with --webrtc. No host audio/device changes. This is not physical\ndesktop, hardware encoder, calibrated A/V synchronization or game-performance\nqualification. Optional bounded fuzz and comparative CPU/decoded-frame observations\nexercise the same packaged GUI workflow without changing acceptance thresholds.\n",
+      "packageManifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+      "executableSha256": "70ca26c585da6a006374dd436121807d794129a4421876faa9bb25d14d8b8619",
+      "sourceTreeSha256": "ed17c1c38218f33f5b43e6e6f281ac1b78499b31506bf08238545df09a2bf731",
+      "profile": {
+        "resolution": "960x540",
+        "sourceSize": "640x360",
+        "fps": 30,
+        "bitrateKbps": 4000,
+        "encoder": "software libx264",
+        "transport": "loopback UDP/MPEG-TS",
+        "audio": "system + microphone, AAC stereo"
+      },
+      "ownedProcessesRetired": true,
+      "discoveryRemoved": false,
+      "audioReconnectKeptVideoLive": true,
+      "explicitMicrophoneLossRecovery": true,
+      "invalidCropRejected": true,
+      "unavailableHardwareRefusedWithoutFallback": true,
+      "phases": [
+        {
+          "name": "mixed",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 112,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f88a490963fbcf948aa04ae2c7bf4bf9099a38fb2740210ce3f4bcaa60213167",
+          "decodedVideoSha256": "97b30269458c8a94d90686d68f121813896e66d6b3385b38e8865772048f2cb9",
+          "decodedAudioSha256": "122de06968c7d70cee821a8e6b96a94e5abf594f5f1a88612b7e32e34b5d15e3"
+        },
+        {
+          "name": "muted",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 121,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "79b977c8bdc24d73c92b1176395647f37b5116ad1e4f00ecd3368419835c96c6",
+          "decodedVideoSha256": "e19884d30a5c3799ac5771ef74c67629e86d7cd9f3b684e31bfbdd9602dce77f",
+          "decodedAudioSha256": "d76135193a3ba0c4dc3e438a6e66ed6e792ffefdf1a50ce5e6cf192eec25d8f6"
+        },
+        {
+          "name": "push-to-talk-held",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 136,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "3dfe5f4b30f28d79e3953349ea650720deaac102f3e290be3f8bb8ecaefce411",
+          "decodedVideoSha256": "6878445634d7ed24ca3d52b7b2ba1ec89f530c39b1a1ccafd7ac44c8f9b50313",
+          "decodedAudioSha256": "69212edba342c4bb85c504bd57af2ff570c4c349a9922e4d96662058a90d8227"
+        },
+        {
+          "name": "push-to-talk-released",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 111,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f76e716cc7614d413479b15b1efb6f030944200ff6a718e261ca19053271af44",
+          "decodedVideoSha256": "c4f5fbca679cf2e07de2a46a1115eb1b7d6533db50befbdf67350b96243ec0ea",
+          "decodedAudioSha256": "0794cf3b7e45fa955e929d965325c1a546894851f1ee32583386dfdfa739ac9a"
+        },
+        {
+          "name": "unmuted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 133,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "69125a11435f00ad6c0d654f334098dc14c50fea362f8e0b1a634fccac96e715",
+          "decodedVideoSha256": "250bb685b9f4bfbd5f8d1507e609a1573df9de8debc99179420a8544593730a5",
+          "decodedAudioSha256": "3d9799898b5f3c092eb2b8a6bb0a0683af853d603bc1c73673ee834962415676"
+        },
+        {
+          "name": "audio-reconnected",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 133,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "f728013441ba9e5fcf61c2c68256560289ef58e75909a3c53a6c7cb5122abe41",
+          "decodedVideoSha256": "2bcc1764a8c73e9fd4ebc89e9c754cc7278e06566cf1a85a08f2d527e213e134",
+          "decodedAudioSha256": "0caf0477207669668745a5e91389b5beb899b74e7479a2cf95bffdab2632553a"
+        },
+        {
+          "name": "microphone-removed",
+          "passed": true,
+          "microphoneExpected": false,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 142,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "aa6981d1c8cc9a6fec163430d69c461342f002ef0fba1ccdb5ac61ee398aee36",
+          "decodedVideoSha256": "bd870c4b9257bf56612fe94d894fdadf89fd06daaf5629225f5c34fda34664f0",
+          "decodedAudioSha256": "205c808e467ae84dacf31ea7bd31cb103d199fbcbbd9007ceaa45773bd56438e"
+        },
+        {
+          "name": "microphone-restored",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 116,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "fb41779a4f6704a8ae05e3756643cc787f552c38e7a77f50d2f5471eb2fd6cae",
+          "decodedVideoSha256": "b77492817b426597c3929f5a55214ea91dbe1bf75c9e98b68074d1e2e1f8dae8",
+          "decodedAudioSha256": "1800e24bfe8bc6cb55ec9d84eefdd5bae6410bde7859638518d896c9084612bf"
+        },
+        {
+          "name": "restarted",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 115,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "66b54e52df67a683c105b573501482198f42d4d583ea599460d17e125705365f",
+          "decodedVideoSha256": "f4d11f2c72fb2491bcbe30c89c37bb976a3e867cadc769837b0f779c24a68320",
+          "decodedAudioSha256": "6985232fa30aafa1650d95685cb2426aea6907432de35301759ead16f2438a19"
+        },
+        {
+          "name": "cropped-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 114,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "9518917a978b75a0ef8bcce7f3775fbd2a47912bcd8fe35260d57fd6758fbbeb",
+          "decodedVideoSha256": "766197dc508a975569216bdbdaadef5775d837318f63c5ce976254aaedc795f5",
+          "decodedAudioSha256": "4e333e7fdf5479b5cc28954e44bd2825d8eba65b51dd0f7dd73995955d628c44"
+        },
+        {
+          "name": "cropped-no-cursor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 142,
+          "uniqueSourceIdentities": 114,
+          "audioSamplesPerChannel": 235520,
+          "transportSha256": "3544e34406d6ea773ff2ced9e3a803e4a3a63a5bd64aeaabddae6bcfdee9e911",
+          "decodedVideoSha256": "6c7c867e0fb71dc1c48340915d7d6566c35547f0e29f10db4d7746a462a46e47",
+          "decodedAudioSha256": "6f4e68cc7d0b4fc5e82f28b688bcb8e3e19d8ebde9b68cb4a65131ea6203e2ca"
+        },
+        {
+          "name": "entire-desktop",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 151,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "6b572ed442bb8675d180270a8b4b5d311e63e1da54437b63741c8afd5a24f7b7",
+          "decodedVideoSha256": "2854a734eed88c443456cda9868251f3dc0a22c57e9882973f8c7f88185484ce",
+          "decodedAudioSha256": "d96bf8cd7086ee22d7ef3bb857a9533333b73196c7304681075188fbaaaa570f"
+        },
+        {
+          "name": "selected-monitor",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 115,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "e85c68d44230cf4e033834af8064cbd68a1373a5a0e60f0a89ae62f84cf07fa8",
+          "decodedVideoSha256": "2c6ccb4508475906e89bf78ca6384e4da1913a782958efebff3c1b959dabd8cd",
+          "decodedAudioSha256": "1c549adbd06337ce860a85013b587a0bea4d4930da79273bd375f0f184cc74b5"
+        },
+        {
+          "name": "software-after-unavailable-hardware",
+          "passed": true,
+          "microphoneExpected": true,
+          "decodedFrames": 150,
+          "uniqueSourceIdentities": 117,
+          "audioSamplesPerChannel": 240640,
+          "transportSha256": "3541ce70b08b2ac9234985fba4e8fab5850b0d6348ce831b7602542176561562",
+          "decodedVideoSha256": "5f9b405a97f7e4325a298f7c1b1ccacea3ed9e77303e8fcc684acc0eafe63e99",
+          "decodedAudioSha256": "13ebbcea0cae8f251d31cade1569fa92bdb80e0a8551966d307873ebad784116"
+        }
+      ]
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-noble-desktop/7237c50c-1e9b-48f3-98aa-3e66cfb6df73/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/shipped-noble-desktop/b6d2107c-fd67-47e3-9968-787e0d68f56d/results.json",
+      "sha256": "592574473be5c9213b8c71036f5636124a07d8c0e0ae45938d5e01033da13ff0",
+      "passed": false,
+      "scope": "Owned isolated desktop/keyring fixture; application evidence is in child workflow reports."
+    },
+    {
+      "report": "native-qt/qa/reports/linux-desktop-features/wayland-environment/5b705a32-e8ef-4f1e-b4ab-058df8133354/results.json",
+      "sha256": "91b57706eec4849ed5e1f7536fa8597cd39657930230ab99d04d91ddd4f9a369",
+      "passed": false,
+      "error": "DBusException('Message recipient disconnected from message bus without replying')",
+      "scope": "Run a workflow in owned software-rendered GNOME, PipeWire and session bus.\n\nThis qualifies an isolated Wayland compositor, not a physical GNOME session.\nHardware monitors are disabled. Keyboard input targets only this compositor's\nRemoteDesktop session; it never uses the host keyboard or /dev/uinput.\n",
+      "ownedProcessesRetired": true
+    }
+  ],
+  "qualificationLimits": [
+    "Physical Wayland/compositor/permission revocation, pending Stop/Quit GNOME portal crash, covered-window and suspend/resume cases remain open; no desktop service was patched here.",
+    "Wayland monitor/cursor and granted desktop-wide shortcut execution need additional compositor coverage; unavailable portal fallback is separate from shortcut execution.",
+    "Actual VAAPI/V4L2 encoded output requires suitable hardware/drivers. Jetson/Pi, Intel/AMD devices and high-profile performance remain unqualified; encoder listings are only gates.",
+    "Selected PulseAudio process output moves do not qualify native PipeWire/JACK timing, received PCM continuity, or every device/driver route.",
+    "Physical camera/microphone/HDMI moving-media, transparent Linux producer/OBS alpha, other ARM output protocols, 60fps/high profiles and long endurance remain open in existing ledgers.",
+    "Windows/macOS runtime and native amd64 regression require those systems. Shared enum additions and save serialization are regression risks; existing architecture defaults remain unchanged.",
+    "Portable compatibility is bounded by glibc/GLIBCXX floors and observed userlands, not a universal Linux guarantee. No releases are published."
+  ],
+  "failuresPreserved": [
+    "Initial cursor fixture XBM rejected by Tk; corrected to a Pillow-generated bitmap and retained failures.",
+    "Candidate reconnect observation started before fresh microphone samples; received audio resumed. Added reconnection UI state and a fresh-sample observation gate.",
+    "Owned Wayland dependency startup lacked a system bus and GTK typelib; corrected only the disposable environment.",
+    "Remembered-permission chooser changed initial focus; fixture now navigates only the active real portal dialog.",
+    "Wayland crop observer assumed a fixed undecorated size; replaced with measured pre-crop versus post-crop dimensions plus independently decoded source identities.",
+    "Owned portal startup activated its default keyring after baseline owners were recorded; preactivate owned desktop services before recording owners. Application workflow passed but outer fixture failure is retained.",
+    "A /proc process disappeared during observer read; handle ESRCH as a retired process.",
+    "PulseAudio 15 JSON module listing omits module indexes; use its short module listing for owned device removal.",
+    "Recreating the virtual microphone replaces its own master-monitor stream ID. Cleanup observer now tracks only the verified owned module replacement; earlier apparent-leak failures are retained.",
+    "Audio-app chooser observer used a field label while this Qt accessibility implementation exposes its selected value. Select by the observed value and snapshot the helper per run; the helper can also verify a selected row for static labels.",
+    "Qt 6.2/6.4 lack qtestwheel.h and the gate contained Windows-only assertions. Ported simulator input and capability assertions; intermediate gate failures retained."
+  ],
+  "archivedProductionMatchesWorkingTree": true,
+  "productionTreeSha256": "22dd6ea96604c2b4447a20b623f713e5f7853cf5ce7ef9130005be72f2985d58",
+  "reproduce": {
+    "host": {
+      "command": [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1000x24",
+        "python3",
+        "native-qt/e2e/linux-private-desktop.py",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-host-desktop",
+        "--window-manager",
+        "--",
+        "python3",
+        "native-qt/e2e/linux-arm64-bringup.py",
+        "--publisher=/home/steve/Code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable/usr/bin/game-capture",
+        "--manifest-sha256=b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-host",
+        "--desktop-features",
+        "--unavailable-encoders"
+      ],
+      "reportRoot": "native-qt/qa/reports/linux-desktop-features/shipped-host",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70"
+    },
+    "wayland": {
+      "command": [
+        ".tools/arm64/run",
+        "python3",
+        "native-qt/e2e/linux-owned-wayland-desktop.py",
+        "--private-system-bus",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-wayland-desktop",
+        "--timeout=600",
+        "--",
+        "python3",
+        "native-qt/e2e/linux-wayland-desktop.py",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-wayland-keyring",
+        "--",
+        "python3",
+        "native-qt/e2e/linux-desktop-wayland.py",
+        "--publisher=/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable/usr/bin/game-capture",
+        "--manifest-sha256=b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-wayland"
+      ],
+      "reportRoot": "native-qt/qa/reports/linux-desktop-features/shipped-wayland",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70"
+    },
+    "noble": {
+      "command": [
+        ".tools/arm64/run",
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1000x24",
+        "python3",
+        "native-qt/e2e/linux-private-desktop.py",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-noble-desktop",
+        "--window-manager",
+        "--",
+        "python3",
+        "native-qt/e2e/linux-arm64-bringup.py",
+        "--publisher=/workspace/native-qt/dist/game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable/usr/bin/game-capture",
+        "--manifest-sha256=b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-noble",
+        "--desktop-features",
+        "--unavailable-encoders"
+      ],
+      "reportRoot": "native-qt/qa/reports/linux-desktop-features/shipped-noble",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70"
+    },
+    "profiles": {
+      "command": [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1000x24",
+        "python3",
+        "native-qt/e2e/linux-output-profiles.py",
+        "--publisher=/home/steve/Code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable/usr/bin/game-capture",
+        "--manifest-sha256=b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-profiles",
+        "--first-save-cycles=10"
+      ],
+      "reportRoot": "native-qt/qa/reports/linux-desktop-features/shipped-profiles",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70"
+    },
+    "webrtc": {
+      "command": [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1000x24",
+        "python3",
+        "native-qt/e2e/linux-private-desktop.py",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-webrtc-desktop",
+        "--window-manager",
+        "--",
+        "python3",
+        "native-qt/e2e/linux-arm64-bringup.py",
+        "--publisher=/home/steve/Code/game-capture/native-qt/dist/game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable/usr/bin/game-capture",
+        "--manifest-sha256=b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70",
+        "--reports=native-qt/qa/reports/linux-desktop-features/shipped-webrtc",
+        "--webrtc",
+        "--node=/home/steve/Code/game-capture/.tools/webrtc/node-v22.23.3-linux-arm64/bin/node",
+        "--browser=/home/steve/Code/game-capture/.tools/webrtc/browsers/chromium-1248/chrome-linux-arm64/chrome",
+        "--fuzz-seed=20261020",
+        "--performance-seconds=30",
+        "--source-size=1280x720",
+        "--resolution=1280x720"
+      ],
+      "reportRoot": "native-qt/qa/reports/linux-desktop-features/shipped-webrtc",
+      "manifestSha256": "b20c7d749fea7ddbd8202e295ddea0a8ccbc3aeb8e2247e2cb12e18e02404f70"
+    }
+  }
+}

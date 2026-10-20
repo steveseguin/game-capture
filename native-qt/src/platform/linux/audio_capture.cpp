@@ -282,6 +282,7 @@ struct MonitorTap {
     int64_t next = -1;
     std::deque<AudioBlock> blocks;
     Clock::time_point deadline = Clock::now() + std::chrono::seconds(3);
+    Clock::time_point lastData = Clock::now();
     ~MonitorTap() { if (stream) { pa_stream_disconnect(stream); pa_stream_unref(stream); } }
 };
 
@@ -375,12 +376,13 @@ struct WindowAudioCaptureCore::LinuxImpl {
                         recoveryDeadlines.emplace(it->first, it->second->deadline);
                     }
                     if (match == wanted.end() || !PA_STREAM_IS_GOOD(state) ||
+                        match->second.first.sink != it->second->sink ||
                         match->second.second.pid != it->second->pid || match->second.second.birth != it->second->birth)
                         it = taps.erase(it);
                     else {
                         // The monitor is filtered to this exact playback stream.
-                        // Keep a healthy direct monitor across output moves;
-                        // servers that terminate it are reconciled above.
+                        // A move must reopen the exact stream on its new
+                        // monitor; DONT_MOVE intentionally pins each tap.
                         it->second->sink = match->second.first.sink;
                         ++it;
                     }
@@ -426,10 +428,16 @@ struct WindowAudioCaptureCore::LinuxImpl {
                 for (int count = 0; count < 64; ++count) {
                     const size_t available = pa_stream_readable_size(tap.stream);
                     if (available == size_t(-1)) { fail(server.failure("Could not read app audio")); return; }
-                    if (!available) break;
+                    if (!available) {
+                        if (Clock::now() - tap.lastData > std::chrono::seconds(3)) {
+                            fail("Selected app stopped supplying audio samples. Video continues; reconnect selected audio after checking the app and output route."); return;
+                        }
+                        break;
+                    }
                     const void *data = nullptr; size_t bytes = 0;
                     if (pa_stream_peek(tap.stream, &data, &bytes) < 0) { fail(server.failure("Could not read app samples")); return; }
                     if (!bytes) break;
+                    tap.lastData = Clock::now();
                     if (bytes > maximumChunkBytes || bytes % (2 * sizeof(float))) {
                         fail("Application audio service returned an invalid sample block."); return;
                     }

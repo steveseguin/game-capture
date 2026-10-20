@@ -52,6 +52,15 @@ bool frameAdmissionAllowed(const std::function<bool()> &admissionCallback);
 
 }  // namespace detail
 
+#ifdef __linux__
+struct DesktopCaptureOptions {
+    bool showCursor = false;
+    bool rememberSource = false;
+    int cropLeft = 0, cropTop = 0, cropRight = 0, cropBottom = 0;
+    std::string settingsFile;
+};
+#endif
+
 class WindowCapture {
   public:
     using FrameCallback = std::function<void(CapturedFrame)>;
@@ -72,6 +81,8 @@ class WindowCapture {
 #ifdef __linux__
     // Reset only before scheduling a new startup. Cancellation is safe from
     // the UI thread; the startup worker retains ownership of all cleanup.
+    void setDesktopOptions(const DesktopCaptureOptions &options);
+    std::string lastError() const;
     void prepareCaptureStart();
     void cancelCaptureStart();
     bool captureStartCancelled() const;

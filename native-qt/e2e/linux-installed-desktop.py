@@ -16,12 +16,21 @@ import sys
 import time
 
 
-def source_window(size='640x360'):
+def source_window(size='640x360', cursor_fixture=False):
     import tkinter as tk
     width, height = map(int, size.split('x'))
     assert 160 <= width <= 1920 and 90 <= height <= 1080
     root = tk.Tk(); root.title('Game Capture Installed Source'); root.geometry(size+'+30+30')
     canvas = tk.Canvas(root, width=640, height=360, highlightthickness=0); canvas.pack(fill='both', expand=True)
+    cursor_directory = None
+    if cursor_fixture:
+        import tempfile
+        cursor_directory = tempfile.TemporaryDirectory(prefix='gc-cursor-')
+        bitmap = Path(cursor_directory.name)/'yellow.xbm'
+        from PIL import Image
+        Image.new('1', (64, 64), 1).save(bitmap)
+        bitmap.write_text('#define im_x_hot 0\n#define im_y_hot 0\n' + bitmap.read_text())
+        canvas.configure(cursor='@' + str(bitmap) + ' #ffef00')
     identity = 0
     def draw():
         nonlocal identity
@@ -41,10 +50,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source', action='store_true')
     parser.add_argument('--source-size', default='640x360')
+    parser.add_argument('--cursor-fixture', action='store_true')
     parser.add_argument('--output', type=Path)
     parser.add_argument('--single', action='store_true', help='Clean-install launch and saved-settings relaunch without package transitions')
     args = parser.parse_args()
-    if args.source: return source_window(args.source_size)
+    if args.source: return source_window(args.source_size, args.cursor_fixture)
     assert os.getuid() != 0 and args.output and os.environ.get('GC_QA_PRIVATE_DESKTOP')
     report = args.output.resolve(); report.mkdir(parents=True, exist_ok=True)
     result = {'scope':__doc__, 'uid':os.getuid(), 'passed':False, 'phases':[],

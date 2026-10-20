@@ -537,6 +537,8 @@ const char *requestedEncoderModeName(const EncoderConfig &config) {
             return "Intel";
         case HardwareEncoder::AMF:
             return "AMD";
+        case HardwareEncoder::VAAPI: return "VAAPI";
+        case HardwareEncoder::V4L2: return "V4L2 M2M";
         case HardwareEncoder::VideoToolbox:
             return "Apple VideoToolbox";
         case HardwareEncoder::None:
@@ -571,6 +573,8 @@ bool encoderMatchesExplicitSelection(const EncoderConfig &config,
             return lower.find("amd") != std::string::npos ||
                    lower.find("radeon") != std::string::npos ||
                    lower.find("amf") != std::string::npos;
+        case HardwareEncoder::VAAPI: return lower.find("vaapi") != std::string::npos;
+        case HardwareEncoder::V4L2: return lower.find("v4l2m2m") != std::string::npos;
         case HardwareEncoder::VideoToolbox:
             return lower.find("videotoolbox") != std::string::npos;
         case HardwareEncoder::None:

@@ -25,7 +25,7 @@ On Ubuntu 24.04 arm64, install these dependencies:
 sudo apt-get install build-essential cmake ninja-build git pkg-config dpkg-dev \
   qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev \
   libpipewire-0.3-dev libspa-0.2-dev libpulse-dev libsecret-1-dev \
-  libxcb-composite0-dev libxcb-damage0-dev ffmpeg ca-certificates
+  libxcb-composite0-dev libxcb-damage0-dev libxcb-xfixes0-dev libxcb-randr0-dev ffmpeg ca-certificates
 cmake -S native-qt -B native-qt/build-linux-arm64 -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DVERSUS_BUILD_TESTS=ON
 cmake --build native-qt/build-linux-arm64 --target game-capture test_update_checker -j 2
@@ -161,10 +161,10 @@ parity. Linux implementation evidence and ARM workflow evidence are separate.
 | --- | --- |
 | Window and camera capture | Linux reuses X11/PipeWire and V4L2. ARM has owned-X11 moving-media evidence; physical Wayland and moving HDMI input remain unqualified. |
 | Spout2 and transparency | Spout2 is Windows-only. Linux desktop capture is opaque; a transparent Linux producer and an independently verified OBS alpha receiver remain missing. |
-| Hardware encoding | Windows offers NVENC, Quick Sync and AMF. Linux exposes NVENC and software; QSV/AMF/VAAPI/V4L2 hardware paths are not implemented here. amd64 NVENC evidence does not qualify Jetson or Pi encoding. |
+| Hardware encoding | Windows offers NVENC, Quick Sync and AMF. Linux now adds experimental explicit VAAPI (H.264/HEVC) and V4L2 M2M (H.264) to NVENC/software. QSV/AMF APIs are not implemented. Hardware output still needs driver-specific received-media qualification; amd64 NVENC evidence does not qualify Jetson or Pi encoding. |
 | Audio | Shared mixing, mute and codec controls exist. Linux application audio uses playback-stream monitors; native-client route-move stalls, a received PCM continuity failure and physical ARM devices remain open. Per-JACK-client isolation is unqualified. |
 | Rooms and outputs | Shared VDO.Ninja rooms, director controls, WHIP and mux outputs exist. ARM has bounded direct WebRTC and UDP evidence; amd64 evidence for other protocols does not qualify ARM. |
-| Settings and lifecycle | ARM exercises persistence, idle relaunch, Stop/restart and Quit. Earlier intermittent first-save external URL loss remains unresolved. Windows/macOS regression workflows still require those systems. |
+| Settings and lifecycle | ARM exercises persistence, idle relaunch, Stop/restart and Quit. A reentrant Secret Service save fix has passed ten fresh save/relaunch cycles; the earlier failures remain recorded. See the desktop-feature checkpoint below for final-artifact results. Windows/macOS regression workflows still require those systems. |
 | Packaging and updates | ARM/amd64 assets are separated. Portable Ubuntu 22.04/24.04 userland results share one Jetson kernel; Pi and other distributions need qualification. |
 | Crash diagnostics | Windows has minidumps. Linux has bounded logs and issue export, without equivalent in-app crash dump collection. |
 
@@ -365,3 +365,49 @@ phases, saved-settings relaunch and cleanup on both Ubuntu userlands. The
 thirty-minute run was not repeated on this successor; native Wayland remains
 unqualified on this ARM machine. The source archive contains its exact build
 sources and observers; final documentation and evidence are recorded afterward.
+
+## Linux desktop features checkpoint
+
+The shared Linux application now supports X11 entire-desktop and RandR-monitor
+capture, Wayland monitor selection, crop margins, cursor inclusion, optional
+portal restore tokens, opt-in global Start/Stop/mute/hold-to-talk shortcuts, and
+explicit audio reconnection while video stays live. New encoder backends remain
+experimental and never replace an explicit selection with software silently.
+The portable FFmpeg build includes VAAPI and V4L2 M2M; availability is not an
+encoding qualification.
+
+[Installation and controls](linux-install.md) describe the supported package
+contract and recovery actions. The Linux packaged-media CI workflow builds
+separate native amd64/arm64 DEBs and runs GUI/received-media workflows on owned
+X11 desktops. It uploads development artifacts without publishing releases.
+[Desktop-feature evidence](../native-qt/qa/linux-desktop-features.json) records
+exact packages, successful workflows, failed attempts and remaining qualification.
+Existing x86 and ARM ledgers remain intact; this checkpoint does not waive
+physical Wayland, GNOME cancellation, transparent-producer/OBS alpha, native
+PipeWire application-audio timing, real camera/microphone, GPU, 60fps, long
+endurance or Windows/macOS regression gaps.
+
+The desktop-feature archive is
+`game-capture-0.2.65~linux.2-arm64-4346498bf870-ed17c1c38218-portable.tar.gz`
+in `native-qt/dist/` (SHA-256
+`b123d9844735c8e0760514f0abc81526b23b6edad80e43fec81efb2130c54dad`).
+Its packaged application passed the complete desktop-feature GUI/media workflow
+on Ubuntu 22.04.5 and owned Ubuntu 24.04 ARM64 userland: moving video, mixed
+audio, shortcuts, hold-to-talk release during Stop, explicit microphone removal
+and reconnection, crop/cursor, desktop/monitor capture, unavailable hardware
+refusal followed by software recovery, selected-process output moves, settings
+relaunch and cleanup. An owned GNOME Wayland workflow independently decoded
+window capture before/after crop, exercised real Cancel/retry, restored permission
+after Stop and after app relaunch, and verified ordinary controls remained usable
+when the shortcut portal was unavailable. Ten fresh destination save/relaunch
+cycles also passed. These are bounded software-encoding workflows at 30fps;
+they do not qualify hardware encoding, physical devices or all desktops.
+
+The same final archive also passed native Chromium WebRTC reception through
+seed `20261020`: 384 seeded requests, 12 framing cases, 128 concurrent requests
+and 48 held connections, followed by received-media, mute, viewer reconnect,
+Stop/restart and idle relaunch checks. A separate 30-second observation within
+that workflow decoded 29.73 fps at 1280x720/30, with a 36 ms p95 media gap and
+50 ms maximum gap. Publisher CPU averaged 144.7% (about 1.45 CPU cores). This
+is a simple moving barcode on the same Jetson, not game or WAN qualification
+and not a claim of further speedup over the earlier optimization.

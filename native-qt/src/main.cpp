@@ -1,4 +1,4 @@
-﻿#include <QApplication>
+#include <QApplication>
 #include <QIcon>
 #include <QSettings>
 #include <QFileInfo>
@@ -825,6 +825,12 @@ int main(int argc, char *argv[]) {
             encoderOverride.forceFfmpegNvenc = true;
             spdlog::warn("[Main] External FFmpeg NVENC mode is experimental; prefer --video-encoder=nvenc for production.");
             hasVideoConfigOverride = true;
+#ifdef __linux__
+        } else if (normalized == "vaapi" || normalized == "v4l2") {
+            encoderOverride.preferredHardware = normalized == "vaapi" ? versus::video::HardwareEncoder::VAAPI : versus::video::HardwareEncoder::V4L2;
+            encoderOverride.explicitEncoderSelection = true;
+            hasVideoConfigOverride = true;
+#endif
         } else if (normalized == "qsv" || normalized == "quicksync" || normalized == "intel") {
             encoderOverride.preferredHardware = versus::video::HardwareEncoder::QuickSync;
             encoderOverride.explicitEncoderSelection = true;

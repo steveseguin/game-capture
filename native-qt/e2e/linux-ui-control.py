@@ -303,7 +303,11 @@ def main():
         else:
             raise RuntimeError("Unsupported desktop for keyboard combo fixture")
         time.sleep(.25); pump()
-        if not any(node.get_role_name() == "combo box" and node.get_name() == selected for node in nodes(app)):
+        selected_rows = [node.get_name() for node in nodes(combo) if node.get_role_name() == "list item"
+                         and node.get_state_set().contains(Atspi.StateType.SELECTED)]
+        # A combo with an explicit accessible label (for example Audio app)
+        # keeps that label after changing value. Verify its actual selection.
+        if combo.get_name() != selected and selected_rows != [selected]:
             raise RuntimeError("Combo did not select the requested value; combo names=" + repr([node.get_name() for node in nodes(app) if node.get_role_name() == "combo box"]) + "; rows=" + repr([node.get_name() for node in rows]))
     elif args.command in ["text", "read-text", "reveal", "paste", "copy"]:
         matches = [node for node in nodes(app) if node.get_role_name() in ["text", "password text"] and node.get_name() == args.name]

@@ -284,6 +284,16 @@ class MainWindow : public QMainWindow {
     bool forceQuitRequested_ = false;
     bool minimizeToTrayOnClose_ = true;
     bool loadingPersistedSettings_ = false;
+    bool savingPersistedSettings_ = false;
+    bool saveAgain_ = false;
+#ifdef __linux__
+    void applyDesktopCaptureOptions();
+    QCheckBox *globalShortcutsCheck_ = nullptr;
+    QCheckBox *showCursorCheck_ = nullptr;
+    QCheckBox *rememberSourceCheck_ = nullptr;
+    QSpinBox *cropMargins_[4] = {};
+    QPushButton *retryAudioButton_ = nullptr;
+#endif
     bool roomModeLqPreference_ = true;
     bool configControlsEnabled_ = true;
     QString previousSourceMode_ = QStringLiteral("window");

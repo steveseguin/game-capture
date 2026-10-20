@@ -167,13 +167,21 @@ def main():
         while time.monotonic() < deadline:
             target = next((node for node in dialog_nodes() if node.get_role_name() == "list item" and
                            node.get_name().startswith(args.title)), None)
-            if target and any(target.get_parent().get_child_at_index(i).get_state_set().contains(Atspi.StateType.FOCUSED)
-                              for i in range(target.get_parent().get_child_count())):
-                break
+            if target:
+                if any(target.get_parent().get_child_at_index(i).get_state_set().contains(Atspi.StateType.FOCUSED)
+                       for i in range(target.get_parent().get_child_count())):
+                    break
+                # Persistent permission adds a checkbox that can initially own
+                # focus. Tab only while the real portal dialog is active.
+                if any(n.get_role_name() == 'frame' and n.get_state_set().contains(Atspi.StateType.ACTIVE)
+                       for n in dialog_nodes()):
+                    send(['TAB'])
             target = None
             time.sleep(0.2)
         if target is None:
-            raise RuntimeError("Owned fixture is absent from the real portal picker")
+            result['dialog'] = [{'role': n.get_role_name(), 'name': n.get_name(),
+                'states': [str(x.value_nick) for x in n.get_state_set().get_states()]} for n in dialog_nodes()]
+            raise RuntimeError("Owned fixture is absent or cannot be focused in the real portal picker")
         if args.observe == 'open':
             result['passed'] = True
             return

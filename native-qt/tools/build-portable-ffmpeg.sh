@@ -35,6 +35,6 @@ cd "ffmpeg-$version"
     --disable-debug --disable-doc --disable-ffplay --disable-autodetect \
     --enable-gpl --enable-version3 --enable-libx264 --enable-libx265 \
     --enable-libvpx --enable-libaom --enable-libopus --enable-libsrt \
-    --enable-librist --enable-openssl --enable-zlib
+    --enable-librist --enable-openssl --enable-zlib --enable-vaapi --enable-libdrm --enable-v4l2-m2m
 make -j "$jobs"
 make install

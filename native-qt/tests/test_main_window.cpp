@@ -1,6 +1,11 @@
 #include <QtTest/QtTest>
+#if __has_include(<QtTest/qtestwheel.h>)
 #include <QtTest/qtestwheel.h>
+#define GC_QT_WHEEL_HELPER 1
+#endif
 #include <QAccessible>
+#include "versus/platform/capabilities.h"
+#include "versus/media_defaults.h"
 #include <QAction>
 #include <QApplication>
 #include <QTemporaryDir>
@@ -103,10 +108,19 @@ bool sendWheelEvent(QWidget *target, int angleDeltaY) {
 
     const QPoint localCenter = target->rect().center();
     const QPoint windowPosition = target->mapTo(target->window(), localCenter);
-    QTest::wheelEvent(
-        targetWindow,
-        QPointF(windowPosition),
-        QPoint(0, angleDeltaY));
+#ifdef GC_QT_WHEEL_HELPER
+    QTest::wheelEvent(targetWindow, QPointF(windowPosition), QPoint(0, angleDeltaY));
+#else
+    // Qt 6.2/6.4 do not ship qtestwheel.h. Mark simulated platform input
+    // spontaneous so QApplication propagates ignored wheel events to parents.
+    QWheelEvent event(QPointF(localCenter), QPointF(target->mapToGlobal(localCenter)),
+                      QPoint(), QPoint(0, angleDeltaY), Qt::NoButton,
+                      Qt::NoModifier, Qt::NoScrollPhase, false);
+    QSpontaneKeyEvent::setSpontaneous(&event);
+    qApp->notify(target, &event); // sendEvent would clear the spontaneous flag.
+
+    QCoreApplication::processEvents();
+#endif
     return true;
 }
 
@@ -471,7 +485,7 @@ void TestMainWindow::testResetDefaultsRestoresFreshInstallState() {
     QCOMPARE(codec->currentData().toString(), QString("h264"));
     QCOMPARE(encoder->currentData().toString(), QString("auto"));
     QCOMPARE(resolution->currentData().toString(), QString("1280x720"));
-    QCOMPARE(fps->currentData().toInt(), 60);
+    QCOMPARE(fps->currentData().toInt(), versus::defaults::VideoFps);
     QCOMPARE(viewerLimit->value(), 10);
     QVERIFY(!remoteControl->isChecked());
     QCOMPARE(remoteToken->text(), QString());
@@ -572,7 +586,7 @@ void TestMainWindow::testStreamingDefaultsAndSavedChoices() {
     auto *audio = window_->findChild<QSpinBox *>("audioBitrateSpin");
     auto *aac = window_->findChild<QSpinBox *>("aacBitrateSpin");
     QVERIFY(fps && bitrate && encoder && audio && aac);
-    QCOMPARE(fps->currentData().toInt(), 60);
+    QCOMPARE(fps->currentData().toInt(), versus::defaults::VideoFps);
     QCOMPARE(bitrate->currentData().toInt(), 4000);
     QCOMPARE(encoder->currentData().toString(), QString("auto"));
     QCOMPARE(audio->value(), 128);
@@ -645,7 +659,7 @@ void TestMainWindow::testVideoSourceModeControl() {
     QVERIFY(audioCombo != nullptr);
     QVERIFY(sourceCombo->findData("window") >= 0);
     QVERIFY(sourceCombo->findData("camera") >= 0);
-    QVERIFY(sourceCombo->findData("spout") >= 0);
+    QCOMPARE(sourceCombo->findData("spout") >= 0, versus::platform::capabilities().spoutCapture);
     QCOMPARE(sourceCombo->currentData().toString(), QString("window"));
 
     const int selectedWindowAudioIndex = audioCombo->findData("selected-window");
@@ -653,6 +667,7 @@ void TestMainWindow::testVideoSourceModeControl() {
     audioCombo->setCurrentIndex(selectedWindowAudioIndex);
     QCOMPARE(audioCombo->currentData().toString(), QString("selected-window"));
 
+    if (versus::platform::capabilities().spoutCapture) {
     const int spoutIndex = sourceCombo->findData("spout");
     QVERIFY(spoutIndex >= 0);
     QVERIFY(sourceCombo->itemText(spoutIndex).contains("avatar", Qt::CaseInsensitive));
@@ -662,6 +677,7 @@ void TestMainWindow::testVideoSourceModeControl() {
     sourceCombo->setCurrentIndex(spoutIndex);
     QCOMPARE(sourceCombo->currentData().toString(), QString("spout"));
     QCOMPARE(audioCombo->currentData().toString(), QString("none"));
+    }
 
     const int cameraIndex = sourceCombo->findData("camera");
     QVERIFY(cameraIndex >= 0);
@@ -733,6 +749,7 @@ void TestMainWindow::testPersistedCameraOptions() {
 }
 
 void TestMainWindow::testPersistedSpoutModeUsesNoAudio() {
+    if (!versus::platform::capabilities().spoutCapture) QSKIP("Spout2 is a Windows capture backend; Linux transparent-producer parity remains unqualified.");
     delete window_;
     window_ = nullptr;
 
@@ -782,6 +799,14 @@ void TestMainWindow::testMissingSavedMicrophoneDisablesCapture() {
     settings.setValue("audio/microphoneDeviceId", "disconnected-fixture-device");
     settings.sync();
     window_ = new versus::ui::MainWindow(nullptr);
+#ifdef __linux__
+    // Linux preserves an unavailable explicit identity, preventing a later
+    // automatic default-device substitution when it reappears.
+    auto *input = window_->findChild<QComboBox*>("microphoneDeviceSelect");
+    QCOMPARE(input->currentData().toString(), QString("disconnected-fixture-device"));
+    QVERIFY(input->currentText().contains("unavailable"));
+    return;
+#endif
     QCOMPARE(window_->findChild<QComboBox*>("microphoneDeviceSelect")->currentData().toString(), QString("none"));
     QCOMPARE(window_->findChild<QComboBox*>("audioSourceSelect")->currentData().toString(), QString("none"));
     QVERIFY(!window_->findChild<QCheckBox*>("includeMicrophoneCheck")->isChecked());
@@ -789,6 +814,7 @@ void TestMainWindow::testMissingSavedMicrophoneDisablesCapture() {
 }
 
 void TestMainWindow::testSpoutSelectionPreviewMessaging() {
+    if (!versus::platform::capabilities().spoutCapture) QSKIP("Spout2 is a Windows capture backend; Linux transparent-producer parity remains unqualified.");
     auto *sourceCombo = window_->findChild<QComboBox*>("sourceModeSelect");
     auto *windowList = window_->findChild<versus::ui::WindowListWidget*>();
     auto *preview = window_->findChild<QLabel*>("selectedPreview");
@@ -1580,6 +1606,7 @@ void TestMainWindow::testRoomQualityH265LatentAlphaEffectiveUi_data() {
 }
 
 void TestMainWindow::testRoomQualityH265LatentAlphaEffectiveUi() {
+    if (!versus::platform::capabilities().spoutCapture) QSKIP("Spout2 is a Windows capture backend; Linux transparent-producer parity remains unqualified.");
     QFETCH(QString, backgroundValue);
     QFETCH(bool, expectedColorEnabled);
     QFETCH(int, expectedBackgroundMode);
@@ -2339,6 +2366,14 @@ void TestMainWindow::testFfmpegAdvancedControls() {
     QVERIFY(!pathInput->isEnabled());
     QVERIFY(!optionsInput->isEnabled());
 
+#ifdef __linux__
+    auto *codec = window_->findChild<QComboBox*>("codecSelect");
+    codec->setCurrentIndex(codec->findData("vp9"));
+    QVERIFY(pathInput->isEnabled()); QVERIFY(optionsInput->isEnabled());
+    codec->setCurrentIndex(codec->findData("h264"));
+    QVERIFY(!optionsInput->isEnabled());
+    return;
+#endif
     auto combos = window_->findChildren<QComboBox*>();
     QComboBox *encoderCombo = nullptr;
     int ffmpegIndex = -1;
@@ -2377,6 +2412,16 @@ void TestMainWindow::testCodecControls() {
     QVERIFY(alphaCheck->isEnabled());
     QVERIFY(alphaCheck->text().contains("H.264"));
 
+#ifdef __linux__
+    QVERIFY(encoderCombo->findData("vaapi") >= 0);
+    QVERIFY(encoderCombo->findData("v4l2") >= 0);
+    encoderCombo->setCurrentIndex(encoderCombo->findData("software"));
+    codecCombo->setCurrentIndex(codecCombo->findData("av1"));
+    QVERIFY(ffmpegPathInput->isEnabled());
+    encoderCombo->setCurrentIndex(encoderCombo->findData("v4l2"));
+    QCOMPARE(codecCombo->currentData().toString(), QString("h264"));
+    return;
+#endif
     const int qsvIndex = encoderCombo->findData("qsv");
     QVERIFY(qsvIndex >= 0);
     encoderCombo->setCurrentIndex(qsvIndex);
@@ -2434,7 +2479,15 @@ void TestMainWindow::testFfmpegAlphaStatusMessaging() {
     alphaCheck->setChecked(true);
 
     QTRY_VERIFY_WITH_TIMEOUT(!statusLabel->text().startsWith("Checking"), 8000);
+#ifdef __linux__
+    QVERIFY(statusLabel->text().contains("Leave the path and options empty"));
+    QVERIFY(statusLabel->text().contains("VP9/AV1"));
+    // Default Linux encoding is in-process; no helper probe should start.
+    QVERIFY(!window_->findChild<QLineEdit*>("ffmpegPathInput")->text().size());
+    return;
+#else
     QVERIFY(statusLabel->text().contains("ffmpeg.exe", Qt::CaseInsensitive));
+#endif
     QVERIFY(statusLabel->text().contains("VP9 alpha", Qt::CaseInsensitive) ||
             statusLabel->text().contains("alpha mask", Qt::CaseInsensitive));
     QVERIFY(statusLabel->text().contains("FFmpeg/libvpx", Qt::CaseInsensitive) ||

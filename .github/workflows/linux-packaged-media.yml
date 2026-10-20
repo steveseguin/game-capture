@@ -1,0 +1,55 @@
+name: Linux packaged media
+on:
+  workflow_dispatch:
+  push:
+    branches: [linux-parity]
+    paths:
+      - 'native-qt/**'
+      - '.github/workflows/linux-packaged-media.yml'
+permissions:
+  contents: read
+concurrency:
+  group: linux-packaged-media-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  packaged-media:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and observer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build git pkg-config dpkg-dev qt6-base-dev qt6-wayland libavcodec-dev libavutil-dev libswscale-dev libpipewire-0.3-dev libspa-0.2-dev libpulse-dev libsecret-1-dev libxcb-composite0-dev libxcb-damage0-dev libxcb-xfixes0-dev libxcb-randr0-dev ffmpeg ca-certificates python3-numpy pulseaudio pulseaudio-utils
+          sed '/^#/d; /^$/d' native-qt/qa/linux-installed-desktop-packages.txt | xargs sudo apt-get install -y --no-install-recommends
+      - name: Build and packaging gates
+        run: |
+          cmake -S native-qt -B native-qt/build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DVERSUS_BUILD_TESTS=ON
+          cmake --build native-qt/build-linux --target game-capture test_update_checker test_main_window test_window_capture -j 2
+          ctest --test-dir native-qt/build-linux -R '^(UpdateCheckerTest|MainWindowTest|WindowCaptureTest)$' --output-on-failure
+          python3 native-qt/qa/package-linux-gate.py
+          python3 native-qt/qa/package-linux.py --build native-qt/build-linux
+      - name: Packaged GUI and independently decoded media
+        run: |
+          bundle=$(find native-qt/dist -mindepth 1 -maxdepth 1 -type d -name 'game-capture-*')
+          test -n "$bundle"
+          manifest=$(sha256sum "$bundle/release-artifact-manifest.json" | cut -d ' ' -f 1)
+          xvfb-run -a -s '-screen 0 1600x1000x24' python3 native-qt/e2e/linux-private-desktop.py --reports=native-qt/qa/reports/ci-desktop --window-manager -- python3 native-qt/e2e/linux-arm64-bringup.py --publisher="$bundle/usr/bin/game-capture" --manifest-sha256="$manifest" --reports=native-qt/qa/reports/ci-media --desktop-features
+          xvfb-run -a -s '-screen 0 1600x1000x24' python3 native-qt/e2e/linux-output-profiles.py --publisher="$bundle/usr/bin/game-capture" --manifest-sha256="$manifest" --reports=native-qt/qa/reports/ci-profiles --first-save-cycles=10
+      - name: Preserve packages and result summaries
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-development-${{ matrix.runner }}
+          retention-days: 7
+          path: |
+            native-qt/dist/*.deb
+            native-qt/dist/*source*.tar.gz
+            native-qt/dist/*/release-artifact-manifest.json
+            native-qt/qa/reports/ci-*/**/results.json

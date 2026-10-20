@@ -46,6 +46,8 @@ def main():
                         help='Bounded same-host decoded-frame and publisher CPU observation (10..120 seconds)')
     parser.add_argument('--fuzz-seed', type=int,
                         help='Exercise bounded seeded malformed local-control requests while receiving media')
+    parser.add_argument('--unavailable-encoders', action='store_true', help='Exercise explicit VAAPI/V4L2 refusal on a machine known to lack these encoders')
+    parser.add_argument('--desktop-features', action='store_true', help='Exercise shortcuts, live audio reconnection, crop, cursor and desktop capture')
     parser.add_argument('--failure-recovery', action='store_true',
                         help='Also exercise output-helper death/stall and source-window loss')
     parser.add_argument('--webrtc', action='store_true', help='Receive through VDO.Ninja in a native Chromium browser')
@@ -55,6 +57,8 @@ def main():
                         help='WebRTC continuous reception, statistics every 5 s, decoded content/audio every 60 s')
     args = parser.parse_args()
     assert 0 <= args.endurance_seconds <= 3600
+    assert not args.unavailable_encoders or args.desktop_features
+    assert not args.desktop_features or (not args.webrtc and not args.failure_recovery)
     assert not args.webrtc or (args.browser and not args.failure_recovery)
     assert not args.endurance_seconds or args.webrtc
     assert args.performance_seconds == 0 or 10 <= args.performance_seconds <= 120
@@ -94,6 +98,7 @@ def main():
     audio_baseline = set()
     direct = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     env = dict(os.environ)
+    if args.unavailable_encoders: env['GAME_CAPTURE_VAAPI_DEVICE']='/dev/dri/game-capture-owned-missing-device'
     observer = None
     def observer_reply(timeout=90):
         with selectors.DefaultSelector() as selector:
@@ -121,7 +126,7 @@ def main():
             time.sleep(.15)
         raise RuntimeError(message)
     def ui(*values):
-        return subprocess.check_output([sys.executable, str(helpers/'linux-ui-control.py'), str(app.pid), *values],
+        return subprocess.check_output([sys.executable, str(report/'linux-ui-control.py'), str(app.pid), *values],
                                        env=env, text=True, timeout=20)
     def rows(): return json.loads(ui('dump'))
     def bitrate_row_visible(expected, hidden):
@@ -138,7 +143,7 @@ def main():
         try:
             fields = Path(f'/proc/{pid}/stat').read_text().rsplit(') ',1)[1].split()
             return int(fields[1]), fields[19]  # parent PID, start time ticks
-        except FileNotFoundError: return None
+        except (FileNotFoundError, ProcessLookupError): return None
     def same_process(pid, identity):
         current = process_identity(pid)
         # An orphaned helper keeps its start time even if its parent changes.
@@ -171,6 +176,9 @@ def main():
                 ui('reveal', 'Stream password')
                 assert json.loads(ui('read-text', 'Stream password')) == 'false', 'Saved fixture password missing'
                 ui('reveal', 'Stream password')
+            if args.desktop_features:
+                for name in ('Enable global shortcuts','Remember Wayland source'):
+                    assert any(r['name']==name and 'checked' in r['states'] for r in controls), 'Capture preference missing: '+name
             result['settingsRestoredWithoutCapture'] = True
         else:
             ui('press', 'Audio encoding')
@@ -197,12 +205,22 @@ def main():
             result['microphoneLabel'] = next(r['name'] for r in rows()
                 if r['role']=='combo box' and r['name'].startswith('ARMBringupMicrophone'))
         ui('source', 'Game Capture Installed Source'); screenshot(label+'-ready')
+    def source_window_id():
+        ids = subprocess.check_output(['xdotool','search','--onlyvisible','--name','^Game Capture Installed Source$'],text=True).split()
+        assert len(ids) == 1
+        return ids[0]
+    def focus_source():
+        subprocess.run(['xdotool','windowactivate','--sync',source_window_id()],check=True,timeout=5)
+    def shortcut(key, kind='key'):
+        focus_source()
+        subprocess.run(['xdotool',kind,'ctrl+shift+'+key],check=True,timeout=5)
     def stop():
         def rss_kib():
             return int(next(line.split()[1] for line in Path(f'/proc/{app.pid}/status').read_text().splitlines()
                             if line.startswith('VmRSS:')))
         before_rss = rss_kib(); started = time.monotonic()
-        ui('press', 'Stop streaming')
+        if args.desktop_features: shortcut('F8')
+        else: ui('press', 'Stop streaming')
         wait(lambda:not diagnostics()['app']['capturing'], 'Stop did not retire capture')
         idle()
         # The fixture's remapped microphone itself owns a monitor stream.
@@ -233,7 +251,7 @@ def main():
         helper_pids[pid] = identity
         os.kill(pid, sig)
         return pid, d
-    def receive(label, microphone=True):
+    def receive(label, microphone=True, cursor=None):
         if args.webrtc:
             phase = browser_command('observe', label=label, microphone=microphone)
             phase.update(name=label, microphoneExpected=microphone, diagnostics=diagnostics())
@@ -282,6 +300,11 @@ def main():
             '-map','0:a:0','-vn','-ac','2','-ar','48000','-f','f32le',str(pcm)], check=True, timeout=30)
         frames = np.fromfile(raw, dtype=np.uint8).reshape(-1,90,160,3)
         assert len(frames)>=90, 'Insufficient decoded moving video'
+        if cursor is not None:
+            yellow = (frames[:,:,:,0] > 180) & (frames[:,:,:,1] > 170) & (frames[:,:,:,2] < 80)
+            counts = yellow.sum(axis=(1,2))
+            assert bool((counts > 4).mean() > .8) == cursor, 'Received cursor visibility did not match the GUI'
+            result.setdefault('cursorObservations', {})[label] = {'expected':cursor, 'framesWithCursor':int((counts > 4).sum()), 'frames':len(frames)}
         identities = []
         for frame in frames:
             row = frame[45].astype(int)
@@ -408,7 +431,7 @@ def main():
                     f'aevalsrc=0.15*sin(2*PI*{frequencies[0]}*t)|0.15*sin(2*PI*{frequencies[1]}*t):s=48000',
                     '-f','pulse','-device',sink,'ARM bringup owned tone'],sink+'-tone')
             source = start([sys.executable,str(helpers/'linux-installed-desktop.py'),'--source',
-                            '--source-size='+args.source_size],'source')
+                            '--source-size='+args.source_size, *(['--cursor-fixture'] if args.desktop_features else [])],'source')
             with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
                 sock.bind(('127.0.0.1',0)); port = sock.getsockname()[1]
             destination = 'gcarm'+uuid.uuid4().hex if args.webrtc else f'udp://127.0.0.1:{port}'
@@ -417,7 +440,10 @@ def main():
             audio_baseline = {s['index'] for s in baseline_streams}
             result['fixtureAudioBaseline'] = baseline_streams
             time.sleep(1); launch('initial')
-            ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Go live failed')
+            if args.desktop_features: ui('press','Enable global shortcuts')
+            if args.desktop_features: shortcut('F8')
+            else: ui('press','Go live')
+            wait(lambda:diagnostics()['app']['live'],'Go live failed')
             if args.webrtc:
                 log = (report/'observer.log').open('w'); logs.append(log)
                 observer = subprocess.Popen([args.node, str(helpers/'linux-webrtc-observer.js'),
@@ -432,11 +458,62 @@ def main():
                 assert diagnostics()['app']['live'], 'Malformed control traffic interrupted publication'
                 receive('after-fuzz')
                 save()
-            ui('press','Mute microphone'); time.sleep(1)
+            if args.desktop_features: shortcut('F9')
+            else: ui('press','Mute microphone')
+            time.sleep(1)
             assert diagnostics()['audio']['microphone_muted']
             receive('muted',microphone=False)
-            ui('press','Unmute microphone'); time.sleep(1)
+            if args.desktop_features:
+                shortcut('F10','keydown'); time.sleep(1)
+                assert not diagnostics()['audio']['microphone_muted']
+                receive('push-to-talk-held')
+                # Release during Stop as well as in an ordinary live session.
+                # Start/stop controls may temporarily disable the mute button.
+                shortcut('F8'); shortcut('F10','keyup')
+                wait(lambda:not diagnostics()['app']['capturing'],'Stop while hold-to-talk failed')
+                idle(); assert diagnostics()['audio']['microphone_muted']
+                shortcut('F8'); wait(lambda:diagnostics()['app']['live'],'Restart after hold-to-talk failed')
+                receive('push-to-talk-released',microphone=False)
+                shortcut('F9')
+            else: ui('press','Unmute microphone')
+            time.sleep(1)
             receive('unmuted')
+            if args.desktop_features:
+                before = {s['index'] for s in json.loads(pactl('--format=json','list','source-outputs'))} - audio_baseline
+                ui('press','Reconnect selected audio')
+                wait(lambda: not diagnostics()['app'].get('audio_reconnecting', False) and diagnostics()['audio']['additional_level_rms'] > .02 and diagnostics()['app']['primary_audio_capturing'] and diagnostics()['app']['microphone_capturing'] and
+                     not before.intersection({s['index'] for s in json.loads(pactl('--format=json','list','source-outputs'))}),
+                     'Selected audio was not reopened')
+                assert diagnostics()['app']['live']
+                receive('audio-reconnected')
+                result['audioReconnectKeptVideoLive'] = True
+                # Remove only our virtual input, leaving the video/source and
+                # both tone producers running. Recreate the same explicit ID.
+                # PulseAudio 15's JSON module listing omits module indexes.
+                remap = next(line.split()[0] for line in pactl('list','short','modules').splitlines()
+                             if 'module-remap-source' in line and 'source_name=arm_input' in line)
+                fixture_streams = {x['index'] for x in json.loads(pactl('--format=json','list','source-outputs'))
+                                   if str(x.get('owner_module')) == remap}
+                assert fixture_streams <= audio_baseline
+                audio_baseline.difference_update(fixture_streams)
+                pactl('unload-module',remap)
+                wait(lambda:not diagnostics()['app']['microphone_capturing'], 'Removed microphone remained active')
+                assert diagnostics()['app']['live']
+                receive('microphone-removed',microphone=False)
+                remap = pactl('load-module','module-remap-source','master=arm_mic.monitor','source_name=arm_input',
+                              'source_properties=device.description=ARMBringupMicrophone')
+                fixture_streams = wait(lambda:{x['index'] for x in json.loads(pactl('--format=json','list','source-outputs'))
+                                               if str(x.get('owner_module')) == remap}, 'Recreated fixture monitor absent')
+                audio_baseline.update(fixture_streams)
+                result['recreatedFixtureAudioBaseline'] = sorted(audio_baseline)
+                time.sleep(2)
+                assert not diagnostics()['app']['microphone_capturing'], 'Input reopened without an explicit action'
+                ui('press','Reconnect selected audio')
+                wait(lambda:not diagnostics()['app'].get('audio_reconnecting',False) and
+                     diagnostics()['app']['microphone_capturing'] and diagnostics()['audio']['additional_level_rms'] > .02,
+                     'Recreated explicit microphone did not reconnect')
+                receive('microphone-restored')
+                result['explicitMicrophoneLossRecovery'] = True
             if args.webrtc:
                 browser_command('connect'); receive('viewer-reconnected')
                 endurance()
@@ -465,7 +542,7 @@ def main():
                      'Lost window left output helpers running')
                 helper_pids.clear()
                 failure_ui = rows()
-                assert any('Window capture stopped' in r['name'] for r in failure_ui), 'No visible source-loss explanation'
+                assert any('Capture source is unavailable' in r['name'] or 'Window capture stopped' in r['name'] for r in failure_ui), 'No visible source-loss explanation'
                 (report/'source-loss-ui.json').write_text(json.dumps(failure_ui,indent=2)+'\n')
                 screenshot('source-loss')
                 result['sourceLossRetiredCaptureAudioAndOutput'] = True
@@ -483,7 +560,72 @@ def main():
                 receive('replacement-source')
             stop(); ui('press','Go live'); wait(lambda:diagnostics()['app']['live'],'Restart failed')
             if args.webrtc: browser_command('connect')
-            receive('restarted'); stop(); quit_app()
+            receive('restarted'); stop()
+            if args.desktop_features:
+                for edge in ('left','top','right','bottom'): ui('value','Crop '+edge,'10')
+                ui('press','Show cursor'); ui('press','Remember Wayland source')
+                shortcut('F8'); wait(lambda:diagnostics()['app']['live'],'Cropped start failed')
+                expected = tuple(int(x)-20 for x in args.source_size.split('x'))
+                assert (diagnostics()['source']['width'],diagnostics()['source']['height']) == expected
+                subprocess.run(['xdotool','mousemove','--window',source_window_id(),'20','20'],check=True)
+                receive('cropped-cursor',cursor=True); stop()
+                ui('press','Show cursor')
+                shortcut('F8'); wait(lambda:diagnostics()['app']['live'],'Cursor-off start failed')
+                receive('cropped-no-cursor',cursor=False); stop()
+                ui('value','Crop left','8190'); shortcut('F8'); time.sleep(5); idle()
+                assert any('Crop removes' in row['name'] for row in rows()), 'Missing invalid-crop error'
+                result['invalidCropRejected'] = True
+                for edge in ('left','top','right','bottom'): ui('value','Crop '+edge,'0')
+                ui('source','Entire desktop (all monitors)')
+                width,height = subprocess.check_output(['xdotool','getdisplaygeometry'],text=True).split()
+                subprocess.run(['xdotool','windowsize',source_window_id(),width,height],check=True)
+                subprocess.run(['xdotool','windowmove',source_window_id(),'0','0'],check=True)
+                shortcut('F8'); wait(lambda:diagnostics()['app']['live'],'Desktop capture failed')
+                assert diagnostics()['source']['source_id'] == 'x11:desktop'
+                assert (diagnostics()['source']['width'],diagnostics()['source']['height']) == (int(width),int(height))
+                receive('entire-desktop',cursor=False); stop()
+                # The owned Xvfb server advertises one RandR monitor.
+                monitors = [r['name'] for r in rows() if r['role']=='list item' and r['name'].startswith('Monitor: ')]
+                assert len(monitors)==1, 'Expected one owned RandR monitor'
+                ui('source',monitors[0]); shortcut('F8')
+                wait(lambda:diagnostics()['app']['live'],'Monitor capture failed')
+                assert diagnostics()['source']['source_id'].startswith('x11:monitor:')
+                receive('selected-monitor',cursor=False); stop()
+                if args.unavailable_encoders:
+                    previous = 'Software (x264 / VP9 / AV1 / HEVC)'
+                    for encoder in ('VAAPI (Intel/AMD, experimental)', 'V4L2 M2M (supported devices, experimental)'):
+                        ui('choose',previous,encoder); previous=encoder
+                        shortcut('F8')
+                        wait(lambda:any(r['name']=='Go live' and 'sensitive' in r['states'] for r in rows()), 'Hardware failure did not restore controls')
+                        idle()
+                        assert any('encoder' in r['name'].lower() and ('fail' in r['name'].lower() or 'unavailable' in r['name'].lower() or 'could not start' in r['name'].lower()) for r in rows()), 'Hardware failure was not visible'
+                        wait(lambda:{s['index'] for s in json.loads(pactl('--format=json','list','source-outputs'))}==audio_baseline, 'Failed hardware start leaked audio')
+                    ui('choose',previous,'Software (x264 / VP9 / AV1 / HEVC)')
+                    shortcut('F8'); wait(lambda:diagnostics()['app']['live'],'Software recovery after hardware failure failed')
+                    receive('software-after-unavailable-hardware',cursor=False); stop()
+                    result['unavailableHardwareRefusedWithoutFallback'] = True
+                # Route the explicitly selected owned playback process to a
+                # different output while its video and microphone remain live.
+                ui('choose','System audio (all apps)','Selected window/app audio')
+                playback = next(x for x in json.loads(pactl('--format=json','list','sink-inputs'))
+                                if x['sink'] == next(y['index'] for y in json.loads(pactl('--format=json','list','sinks')) if y['name']=='arm_system'))
+                pid = playback['properties']['application.process.id']
+                choices = [r['name'] for r in rows() if r['role']=='list item' and '(PID '+pid+')' in r['name']]
+                assert len(choices)==1, 'Owned audio process absent or ambiguous'
+                ui('choose','Selected X11 window (automatic)',choices[0])
+                shortcut('F8'); wait(lambda:diagnostics()['app']['live'],'Selected-app start failed')
+                receive('selected-app-before-move',cursor=False)
+                moved_sink = pactl('load-module','module-null-sink','sink_name=arm_moved','rate=48000','channels=2')
+                pactl('move-sink-input',str(playback['index']),'arm_moved')
+                time.sleep(3)
+                assert diagnostics()['app']['live'] and diagnostics()['app']['primary_audio_capturing']
+                receive('selected-app-after-move',cursor=False); stop()
+                pactl('move-sink-input',str(playback['index']),'arm_system')
+                pactl('unload-module',moved_sink)
+                ui('choose','Selected window/app audio','System audio (all apps)')
+                result['selectedAppOutputMovePassed'] = True
+                result['desktopControlsPassed'] = True
+            quit_app()
             launch('relaunched',restore=True); quit_app()
             if observer:
                 browser_command('close')

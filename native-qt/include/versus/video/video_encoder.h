@@ -28,7 +28,9 @@ enum class HardwareEncoder {
     NVENC,
     QuickSync,
     AMF,
-    VideoToolbox
+    VideoToolbox,
+    VAAPI,
+    V4L2
 };
 
 enum class AlphaBackgroundMode {

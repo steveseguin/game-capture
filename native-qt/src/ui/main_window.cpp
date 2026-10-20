@@ -1,4 +1,4 @@
-﻿#include "versus/ui/main_window.h"
+#include "versus/ui/main_window.h"
 
 #include "versus/ui/update_checker.h"
 #include "versus/video/ffmpeg_bundle_policy.h"
@@ -6,6 +6,9 @@
 #if defined(__APPLE__) || defined(__linux__)
 #include "versus/platform/app_paths.h"
 #include "versus/platform/output_profiles.h"
+#endif
+#ifdef __linux__
+#include "versus/platform/linux_shortcuts.h"
 #endif
 #ifdef __APPLE__
 #include "versus/platform/macos_capture.h"
@@ -48,6 +51,8 @@
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSettings>
+#include <QScopeGuard>
+#include <QStandardItemModel>
 #include <QToolTip>
 #include <QScrollArea>
 #include <QScrollBar>
@@ -949,7 +954,7 @@ MainWindow::~MainWindow() {
 bool MainWindow::hasPendingAsyncOperation() const {
     const bool startPending = startFuture_.isValid() && !startFuture_.isFinished();
     const bool stopPending = stopFuture_.isValid() && !stopFuture_.isFinished();
-    return startPending || stopPending;
+    return startPending || stopPending || savingPersistedSettings_;
 }
 
 void MainWindow::maybeQuitAfterPendingOperations() {
@@ -1214,6 +1219,12 @@ void MainWindow::loadPersistedSettings() {
     { QSignalBlocker block(outputSelect_); restoreComboByData(outputSelect_, settings.value("output/protocol", "vdo")); }
     switchOutputProtocol();
     syncCodecUiState();
+#ifdef __linux__
+    globalShortcutsCheck_->setChecked(runtimeOptions_.systemIntegrationsEnabled && settings.value("shortcuts/enabled", false).toBool());
+    showCursorCheck_->setChecked(settings.value("capture/showCursor", false).toBool());
+    rememberSourceCheck_->setChecked(settings.value("capture/rememberSource", false).toBool());
+    for (int i = 0; i < 4; ++i) cropMargins_[i]->setValue(settings.value(QString("capture/crop%1").arg(i), 0).toInt());
+#endif
     loadingPersistedSettings_ = false;
     resetOperatorHealthUi();
 }
@@ -1223,7 +1234,25 @@ void MainWindow::savePersistedSettings() {
         return;
     }
 
+    // Secret Service may dispatch UI events while its synchronous operation
+    // runs. A nested first save must not create a second item or overwrite a
+    // newer reference with the outer call's older snapshot.
+    if (savingPersistedSettings_) { saveAgain_ = true; return; }
+    savingPersistedSettings_ = true;
+    const auto finishSave = qScopeGuard([this] {
+        savingPersistedSettings_ = false;
+        if (std::exchange(saveAgain_, false))
+            QTimer::singleShot(0, this, &MainWindow::savePersistedSettings);
+        if (quitRequested_) QTimer::singleShot(0, this, &MainWindow::maybeQuitAfterPendingOperations);
+    });
     QSettings settings = makeUiSettings();
+#ifdef __linux__
+    settings.setValue("shortcuts/enabled", globalShortcutsCheck_->isChecked());
+    settings.setValue("capture/showCursor", showCursorCheck_->isChecked());
+    settings.setValue("capture/rememberSource", rememberSourceCheck_->isChecked());
+    if (!rememberSourceCheck_->isChecked()) settings.remove("capture/portalRestore");
+    for (int i = 0; i < 4; ++i) settings.setValue(QString("capture/crop%1").arg(i), cropMargins_[i]->value());
+#endif
     settings.setValue("window/geometry", saveGeometry());
     settings.setValue("stream/target", streamIdInput_ ? streamIdInput_->text().trimmed() : QString());
     settings.setValue("stream/room", roomInput_ ? roomInput_->text().trimmed() : QString());
@@ -1407,6 +1436,12 @@ void MainWindow::connectPersistedSettingSignals() {
         savePersistedSettings();
         if (!isLive_) resetOperatorHealthUi();
     };
+#ifdef __linux__
+    connect(globalShortcutsCheck_, &QCheckBox::toggled, this, saveNow);
+    connect(showCursorCheck_, &QCheckBox::toggled, this, saveNow);
+    connect(rememberSourceCheck_, &QCheckBox::toggled, this, saveNow);
+    for (auto *margin : cropMargins_) connect(margin, QOverload<int>::of(&QSpinBox::valueChanged), this, saveNow);
+#endif
     for (auto *field : {outputUrlInput_, outputSecretInput_, outputStreamIdInput_})
         connect(field, &QLineEdit::textChanged, this, saveNow);
     for (auto *field : {outputLatencySpin_, aacBitrateSpin_})
@@ -1616,7 +1651,11 @@ void MainWindow::setupUI() {
     sourceModeSelect_->setObjectName("sourceModeSelect");
     sourceModeSelect_->setAccessibleName("Video source type");
     if (platform::capabilities().canCapture()) {
+#ifdef __linux__
+        sourceModeSelect_->addItem("Window / Desktop", QVariant("window"));
+#else
         sourceModeSelect_->addItem("Window", QVariant("window"));
+#endif
         if (platform::capabilities().cameraCapture) sourceModeSelect_->addItem("Camera / Webcam", QVariant("camera"));
         if (platform::capabilities().spoutCapture) sourceModeSelect_->addItem("Spout2 (avatar apps)", QVariant("spout"));
 #ifdef __APPLE__
@@ -1625,7 +1664,7 @@ void MainWindow::setupUI() {
             "Share an app/game window, a selected camera, or a Syphon sender. Enable Syphon output in the sending app first. Camera and microphone access starts only when you go live.");
 #elif defined(__linux__)
         sourceModeSelect_->setToolTip(
-            "Share an app/game window or a selected camera. On Wayland, choose a window in the desktop permission dialog after selecting Go live. "
+            "Share a window, desktop/monitor or camera. On Wayland, select the source in the desktop permission dialog. "
             "Camera and microphone access starts only when you go live.");
 #else
         sourceModeSelect_->setToolTip(
@@ -1924,6 +1963,51 @@ void MainWindow::setupUI() {
     advancedPanel_ = new QWidget(this);
     auto *advancedForm = advancedForm_ = new QFormLayout(advancedPanel_);
     advancedForm->setSpacing(8);
+#ifdef __linux__
+    showCursorCheck_ = new QCheckBox("Show cursor", this);
+    showCursorCheck_->setAccessibleName("Show cursor");
+    showCursorCheck_->setToolTip("Include the pointer in window or desktop capture. Camera capture is unaffected.");
+    advancedForm->addRow("Capture", showCursorCheck_);
+    globalShortcutsCheck_ = new QCheckBox("Enable global shortcuts", this);
+    globalShortcutsCheck_->setAccessibleName("Enable global shortcuts");
+    globalShortcutsCheck_->setEnabled(runtimeOptions_.systemIntegrationsEnabled);
+    auto *shortcutStatus = new QLabel(this); shortcutStatus->setWordWrap(true);
+    auto *shortcuts = new platform::LinuxShortcuts(this);
+    connect(shortcuts, &platform::LinuxShortcuts::statusChanged, shortcutStatus, &QLabel::setText);
+    connect(globalShortcutsCheck_, &QCheckBox::toggled, shortcuts, &platform::LinuxShortcuts::setEnabled);
+    connect(shortcuts, &platform::LinuxShortcuts::activated, this, [this](int action, bool pressed) {
+        if (action == 0 && pressed && goLiveButton_->isEnabled()) onGoLiveClicked();
+        if (action == 1 && pressed && microphoneMuteButton_->isEnabled()) microphoneMuteButton_->toggle();
+        // Always honor release, including while Stop/start disables controls.
+        // Otherwise a held shortcut could leave the next stream unmuted.
+        if (action == 2 && (!pressed || microphoneMuteButton_->isEnabled()))
+            microphoneMuteButton_->setChecked(!pressed);
+    });
+    advancedForm->addRow(globalShortcutsCheck_); advancedForm->addRow(shortcutStatus);
+    rememberSourceCheck_ = new QCheckBox("Remember Wayland source", this);
+    rememberSourceCheck_->setAccessibleName("Remember Wayland source");
+    rememberSourceCheck_->setToolTip("Ask the desktop to remember your selection. Older desktops may still ask each time. Turning this off forgets the saved selection.");
+    advancedForm->addRow(rememberSourceCheck_);
+    auto *cropRow = new QWidget(this);
+    auto *cropLayout = new QHBoxLayout(cropRow);
+    cropLayout->setContentsMargins(0, 0, 0, 0);
+    const QStringList edges{"Left", "Top", "Right", "Bottom"};
+    for (int i = 0; i < 4; ++i) {
+        auto *spin = cropMargins_[i] = new QSpinBox(this);
+        spin->setRange(0, 8190); spin->setPrefix(edges[i] + " "); spin->setSuffix(" px");
+        spin->setAccessibleName("Crop " + edges[i].toLower());
+        spin->setToolTip("Remove source pixels from this edge before scaling. Applies to window/desktop capture only; zero keeps the full source.");
+        installSpinWheelGuard(spin); cropLayout->addWidget(spin);
+    }
+    advancedForm->addRow("Crop", cropRow);
+    retryAudioButton_ = new QPushButton("Reconnect selected audio", this);
+    retryAudioButton_->setAccessibleName("Reconnect selected audio");
+    retryAudioButton_->setToolTip("Reopen the selected audio sources while video stays live. If you selected a default device, the current desktop default is used.");
+    connect(retryAudioButton_, &QPushButton::clicked, this, [this] {
+        if (core_ && isLive_ && !stopInProgress_ && !startInProgress_) core_->requestAudioReconnect();
+    });
+    advancedForm->addRow(retryAudioButton_);
+#endif
     layout->addWidget(advancedPanel_);
     advancedPanel_->setVisible(false);
     connect(advancedToggle_, &QCheckBox::toggled, this, &MainWindow::onAdvancedToggleChanged);
@@ -2307,6 +2391,8 @@ void MainWindow::setupUI() {
         // Additional devices are exposed when their runtime backend is usable.
         if (QFileInfo::exists("/dev/nvidiactl"))
             encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
+        encoderSelect_->addItem("VAAPI (Intel/AMD, experimental)", QVariant("vaapi"));
+        encoderSelect_->addItem("V4L2 M2M (supported devices, experimental)", QVariant("v4l2"));
         encoderSelect_->addItem("Software (x264 / VP9 / AV1 / HEVC)", QVariant("software"));
 #else
         encoderSelect_->addItem("NVIDIA NVENC", QVariant("nvenc"));
@@ -3336,6 +3422,11 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     } else if (encoderMode == "amf") {
         config.preferredHardware = versus::video::HardwareEncoder::AMF;
         config.explicitEncoderSelection = true;
+#ifdef __linux__
+    } else if (encoderMode == "vaapi" || encoderMode == "v4l2") {
+        config.preferredHardware = encoderMode == "vaapi" ? video::HardwareEncoder::VAAPI : video::HardwareEncoder::V4L2;
+        config.explicitEncoderSelection = true;
+#endif
     } else if (encoderMode == "software") {
         config.preferredHardware = versus::video::HardwareEncoder::None;
         config.explicitEncoderSelection = true;
@@ -3626,7 +3717,8 @@ void MainWindow::onGoLiveClicked() {
         reconnectNoticeActive_ = false;
         startInProgress_ = true;
 #ifdef __linux__
-        core_->prepareCaptureStart();
+        applyDesktopCaptureOptions();
+    core_->prepareCaptureStart();
 #endif
         forceQuitEnabled_ = false;
         const quint64 startOpId = ++startOpId_;
@@ -3915,7 +4007,7 @@ void MainWindow::updateGoLiveButton() {
 #ifdef __linux__
     if (windowPreviewButton_) {
         windowPreviewButton_->setVisible(!isLive_ && sourceModeSelect_ &&
-            sourceModeSelect_->currentData().toString() == "window" && selectedWindowId_ == "portal:window");
+            sourceModeSelect_->currentData().toString() == "window" && selectedWindowId_.startsWith("portal:"));
         windowPreviewButton_->setEnabled(!startInProgress_ && !stopInProgress_);
         const QString text = core_ && core_->hasWindowPreview() ? "Stop preview" : "Preview window";
         windowPreviewButton_->setText(text);
@@ -4025,6 +4117,11 @@ void MainWindow::updateGoLiveButton() {
 
 #ifdef __linux__
 void MainWindow::refreshAudioCaptureWarning() {
+    if (retryAudioButton_) {
+        const bool reconnecting = core_ && core_->audioReconnecting();
+        retryAudioButton_->setEnabled(isLive_ && !startInProgress_ && !stopInProgress_ && !reconnecting);
+        retryAudioButton_->setText(reconnecting ? "Reconnecting selected audio…" : "Reconnect selected audio");
+    }
     if (!audioCaptureWarningLabel_) return;
     const auto warning = core_ ? QString::fromStdString(core_->audioCaptureWarning()) : QString();
     const auto text = warning.isEmpty() ? QString() : "Audio: " + warning;
@@ -4351,9 +4448,21 @@ void MainWindow::syncCodecUiState() {
 
     const bool externalOutput = outputSelect_ && outputSelect_->currentData().toString() != "vdo";
     const bool muxedOutput = outputSelect_ && ((outputSelect_->currentData().toString() == "srt" || outputSelect_->currentData().toString() == "udp" || outputSelect_->currentData().toString() == "rist") || (outputSelect_->currentData().toString() == "rtmp" || outputSelect_->currentData().toString().startsWith("rtsp")));
+    const QString mode = encoderSelect_->currentData().toString();
+#ifdef __linux__
+    if (auto *model = qobject_cast<QStandardItemModel *>(codecSelect_->model())) {
+        for (int i = 0; i < codecSelect_->count(); ++i) {
+            const auto codec = codecSelect_->itemData(i).toString();
+            const bool allowed = mode == "v4l2" ? codec == "h264" :
+                mode == "vaapi" ? (codec == "h264" || codec == "h265") : true;
+            if (auto *item = model->item(i)) item->setEnabled(allowed);
+        }
+        if (auto *item = model->item(codecSelect_->currentIndex()); item && !item->isEnabled())
+            codecSelect_->setCurrentIndex(codecSelect_->findData("h264"));
+    }
+#endif
     const versus::video::VideoCodec selectedCodec = externalOutput ? versus::video::VideoCodec::H264 : codecFromUiValue(codecSelect_->currentData().toString());
     const bool usesExternalFfmpeg = codecUsesExternalFfmpeg(selectedCodec);
-    const QString mode = encoderSelect_->currentData().toString();
     const bool alphaWorkflowSelected = !externalOutput && alphaWorkflowEffectiveForSelectedCodec();
     const bool enableFfmpegFields =
 #ifdef __linux__
@@ -4820,6 +4929,12 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
 }
 
 void MainWindow::setConfigControlsEnabled(bool enabled) {
+#ifdef __linux__
+    const bool captureEditable = enabled && !(core_ && core_->hasWindowPreview());
+    showCursorCheck_->setEnabled(captureEditable);
+    rememberSourceCheck_->setEnabled(captureEditable);
+    for (auto *margin : cropMargins_) margin->setEnabled(captureEditable);
+#endif
     configControlsEnabled_ = enabled;
     for (QWidget *field : std::initializer_list<QWidget *>{outputSelect_, outputUrlInput_, outputSecretInput_,
             outputSecretRevealButton_, outputStreamIdInput_, outputLatencySpin_, aacBitrateSpin_})
@@ -4996,13 +5111,24 @@ void MainWindow::updateTrayLiveIndicator(bool live) {
 }
 
 #ifdef __linux__
+void MainWindow::applyDesktopCaptureOptions() {
+    video::DesktopCaptureOptions options;
+    options.showCursor = showCursorCheck_->isChecked();
+    options.rememberSource = rememberSourceCheck_->isChecked();
+    options.cropLeft = cropMargins_[0]->value(); options.cropTop = cropMargins_[1]->value();
+    options.cropRight = cropMargins_[2]->value(); options.cropBottom = cropMargins_[3]->value();
+    if (runtimeOptions_.persistedSettingsEnabled) options.settingsFile = makeUiSettings().fileName().toStdString();
+    core_->setDesktopCaptureOptions(options);
+}
+
 void MainWindow::onWindowPreviewClicked() {
     if (!core_ || isLive_ || startInProgress_ || stopInProgress_ || hasPendingAsyncOperation()) return;
     if (core_->hasWindowPreview()) { stopWindowPreview(); return; }
     if (!sourceModeSelect_ || sourceModeSelect_->currentData().toString() != "window" ||
-        selectedWindowId_ != "portal:window") return;
+        !selectedWindowId_.startsWith("portal:")) return;
     previewStartInProgress_ = startInProgress_ = true;
     stopAfterPendingStart_ = false;
+    applyDesktopCaptureOptions();
     core_->prepareCaptureStart();
     setConfigControlsEnabled(false);
     updateStatus("Choose a window for local preview. Audio and publishing are off.", "connecting");
@@ -5026,8 +5152,9 @@ void MainWindow::onWindowPreviewClicked() {
         else maybeQuitAfterPendingOperations();
     });
     auto *core = core_;
-    startFuture_ = QtConcurrent::run([core, result]() {
-        try { result->started = core->startWindowPreview(); }
+    const auto sourceId = selectedWindowId_.toStdString();
+    startFuture_ = QtConcurrent::run([core, result, sourceId]() {
+        try { result->started = core->startWindowPreview(sourceId); }
         catch (const std::exception &error) { result->error = QString::fromUtf8(error.what()); }
         catch (...) { result->error = "Window preview failed; see log."; }
     });
@@ -5071,11 +5198,11 @@ void MainWindow::refreshSelectedWindowPreview() {
     const QString sourceMode = sourceModeSelect_ ? sourceModeSelect_->currentData().toString() : QString("window");
 #ifdef __linux__
     if (core_ && core_->hasWindowPreview() && !startInProgress_ && !stopInProgress_ &&
-        (sourceMode != "window" || selectedWindowId_ != "portal:window" || !core_->isWindowPreviewActive())) {
+        (sourceMode != "window" || !selectedWindowId_.startsWith("portal:") || !core_->isWindowPreviewActive())) {
         stopWindowPreview();
     }
     if (sourceMode != "camera" &&
-        (sourceMode != "window" || selectedWindowId_ != QStringLiteral("portal:window")))
+        (sourceMode != "window" || !selectedWindowId_.startsWith("portal:")))
         previewLabel_->setAccessibleDescription(QString());
 #endif
     if (selectedWindowId_.isEmpty()) {
@@ -5096,7 +5223,7 @@ void MainWindow::refreshSelectedWindowPreview() {
     }
 
 #ifdef __linux__
-    if (sourceMode == "window" && selectedWindowId_ == QStringLiteral("portal:window")) {
+    if (sourceMode == "window" && selectedWindowId_.startsWith("portal:")) {
         if (previewStartInProgress_ || previewStopInProgress_) {
             previewLabel_->setPixmap(QPixmap());
             previewLabel_->setText(previewStartInProgress_ ? "Choose a window in the desktop permission dialog."

@@ -75,6 +75,7 @@ def main():
     parser.add_argument('--timeout', type=int, default=600)
     parser.add_argument('--renderer', choices=['software', 'auto'], default='software',
                         help='Isolate DRM devices for repeatable software rendering, or exercise the host-selected GPU')
+    parser.add_argument('--private-system-bus', action='store_true', help='Use an empty owned system bus in containers; never contact host system services')
     parser.add_argument('--isolated-renderer', action='store_true', help=argparse.SUPPRESS)
     faults = parser.add_mutually_exclusive_group()
     faults.add_argument('--pulse-fault', action='store_true', help='Allow child to stop/start only the owned Pulse service; keep video PipeWire running')
@@ -227,6 +228,10 @@ def main():
 
         print('Owned Wayland desktop:', report, flush=True)
         try:
+            if args.private_system_bus:
+                system_bus = launch('system-bus', ['dbus-daemon', '--session', '--nofork', '--print-address=1'], True)
+                env['DBUS_SYSTEM_BUS_ADDRESS'] = system_bus.stdout.readline().strip()
+                result['privateSystemBus'] = True
             bus = launch('bus', ['dbus-daemon', '--session', '--nofork', '--print-address=1'], True)
             env['DBUS_SESSION_BUS_ADDRESS'] = bus.stdout.readline().strip()
             assert env['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:')
@@ -261,6 +266,11 @@ def main():
             session.Start(); time.sleep(1); keys(['ESCAPE'])
             cards = json.loads(subprocess.check_output(['pactl', '--format=json', 'list', 'cards'], env=env, text=True, timeout=5))
             assert cards == []; result['hardwareCards'] = 0
+            # Complete desktop portal activation before an inner secret-store
+            # workflow records the existing owners. Portal startup can itself
+            # activate this disposable desktop's default keyring.
+            daemon.StartServiceByName('org.freedesktop.portal.Desktop', dbus.UInt32(0))
+            daemon.StartServiceByName('org.freedesktop.secrets', dbus.UInt32(0))
             result['ownedPids'] = {name:p.pid for name,p in processes}; result['runtime'] = str(root)
             with ExitStack() as stack:
                 server = stack.enter_context(socket.socket(socket.AF_UNIX))

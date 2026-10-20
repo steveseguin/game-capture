@@ -193,7 +193,12 @@ class VersusApp {
     bool startCapture(VideoSourceMode mode, const std::string &sourceId);
     void stopCapture();
 #ifdef __linux__
-    bool startWindowPreview();
+    void setDesktopCaptureOptions(const video::DesktopCaptureOptions &options) { windowCapture_.setDesktopOptions(options); }
+    bool startWindowPreview(const std::string &sourceId = "portal:window");
+    void requestAudioReconnect() {
+        if (live_.load() && !audioReconnectInProgress_.exchange(true)) audioReconnectRequested_.store(true);
+    }
+    bool audioReconnecting() const { return audioReconnectInProgress_.load(); }
     bool hasWindowPreview() const { return windowPreview_.load(); }
     bool isWindowPreviewActive() const;
     void prepareCaptureStart();
@@ -531,6 +536,8 @@ class VersusApp {
     platform::AtomicSharedPtr<output::Session> externalOutput_;
     std::atomic<bool> capturing_{false};
 #ifdef __linux__
+    std::atomic<bool> audioReconnectRequested_{false};
+    std::atomic<bool> audioReconnectInProgress_{false};
     std::atomic<bool> windowPreview_{false};
 #endif
     std::atomic<bool> stopRequested_{false};

@@ -72,7 +72,7 @@ def main():
     ffmpeg_version = output(str(ffmpeg/'bin/ffmpeg'), '-version', env=environment)
     if '--enable-nonfree' in ffmpeg_version:
         raise SystemExit('Nonfree FFmpeg builds are not supported in portable packages')
-    for feature in ('--enable-libx264', '--enable-libvpx', '--enable-libaom', '--enable-libsrt', '--enable-librist'):
+    for feature in ('--enable-libx264', '--enable-libvpx', '--enable-libaom', '--enable-libsrt', '--enable-librist', '--enable-vaapi', '--enable-v4l2-m2m'):
         if feature not in ffmpeg_version:
             raise SystemExit('Rebuild the pinned portable FFmpeg: missing '+feature)
     with tempfile.TemporaryDirectory(prefix='gc-portable-') as temporary:

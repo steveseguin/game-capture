@@ -22,6 +22,10 @@ libpulse-dev
 libsecret-1-dev
 libxcb-composite0-dev
 libxcb-damage0-dev
+libxcb-xfixes0-dev
+libxcb-randr0-dev
+libva-dev
+libdrm-dev
 libx264-dev
 libx265-dev
 libvpx-dev

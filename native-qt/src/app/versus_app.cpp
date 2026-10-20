@@ -863,6 +863,9 @@ std::string VersusApp::lastCaptureError() const {
         return syphonCapture_.lastError();
     }
 #endif
+#ifdef __linux__
+    if (lifecycleStateSnapshot().videoSourceMode == VideoSourceMode::Window) return windowCapture_.lastError();
+#endif
     if (lifecycleStateSnapshot().videoSourceMode == VideoSourceMode::Camera) {
         return cameraCapture_.lastError();
     }
@@ -874,12 +877,13 @@ bool VersusApp::isWindowPreviewActive() const {
     return windowPreview_.load() && windowCapture_.isCapturing() && getSourceHealth().hasFrame;
 }
 
-bool VersusApp::startWindowPreview() {
+bool VersusApp::startWindowPreview(const std::string &sourceId) {
     if (live_.load() || capturing_.load() || !platform::capabilities().canCapture()) return false;
     stopCapture();
     const auto windows = windowCapture_.getWindows();
-    if (windows.empty() || windows.front().id != "portal:window") return false;
-    resetSourceHealth(VideoSourceMode::Window, "portal:window");
+    if (windows.empty() || windows.front().id != "portal:window" ||
+        (sourceId != "portal:window" && sourceId != "portal:monitor")) return false;
+    resetSourceHealth(VideoSourceMode::Window, sourceId);
     windowPreview_.store(true);
     windowCapture_.setFrameCallback([this](video::CapturedFrame frame) {
         handleVideoFrame(std::move(frame));
@@ -889,7 +893,7 @@ bool VersusApp::startWindowPreview() {
             encodeThreadRunning_.load(std::memory_order_acquire);
     });
     try {
-        if (windowCapture_.startCapture("portal:window", 1280, 720, 30) &&
+        if (windowCapture_.startCapture(sourceId, 1280, 720, 30) &&
             !captureStartCancelled()) {
             spdlog::info("[App] Local window preview started (video only)");
             return true;
@@ -917,7 +921,8 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
     // fully stopped state (or a video-only granted preview), then arm rollback.
 #ifdef __linux__
     const bool reuseWindowPreview = mode == VideoSourceMode::Window &&
-        sourceId == "portal:window" && isWindowPreviewActive();
+        (sourceId == "portal:window" || sourceId == "portal:monitor") &&
+        getSourceHealth().sourceId == sourceId && isWindowPreviewActive();
     if (!reuseWindowPreview)
 #endif
         stopCapture();
@@ -1269,6 +1274,9 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
 
 void VersusApp::stopCapture() {
     stopVideoMaintenanceThread();
+#ifdef __linux__
+    audioReconnectInProgress_.store(false); audioReconnectRequested_.store(false);
+#endif
     stopEncodeThread();
 #ifdef __APPLE__
     syphonCapture_.stopCapture();
@@ -1717,6 +1725,9 @@ void VersusApp::stopLive() {
     pendingGlobalKeyframe_.store(false);
     stopSignalingRecoveryThread();
     stopVideoMaintenanceThread();
+#ifdef __linux__
+    audioReconnectInProgress_.store(false); audioReconnectRequested_.store(false);
+#endif
     if (external) external->stop();
     if (wasLive && !external) {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
@@ -2352,6 +2363,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"stop_requested", stopRequested_.load(std::memory_order_relaxed)}
     };
 #ifdef __linux__
+    root["app"]["audio_reconnecting"] = audioReconnecting();
     root["app"]["window_preview"] = hasWindowPreview();
     root["app"]["window_preview_active"] = isWindowPreviewActive();
     root["app"]["primary_audio_capturing"] = audioCapture_.IsCapturing();
@@ -7840,8 +7852,12 @@ void VersusApp::startVideoMaintenanceThread() {
                             break;
                         case VideoSourceMode::Window:
                         default:
-                            message =
-                                "Window capture stopped. Select a valid window and start streaming again.";
+#ifdef __linux__
+                            message = windowCapture_.lastError();
+                            if (message.empty()) message = "Desktop capture stopped. Select the window or monitor again and restart. Check desktop sharing permission if the chooser is unavailable.";
+#else
+                            message = "Window capture stopped. Select a valid window and start streaming again.";
+#endif
                             break;
                     }
                     spdlog::warn("[App] {}", message);
@@ -7857,6 +7873,22 @@ void VersusApp::startVideoMaintenanceThread() {
             }
 
 #ifdef __linux__
+            if (audioReconnectRequested_.exchange(false) && !stopRequested_.load()) {
+                // Serialize source teardown/reopen with maintenance and Stop.
+                // Only an explicit operator action reaches this path.
+                audioCapture_.StopCapture(); microphoneAudioCapture_.StopCapture();
+                primaryAudioResampler_ = {}; additionalAudioResampler_ = {};
+                uint32_t pid = 0;
+                const auto state = lifecycleStateSnapshot();
+                if (state.videoSourceMode == VideoSourceMode::Window && !state.audioProcessId) {
+                    for (const auto &window : windowCapture_.getWindows())
+                        if (window.id == state.selectedWindowId) { pid = window.processId; break; }
+                }
+                if (!stopRequested_.load()) startAudioCapture(pid);
+                primaryAudioWasCapturing = audioCapture_.IsCapturing();
+                audioReconnectInProgress_.store(false);
+                emitRuntimeEvent("Selected audio reconnection finished. Check the audio meters and any device warning.", false);
+            }
             if (primaryAudioWasCapturing && !stopRequested_.load() && !audioCapture_.IsCapturing()) {
                 primaryAudioWasCapturing = false;
                 audioCapture_.StopCapture();
@@ -7866,7 +7898,7 @@ void VersusApp::startVideoMaintenanceThread() {
                     audioLevelRms_.store(0.0f, std::memory_order_relaxed);
                     audioPeak_.store(0.0f, std::memory_order_relaxed);
                 }
-                setAudioCaptureWarning("Primary audio stopped. Video continues. Check the selected audio app/output and audio service, then stop and start streaming again.", false);
+                setAudioCaptureWarning("Primary audio stopped. Video continues. Check the selected audio app/output and audio service, then choose Reconnect selected audio.", false);
             }
 #endif
 #if defined(__APPLE__) || defined(__linux__)

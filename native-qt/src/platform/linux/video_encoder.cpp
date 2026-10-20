@@ -3,6 +3,7 @@
 #include "versus/video/window_capture.h"
 #include "versus/video/aspect_fit.h"
 #include <QImage>
+#include <QDir>
 #include <QPainter>
 #include <algorithm>
 #include <atomic>
@@ -13,6 +14,7 @@
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/opt.h>
+#include <libavutil/hwcontext.h>
 #include <libswscale/swscale.h>
 }
 
@@ -24,6 +26,10 @@ struct LinuxVideoEncoder::State {
     std::unique_ptr<PosixFfmpegEncoder> external;
     AVCodecContext *context = nullptr;
     AVFrame *frame = nullptr;
+    AVFrame *upload = nullptr;
+    AVBufferRef *device = nullptr;
+    bool vaapi = false;
+    AVPixelFormat softwareFormat = AV_PIX_FMT_YUV420P;
     AVPacket *packet = nullptr;
     SwsContext *conversion = nullptr;
     std::string name;
@@ -37,7 +43,8 @@ struct LinuxVideoEncoder::State {
     void close() {
         external.reset();
         avcodec_free_context(&context);
-        av_frame_free(&frame);
+        av_frame_free(&frame); av_frame_free(&upload);
+        av_buffer_unref(&device); vaapi = false; softwareFormat = AV_PIX_FMT_YUV420P;
         av_packet_free(&packet);
         sws_freeContext(conversion); conversion = nullptr;
         pending.clear(); name.clear(); origin = lastPts = -1; keyframe = true;
@@ -54,7 +61,29 @@ struct LinuxVideoEncoder::State {
         context->width = config.width; context->height = config.height;
         context->time_base = {1, 10000000};
         context->framerate = {config.frameRate, 1};
-        context->pix_fmt = AV_PIX_FMT_YUV420P;
+        vaapi = std::string(encoder).ends_with("_vaapi");
+        softwareFormat = vaapi ? AV_PIX_FMT_NV12 : AV_PIX_FMT_YUV420P;
+        context->pix_fmt = vaapi ? AV_PIX_FMT_VAAPI : softwareFormat;
+        if (vaapi) {
+            // Probe render nodes by opening the device, not by advertising an
+            // encoder name. Explicit hardware selection never falls to software.
+            const auto override = qEnvironmentVariable("GAME_CAPTURE_VAAPI_DEVICE");
+            QStringList nodes;
+            if (!override.isEmpty()) nodes << override;
+            else for (const auto &entry : QDir("/dev/dri").entryList({"renderD*"}, QDir::System | QDir::Files, QDir::Name))
+                nodes << "/dev/dri/" + entry;
+            for (const auto &node : nodes) {
+                if (av_hwdevice_ctx_create(&device, AV_HWDEVICE_TYPE_VAAPI, node.toUtf8().constData(), nullptr, 0) >= 0) break;
+            }
+            if (!device) { close(); return false; }
+            auto *frames = av_hwframe_ctx_alloc(device);
+            if (!frames) { close(); return false; }
+            auto *pool = reinterpret_cast<AVHWFramesContext *>(frames->data);
+            pool->format = AV_PIX_FMT_VAAPI; pool->sw_format = softwareFormat;
+            pool->width = config.width; pool->height = config.height; pool->initial_pool_size = 8;
+            if (av_hwframe_ctx_init(frames) < 0) { av_buffer_unref(&frames); close(); return false; }
+            context->hw_frames_ctx = frames;
+        }
         context->bit_rate = int64_t(config.bitrate) * 1000;
         context->rc_max_rate = int64_t(std::max(config.bitrate, config.maxBitrate)) * 1000;
         context->rc_buffer_size = int(context->rc_max_rate / 2);
@@ -76,6 +105,12 @@ struct LinuxVideoEncoder::State {
             av_dict_set(&options, "preset", "veryfast", 0);
             av_dict_set(&options, "tune", "zerolatency", 0);
             av_dict_set(&options, "x265-params", "repeat-headers=1:pools=4:frame-threads=1:log-level=error", 0);
+        } else if (vaapi) {
+            av_dict_set(&options, "rc_mode", "CBR", 0);
+            av_dict_set(&options, "idr_interval", "0", 0);
+        } else if (std::string(encoder).ends_with("_v4l2m2m")) {
+            av_dict_set(&options, "num_output_buffers", "4", 0);
+            av_dict_set(&options, "num_capture_buffers", "8", 0);
         } else if (hw) {
             av_dict_set(&options, "preset", "p4", 0);
             av_dict_set(&options, "tune", "ll", 0);
@@ -103,12 +138,13 @@ struct LinuxVideoEncoder::State {
         if (result < 0) { close(); return false; }
         frame = av_frame_alloc(); packet = av_packet_alloc();
         if (!frame || !packet) { close(); return false; }
-        frame->format = context->pix_fmt;
+        frame->format = softwareFormat;
         frame->width = config.width; frame->height = config.height;
         frame->color_range = context->color_range;
         frame->color_primaries = context->color_primaries;
         frame->color_trc = context->color_trc; frame->colorspace = context->colorspace;
         if (av_frame_get_buffer(frame, 32) < 0) { close(); return false; }
+        if (vaapi) { upload = av_frame_alloc(); if (!upload) { close(); return false; } }
         name = encoder; hardware = hw;
         spdlog::info("[LinuxEncoder] {} {}x{} at {} fps", name, config.width, config.height, config.frameRate);
         return true;
@@ -149,6 +185,13 @@ bool LinuxVideoEncoder::initialize(const EncoderConfig &config, bool handover) {
     }
     bool ok = false;
     if (config.preferredHardware == HardwareEncoder::NVENC && nvidia) ok = s.open(nvidia, true);
+    // Keep Auto's existing NVENC/software policy. New backends are opt-in
+    // until real hardware/receiver qualification is available.
+    if (config.preferredHardware == HardwareEncoder::VAAPI &&
+        (config.codec == VideoCodec::H264 || config.codec == VideoCodec::H265))
+        ok = s.open(config.codec == VideoCodec::H264 ? "h264_vaapi" : "hevc_vaapi", true);
+    if (config.preferredHardware == HardwareEncoder::V4L2 && config.codec == VideoCodec::H264)
+        ok = s.open("h264_v4l2m2m", true);
     if (!ok && (!config.explicitEncoderSelection || config.preferredHardware == HardwareEncoder::None))
         ok = s.open(software, false);
     if (ok) s.failure = EncodeFailureKind::None;
@@ -189,7 +232,7 @@ bool LinuxVideoEncoder::encode(const CapturedFrame &input, EncodedPacket &output
         painter.drawImage(QRect(fit.x, fit.y, fit.width, fit.height), source);
     }
     s.conversion = sws_getCachedContext(s.conversion, c.width, c.height, AV_PIX_FMT_BGRA,
-        c.width, c.height, AV_PIX_FMT_YUV420P, SWS_BILINEAR, nullptr, nullptr, nullptr);
+        c.width, c.height, s.softwareFormat, SWS_BILINEAR, nullptr, nullptr, nullptr);
     if (!s.conversion) { s.failure = EncodeFailureKind::IoFailure; return false; }
     const auto *coefficients = sws_getCoefficients(SWS_CS_ITU601);
     sws_setColorspaceDetails(s.conversion, coefficients, 1, coefficients, gray ? 1 : 0, 0, 1 << 16, 1 << 16);
@@ -199,7 +242,16 @@ bool LinuxVideoEncoder::encode(const CapturedFrame &input, EncodedPacket &output
         return false;
     s.frame->pts = pts;
     s.frame->pict_type = s.keyframe || c.requireEveryFrameKeyframe ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_NONE;
-    int result = avcodec_send_frame(s.context, s.frame);
+    AVFrame *submitted = s.frame;
+    if (s.vaapi) {
+        av_frame_unref(s.upload);
+        if (av_hwframe_get_buffer(s.context->hw_frames_ctx, s.upload, 0) < 0 ||
+            av_hwframe_transfer_data(s.upload, s.frame, 0) < 0 || av_frame_copy_props(s.upload, s.frame) < 0) {
+            s.failure = EncodeFailureKind::IoFailure; return false;
+        }
+        submitted = s.upload;
+    }
+    int result = avcodec_send_frame(s.context, submitted);
     if (result < 0) { s.failure = EncodeFailureKind::IoFailure; return false; }
     s.keyframe = false; s.lastPts = pts;
     s.pending.emplace(pts, State::Identity{sourceTimestamp, input.timestamp});
@@ -245,7 +297,9 @@ std::string LinuxVideoEncoder::activeCodecName() const {
     } return "unknown";
 }
 std::string LinuxVideoEncoder::activeEncoderName() const { std::lock_guard lock(state_->mutex); return state_->name; }
-std::string LinuxVideoEncoder::activeInputFormatName() const { return "YUV420P"; }
+std::string LinuxVideoEncoder::activeInputFormatName() const {
+    std::lock_guard lock(state_->mutex); return state_->vaapi ? "NV12 / VAAPI" : "YUV420P";
+}
 bool LinuxVideoEncoder::isHardwareEncoder() const { std::lock_guard lock(state_->mutex); return state_->hardware; }
 EncodeFailureKind LinuxVideoEncoder::lastEncodeFailureKind() const { return state_->failure.load(); }
 }

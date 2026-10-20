@@ -4,7 +4,7 @@ pkg_check_modules(LINUX_MEDIA REQUIRED IMPORTED_TARGET libavcodec libavutil libs
 pkg_check_modules(PIPEWIRE REQUIRED IMPORTED_TARGET libpipewire-0.3)
 pkg_check_modules(PULSE REQUIRED IMPORTED_TARGET libpulse)
 pkg_check_modules(SECRET REQUIRED IMPORTED_TARGET libsecret-1)
-pkg_check_modules(XCB_CAPTURE REQUIRED IMPORTED_TARGET xcb xcb-composite xcb-damage)
+pkg_check_modules(XCB_CAPTURE REQUIRED IMPORTED_TARGET xcb xcb-composite xcb-damage xcb-xfixes xcb-randr)
 
 list(REMOVE_ITEM VERSUS_PLATFORM_SOURCES src/video/window_capture.cpp src/video/camera_capture.cpp src/audio/window_audio_capture_core.cpp)
 list(APPEND VERSUS_PLATFORM_SOURCES
@@ -12,6 +12,8 @@ list(APPEND VERSUS_PLATFORM_SOURCES
     src/platform/posix/ffmpeg_encoder.cpp
     src/platform/linux/video_encoder.cpp
     src/platform/linux/network.cpp
+    src/platform/linux/linux_shortcuts.cpp
+    include/versus/platform/linux_shortcuts.h
     src/platform/linux/window_capture.cpp
     src/platform/linux/system_resources.cpp
     src/platform/linux/camera_capture.cpp
