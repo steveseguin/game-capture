@@ -1,6 +1,7 @@
 #pragma once
 
 #include "versus/media_defaults.h"
+#include "versus/video/video_encoder.h"
 
 #include <rtc/rtppacketizer.hpp>
 
@@ -13,7 +14,7 @@ namespace versus::webrtc {
 
 // RFC 9628 VP9 RTP packetizer.
 // Uses a 1-byte payload descriptor: B=0x08 (beginning of frame), E=0x04 (end of frame).
-// Single-packet frame uses 0x0C (both B and E set).
+// P=0x40 marks predicted frames; B/E mark packet boundaries.
 // The base class RtpPacketizer::outgoing() sets the RTP M-bit on the last element returned
 // by fragment(), so only fragment() needs implementing here.
 class Vp9RtpPacketizer final : public rtc::RtpPacketizer {
@@ -30,6 +31,11 @@ public:
 protected:
     std::vector<rtc::binary> fragment(rtc::binary frame) override {
         std::vector<rtc::binary> result;
+        if (frame.empty()) return result;
+
+        const auto *bytes = reinterpret_cast<const uint8_t *>(frame.data());
+        const bool predicted = !video::detail::vp9FrameIsKeyframe(
+            std::vector<uint8_t>(bytes, bytes + std::min<size_t>(5, frame.size())));
 
         // 1 byte is consumed by the VP9 payload descriptor
         const size_t payloadMtu = (mMaxFragmentSize > 1) ? (mMaxFragmentSize - 1) : 1;
@@ -44,7 +50,7 @@ protected:
             rtc::binary packet;
             packet.reserve(1 + chunkSize);
 
-            uint8_t desc = 0x00;
+            uint8_t desc = predicted ? 0x40 : 0;
             if (isFirst) desc |= kDescB;
             if (isLast)  desc |= kDescE;
             packet.push_back(static_cast<rtc::byte>(desc));

@@ -4,6 +4,7 @@
 #include "capture_sr_reporter.h"
 #include "video_recovery.h"
 #include "video_pacer.h"
+#include "versus/video/video_encoder.h"
 
 #include <rtc/common.hpp>
 #include <rtc/configuration.hpp>
@@ -71,6 +72,7 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
         return false;
     }
 
+    const bool predicted = !video::detail::vp9FrameIsKeyframe(vp9Frame);
     size_t offset = 0;
     bool first = true;
     try {
@@ -95,7 +97,8 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
             payload[10] = static_cast<uint8_t>((ssrc >> 8) & 0xFF);
             payload[11] = static_cast<uint8_t>(ssrc & 0xFF);
 
-            uint8_t descriptor = 0;
+            // RFC 9628 P describes inter-picture prediction on every fragment.
+            uint8_t descriptor = predicted ? 0x40 : 0;
             if (first) descriptor |= 0x08;
             if (last) descriptor |= 0x04;
             payload[12] = descriptor;

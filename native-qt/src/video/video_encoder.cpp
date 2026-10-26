@@ -2493,7 +2493,7 @@ class VideoEncoder::Impl {
                 "copy,setparams=range=limited:color_primaries=bt709:color_trc=iec61966-2-1:colorspace=smpte170m,hwupload"});
             spdlog::info("[FFmpegEncoder] QSV H.264 uses dynamic D3D11 hardware upload");
         }
-        // VP9 uses -g 1 (all-keyframes) for sync-safe streaming; other codecs use GOP-based keyframes.
+        // VP9 configures its GOP below; protected alpha retains independent frames.
         if (config_.codec != VideoCodec::VP9) {
             args.push_back("-g");
             args.push_back(std::to_string(gop));
@@ -2589,7 +2589,7 @@ class VideoEncoder::Impl {
             args.push_back("0");
         } else if (encoderName == "libvpx-vp9") {
             // Real-time low-latency VP9 settings.
-            // Use all-keyframes so viewers can recover without relying on RTCP PLI handling.
+            // Periodic keyframes bound join/loss recovery without encoding every frame intra.
             // Match minrate to bitrate and maxrate to select libvpx CBR.
             const int vp9Threads = recommendedRealtimeVp9Threads(width, height);
             spdlog::info("[FFmpegEncoder] libvpx-vp9 realtime threads={} row-mt=1 tile-columns=2 tile-rows=1 frame-parallel=1",
@@ -2611,22 +2611,17 @@ class VideoEncoder::Impl {
             args.push_back("-frame-parallel");
             args.push_back("1");
             if (!config_.requireEveryFrameKeyframe) {
-                // Ordinary VP9 keeps the historical all-keyframe default, but
-                // advanced users may override it below. Protected alpha mode
-                // appends its non-overrideable contract after custom options.
-                args.push_back("-g");
-                args.push_back("1");
-                args.push_back("-keyint_min");
-                args.push_back("1");
+                // Honor the requested GOP (at most one second in low-latency
+                // mode). Keep one output per input for the FIFO source PTS map.
+                args.insert(args.end(), {"-g", std::to_string(gop),
+                    "-keyint_min", std::to_string(gop), "-auto-alt-ref", "0"});
             }
             args.push_back("-minrate");
             args.push_back(std::to_string(bitrate) + "k");
-            // Every default VP9 frame is intra. libvpx's keyframe boost must
-            // not repeatedly exceed the average per-frame CBR budget. This
-            // limits the frame target, not the exact encoded packet size.
-            args.push_back("-max-intra-rate");
-            args.push_back("100");
             if (config_.requireEveryFrameKeyframe) {
+                // Protected alpha still uses intra frames; cap their repeated
+                // boost. Ordinary GOP keyframes need more than one frame's budget.
+                args.insert(args.end(), {"-max-intra-rate", "100"});
                 // libvpx's cold-start CBR quantizer can shift even a solid color
                 // by 13 channel levels before its rate control settles. Bound
                 // that loss for synchronized color/alpha tracks without adding

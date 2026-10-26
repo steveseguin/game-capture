@@ -152,6 +152,7 @@ class TestSpoutCapture : public QObject {
     void testUnconfirmedNvencRequestsRetryWithFfmpeg();
     void testMediaFoundationWarmupCannotLeakProbeIdentity();
     void testBundledFfmpegHelpSurfaceIsCoveredByProtectedPolicy();
+    void testOrdinaryVp9UsesPredictionAndRecoversOnRequest();
     void testProtectedVp9RuntimeContractUsesLivePackets();
     void testExternalFfmpegStallRestartsOnceAndDropsPreRestartIdentity();
     void testReceivesBgraAlphaFrames();
@@ -298,6 +299,51 @@ void TestSpoutCapture::testBundledFfmpegHelpSurfaceIsCoveredByProtectedPolicy() 
                     policy.args.end());
         }
     }
+}
+
+
+void TestSpoutCapture::testOrdinaryVp9UsesPredictionAndRecoversOnRequest() {
+    using namespace versus::video;
+    EncoderConfig config;
+    config.width = config.height = 64;
+    config.frameRate = 30;
+    config.gopSize = 15;
+    config.bitrate = 500;
+    config.maxBitrate = 1000;
+    config.codec = VideoCodec::VP9;
+    config.preferredHardware = HardwareEncoder::None;
+    config.ffmpegPath = VideoEncoder::resolveFfmpegPath();
+    VideoEncoder encoder;
+    QVERIFY(encoder.initialize(config));
+    CapturedFrame frame;
+    frame.width = frame.height = 64;
+    frame.stride = 64 * 4;
+    frame.format = CapturedFrame::Format::BGRA;
+    frame.data.assign(64 * 64 * 4, 0xff);
+    int keys = 0, deltas = 0, packetsSinceKey = 0;
+    for (int i = 0; i < 75; ++i) {
+        frame.timestamp = 10000000 + i * 333333LL;
+        frame.data[0] = uint8_t(i);
+        EncodedPacket packet;
+        if (!encoder.encode(frame, packet)) continue;
+        if (packet.isKeyframe) { ++keys; packetsSinceKey = 0; }
+        else { ++deltas; ++packetsSinceKey; }
+        QVERIFY(keys > 0);
+        QVERIFY(packetsSinceKey < config.gopSize);
+    }
+    QVERIFY(keys >= 3);
+    QVERIFY(deltas > keys * 4);
+    encoder.requestKeyframe();
+    bool recovered = false;
+    for (int i = 75; i < 95; ++i) {
+        frame.timestamp = 10000000 + i * 333333LL;
+        EncodedPacket packet;
+        if (!encoder.encode(frame, packet)) continue;
+        QVERIFY(packet.isKeyframe);
+        recovered = true;
+        break;
+    }
+    QVERIFY(recovered);
 }
 
 void TestSpoutCapture::testProtectedVp9RuntimeContractUsesLivePackets() {

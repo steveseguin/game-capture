@@ -98,7 +98,8 @@ exports.start=async function({repo,stream,room='',output,expectedPluginHash,widt
     return {outputPath,sha256:hash(bytes),captureStartedAtMs:startedAt};
   }
   try {
-    proc=spawn(exe,['--portable'],{cwd:path.dirname(exe),windowsHide:true,stdio:['ignore','pipe','pipe'],
+    // An updater modal can leave WebSocket capture working while blocking exit.
+    proc=spawn(exe,['--portable','--disable-updater'],{cwd:path.dirname(exe),windowsHide:true,stdio:['ignore','pipe','pipe'],
       env:{...process.env,OBS_PLUGINS_DATA_PATH:path.join(repo,'install/data/obs-plugins')}});
     procClosed=new Promise(resolve=>proc.once('close',resolve));
     let spawnError;proc.on('error',error=>{spawnError=error;});
