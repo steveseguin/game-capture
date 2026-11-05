@@ -10,7 +10,7 @@
     "required_status":  "license/cla",
     "enforce_admins":  false,
     "verified_utc":  "2026-11-05",
-    "signature_transition_verified":  false,
+    "signature_transition_verified":  true,
     "unsigned_pr_verified":  true,
     "verification_pr":  "https://github.com/steveseguin/game-capture/pull/14"
 }

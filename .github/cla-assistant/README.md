@@ -12,7 +12,7 @@ and GitHub API on November 5, 2026.
   acceptance before the maintainer relies on the agreement.
 
 [connection.json](connection.json) records the verified Gist revision and hook ID.
-The dashboard currently reports zero signers for this repository. Existing
+The initial dashboard observation reported zero signers. Existing
 signatures on other repositories must not be assumed to satisfy this check.
 
 This is the user's existing shared license-grant agreement. The earlier proposed
@@ -26,7 +26,11 @@ Export signing records privately and verify company authority and coauthors.
 
 Verification completed: dashboard repository/Gist association, exact Gist/local
 content equality, active webhook, and required status-check configuration.
-The live documentation PR (https://github.com/steveseguin/game-capture/pull/14) received the bot signing comment and a pending `license/cla` status for its unsigned author. GitHub delivered the PR webhook with HTTP 200. The unsigned-to-signed transition has not yet been exercised;
-no agreement was signed on a contributor's behalf.
+The live documentation PR (https://github.com/steveseguin/game-capture/pull/14)
+received the bot signing comment and a pending `license/cla` status for its unsigned
+author. GitHub delivered the PR webhook with HTTP 200. After the author accepted,
+the bot confirmed that all committers had signed and `license/cla` became successful.
+The unsigned-to-signed transition is verified; no signature was submitted by the
+automation on a contributor's behalf.
 
 Official documentation: [CLA Assistant](https://github.com/cla-assistant/cla-assistant#readme).
