@@ -1,0 +1,16 @@
+{
+    "repository":  "steveseguin/game-capture",
+    "gist_url":  "https://gist.github.com/steveseguin/c2ba09801aae4ca5d9adddafdf33906b",
+    "gist_revision":  "48475acd9d0d59755220200ef233195073a7c5eb",
+    "gist_file":  "CONTRIBUTING.md",
+    "local_agreement":  "CLA.md",
+    "webhook_id":  707777585,
+    "activation_status":  "linked_and_required_check_configured",
+    "required_branch":  "main",
+    "required_status":  "license/cla",
+    "enforce_admins":  false,
+    "verified_utc":  "2026-11-05",
+    "signature_transition_verified":  false,
+    "unsigned_pr_verified":  true,
+    "verification_pr":  "https://github.com/steveseguin/game-capture/pull/14"
+}

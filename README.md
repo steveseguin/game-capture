@@ -40,7 +40,7 @@ The Mac port remains experimental. Packaged workflows passed on an M1 running ma
 - [Report an issue](https://github.com/steveseguin/game-capture/issues) — include your OS, source, encoder, and logs from **Help → Open Log Folder**. Remove credentials before sharing logs.
 - [Local control API](docs/local-control-api.md) · [AI / MCP automation](docs/ai-control.md)
 - [Build & validation guide](docs/developer-guide.md) · [Release playbook](docs/RELEASES.md) · [Local security guards](docs/development-security.md)
-- [Contributing](CONTRIBUTING.md) — includes contributor license terms.
+- [Contributing](CONTRIBUTING.md) — requires a signed [Contributor License Agreement](CLA.md), permitting Steve Seguin to relicense contributions under MIT, other open-source licenses, or proprietary terms.
 
 Free and open source under [AGPL-3.0](LICENSE).
 
