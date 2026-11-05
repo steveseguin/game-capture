@@ -26,7 +26,7 @@ Export signing records privately and verify company authority and coauthors.
 
 Verification completed: dashboard repository/Gist association, exact Gist/local
 content equality, active webhook, and required status-check configuration.
-A fresh contributor's unsigned-to-signed PR transition has not yet been exercised;
+The live documentation PR (https://github.com/steveseguin/game-capture/pull/14) received the bot signing comment and a pending `license/cla` status for its unsigned author. GitHub delivered the PR webhook with HTTP 200. The unsigned-to-signed transition has not yet been exercised;
 no agreement was signed on a contributor's behalf.
 
 Official documentation: [CLA Assistant](https://github.com/cla-assistant/cla-assistant#readme).
