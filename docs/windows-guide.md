@@ -123,28 +123,9 @@ This video path passed end-to-end on the review build with DVB Dream 3.7.2 Trial
 
 ## Alpha Workflow
 
-Game Capture **0.2.68 and later** supports transparency in **browser viewers and OBS Browser Sources** with **VDO.Ninja v31.5 or later**. The VDO.Ninja OBS plugin is optional for this browser mode; its native receiver remains a separate transparency option. Your source must supply transparent pixels, such as a Spout2 feed with an alpha channel.
+Follow the [illustrated transparency guide](https://steveseguin.github.io/game-capture/transparency-guide/) for Spout2, browser playback, and OBS Browser Source setup.
 
-### Browser viewers and OBS Browser Sources
-
-- Browser alpha is off by default. Its checkbox and Alpha Playback selection are saved; selecting browser playback alone does not enable it. It inherits the current resolution, frame rate, bitrate and audio settings (first-run video defaults: 1280x720, 60 fps, 4000 kbps). Spout2 carries video only, so choose microphone or output audio separately.
-- Under **Show advanced settings**, select **H.264**, choose **Alpha Playback -> Browser / OBS Browser Source (H.264)**, and check **Enable browser alpha (H.264)**. Open the generated viewer link in a VDO.Ninja **v31.5+** viewer, preserving its query parameters. Both Game Capture and the viewer need the versions above; updating Game Capture alone does not update a hosted or self-hosted viewer.
-- In OBS, right-click the Browser Source and choose **Blending Method -> SRGB Off** to match browser transparency colors. OBS's default blending can wash out translucent colors over light backgrounds. This also affects ordinary transparent web content; it is not a change to the alpha transport. See [OBS's explanation of the setting](https://github.com/obsproject/obs-studio/pull/6257).
-- Browser alpha carries color and transparency side by side in one normal H.264 WebRTC stream. VDO.Ninja reconstructs a transparent WebGL canvas automatically. No viewer URL flag is needed. Start with 720p30; even output dimensions up to 1920x1080 at 60 fps are available. Clear custom FFmpeg options for this mode. A 1080p picture travels as 3840x1080, so use hardware encoding for 1080p60 and allow additional bitrate. Playback also depends on the receiver's decoder and GPU; VDO.Ninja checks the actual WebGL texture and canvas limits.
-- Stop streaming and capture before changing between ordinary video and browser alpha. Changing the captured source while keeping browser alpha enabled retains the packed format; an opaque camera contributes a white alpha mask. Receivers without packed-alpha support receive no video in this mode. The connection health panel warns when a connected viewer requesting video has not acknowledged playback readiness after the startup grace period. It clears when playback becomes ready, video is disabled, or the viewer disconnects. Reconnect after a WebGL context failure.
-- Browser alpha currently expects straight (unpremultiplied) BGRA from Spout2. It applies alpha-aware resizing before packing. Raw stream recording or forwarding still contains both halves; transparent browser playback does not make the underlying MediaStream transparent.
-- Audio stays on the normal WebRTC playback path. Match the OBS Browser Source frame rate to the stream and check lip sync in the final scene: WebGL adds a display step, and this mode does not apply an automatic audio offset. A missing Spout sender holds the last picture while capture looks for it again; audio continues. If an audio device becomes unavailable, video continues, but restoring that device may require restarting capture.
-
-### OBS plugin native receiver
-
-- For the OBS native receiver, choose **Alpha Playback -> OBS native receiver**, select H.264 or `VP9 (OBS Alpha Preview)`, and enable alpha. H.264 uses a separate VP9 mask; VP9 uses two VP9 tracks.
-- VP9 alpha requires `ffmpeg.exe` with libvpx/VP9 support. Windows releases include a pinned LGPL FFmpeg bundle under `ffmpeg/bin/ffmpeg.exe`; advanced users can override it with `--ffmpeg-path` or the FFmpeg Path setting.
-- The native alpha mode requires the [VDO.Ninja OBS plugin](https://github.com/steveseguin/ninja-obs-plugin) with `Use Native Receiver (Experimental)` enabled. OBS Browser Sources and normal browser viewers do not composite its separate VP9 mask.
-- Compatible OBS VDO.Ninja native receivers automatically upgrade that stream to dual-track VP9 transparency.
-- In native alpha mode, browser viewers remain compatible but receive standard color video.
-- For hardware encoding compatibility, leave VP9 alpha disabled and use `Alpha Background -> Chroma background`. Game Capture composites transparent Spout2/window pixels over the selected color before H.264/NVENC encode, so the receiver can chroma-key the feed.
-- If you need the broadest viewer compatibility, leave alpha disabled.
-- AV1 alpha-preserving encode remains experimental and is not the current OBS transparency path.
+Browser transparency requires **Game Capture 0.2.68+** and **VDO.Ninja v31.5+**. The guide includes screenshots, OBS settings, and troubleshooting. The OBS plugin's native mode remains available as an alternative.
 
 ### Codec compatibility and performance
 

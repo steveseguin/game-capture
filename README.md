@@ -26,7 +26,9 @@ A free, open-source app for streaming games, app windows, and webcams to **VDO.N
 
 ### Windows
 
-The production version supports Windows hardware encoders, Spout2 sources, transparency in browsers and OBS, and additional output destinations including WHIP, SRT, and RTMP. Browser transparency requires Game Capture **0.2.68+** and VDO.Ninja **v31.5+**, and works in OBS Browser Sources without the VDO.Ninja OBS plugin. The plugin's native transparency mode remains available. See the [Windows guide](docs/windows-guide.md) for setup, audio, output settings, and troubleshooting.
+The production version supports Windows hardware encoders, Spout2 sources, transparency in browsers and OBS, and additional output destinations including WHIP, SRT, and RTMP.
+
+[Transparency setup with screenshots](https://steveseguin.github.io/game-capture/transparency-guide/) · [Windows setup and troubleshooting](docs/windows-guide.md)
 
 ### macOS beta
 

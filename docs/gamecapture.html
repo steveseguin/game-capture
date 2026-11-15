@@ -257,7 +257,6 @@
         gap: 0.8rem;
       }
 
-      .grid > .card:last-child { grid-column: 1 / -1; }
       @media (max-width: 640px) { .grid { grid-template-columns: minmax(0, 1fr); } }
 
       .card {
@@ -313,7 +312,7 @@
         <a href="#downloads">Downloads</a>
         <a href="#setup">Quick start</a>
         <a href="#spout">Spout2</a>
-        <a href="#alpha">Transparency</a>
+        <a href="./transparency-guide/">Transparency guide</a>
         <a href="#faq">FAQ &amp; help</a>
         <a href="./macos-guide.html">Mac guide</a>
         <a href="./encoder-guide/">Encoder &amp; bitrate guide</a>
@@ -375,64 +374,37 @@
             <li>Download the version for your computer and open Game Capture. Grant capture permissions when prompted.</li>
             <li>Select a window or webcam, then choose audio if needed. Windows also supports Spout2 sources.</li>
             <li>Enter a stream ID or paste a VDO.Ninja link, then click Go Live.</li>
-            <li>Open the generated viewer link in a browser or OBS. For transparency, follow the alpha setup below.</li>
+            <li>Open the generated viewer link in a browser or OBS. Need a transparent background? Follow the <a href="./transparency-guide/">visual setup guide</a>.</li>
           </ol>
         </article>
         <article class="card">
           <h2>Why This App</h2>
           <ul class="list">
-            <li>Window audio capture without virtual audio cables.</li>
-            <li>Hardware-accelerated encoding for smoother performance.</li>
-            <li>Dual-stream quality model: HQ + LQ routing when needed.</li>
-            <li>Multiple viewers from one HD encode workflow.</li>
-            <li>Native Qt app without an Electron runtime.</li>
-            <li>Simple alternative to OBS for guest-side game feed publishing.</li>
-            <li>Optional camera/webcam publishing with a selectable microphone and local publisher preview.</li>
-            <li>Spout2 input on Windows for VTuber avatars and transparent graphics.</li>
-            <li>Built for VDO.Ninja compatibility and link workflows.</li>
+            <li>Publish game feeds without running OBS on the sending PC.</li>
+            <li>Capture window audio without virtual audio cables.</li>
+            <li>Use hardware encoding for smoother performance.</li>
+            <li>Share one feed with multiple viewers.</li>
+            <li>Send games, webcams, or Spout2 avatars to VDO.Ninja.</li>
           </ul>
         </article>
         <article class="card">
           <h2 id="spout">Spout2 &amp; VTuber Sources (Windows)</h2>
-          <ul class="list">
-            <li>Receive local Spout2 video from VTube Studio, Warudo, VSeeFace, VNyan, and similar Windows apps.</li>
-            <li>Enable Spout output in the avatar app, choose <strong>Spout2 (avatar apps)</strong>, and select its sender.</li>
-            <li>Spout2 carries video only; choose an output mix or microphone separately if the feed needs audio.</li>
-            <li>Preserve transparency with H.264 browser alpha in Game Capture 0.2.68+ and VDO.Ninja v31.5+, or use the OBS plugin's native alpha mode. Chroma background is also available.</li>
-            <li>If the sender is black, set Game Capture and the sender app to the same GPU in Windows Graphics settings.</li>
-          </ul>
-          <p>
-            <a href="https://docs.vdo.ninja/guides/using-game-capture-with-vdo.ninja"
-              >Open the Game Capture and Spout2 setup guide</a
-            >.
-          </p>
+          <p>Bring your avatar or graphics straight from apps such as VTube Studio and Warudo, with a transparent background.</p>
+          <p><a href="./transparency-guide/#source">Set up your Spout2 source &rarr;</a></p>
         </article>
         <article class="card">
-          <h2 id="alpha">Transparency in Browsers &amp; OBS (Windows)</h2>
-          <ul class="list">
-            <li><strong>Game Capture 0.2.68+ and VDO.Ninja v31.5+</strong> support transparent browser playback and OBS Browser Sources without the VDO.Ninja OBS plugin.</li>
-            <li>Choose <strong>H.264</strong>, set <strong>Alpha Playback &rarr; Browser / OBS Browser Source (H.264)</strong>, and check <strong>Enable browser alpha (H.264)</strong>. Your Spout2 source must supply an alpha channel.</li>
-            <li>Open the generated viewer link in a VDO.Ninja v31.5+ viewer, preserving its query parameters. Start with 720p30; browser alpha supports up to 1920&times;1080 at 60 fps with a capable encoder and receiver.</li>
-            <li>In OBS, right-click the Browser Source and choose <strong>Blending Method &rarr; SRGB Off</strong> for correct translucent colors.</li>
-            <li>The <a href="https://github.com/steveseguin/ninja-obs-plugin">VDO.Ninja OBS plugin</a> remains an option: choose <strong>Alpha Playback &rarr; OBS native receiver</strong>, enable alpha with H.264 or <strong>VP9 (OBS Alpha Preview)</strong>, and enable the plugin's <strong>Use Native Receiver (Experimental)</strong>.</li>
-            <li>The native mode's separate VP9 mask needs the plugin; browser viewers receive ordinary color video in that mode. Browser alpha instead requires a compatible viewer with WebGL enabled; older viewers receive no video.</li>
-            <li>For chroma keying, use Alpha Background &rarr; Chroma background and key the selected color in the receiver. Leave alpha off for the widest viewer compatibility.</li>
-          </ul>
-          <p><a href="https://github.com/steveseguin/game-capture/blob/main/docs/windows-guide.md#alpha-workflow">Full transparency setup and compatibility details</a>.</p>
+          <h2 id="alpha">Transparent video (Windows)</h2>
+          <p>Keep backgrounds transparent in browsers and OBS Browser Sources, without the VDO.Ninja OBS plugin.</p>
+          <p><a href="./transparency-guide/">Follow the illustrated transparency guide &rarr;</a></p>
         </article>
         <article class="card">
           <h2>Compatibility &amp; Performance</h2>
           <ul class="list">
-            <li>Windows is stable. The <a href="#macos-download">Apple Silicon Mac beta</a> is experimental; Intel Macs are not supported.</li>
-            <li>The OBS plugin v1.1.68 native receiver accepts H.264 and VP9; HEVC/AV1 are not supported by that receiver.</li>
-            <li>On Windows, explicit NVENC/QSV can fall below 30 FPS at 4K. Lower resolution or frame rate if playback falls behind.</li>
-            <li>Room roles are not an access-control boundary; share production links with trusted participants.</li>
-            <li>Limit max connections to protect publisher performance.</li>
-            <li>
-              Public roadmap and test plans live in the
-              <a href="https://github.com/steveseguin/game-capture">GitHub repo</a>.
-            </li>
+            <li>Windows is stable; the <a href="#macos-download">Apple Silicon Mac version</a> is an experimental beta.</li>
+            <li>Hardware encoding depends on your GPU and driver.</li>
+            <li>Lower resolution or frame rate if playback falls behind.</li>
           </ul>
+          <p><a href="https://github.com/steveseguin/game-capture/blob/main/docs/windows-guide.md">Windows compatibility and troubleshooting &rarr;</a></p>
         </article>
       </section>
 
@@ -444,7 +416,7 @@
         </details>
         <details>
           <summary>Will a transparent Spout2 feed work in an OBS Browser Source?</summary>
-          <p>Yes. Use Game Capture <strong>0.2.68+</strong> with VDO.Ninja <strong>v31.5+</strong>, select H.264, choose <strong>Alpha Playback &rarr; Browser / OBS Browser Source (H.264)</strong>, and enable browser alpha. The Spout2 sender must provide an alpha channel. Open the generated viewer link in OBS Browser Source and set <strong>Blending Method &rarr; SRGB Off</strong>. This mode does not require the VDO.Ninja OBS plugin; <a href="#alpha">see the transparency setup</a>.</p>
+          <p>Yes. Follow the <a href="./transparency-guide/">transparency guide</a> for the required versions and setup, with screenshots.</p>
         </details>
         <details>
           <summary>Why does my Spout2 feed have no sound?</summary>

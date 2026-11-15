@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transparency setup | Game Capture</title>
+  <meta name="description" content="A visual, step-by-step guide to transparent Spout2 video in VDO.Ninja and OBS Browser Source. Includes screenshots of the Game Capture settings.">
+  <meta name="theme-color" content="#050b18">
+  <link rel="canonical" href="https://steveseguin.github.io/game-capture/transparency-guide/">
+  <link rel="stylesheet" href="guide.css">
+</head>
+<body>
+  <a class="skip" href="#source">Skip to the steps</a>
+  <header class="topbar">
+    <a href="../gamecapture.html">&larr; Game Capture</a>
+    <span>Windows setup guide</span>
+  </header>
+  <main>
+    <header class="intro">
+      <p class="eyebrow">Spout2 &middot; Browsers &middot; OBS</p>
+      <h1>Keep your background transparent.</h1>
+      <p class="lead">Bring your avatar or graphics into a browser or OBS. Follow these three steps; the OBS plugin is optional.</p>
+      <ul class="requirements" aria-label="Before you start">
+        <li><a href="https://github.com/steveseguin/game-capture/releases/latest/download/game-capture-setup.exe">Game Capture 0.2.68+</a></li>
+        <li>VDO.Ninja v31.5+</li>
+        <li>A Windows app with transparent Spout2 output</li>
+      </ul>
+    </header>
+
+    <nav class="steps-nav" aria-label="Guide steps">
+      <a href="#source"><span>1</span> Select your source</a>
+      <a href="#settings"><span>2</span> Enable transparency</a>
+      <a href="#watch"><span>3</span> Open your viewer</a>
+    </nav>
+
+    <section class="step" id="source" aria-labelledby="source-title">
+      <div class="step-heading"><span class="number" aria-hidden="true">1</span><h2 id="source-title">Select your Spout2 source</h2></div>
+      <p>Spout2 sends video from your avatar or graphics app into Game Capture.</p>
+      <ol class="actions">
+        <li>In your source app, turn on <strong>Spout / Spout2 output</strong> and enable its transparent background. Keep that app running.</li>
+        <li>In Game Capture, set <strong>Video Source</strong> to <strong>Spout2 (avatar apps)</strong>.</li>
+        <li>Click your app&rsquo;s sender in the list. Click <strong>Refresh</strong> if it hasn&rsquo;t appeared yet.</li>
+      </ol>
+      <figure>
+        <a href="select-source.png" aria-label="Enlarge the source-selection screenshot"><img src="select-source.png" width="984" height="351" alt="Game Capture with Video Source set to Spout2 (avatar apps) and the Transparency Demo sender selected."></a>
+        <figcaption>Your sender&rsquo;s name will differ. Select the screenshot to enlarge it.</figcaption>
+      </figure>
+      <p class="checkpoint"><strong>Ready?</strong> Your sender is highlighted and its name appears on the right.</p>
+      <p class="tip">Need sound too? Spout2 carries video only. Choose your microphone or audio source separately.</p>
+    </section>
+
+    <section class="step" id="settings" aria-labelledby="settings-title">
+      <div class="step-heading"><span class="number" aria-hidden="true">2</span><h2 id="settings-title">Enable browser transparency</h2></div>
+      <p>Stop any active stream, then turn on <strong>Show advanced settings</strong>. Find the video controls and make these three changes, in this order:</p>
+      <ol class="settings-list">
+        <li><span>Video Codec</span><strong>H.264 (Compatibility)</strong></li>
+        <li><span>Alpha Playback</span><strong>Browser / OBS Browser Source (H.264)</strong></li>
+        <li><span>Alpha</span><strong>Check Enable browser alpha (H.264)</strong></li>
+      </ol>
+      <figure>
+        <a href="browser-settings.png" aria-label="Enlarge the transparency-settings screenshot"><img src="browser-settings.png" width="984" height="168" loading="lazy" alt="Video Codec is H.264, Enable browser alpha is checked, and Alpha Playback is Browser / OBS Browser Source (H.264)."></a>
+        <figcaption>Match these settings. Select the screenshot for a closer look.</figcaption>
+      </figure>
+      <p class="checkpoint"><strong>Ready?</strong> The browser alpha box is checked. Selecting the playback mode alone is not enough.</p>
+      <p class="tip">Start with <strong>1280 &times; 720 at 30 FPS</strong>. Increase quality after you have a working picture.</p>
+    </section>
+
+    <section class="step" id="watch" aria-labelledby="watch-title">
+      <div class="step-heading"><span class="number" aria-hidden="true">3</span><h2 id="watch-title">Go live and open your viewer</h2></div>
+      <ol class="actions">
+        <li>Enter a stream name in <strong>Stream / URL</strong>.</li>
+        <li>Click <strong>Go Live</strong>.</li>
+        <li>Click <strong>Copy Link</strong> to copy your viewer link. Keep the whole link, including everything after <code>?</code>.</li>
+      </ol>
+      <p class="choice-label">Where do you want to watch?</p>
+      <div class="viewers">
+        <details name="viewer" open>
+          <summary>In a web browser</summary>
+          <div class="detail-body">
+            <ol class="actions">
+              <li>Open <strong>Chrome or Edge</strong>. Paste the copied link into the address bar and press <strong>Enter</strong>.</li>
+              <li>Allow playback if the browser asks.</li>
+            </ol>
+            <p class="tip">The viewer needs VDO.Ninja v31.5+. A plain page background can look opaque; use the OBS steps below to see your feed over another picture.</p>
+          </div>
+        </details>
+        <details name="viewer" id="obs">
+          <summary>In OBS Browser Source</summary>
+          <div class="detail-body">
+            <ol class="actions">
+              <li>In OBS, click <strong>Sources &rarr; + &rarr; Browser</strong>, name the source, and click <strong>OK</strong>.</li>
+              <li>Paste the viewer link into <strong>URL</strong>. Set <strong>Width</strong> and <strong>Height</strong> to your stream size, then click <strong>OK</strong>.</li>
+              <li>Right-click this source. Choose <strong>Blending Method &rarr; SRGB Off</strong> so translucent colors look right.</li>
+              <li>Place an image or color source <strong>below</strong> the Browser Source in the Sources list.</li>
+            </ol>
+            <p class="checkpoint"><strong>You should see:</strong> your avatar or graphics over the background source, with no solid rectangle around them.</p>
+            <p class="tip">Use a VDO.Ninja v31.5+ viewer. This Browser Source route does not need the VDO.Ninja OBS plugin.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <section class="help" id="help" aria-labelledby="help-title">
+      <h2 id="help-title">Need a hand?</h2>
+      <p>Open only the item that matches what you see.</p>
+      <details>
+        <summary>My sender is missing, or the picture is black</summary>
+        <div class="detail-body"><ul class="actions">
+          <li>Keep the source app running with Spout2 output enabled, then click <strong>Refresh</strong>.</li>
+          <li>In Windows Graphics settings, put Game Capture and the source app on the <strong>same GPU</strong>.</li>
+        </ul></div>
+      </details>
+      <details>
+        <summary>I see a solid background around my avatar</summary>
+        <div class="detail-body"><ul class="actions">
+          <li>Enable transparent output in the source app. Game Capture cannot remove a background already drawn into the video.</li>
+          <li>Check the three settings in <a href="#settings">step 2</a>.</li>
+          <li>In OBS, put a background source below the Browser Source. Use <strong>SRGB Off</strong> if translucent edges look washed out.</li>
+        </ul></div>
+      </details>
+      <details>
+        <summary>The viewer connects but shows no video</summary>
+        <div class="detail-body"><ul class="actions">
+          <li>Check both versions: <strong>Game Capture 0.2.68+</strong> and <strong>VDO.Ninja v31.5+</strong>. Updating Game Capture does not update the viewer.</li>
+          <li>Enable graphics acceleration / WebGL in your browser, then reconnect.</li>
+          <li>Copy a fresh viewer link from Game Capture. Older viewers cannot display this transparency mode.</li>
+        </ul></div>
+      </details>
+      <details>
+        <summary>I want a sharper or smoother picture</summary>
+        <div class="detail-body"><ul class="actions">
+          <li>Try 720p60 or 1080p30 after 720p30 works. The maximum is <strong>1920 &times; 1080 at 60 FPS</strong>.</li>
+          <li>Use hardware encoding where available. Higher quality needs more encoding power and upload bandwidth.</li>
+          <li>In OBS, match the Browser Source frame rate to your stream. Check lip sync before going live.</li>
+        </ul><p><a href="../encoder-guide/">Help choosing resolution and bitrate &rarr;</a></p></div>
+      </details>
+      <details>
+        <summary>I already use the VDO.Ninja OBS plugin</summary>
+        <div class="detail-body"><p>You can keep using its native transparency mode instead of Browser Source:</p><ol class="actions">
+          <li>Stop the stream. Set <strong>Alpha Playback &rarr; OBS native receiver</strong>.</li>
+          <li>Choose <strong>H.264</strong> or <strong>VP9 (OBS Alpha Preview)</strong> and enable alpha.</li>
+          <li>In the plugin, enable <strong>Use Native Receiver (Experimental)</strong>.</li>
+        </ol><p class="tip">This mode needs the plugin for transparency. Ordinary browser viewers receive color video only.</p></div>
+      </details>
+    </section>
+    <footer><a href="../gamecapture.html">&larr; Back to Game Capture</a><a href="https://github.com/steveseguin/game-capture/blob/main/docs/windows-guide.md">Full Windows guide</a></footer>
+  </main>
+</body>
+</html>
