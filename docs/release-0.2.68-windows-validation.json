@@ -129,15 +129,15 @@
       "passed": true,
       "frontend": "https://vdo.ninja/alpha/",
       "cases": [
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null,
-        null
+        "half",
+        "alpha-opaque",
+        "alpha-checker",
+        "alpha-moving-edge",
+        "source-resize",
+        "reload",
+        "transport-refresh",
+        "reload-after-context-loss",
+        "reconnect-after-decline"
       ]
     },
     "windowCapture": {
