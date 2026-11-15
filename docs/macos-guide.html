@@ -66,7 +66,15 @@
       <a class="button" href="https://github.com/steveseguin/game-capture/releases/download/macos-v0.2.65-beta.3/game-capture-macos-arm64-0.2.65-beta.3.zip">Download Mac 0.2.65 Beta 3</a>
       <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3">Release notes, source &amp; checksums</a>
     </div>
-    <p class="note">Requires an Apple Silicon (M-series) Mac; Intel Macs are not supported. Built for macOS 14.2+. Packaged workflows passed on an M1 with macOS 26.4.1, with bounded startup/x264 workflows on fresh macOS 14.8.9 ARM64 VMs. Physical minimum-OS and device/privacy qualification remain open. Windows remains the stable production version.</p>
+    <p class="note">Requires an <strong>Apple Silicon (M-series) Mac</strong> and <strong>macOS 14.2+</strong>. Intel Macs are not supported. This Mac release is experimental; Windows remains the stable version.</p>
+    <details><summary>What has been tested in this beta?</summary>
+      <ul>
+        <li>Packaged workflows passed on an M1 with macOS 26.4.1.</li>
+        <li>Fresh macOS 14.8.9 ARM64 VMs passed bounded startup and x264 workflows.</li>
+        <li>Physical minimum-OS, permissions and device transitions still need broader qualification.</li>
+      </ul>
+      <p><a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta3-validation-2026-10-18.md">Full results and remaining limits</a></p>
+    </details>
   </header>
   <nav aria-label="Guide sections">
     <a href="#install">Install</a><a href="#first-stream">First stream</a><a href="#audio">Audio</a><a href="#encoders">Encoders</a><a href="#rooms-obs">Rooms &amp; OBS</a><a href="#troubleshooting">Troubleshooting</a><a href="#updates">Updates</a>
@@ -79,11 +87,18 @@
     <h2>1. Install and allow access</h2>
     <ol>
       <li>Download the Mac ZIP, extract it, and drag <strong>Game Capture.app</strong> into <strong>Applications</strong>.</li>
-      <li>Open the app from Applications. It is Developer ID signed and notarized; confirm the normal macOS <strong>Open</strong> prompt if shown.</li>
-      <li>For window capture, use the app’s <strong>Screen Recording…</strong> button or open <strong>System Settings → Privacy &amp; Security → Screen &amp; System Audio Recording</strong> (called <strong>Screen Recording</strong> on some versions). Allow Game Capture, and restart it if macOS requests this.</li>
-      <li>If you use a camera or microphone, allow its separate permission prompt. These devices are opened when you go live. If the first attempt requests permission, grant it and start again.</li>
+      <li>Open the app from Applications. Confirm the macOS <strong>Open</strong> prompt if shown.</li>
+      <li>For window capture, click <strong>Screen Recording…</strong> in Game Capture. Allow the app in the settings window that opens.</li>
+      <li>Restart Game Capture if macOS asks you to.</li>
+      <li>When you first go live with a camera or microphone, allow its separate permission prompt, then try <strong>Go Live</strong> again.</li>
     </ol>
-    <p>Camera and Microphone permissions can also be changed under <strong>Privacy &amp; Security</strong>. Allow only the sources you intend to share.</p>
+    <details><summary>Where are these permissions in System Settings?</summary>
+      <p>Open <strong>System Settings → Privacy &amp; Security</strong>.</p>
+      <ul>
+        <li><strong>Screen &amp; System Audio Recording</strong> allows window capture. Some macOS versions call it <strong>Screen Recording</strong>.</li>
+        <li><strong>Camera</strong> and <strong>Microphone</strong> have separate controls. Allow only the sources you want to share.</li>
+      </ul>
+    </details>
   </section>
   <section id="first-stream">
     <h2>2. Send your first stream</h2>
@@ -112,7 +127,13 @@
         <tr><td><strong>No audio</strong></td><td>No primary audio. Also leave the microphone disabled if you want a silent stream.</td></tr>
       </tbody>
     </table></div>
-    <p>To narrate over app audio, select your microphone and enable <strong>Also add microphone/input</strong> in advanced settings. <strong>Mute / Unmute</strong> for the microphone leaves app audio playing. Use headphones when listening to your own viewer to avoid feedback.</p>
+    <h3>Add your voice over app audio</h3>
+    <ol>
+      <li>Select your microphone in <strong>Microphone / Input</strong>.</li>
+      <li>Enable <strong>Also add microphone/input</strong> in advanced settings.</li>
+      <li>Use headphones if you listen to your own viewer, to avoid feedback.</li>
+    </ol>
+    <p class="note"><strong>Mute / Unmute</strong> affects the microphone; app audio keeps playing.</p>
     <p>Keep the default <strong>Opus</strong> audio for normal VDO.Ninja viewing. Use the generated viewer link so the receiver gets the selected audio-channel settings.</p>
   </section>
   <section id="encoders">
@@ -127,26 +148,73 @@
   <section id="rooms-obs">
     <h2>5. Use a room or OBS</h2>
     <h3>VDO.Ninja rooms</h3>
-    <p>Use your director’s publishing URL, or enter the <strong>Room</strong> and optional <strong>Label</strong> in advanced settings. Match the room’s password. With room quality enabled, the app can send a lower-quality preview to a director or guest and a higher-quality stream to scene viewers.</p>
-    <p>Director control is optional. Enable it only when you need remote changes, and share its control token with your trusted director.</p>
+    <ol>
+      <li>Paste your director’s publishing URL, or enter the <strong>Room</strong> in advanced settings.</li>
+      <li>Match the room’s password. Add a <strong>Label</strong> if your director asks for one.</li>
+    </ol>
+    <details><summary>Room quality and director control</summary>
+      <p>Room quality can send a smaller preview to directors and guests while scene viewers receive a higher-quality stream.</p>
+      <p>Enable director control only for remote changes. Share its control token only with your trusted director.</p>
+    </details>
     <h3>OBS</h3>
-    <p>Add a <strong>Browser Source</strong> in OBS and paste the generated viewer URL. Set the source dimensions to match your stream, then verify picture and sound in OBS before using it in a production. Avoid playing the same feed through multiple monitors or browser tabs.</p>
-    <h3>Other destinations</h3>
-    <p><strong>Show advanced settings → Output</strong> also offers destinations such as WHIP, SRT, and RTMP. Supply the service’s publishing endpoint and credentials. Receiver setup depends on that service; VDO.Ninja room controls and viewer links apply to VDO.Ninja output. Trusted remote RTMPS and broader service compatibility remain part of beta qualification.</p>
+    <ol>
+      <li>In OBS, add a <strong>Browser Source</strong> and paste the viewer link copied from Game Capture.</li>
+      <li>Set its width and height to match your stream.</li>
+      <li>Check picture and sound. Close duplicate viewers to avoid hearing the same feed twice.</li>
+    </ol>
+    <details><summary>WHIP, SRT, RTMP and other destinations</summary>
+      <ol>
+        <li>Open <strong>Show advanced settings → Output</strong> and choose the destination.</li>
+        <li>Enter the service’s publishing endpoint and credentials.</li>
+        <li>Follow that service’s receiver instructions. VDO.Ninja room controls and viewer links apply only to VDO.Ninja output.</li>
+      </ol>
+      <p class="note">Trusted remote RTMPS and broader service compatibility remain part of beta qualification.</p>
+    </details>
   </section>
   <section id="troubleshooting">
     <h2>Troubleshooting</h2>
-    <details><summary>My window is missing, or the preview is blank</summary><p>Check Screen Recording permission, reopen Game Capture if macOS requested it, and click Refresh. Clear the source filter and select the window again. Restore a minimized or hidden source window. Closing the source app requires choosing an available source before starting again.</p></details>
+    <details><summary>My window is missing, or the preview is blank</summary><ol>
+      <li>Check Screen Recording permission. Reopen Game Capture if macOS asked you to.</li>
+      <li>Restore the source window if it is minimized or hidden.</li>
+      <li>Click <strong>Refresh</strong>, clear the source filter, and select the window again.</li>
+      <li>If the source app closed, choose an available source before starting again.</li>
+    </ol></details>
     <details><summary>Video pauses when I minimize the source</summary><p>Restore the source window. The Mac app pauses video delivery while the captured window is suspended and resumes when fresh frames return; audio may continue. Keep the source visible during a stream.</p></details>
-    <details><summary>I have picture but no sound</summary><p>Check Audio Source, microphone selection and mute state, and the source app’s own volume. Selected app audio needs Window capture. Check macOS audio/microphone permissions as appropriate, then stop and start again after permission or device changes. The microphone-off warning means the requested input is not capturing; reconnect or reselect it, then stop and start streaming again. Verify the viewer’s playback and volume controls too.</p></details>
-    <details><summary>The camera or microphone is unavailable</summary><p>Check its Privacy &amp; Security permission, connect the device, and close other software that may hold it. Refresh and select it again. After a permission prompt, retry Go Live. Physical-device hotplug and busy-device coverage is still incomplete in this beta.</p></details>
-    <details><summary>The stream stutters or falls behind</summary><p>Try H.264 with Apple VideoToolbox at 720p30, close unnecessary receivers on the publishing Mac, and check available upload bandwidth. Compare with a viewer on another machine. Stop before changing resolution, FPS, or encoder settings.</p></details>
-    <details><summary>macOS says the app is damaged or cannot be verified</summary><p>Download a fresh copy from the official Mac release and compare its checksum with the release’s checksum file. Keep macOS security checks enabled. If the official copy still fails, report the exact message and your macOS version.</p></details>
+    <details><summary>I have picture but no sound</summary><ol>
+      <li>Check <strong>Audio Source</strong>, the selected microphone, and mute state. Selected app audio needs Window capture.</li>
+      <li>Check the source app’s volume and the viewer’s playback and volume controls.</li>
+      <li>Allow audio/microphone access in macOS if needed, then stop and start the stream.</li>
+      <li>For a microphone-off warning, reconnect or reselect the input, then restart streaming.</li>
+    </ol></details>
+    <details><summary>The camera or microphone is unavailable</summary><ol>
+      <li>Check its <strong>Privacy &amp; Security</strong> permission and connect the device.</li>
+      <li>Close other software using it. Click <strong>Refresh</strong> and select it again.</li>
+      <li>After granting permission, try <strong>Go Live</strong> again.</li>
+    </ol><p class="note">Hotplug and busy-device coverage is still incomplete in this beta.</p></details>
+    <details><summary>The stream stutters or falls behind</summary><ol>
+      <li>Stop streaming. Try <strong>H.264 / Apple VideoToolbox / 720p30</strong>.</li>
+      <li>Close unnecessary viewers on the publishing Mac and check upload bandwidth.</li>
+      <li>Start again and compare playback on another machine.</li>
+    </ol></details>
+    <details><summary>macOS says the app is damaged or cannot be verified</summary><ol>
+      <li>Download a fresh copy from the official Mac release.</li>
+      <li>Compare its checksum with the release’s checksum file. Keep macOS security checks enabled.</li>
+      <li>If it still fails, report the exact message and your macOS version.</li>
+    </ol></details>
   </section>
   <section id="updates">
     <h2>Updates and support</h2>
-    <p>Update Mac betas manually from the <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3">Mac release page</a>: stop streaming, quit the app, and replace the copy in Applications. The stable update check excludes prereleases. The current beta reports app version <strong>0.2.65</strong>. Include the ZIP’s beta number when reporting an issue.</p>
-    <p>For a problem report, use <strong>Help → Open Log Folder</strong> and include the Mac model, macOS version, beta download, video/audio source, encoder, and steps to reproduce. Remove credentials from logs before sharing them.</p>
+    <ol>
+      <li>Download the new beta from the <a href="https://github.com/steveseguin/game-capture/releases/tag/macos-v0.2.65-beta.3">Mac release page</a>.</li>
+      <li>Stop streaming and quit Game Capture.</li>
+      <li>Replace the app in <strong>Applications</strong>.</li>
+    </ol>
+    <p class="note">The stable update check excludes betas. This beta reports version <strong>0.2.65</strong>; include the ZIP’s beta number in issue reports.</p>
+    <details><summary>What to include in a problem report</summary><ul>
+      <li>Your Mac model, macOS version, and beta download.</li>
+      <li>Video/audio source, encoder, and steps that reproduce the issue.</li>
+      <li>Logs from <strong>Help → Open Log Folder</strong>. Remove credentials before sharing.</li>
+    </ul></details>
     <p><a href="https://github.com/steveseguin/game-capture/issues">Report an issue</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-0265-beta3-validation-2026-10-18.md">Testing status and open findings</a> · <a href="https://github.com/steveseguin/game-capture/blob/main/docs/macos-frame-timer-2026-10-17.md">Unreleased candidate results</a></p>
   </section>
   <footer>Game Capture · <a href="./gamecapture.html">All downloads</a> · <a href="https://github.com/steveseguin/game-capture">Source on GitHub</a></footer>

@@ -11,3 +11,12 @@ html[data-app=studio]{--accent:#5c47af;--tint:#eeebfa;--warm:#fae9d1}
 @media print{html{scroll-behavior:auto}body{background:white;font-size:14px;-webkit-print-color-adjust:exact;print-color-adjust:exact}.toolbar,.screen-only,.skip,.screen-footer{display:none!important}main{padding:0}.paper{width:210mm;min-height:297mm;margin:0;padding:11mm 12mm 8mm;box-shadow:none;border-top:1.3mm solid var(--accent);break-after:page;break-inside:avoid}.paper:last-child{break-after:auto}.folio{margin-top:auto}.table-wrap{overflow:visible;border-radius:5px}table,.resources,.hardware{min-width:0}.table-wrap:after{display:none}thead{display:table-header-group}tr,figure,.note,.flow,.stat-grid{break-inside:avoid}a{text-decoration:none}h1{font-size:68px}h2{font-size:34px}.running{font-size:10px;margin-bottom:28px}.two-col{grid-template-columns:1fr 1fr}.stat-grid{grid-template-columns:repeat(4,1fr);gap:0}.stat-grid div:nth-child(3){border-left:1px solid var(--line);padding-left:16px}.cover-bottom{flex-direction:row}.app-figure img{max-height:285px}.cover-art{margin:8px 0 23px}.intro,.lead{font-size:15px}.cover-line{font-size:21px}.flow strong{font-size:13px}.flow span{font-size:9px}.flow small{font-size:10px}.flow{gap:12px;padding:16px}.folio{font-size:9px}}
 #performance .resources th,#performance .resources td{padding:8px 10px}
 @media print{.app-figure img{max-height:160px}}
+.recipe-line{display:block;margin-top:3px}
+@media screen and (max-width:560px){
+  table,#whip table{font-size:14px}
+  .note,.steps p,.picker output{font-size:14px;line-height:1.6}
+  .small,.metric-notes p,.references,.table-wrap:after,.start-recipe,.cover-bottom,.app-figure figcaption{font-size:12px;line-height:1.6}
+  table small,table .sub{font-size:12px}
+  .references a{padding:5px 0}
+  .picker button,.picker select{font-size:14px}
+}
