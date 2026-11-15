@@ -1,0 +1,76 @@
+{
+  "date": "2026-11-15",
+  "gameCaptureSourceBaseCommit": "7982c4d4f7e162c7f7c1f401d3494c338b3299b9",
+  "gameCaptureExecutableSha256": "e6dc721a36b9085d0bb7ecc36cecd24c21beb4b5b7252dc0c4906471641155c1",
+  "browserReceivers": [
+    {
+      "phase": "initial",
+      "channels": 6
+    },
+    {
+      "phase": "initial",
+      "channels": 2
+    },
+    {
+      "phase": "reconnect-1-six",
+      "channels": 6
+    },
+    {
+      "phase": "reconnect-1-six",
+      "channels": 2
+    }
+  ],
+  "viewerRejoinCycles": 1,
+  "stereoViewerMaxReadGapMs": 11,
+  "gui": {
+    "passed": true,
+    "checkCount": 14,
+    "settingsRestored": true,
+    "scope": "Channel/codec controls, restart persistence and return to stereo; --no-live"
+  },
+  "obs": {
+    "passed": true,
+    "pluginRelease": "v1.1.80",
+    "pluginSha256": "5e22112e55cff873eb4ce5eccce2494bd8623d799aeb01431ac230b61bbe9f51",
+    "recordingEncoder": "ffmpeg_flac",
+    "recordingCycles": [
+      "initial",
+      "reconnected"
+    ],
+    "loadedModuleVerified": true,
+    "cleanExit": true,
+    "currentPluginHeadBinaryTested": false
+  },
+  "desktopStudio": {
+    "commit": "d859613751a5faf829dc3b382e0f0ee7bb612312",
+    "executableSha256": "d6cdecd16cbcdabceaf49452e787ccef79da1c7eec575c1af8e5734cd1833829",
+    "sixInputCases": 4,
+    "stereoRecordingTrackCounts": [
+      8,
+      17,
+      8
+    ],
+    "continuousStreamingPassed": true
+  },
+  "captureQualification": {
+    "gameCaptureAndObs": "Synthetic capture-boundary tones through real packaged applications",
+    "desktopStudio": "Actual multichannel PCM files through packaged media decode",
+    "physicalInterfaceTested": false,
+    "editorTested": false
+  },
+  "releasePublished": false,
+  "remaining": [
+    "Physical six-input interface and recovery",
+    "Chosen editor import/edit/export",
+    "Multi-hour six-input session",
+    "Desktop Studio six-channel Program output",
+    "OBS publishing",
+    "Full-band AAC/LFE limitation"
+  ],
+  "evidence": [
+    "native-qt/qa/reports/six-channel-main-20261115/results.json",
+    "native-qt/qa/reports/six-channel-main-gui-final-20261115/results.json",
+    "../ninja-plugin/artifacts/six-channel-main-flac-20261115/results.json",
+    "../video-mixer/docs/mixer-six-channel-main-validation.json"
+  ]
+}

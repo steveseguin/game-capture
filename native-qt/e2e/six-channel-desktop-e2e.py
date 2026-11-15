@@ -121,11 +121,15 @@ def main():
             advanced = named("advancedToggle")
             if not advanced.get_toggle_state():
                 reveal(advanced)
-                advanced.click_input()
+                # The stretched Qt checkbox includes blank space outside its
+                # clickable indicator/label; click the indicator on wide windows.
+                advanced.click_input(coords=(10, advanced.rectangle().height() // 2))
+                desktop.wait_for(lambda: advanced.get_toggle_state(), "advanced settings expanded")
             toggle = named("audioEncodingToggle")
             if not toggle.get_toggle_state():
                 reveal(toggle)
-                toggle.click_input()
+                toggle.click_input(coords=(10, toggle.rectangle().height() // 2))
+                desktop.wait_for(lambda: toggle.get_toggle_state(), "audio encoding expanded")
             window.wheel_mouse_input(coords=(window.rectangle().width() - 8, 150), wheel_dist=-35)
             time.sleep(.5)
             return named("audioBitrateSpin"), named("audioChannelsSelect")
