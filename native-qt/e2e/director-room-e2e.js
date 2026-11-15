@@ -2793,10 +2793,11 @@ async function run() {
         uuid,
         Math.max(10000, Math.floor(config.timeoutMs / 3))
       );
-      // Hosted VDO can briefly show its legacy Director-recognition modal even
-      // after it consumes a successful connection map. The payload assertion
-      // above and healthy rendered node are authoritative for Game Capture.
-      const alerts = await settleUnsupportedAlerts(page, 2000);
+      // Hosted VDO can show its legacy Director-recognition modal after the
+      // connection map, then reapply preview quality when that dialog closes.
+      // Allow the resulting rejection to arrive and settle before later clicks,
+      // using the same bounded window as the other quality interactions.
+      const alerts = await settleUnsupportedAlerts(page, 6000);
       return { ok: node.ok && alerts.ok, state: { node, alerts } };
     });
 

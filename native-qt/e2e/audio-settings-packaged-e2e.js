@@ -291,7 +291,7 @@ async function main() {
       const app = launch(publisher, ['--headless', `--stream=${c.stream}`, '--password=false', '--source=spout',
         `--spout-sender=${c.stream}`, '--resolution=640x360', '--fps=30', '--audio-source=default-output',
         `--audio-bitrate-kbps=${c.bitrate}`, `--audio-channels=${c.channels}`, '--remote-control',
-        `--audio-codec=${c.codec || 'opus'}`, ...(c.red ? ['--audio-red'] : []),
+        `--audio-codec=${c.codec || 'opus'}`, c.red ? '--audio-red' : '--no-audio-red',
         `--remote-token=${token}`, '--duration-ms=110000', '--local-control',
         `--local-control-discovery=${discovery}`], 'publisher-' + id, { LOCALAPPDATA: dir });
       try {

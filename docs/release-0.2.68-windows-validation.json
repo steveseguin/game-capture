@@ -1,0 +1,174 @@
+{
+  "version": "0.2.68",
+  "platform": "Windows x64",
+  "date": "2026-11-15",
+  "qualificationPassed": true,
+  "sourceCommit": "908206b8e80d6337e465035a60dd372b86054e28",
+  "publisherSha256": "a780dac9b30936d646d17f7acae903945c6f5d5f1e3ae6f7b1e727c778d7bb34",
+  "manifestSha256": "e7415acc69c6f64176a868d6ed8961936a490b9fe9be7a3d724dede54ebdabba",
+  "applicationUnchangedDuringQualification": true,
+  "assets": [
+    {
+      "name": "game-capture-0.2.68-setup.exe",
+      "size": 101713312,
+      "sha256": "13a02575571da078cb1278aa06cf56ec48e586fa1f080e80b7fce4370f66bd74"
+    },
+    {
+      "name": "game-capture-setup.exe",
+      "size": 101713312,
+      "sha256": "13a02575571da078cb1278aa06cf56ec48e586fa1f080e80b7fce4370f66bd74"
+    },
+    {
+      "name": "game-capture-0.2.68-portable.exe",
+      "size": 83495328,
+      "sha256": "0f569e232c58a51efeefe1b5b6b5260e6546e5d98acb613a94a59f74f727bc82"
+    },
+    {
+      "name": "game-capture-portable.exe",
+      "size": 83495328,
+      "sha256": "0f569e232c58a51efeefe1b5b6b5260e6546e5d98acb613a94a59f74f727bc82"
+    },
+    {
+      "name": "game-capture-0.2.68-win64.zip",
+      "size": 127066591,
+      "sha256": "f99c9df0349d837fd1d1f02a0ad7c169fd20e5d1faaf0f888fa3d402eebb748f"
+    },
+    {
+      "name": "game-capture-win64.zip",
+      "size": 127066591,
+      "sha256": "f99c9df0349d837fd1d1f02a0ad7c169fd20e5d1faaf0f888fa3d402eebb748f"
+    },
+    {
+      "name": "game-capture-0.2.68-ffmpeg-source-info.zip",
+      "size": 11095,
+      "sha256": "307a320056f5e55d93c9cd585b05a326b61a7318673a6d4a78ca30fe62874732"
+    },
+    {
+      "name": "game-capture-ffmpeg-source-info.zip",
+      "size": 11095,
+      "sha256": "307a320056f5e55d93c9cd585b05a326b61a7318673a6d4a78ca30fe62874732"
+    }
+  ],
+  "gates": {
+    "buildPassed": true,
+    "cppChecksPassed": 22,
+    "payloadFilesVerified": 100,
+    "stableAliasesIdentical": true,
+    "setupAndPortablePayloadsMatch": true
+  },
+  "readiness": {
+    "originalAggregatePassed": false,
+    "report": "native-qt/qa/reports/release-readiness-20261115-002440.md",
+    "onlyFailedWorkflow": "Standard Firefox Control Center: delayed unsupported-quality advisory interfered with subsequent interaction.",
+    "resolution": "Harness uses its existing six-second bounded alert settling window after the connection-map dialog. Two complete 58-check Firefox replays pass; the application and all assertions remain unchanged.",
+    "replays": [
+      {
+        "report": "native-qt/qa/reports/release-0.2.68-harness-replay/firefox-control-center-1/director-room-e2e-director_pub_1794726691974-2026-11-15T07-12-45-585Z.json",
+        "checksPassed": 58,
+        "sha256": "195f2c6c263aff410238b053a0088334be9b8acd41508b24ea060236eed63277"
+      },
+      {
+        "report": "native-qt/qa/reports/release-0.2.68-harness-replay/firefox-control-center-2/director-room-e2e-director_pub_1794726765993-2026-11-15T07-13-58-639Z.json",
+        "checksPassed": 58,
+        "sha256": "5a39c1d6d612bf8958a5ddf948cfbed9cbd18377ddc54977800adc45598f7453"
+      }
+    ],
+    "otherWorkflowsPassed": [
+      "Desktop H.264/VP9 playback and controls",
+      "Optional capture API unavailable",
+      "Malformed control requests",
+      "MCP playback and request pressure",
+      "Update footer and network failures",
+      "Rooms/passwords, refresh and stream-ID collision",
+      "Remote controls",
+      "Auto/Host/STUN/TURN connectivity",
+      "Saved ICE settings",
+      "107 signaling checks each in Edge and both Firefox variants",
+      "Control Center in Edge and Playwright Firefox",
+      "Dual-quality roles, churn and initialization",
+      "Native OBS room alpha and opaque/half-transparent decoded output"
+    ],
+    "dualQualityEndurance": {
+      "passed": true,
+      "seconds": 1812,
+      "viewerCycles": 319,
+      "batches": 4,
+      "retries": 0,
+      "report": "native-qt/qa/reports/dual-quality-soak-2026-11-15T06-32-46-794Z.md"
+    },
+    "reconnectEndurance": {
+      "passed": true,
+      "seconds": 1804,
+      "iterations": 101,
+      "batches": 5,
+      "retries": 0,
+      "report": "native-qt/qa/reports/soak-2026-11-15T07-02-50-953Z.md"
+    }
+  },
+  "focusedApplicationWorkflows": {
+    "sixChannelGui": {
+      "passed": true,
+      "checks": 19,
+      "wentLive": true,
+      "settingsRestored": true
+    },
+    "sixChannelBrowser": {
+      "passed": true,
+      "syntheticCaptureBoundary": true,
+      "simultaneousStereoFallback": true,
+      "viewerRejoinCycles": 1,
+      "stereoContinuityMaxGapMs": 11.199999928474426
+    },
+    "ordinaryAudio": {
+      "passed": true,
+      "cases": 10,
+      "scope": "Mono/stereo Opus, PCM, RED, fallback and remote bitrate overrides",
+      "initialFailure": "Three plain-Opus cases omitted --no-audio-red and negotiated default RED. Corrected fixture explicitly selects RED on/off; all ten cases replayed."
+    },
+    "browserAlpha": {
+      "passed": true,
+      "frontend": "https://vdo.ninja/alpha/",
+      "cases": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+      ]
+    },
+    "windowCapture": {
+      "normalPassed": true,
+      "injectedRejectionFallbackPassed": true
+    },
+    "nativeObsSixChannel": {
+      "passed": true,
+      "pluginRelease": "v1.1.80",
+      "pluginSha256": "5e22112e55cff873eb4ce5eccce2494bd8623d799aeb01431ac230b61bbe9f51",
+      "recordingEncoder": "ffmpeg_flac",
+      "recordings": 2,
+      "cleanExit": true,
+      "physicalInputTested": false
+    },
+    "originalReports": "native-qt/qa/reports/release-0.2.68-focused",
+    "correctedHarnessReports": "native-qt/qa/reports/release-0.2.68-harness-replay"
+  },
+  "signing": {
+    "signer": "Social Stream Ninja",
+    "timestamped": true,
+    "hostVerification": "Certificate chain terminates at an untrusted root on this qualification PC; SmartScreen reputation is not established by signing."
+  },
+  "limitations": [
+    "Physical six-input hardware and hotplug remain unqualified",
+    "Editor import/edit/export remains unqualified",
+    "Six-channel AAC and OBS stereo downmix retain the documented slot-4/LFE limitation",
+    "Browser transparency requires an updated viewer; hosted VDO.Ninja alpha was verified",
+    "Elevated installer installation/upgrade and clean-machine setup were not repeated",
+    "HDR, overnight endurance and other hardware/driver combinations remain unqualified",
+    "Endurance comprises repeated workflow batches, not one uninterrupted or six-input physical session",
+    "Desktop Studio six-channel Program transmission and OBS publishing are separate unfinished work"
+  ]
+}
