@@ -32,12 +32,14 @@ struct AudioResamplerState {
     uint32_t channels = 0;
     uint64_t framesSeen = 0;
     uint64_t nextOutputNumerator = 0;
-    float previousLeft = 0;
-    float previousRight = 0;
+    uint32_t outputChannels = 2;
+    std::vector<float> previousFrame;
 };
 
-// Streaming callers must supply state; omit only for standalone buffer conversion.
+// Output is 48 kHz stereo, or the first six input channel slots with zero padding.
+// Mono duplicates into the first two slots. Streaming callers must supply state.
 std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk,
-                                        AudioResamplerState *state = nullptr);
+                                        AudioResamplerState *state = nullptr,
+                                        uint32_t outputChannels = 2);
 
 }  // namespace versus::audio

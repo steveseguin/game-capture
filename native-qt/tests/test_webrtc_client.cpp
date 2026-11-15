@@ -921,6 +921,8 @@ class TestWebRtcClient : public QObject {
     void testRelayModeRequiresTurnServer();
     void testRemoteCandidateQueuesBeforeRemoteDescription();
     void testInitialOfferCompletesPromptlyAfterBootstrapTracks();
+    void testH264CodedDimensionsSelectLevel_data();
+    void testH264CodedDimensionsSelectLevel();
     void testSenderReportClockIgnoresEncoderDelay();
     void testWhipRepairNegotiationAndRtx();
     void testWhipRepairBoundsAndMalformedFeedback();
@@ -1194,6 +1196,46 @@ void TestWebRtcClient::testRemoteCandidateQueuesBeforeRemoteDescription() {
         "0",
         0));
 
+    client.shutdown();
+}
+
+void TestWebRtcClient::testH264CodedDimensionsSelectLevel_data() {
+    QTest::addColumn<int>("width");
+    QTest::addColumn<int>("height");
+    QTest::addColumn<int>("fps");
+    QTest::addColumn<QString>("level");
+    QTest::addColumn<bool>("packed");
+    QTest::newRow("vga30") << 640 << 480 << 30 << "42e01e" << false;
+    QTest::newRow("720p30") << 1280 << 720 << 30 << "42e01f" << false;
+    QTest::newRow("720p60-legacy") << 1280 << 720 << 60 << "42e02a" << false;
+    QTest::newRow("1080p30-legacy") << 1920 << 1080 << 30 << "42e02a" << false;
+    QTest::newRow("1080p60") << 1920 << 1080 << 60 << "42e02a" << false;
+    QTest::newRow("4k-legacy") << 3840 << 2160 << 60 << "42e02a" << false;
+    QTest::newRow("packed720p30") << 2560 << 720 << 30 << "42e028" << true;
+    QTest::newRow("packed720p60") << 2560 << 720 << 60 << "42e02a" << true;
+    QTest::newRow("packed1080p30") << 3840 << 1080 << 30 << "42e032" << true;
+    QTest::newRow("packed1080p60") << 3840 << 1080 << 60 << "42e033" << true;
+    QTest::newRow("packed1080p61") << 3840 << 1080 << 61 << "42e034" << true;
+    QTest::newRow("macroblock-rounding") << 2048 << 1026 << 30 << "42e02a" << true;
+}
+
+void TestWebRtcClient::testH264CodedDimensionsSelectLevel() {
+    QFETCH(int, width);
+    QFETCH(int, height);
+    QFETCH(int, fps);
+    QFETCH(QString, level);
+    QFETCH(bool, packed);
+    versus::webrtc::WebRtcClient client;
+    versus::webrtc::PeerConfig config;
+    config.initialVideo = true;
+    config.videoWidth = width;
+    config.packedAlpha = packed;
+    config.videoHeight = height;
+    config.videoFps = fps;
+    config.iceMode = versus::webrtc::IceMode::HostOnly;
+    QVERIFY(client.initialize(config));
+    const auto offer = QString::fromStdString(client.createOffer());
+    QVERIFY2(offer.contains("profile-level-id=" + level + ";"), qPrintable(offer));
     client.shutdown();
 }
 

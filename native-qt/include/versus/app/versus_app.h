@@ -63,10 +63,12 @@ struct StreamMetrics {
     int lqPeerCount = 0;
     int activeVideoPeers = 0;
     int activeAudioPeers = 0;
+    int packedAlphaWaitingPeers = 0;
     uint64_t videoFramesCaptured = 0;
     uint64_t videoFramesSent = 0;
     uint64_t videoFramesDropped = 0;
     uint64_t audioPacketsSent = 0;
+    uint64_t audioBytesSent = 0;
     uint64_t videoEncodeFailures = 0;
     uint64_t videoEncodeTimeouts = 0;
     uint64_t videoEncodeHardFailures = 0;
@@ -89,6 +91,7 @@ struct ConnectionHealth {
     int lqPeerCount = 0;
     int activeVideoPeers = 0;
     int activeAudioPeers = 0;
+    int packedAlphaWaitingPeers = 0;
     std::string codec;
     std::string encoder;
     std::string requestedEncoder;
@@ -227,6 +230,7 @@ class VersusApp {
         int lq = 0;
         int activeVideo = 0;
         int activeAudio = 0;
+        int packedAlphaWaiting = 0;
         int roomGuests = 0;
         int roomScenes = 0;
         int roomNonGuestViewers = 0;
@@ -678,6 +682,7 @@ class VersusApp {
         std::string systemBrowser;
         std::string alphaReceiveMode;
         std::atomic<bool> alphaAllowed{false};
+        std::atomic<uint64_t> packedAlphaReadyGeneration{0};
         std::atomic<bool> sawPeerInfoMessage{false};
         std::atomic<bool> waitingForKeyframe{true};
         // Wire/RTP clock watermark. This must never be compared with a source
@@ -855,6 +860,7 @@ class VersusApp {
     int softwareExternalEncodeFailCount_ = 0;
     int64_t softwareExternalFailWindowStartMs_ = 0;
     std::atomic<bool> lqEncoderInitialized_{false};
+    int64_t lastLqFrameSlot_ = std::numeric_limits<int64_t>::min(); // videoSendMutex_
     struct RoomQualityState {
         uint64_t generation = 0;
         std::string activeRoom;
@@ -887,6 +893,7 @@ class VersusApp {
     versus::audio::AudioResamplerState additionalAudioResampler_;
     versus::audio::WindowAudioCaptureCore microphoneAudioCapture_;
     versus::audio::OpusEncoder opusEncoder_;
+    versus::audio::OpusEncoder stereoFallbackEncoder_;
     versus::audio::PcmEncoder pcmEncoder_;
     versus::signaling::VdoSignaling signaling_;
 };

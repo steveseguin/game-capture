@@ -10,6 +10,7 @@
 #include <QLineEdit>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QStandardItemModel>
 #include <QCheckBox>
 #include <QDir>
 #include <QProgressBar>
@@ -251,6 +252,7 @@ private slots:
     void testAudioSourceOptions();
     void testAudioMixControls();
     void testAudioEncodingPersistenceAndReset();
+    void testSixChannelModeRequiresOpus();
     void testRoomModeQualityToggle();
     void testRoomQualityAvailabilityExplanationInitialState();
     void testRoomQualityUnavailableUi_data();
@@ -280,6 +282,7 @@ private slots:
     void testAlphaBackgroundControls();
     void testFfmpegAlphaStatusMessaging();
     void testAlphaWorkflowMessaging();
+    void testBrowserAlphaSelection();
 
 private:
     QTemporaryDir settingsDir_;
@@ -817,7 +820,7 @@ void TestMainWindow::testSpoutSelectionPreviewMessaging() {
 
     QVERIFY(preview->text().contains("Spout2 sender selected"));
     QVERIFY(preview->text().contains("VTubeStudioSpout"));
-    QVERIFY(preview->text().contains("For transparency: VP9 alpha or chroma background"));
+    QVERIFY(preview->text().contains("For transparency: enable alpha or a chroma background"));
     QVERIFY(preview->text().contains("Video only"));
     QVERIFY(preview->text().contains("selected stream resolution"));
 }
@@ -990,6 +993,55 @@ void TestMainWindow::testAudioEncodingPersistenceAndReset() {
     QCOMPARE(channels->currentData().toInt(), 2);
     QCOMPARE(codec->currentData().toString(), QString("opus"));
     QVERIFY(red->isChecked());
+}
+
+void TestMainWindow::testSixChannelModeRequiresOpus() {
+    auto *bitrate = window_->findChild<QSpinBox *>("audioBitrateSpin");
+    auto *channels = window_->findChild<QComboBox *>("audioChannelsSelect");
+    auto *codec = window_->findChild<QComboBox *>("audioCodecSelect");
+    auto *red = window_->findChild<QCheckBox *>("audioRedCheck");
+    QVERIFY(bitrate && channels && codec && red);
+    QVERIFY(channels->findData(6) >= 0);
+    auto *codecModel = qobject_cast<QStandardItemModel *>(codec->model());
+    QVERIFY(codecModel);
+    auto *pcmItem = codecModel->item(codec->findData("pcm"));
+    QVERIFY(pcmItem && pcmItem->isEnabled());
+
+    // Stereo PCM is a valid saved state; six channels must fall back to Opus.
+    codec->setCurrentIndex(codec->findData("pcm"));
+    QVERIFY(!bitrate->isEnabled() && !red->isEnabled());
+    channels->setCurrentIndex(channels->findData(6));
+    QCOMPARE(codec->currentData().toString(), QString("opus"));
+    QVERIFY(!pcmItem->isEnabled());
+    QVERIFY(bitrate->isEnabled());
+    QVERIFY(!red->isEnabled());
+
+    // Selecting PCM again is not possible while six channels are active.
+    codec->setCurrentIndex(codec->findData("pcm"));
+    QCOMPARE(codec->currentData().toString(), QString("opus"));
+
+    // Six-channel Opus survives a restart with PCM still unavailable.
+    delete window_;
+    window_ = new versus::ui::MainWindow(nullptr);
+    bitrate = window_->findChild<QSpinBox *>("audioBitrateSpin");
+    channels = window_->findChild<QComboBox *>("audioChannelsSelect");
+    codec = window_->findChild<QComboBox *>("audioCodecSelect");
+    red = window_->findChild<QCheckBox *>("audioRedCheck");
+    QVERIFY(bitrate && channels && codec && red);
+    QCOMPARE(channels->currentData().toInt(), 6);
+    QCOMPARE(codec->currentData().toString(), QString("opus"));
+    codecModel = qobject_cast<QStandardItemModel *>(codec->model());
+    QVERIFY(codecModel);
+    pcmItem = codecModel->item(codec->findData("pcm"));
+    QVERIFY(pcmItem && !pcmItem->isEnabled());
+    QVERIFY(!red->isEnabled());
+
+    // Returning to stereo restores PCM and RED.
+    channels->setCurrentIndex(channels->findData(2));
+    QVERIFY(pcmItem->isEnabled());
+    QVERIFY(red->isEnabled());
+    codec->setCurrentIndex(codec->findData("pcm"));
+    QCOMPARE(codec->currentData().toString(), QString("pcm"));
 }
 
 void TestMainWindow::testAudioMixControls() {
@@ -1729,7 +1781,7 @@ void TestMainWindow::testRoomQualityH265LatentAlphaEffectiveUi() {
     if (backgroundValue == QStringLiteral("chroma")) {
         QVERIFY(previewText.contains("Chroma output over #00FF00", Qt::CaseInsensitive));
     } else {
-        QVERIFY(previewText.contains("For transparency: VP9 alpha or chroma background",
+        QVERIFY(previewText.contains("For transparency: enable alpha or a chroma background",
                                      Qt::CaseInsensitive));
     }
 }
@@ -2490,6 +2542,69 @@ void TestMainWindow::testAlphaWorkflowMessaging() {
     codecCombo->setCurrentIndex(av1Index);
     QVERIFY(alphaCheck->text().contains("alpha-preserving"));
     QVERIFY(alphaCheck->toolTip().contains("use VP9"));
+}
+
+void TestMainWindow::testBrowserAlphaSelection() {
+    auto *alpha = window_->findChild<QCheckBox *>("alphaWorkflowCheck");
+    auto *transport = window_->findChild<QComboBox *>("alphaTransportSelect");
+    auto *codec = window_->findChild<QComboBox *>("codecSelect");
+    auto *background = window_->findChild<QComboBox *>("alphaBackgroundModeSelect");
+    QVERIFY(alpha && transport && codec && background);
+    codec->setCurrentIndex(codec->findData("h264"));
+    alpha->setChecked(true);
+    auto config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QVERIFY(config.enableAlpha && !config.packedAlpha);
+    transport->setCurrentIndex(transport->findData("browser"));
+    config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QVERIFY(config.packedAlpha && !config.enableAlpha);
+    QVERIFY(!background->isEnabled());
+    versus::ui::MainWindowTestAccess::setConfigControlsEnabled(*window_, false);
+    QVERIFY(!transport->isEnabled());
+    versus::ui::MainWindowTestAccess::setConfigControlsEnabled(*window_, true);
+    codec->setCurrentIndex(codec->findData("vp9"));
+    config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QVERIFY(!config.packedAlpha && !config.enableAlpha);
+    QVERIFY(!alpha->isEnabled());
+    // The greyed-out checkbox must say which setting unlocks it.
+    QVERIFY(alpha->text().contains("requires H.264"));
+    QVERIFY(alpha->toolTip().contains("Select H.264"));
+    codec->setCurrentIndex(codec->findData("h264"));
+    config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QVERIFY(config.packedAlpha);
+    QVERIFY(alpha->isEnabled());
+    QVERIFY(!alpha->text().contains("requires"));
+    QVERIFY(alpha->toolTip().contains("receive no video"));
+
+    // Browser alpha rejects custom FFmpeg options. Leftover text must stay reachable so it can
+    // be cleared, even with an encoder mode that otherwise greys the field out.
+    auto *encoder = window_->findChild<QComboBox *>("encoderSelect");
+    auto *options = window_->findChild<QLineEdit *>("ffmpegOptionsInput");
+    QVERIFY(encoder && options);
+    encoder->setCurrentIndex(encoder->findData("qsv"));
+    QVERIFY(!options->isEnabled());  // Nothing to clear, and new options would be rejected.
+    QVERIFY(options->toolTip().contains("Browser alpha"));
+    encoder->setCurrentIndex(encoder->findData("auto"));
+    options->setText("-preset p4");
+    alpha->setChecked(false);
+    QVERIFY(!options->isEnabled());  // Ordinary H.264 with the automatic encoder never used this field.
+    QVERIFY(options->toolTip().contains("Advanced FFmpeg output options"));
+    alpha->setChecked(true);
+    QVERIFY(options->isEnabled());
+    config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QCOMPARE(QString::fromStdString(config.ffmpegOptions), QString("-preset p4"));
+    options->setText("   ");
+    config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QVERIFY(config.packedAlpha && config.ffmpegOptions.empty());
+    options->clear();
+
+    auto *output = window_->findChild<QComboBox *>("outputSelect");
+    QVERIFY(output != nullptr);
+    output->setCurrentIndex(output->findData("srt"));
+    config = versus::ui::MainWindowTestAccess::buildEncoderConfigFromUi(*window_, 1280, 720, 60, 4000);
+    QVERIFY(!config.packedAlpha && !config.enableAlpha);
+    QVERIFY(background->isEnabled());
+    QVERIFY(!alpha->isEnabled());
+    QVERIFY(alpha->toolTip().contains("VDO.Ninja output only"));
 }
 
 QTEST_MAIN(TestMainWindow)

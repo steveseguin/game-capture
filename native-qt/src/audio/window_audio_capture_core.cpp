@@ -518,7 +518,7 @@ CaptureResult WindowAudioCaptureCore::StartCapture(uint32_t processId) {
     return StartProcessLoopback(processId);
 }
 
-CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t processId, StreamCallback callback) {
+CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t processId, StreamCallback callback, uint32_t channels) {
     StopCapture();
 
     {
@@ -527,7 +527,7 @@ CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t processId, Str
     }
     streaming_.store(true);
 
-    CaptureResult result = StartProcessLoopback(processId);
+    CaptureResult result = StartProcessLoopback(processId, channels);
     if (!result.success) {
         std::lock_guard<std::mutex> lock(callbackMutex_);
         streamCallback_ = nullptr;
@@ -648,7 +648,7 @@ bool WindowAudioCaptureCore::IsCapturing() const {
     return capturing_.load();
 }
 
-CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
+CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId, uint32_t channels) {
     CaptureResult result;
 
     usingProcessLoopback_.store(false);
@@ -706,10 +706,10 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
     WAVEFORMATEXTENSIBLE fallbackFormat = {};
     WAVEFORMATEX *format = nullptr;
 
-    const bool usingFallbackFormat = FAILED(hr) || !mixFormat;
+    const bool usingFallbackFormat = FAILED(hr) || !mixFormat || channels == 6;
     if (usingFallbackFormat) {
         fallbackFormat.Format.wFormatTag = WAVE_FORMAT_EXTENSIBLE;
-        fallbackFormat.Format.nChannels = kDefaultChannelCount;
+        fallbackFormat.Format.nChannels = channels == 6 ? 6 : kDefaultChannelCount;
         // The virtual process-loopback client can leave GetMixFormat unimplemented.
         // Prefer the default render rate to avoid unnecessary conversion in
         // Windows. Process audio can span endpoints, so this is only a hint;
@@ -722,7 +722,7 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
         fallbackFormat.Format.nAvgBytesPerSec = fallbackFormat.Format.nSamplesPerSec * fallbackFormat.Format.nBlockAlign;
         fallbackFormat.Format.cbSize = sizeof(WAVEFORMATEXTENSIBLE) - sizeof(WAVEFORMATEX);
         fallbackFormat.Samples.wValidBitsPerSample = fallbackFormat.Format.wBitsPerSample;
-        fallbackFormat.dwChannelMask = KSAUDIO_SPEAKER_STEREO;
+        fallbackFormat.dwChannelMask = channels == 6 ? KSAUDIO_SPEAKER_5POINT1 : KSAUDIO_SPEAKER_STEREO;
         fallbackFormat.SubFormat = KSDATAFORMAT_SUBTYPE_IEEE_FLOAT;
         format = reinterpret_cast<WAVEFORMATEX *>(&fallbackFormat);
         sampleRate_ = fallbackFormat.Format.nSamplesPerSec;
@@ -788,6 +788,20 @@ CaptureResult WindowAudioCaptureCore::StartProcessLoopback(uint32_t processId) {
         if (SUCCEEDED(hr)) {
             fallbackFormat.Format.nSamplesPerSec = kDefaultSampleRate;
             fallbackFormat.Format.nAvgBytesPerSec = kDefaultSampleRate * fallbackFormat.Format.nBlockAlign;
+            sampleRate_ = kDefaultSampleRate;
+            hr = initializeClient();
+        }
+    }
+    if (channels == 6 && (hr == AUDCLNT_E_UNSUPPORTED_FORMAT || hr == E_INVALIDARG)) {
+        spdlog::warn("[Audio] Process loopback rejected six channels; retrying stereo at {} Hz", kDefaultSampleRate);
+        hr = activateClient();
+        if (SUCCEEDED(hr)) {
+            fallbackFormat.Format.nChannels = kDefaultChannelCount;
+            fallbackFormat.Format.nSamplesPerSec = kDefaultSampleRate;
+            fallbackFormat.Format.nBlockAlign = kDefaultChannelCount * sizeof(float);
+            fallbackFormat.Format.nAvgBytesPerSec = kDefaultSampleRate * fallbackFormat.Format.nBlockAlign;
+            fallbackFormat.dwChannelMask = KSAUDIO_SPEAKER_STEREO;
+            channels_ = kDefaultChannelCount;
             sampleRate_ = kDefaultSampleRate;
             hr = initializeClient();
         }
@@ -1309,7 +1323,7 @@ CaptureResult WindowAudioCaptureCore::StartCapture(uint32_t) {
     return {false, false, 0, 0, "Audio capture is only supported on Windows"};
 }
 
-CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t, StreamCallback) {
+CaptureResult WindowAudioCaptureCore::StartStreamCapture(uint32_t, StreamCallback, uint32_t) {
     return {false, false, 0, 0, "Audio capture is only supported on Windows"};
 }
 

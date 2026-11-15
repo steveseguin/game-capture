@@ -219,6 +219,7 @@ int main(int argc, char *argv[]) {
     bool roomModeLqEnabled = true;
     std::string remoteControlToken;
     bool alphaWorkflowEnabled = false;
+    bool browserAlphaEnabled = false;
     bool alphaBackgroundConfigured = false;
     versus::video::AlphaBackgroundMode alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
     std::array<uint8_t, 3> alphaBackgroundColor = {0, 255, 0};
@@ -342,8 +343,10 @@ int main(int argc, char *argv[]) {
                 audioChannels = 1;
             } else if (value == "stereo" || value == "2") {
                 audioChannels = 2;
+            } else if (value == "6") {
+                audioChannels = 6;
             } else {
-                spdlog::error("--audio-channels must be mono|stereo|1|2");
+                spdlog::error("--audio-channels must be mono|stereo|1|2|6");
                 return 2;
             }
         } else if (arg.find("--audio-source=") == 0) {
@@ -430,6 +433,8 @@ int main(int argc, char *argv[]) {
             diagnosticsOutArg = arg.substr(18);
         } else if (arg == "--alpha-workflow") {
             alphaWorkflowEnabled = true;
+        } else if (arg == "--browser-alpha") {
+            browserAlphaEnabled = true;
         } else if (arg.find("--alpha-background=") == 0) {
             std::string normalized = arg.substr(19);
             std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
@@ -730,6 +735,11 @@ int main(int argc, char *argv[]) {
         encoderOverride.enableAlpha = true;
         hasVideoConfigOverride = true;
     }
+    if (browserAlphaEnabled) {
+        encoderOverride.packedAlpha = true;
+        encoderOverride.enableAlpha = false;
+        hasVideoConfigOverride = true;
+    }
     if (alphaBackgroundConfigured) {
         encoderOverride.alphaBackgroundMode = alphaBackgroundMode;
         encoderOverride.alphaBackgroundRed = alphaBackgroundColor[0];
@@ -768,6 +778,14 @@ int main(int argc, char *argv[]) {
         encoderOverride.ffmpegOptions = ffmpegOptionsArg;
         hasVideoConfigOverride = true;
     }
+    if (browserAlphaEnabled && (alphaWorkflowEnabled || encoderOverride.codec != versus::video::VideoCodec::H264 ||
+        encoderOverride.alphaBackgroundMode != versus::video::AlphaBackgroundMode::None ||
+        encoderOverride.width > 1920 || encoderOverride.height > 1080 ||
+        (encoderOverride.width & 1) || (encoderOverride.height & 1) || encoderOverride.frameRate > 60 ||
+        !encoderOverride.ffmpegOptions.empty())) {
+        spdlog::error("--browser-alpha requires H.264, even dimensions up to 1920x1080 at 60 fps, no alpha background, no --alpha-workflow, and default FFmpeg options");
+        return 2;
+    }
 
     if (outputConfig.protocol == versus::output::Protocol::VdoNinja &&
         (!outputConfig.url.empty() || !outputConfig.bearerToken.empty() || !outputConfig.streamKey.empty() ||
@@ -778,7 +796,7 @@ int main(int argc, char *argv[]) {
         if (!headless) { spdlog::error("Use advanced output settings in the GUI, or add --headless for output arguments"); return 2; }
         const auto error = versus::output::validateConfig(outputConfig);
         if (!error.empty()) { spdlog::error("{}", error); return 2; }
-        if ((!videoCodecArg.empty() && videoCodecArg != "h264") || alphaWorkflowEnabled || pcmAudio || audioRed) {
+        if ((!videoCodecArg.empty() && videoCodecArg != "h264") || alphaWorkflowEnabled || browserAlphaEnabled || pcmAudio || audioRed) {
             spdlog::error("External outputs require H.264 and Opus/AAC; alpha, PCM and RED are available with VDO.Ninja"); return 2;
         }
         encoderOverride.codec = versus::video::VideoCodec::H264;
@@ -804,6 +822,14 @@ int main(int argc, char *argv[]) {
     if (!audioRedSpecified && !pcmAudio &&
         outputConfig.protocol == versus::output::Protocol::VdoNinja) {
         audioRed = true;
+    }
+    if (audioChannels == 6 && pcmAudio) {
+        spdlog::error("--audio-channels=6 requires Opus; --audio-codec=pcm supports mono and stereo only");
+        return 2;
+    }
+    if (audioChannels == 6 && audioRedSpecified && audioRed) {
+        spdlog::error("--audio-red is not available with --audio-channels=6; six-channel Opus is sent without RED");
+        return 2;
     }
     if (pcmAudio && audioRed) {
         spdlog::error("--audio-red currently supports Opus only; PCM RED is not negotiated by the viewer");

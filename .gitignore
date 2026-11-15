@@ -78,6 +78,8 @@ native-qt/e2e/__pycache__/
 /.tools/
 
 # Local credentials and signing material (templates may be committed)
+.secrets
+.secrets.*
 .env
 .env.*
 !.env.example

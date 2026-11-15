@@ -545,7 +545,7 @@ bool buildAspectFitAlphaPlane(const video::CapturedFrame &frame,
 bool compositeAlphaBackground(video::CapturedFrame &frame,
                               const video::EncoderConfig &config) {
     if (config.alphaBackgroundMode == video::AlphaBackgroundMode::None ||
-        config.enableAlpha ||
+        config.enableAlpha || config.packedAlpha ||
         frame.format != video::CapturedFrame::Format::BGRA ||
         frame.width <= 0 ||
         frame.height <= 0 ||
@@ -735,7 +735,7 @@ bool supportsVp9AlphaTrack(video::VideoCodec codec) {
 }
 
 bool usesVp9AlphaTrack(const video::EncoderConfig &config) {
-    return config.enableAlpha && supportsVp9AlphaTrack(config.codec);
+    return config.enableAlpha && !config.packedAlpha && supportsVp9AlphaTrack(config.codec);
 }
 
 std::pair<int, int> alphaTrackDimensions(const video::EncoderConfig &config, int primaryWidth, int primaryHeight) {
@@ -914,6 +914,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         softwareExternalFailWindowStartMs_ = 0;
         hqAspectLocked_ = false;
         lqEncoderInitialized_.store(false, std::memory_order_relaxed);
+        lastLqFrameSlot_ = std::numeric_limits<int64_t>::min();
         publishVideoStateSnapshotLocked();
     }
     {
@@ -952,7 +953,7 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                 captureConfig.width > 0 ? captureConfig.width : 1920,
                 captureConfig.height > 0 ? captureConfig.height : 1080,
                 captureConfig.frameRate > 0 ? captureConfig.frameRate : 60,
-                captureConfig.enableAlpha ||
+                captureConfig.enableAlpha || captureConfig.packedAlpha ||
                     captureConfig.alphaBackgroundMode != video::AlphaBackgroundMode::None)) {
             std::lock_guard<std::mutex> errorLock(captureErrorMutex_);
             lastCaptureError_ = windowCapture_.lastError();
@@ -1142,12 +1143,21 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
         audio::AudioEncoderConfig audioConfig;
         audioConfig.bitrate = configuredAudioBitrateKbps_.load(std::memory_order_relaxed);
         audioConfig.outputChannels = audioOutputChannels_.load(std::memory_order_relaxed);
+        audioConfig.channels = audioConfig.outputChannels == 6 ? 6 : 2;
         // Keep both RED copies below the MTU even at the highest Opus bitrate.
         audioConfig.packetDurationMs = audioRed_.load(std::memory_order_relaxed) ? 5 : 10;
-        pcmEncoder_.reset(audioConfig.outputChannels);
+        pcmEncoder_.reset(audioConfig.outputChannels == 1 ? 1 : 2);
         if (!opusEncoder_.initialize(audioConfig)) {
             spdlog::error("[App] Failed to initialize audio encoder");
             return false;
+        }
+        if (audioConfig.channels == 6) {
+            auto fallbackConfig = audioConfig;
+            fallbackConfig.channels = fallbackConfig.outputChannels = 2;
+            if (!stereoFallbackEncoder_.initialize(fallbackConfig)) {
+                opusEncoder_.shutdown();
+                return false;
+            }
         }
         audioEncoderBitrateKbps_.store(audioConfig.bitrate, std::memory_order_relaxed);
         capturing_ = true;
@@ -1202,6 +1212,7 @@ void VersusApp::stopCapture() {
     {
         std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
         opusEncoder_.shutdown();
+        stereoFallbackEncoder_.shutdown();
         capturing_ = false;
         audioEncoderBitrateKbps_.store(
             configuredAudioBitrateKbps_.load(std::memory_order_relaxed), std::memory_order_relaxed);
@@ -1244,6 +1255,10 @@ void VersusApp::setVideoConfig(const versus::video::EncoderConfig &config) {
     uint64_t committedGeneration = 0;
     {
         std::lock_guard<std::mutex> lock(videoSendMutex_);
+        if ((live_ || capturing_) && config.packedAlpha != videoConfig_.packedAlpha) {
+            spdlog::warn("[App] Stop streaming and capture before changing browser alpha mode");
+            return;
+        }
         videoConfig_ = config;
         if (config.bitrate > 0) {
             configuredVideoBitrateKbps_.store(config.bitrate, std::memory_order_relaxed);
@@ -1300,14 +1315,15 @@ void VersusApp::setAudioMixConfig(float primaryGain, float additionalGain, bool 
 
 bool VersusApp::setAudioEncodingConfig(int bitrateKbps, int channels, bool pcm, bool red) {
     std::lock_guard<std::mutex> encodeLock(audioEncodeMutex_);
-    if (capturing_ || bitrateKbps < 6 || bitrateKbps > 510 || (channels != 1 && channels != 2)) {
+    if (capturing_ || bitrateKbps < 6 || bitrateKbps > 510 ||
+        (channels != 1 && channels != 2 && channels != 6) || (channels == 6 && pcm)) {
         return false;
     }
     configuredAudioBitrateKbps_.store(bitrateKbps, std::memory_order_relaxed);
     audioEncoderBitrateKbps_.store(bitrateKbps, std::memory_order_relaxed);
     audioOutputChannels_.store(channels, std::memory_order_relaxed);
     pcmAudio_.store(pcm, std::memory_order_relaxed);
-    audioRed_.store(red && !pcm, std::memory_order_relaxed);
+    audioRed_.store(red && !pcm && channels != 6, std::memory_order_relaxed);
     return true;
 }
 
@@ -1369,7 +1385,7 @@ bool VersusApp::goLive(const StartOptions &options) {
     if (options.output.protocol != output::Protocol::VdoNinja) {
         const auto error = output::validateConfig(options.output);
         const auto videoState = videoStateSnapshot();
-        if (!error.empty() || videoState.config.codec != video::VideoCodec::H264 || videoState.config.enableAlpha ||
+        if (!error.empty() || videoState.config.codec != video::VideoCodec::H264 || videoState.config.enableAlpha || videoState.config.packedAlpha ||
             pcmAudio_.load() || audioRed_.load()) {
             emitRuntimeEvent(error.empty() ? "External outputs require H.264 video and Opus/AAC audio without alpha or RED." : error, true);
             stopLive(); return false;
@@ -1547,7 +1563,14 @@ void VersusApp::stopLive() {
     pendingGlobalKeyframe_.store(false);
     stopSignalingRecoveryThread();
     stopVideoMaintenanceThread();
-    if (external) external->stop();
+    if (external) {
+        external->stop();
+        if (!external->usesPcmInput()) {
+            const auto status = external->status();
+            audioBytesSent_.store(status.audioBytes, std::memory_order_relaxed);
+            audioPacketsSent_.store(status.audioPackets, std::memory_order_relaxed);
+        }
+    }
     if (wasLive && !external) {
         std::lock_guard<std::mutex> lock(signalingOpsMutex_);
         signaling_.unpublish();
@@ -1567,7 +1590,8 @@ std::string VersusApp::getShareLink() const {
         // the publisher remains responsible for the actual selected bitrate.
         url += audioOutputChannels_.load(std::memory_order_relaxed) == 1
             ? "&stereo=0&ab=510"
-            : "&stereo=1&ab=510";
+            : audioOutputChannels_.load(std::memory_order_relaxed) == 6
+                ? "&stereo=4&ab=510" : "&stereo=1&ab=510";
         if (pcmAudio_.load(std::memory_order_relaxed)) url += "&audiocodec=pcm";
         else if (audioRed_.load(std::memory_order_relaxed)) url += "&audiocodec=red";
     }
@@ -1678,7 +1702,16 @@ StreamMetrics VersusApp::buildStreamMetricsSnapshot(
     const int64_t startedMs = metricsStartMs_.load(std::memory_order_relaxed);
     const int64_t elapsedMs = startedMs > 0 ? std::max<int64_t>(1, nowMs - startedMs) : 1;
     const uint64_t videoBytes = videoBytesSent_.load(std::memory_order_relaxed);
-    const uint64_t audioBytes = audioBytesSent_.load(std::memory_order_relaxed);
+    uint64_t audioBytes = audioBytesSent_.load(std::memory_order_relaxed);
+    uint64_t audioPackets = audioPacketsSent_.load(std::memory_order_relaxed);
+    const auto external = externalOutput_.load();
+    const auto outputStatus = external ? external->status() : output::Status{};
+    if (external && !external->usesPcmInput()) {
+        // WHIP can queue both multiopus and stereo fallback; only the worker
+        // knows which packets were negotiated and actually sent.
+        audioBytes = outputStatus.audioBytes;
+        audioPackets = outputStatus.audioPackets;
+    }
     const uint64_t videoFrames = videoFramesSent_.load(std::memory_order_relaxed);
     const uint64_t droppedFrames = videoFramesDropped_.load(std::memory_order_relaxed);
     const double lifetimeVideoKbps = (static_cast<double>(videoBytes) * 8.0) / static_cast<double>(elapsedMs);
@@ -1778,15 +1811,17 @@ StreamMetrics VersusApp::buildStreamMetricsSnapshot(
     metrics.lqPeerCount = counts.lq;
     metrics.activeVideoPeers = counts.activeVideo;
     metrics.activeAudioPeers = counts.activeAudio;
-    if (auto external = externalOutput_.load()) {
-        const bool connected = external->status().state == output::State::Live;
+    metrics.packedAlphaWaitingPeers = videoState.config.packedAlpha ? counts.packedAlphaWaiting : 0;
+    if (external) {
+        const bool connected = outputStatus.state == output::State::Live;
         metrics.peerCount = metrics.hqPeerCount = metrics.activeVideoPeers = connected ? 1 : 0;
         metrics.activeAudioPeers = connected && external->wantsAudio() ? 1 : 0;
     }
     metrics.videoFramesCaptured = videoFramesCaptured_.load(std::memory_order_relaxed);
     metrics.videoFramesSent = videoFrames;
     metrics.videoFramesDropped = droppedFrames;
-    metrics.audioPacketsSent = audioPacketsSent_.load(std::memory_order_relaxed);
+    metrics.audioPacketsSent = audioPackets;
+    metrics.audioBytesSent = audioBytes;
     metrics.videoEncodeFailures = videoEncodeFailures_.load(std::memory_order_relaxed);
     metrics.videoEncodeTimeouts = videoEncodeTimeouts_.load(std::memory_order_relaxed);
     metrics.videoEncodeHardFailures = videoEncodeHardFailures_.load(std::memory_order_relaxed);
@@ -2009,6 +2044,7 @@ ConnectionHealth VersusApp::getConnectionHealth() const {
     health.lqPeerCount = metrics.lqPeerCount;
     health.activeVideoPeers = metrics.activeVideoPeers;
     health.activeAudioPeers = metrics.activeAudioPeers;
+    health.packedAlphaWaitingPeers = metrics.packedAlphaWaitingPeers;
     health.videoFramesCaptured = metrics.videoFramesCaptured;
     health.videoFramesSent = metrics.videoFramesSent;
     health.videoFramesDropped = metrics.videoFramesDropped;
@@ -2188,6 +2224,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"encoder_input_format", videoState.encoderInputFormat},
         {"hardware_encoder", videoState.hardwareEncoder},
         {"alpha_enabled", videoState.config.enableAlpha},
+        {"packed_alpha", videoState.config.packedAlpha},
         {"alpha_background_mode", alphaBackgroundModeName(videoState.config.alphaBackgroundMode)},
         {"alpha_background_color_rgb", {
             static_cast<int>(videoState.config.alphaBackgroundRed),
@@ -2282,8 +2319,9 @@ std::string VersusApp::buildDiagnosticsJson() const {
         {"lq_peer_count", metrics.lqPeerCount},
         {"active_video_peers", metrics.activeVideoPeers},
         {"active_audio_peers", metrics.activeAudioPeers},
+        {"packed_alpha_waiting_peers", metrics.packedAlphaWaitingPeers},
         {"video_bytes_sent", videoBytesSent_.load(std::memory_order_relaxed)},
-        {"audio_bytes_sent", audioBytesSent_.load(std::memory_order_relaxed)},
+        {"audio_bytes_sent", metrics.audioBytesSent},
         {"video_frames_captured", metrics.videoFramesCaptured},
         {"video_frames_sent", metrics.videoFramesSent},
         {"video_frames_dropped", metrics.videoFramesDropped},
@@ -2440,6 +2478,7 @@ std::string VersusApp::buildDiagnosticsJson() const {
             {"renegotiation_queued", peer->renegotiationQueued.load(std::memory_order_relaxed)},
             {"codec_fallback_attempted", peer->codecFallbackAttempted.load(std::memory_order_relaxed)},
             {"alpha_allowed", peer->alphaAllowed.load(std::memory_order_relaxed)},
+            {"packed_alpha_ready_generation", peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed)},
             {"last_primary_transport_pts", peer->lastPrimaryPtsSent.load(std::memory_order_relaxed)},
             {"last_video_wire_pts_reserved",
              peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed)},
@@ -2639,10 +2678,12 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
         if (!capture.success) {
             return;
         }
-        if (capture.sampleRate != 48000 || capture.channels != 2) {
+        const int mixChannels = audioOutputChannels_.load() == 6 ? 6 : 2;
+        if (capture.sampleRate != 48000 || capture.channels != mixChannels) {
             const std::string message =
                 "Audio source " + source + " is " + std::to_string(capture.sampleRate) + " Hz/" +
-                std::to_string(capture.channels) + " channel(s); converting to 48 kHz for mixing and Opus encoding.";
+                std::to_string(capture.channels) + " channel(s); converting to 48 kHz/" +
+                std::to_string(mixChannels) + " channels for mixing and encoding.";
             spdlog::warn("[Audio] {}", message);
             if (capture.sampleRate > 96000 || capture.channels > 2) {
                 emitRuntimeEvent(message, false);
@@ -2746,7 +2787,11 @@ void VersusApp::startAudioCapture(uint32_t selectedWindowProcessId) {
                 }
                 return;
             }
-            result = audioCapture_.StartStreamCapture(selectedWindowProcessId, primaryCallback);
+            result = audioCapture_.StartStreamCapture(selectedWindowProcessId, primaryCallback,
+                audioOutputChannels_.load() == 6 ? 6 : 2);
+            if (result.success && audioOutputChannels_.load() == 6 && result.channels == 2) {
+                emitRuntimeEvent("Windows rejected six-channel window audio; capturing stereo instead. Surround channels from this source are unavailable.", false);
+            }
             break;
     }
 
@@ -2778,7 +2823,8 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
         return;
     }
 
-    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &additionalAudioResampler_);
+    const uint32_t channels = audioOutputChannels_.load() == 6 ? 6 : 2;
+    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &additionalAudioResampler_, channels);
     if (normalizedSamples.empty()) {
         return;
     }
@@ -2794,18 +2840,18 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
     {
         std::lock_guard<std::mutex> lock(additionalAudioMutex_);
         additionalAudioSampleRate_ = 48000;
-        additionalAudioChannels_ = 2;
+        additionalAudioChannels_ = channels;
         for (float sample : normalizedSamples) {
             additionalAudioBuffer_.push_back(sample);
         }
-        constexpr size_t kMaxAdditionalAudioSamples = 48000 * 2 / 4;
+        const size_t kMaxAdditionalAudioSamples = 48000 * channels / 4;
         while (additionalAudioBuffer_.size() > kMaxAdditionalAudioSamples) {
             additionalAudioBuffer_.pop_front();
         }
 
         if (!primaryAudioActive) {
             size_t take = std::min(normalizedSamples.size(), additionalAudioBuffer_.size());
-            take -= take % 2;
+            take -= take % channels;
             standaloneSamples.reserve(take);
             for (size_t i = 0; i < take; ++i) {
                 standaloneSamples.push_back(additionalAudioBuffer_.front());
@@ -2820,12 +2866,12 @@ void VersusApp::handleAdditionalAudioChunk(versus::audio::StreamChunk &&chunk) {
 }
 
 void VersusApp::mixAdditionalAudioInto(std::vector<float> &samples, uint32_t sampleRate, uint32_t channels) {
-    if (samples.empty() || sampleRate != 48000 || channels != 2) {
+    if (samples.empty() || sampleRate != 48000 || (channels != 2 && channels != 6)) {
         return;
     }
 
     std::lock_guard<std::mutex> lock(additionalAudioMutex_);
-    if (additionalAudioBuffer_.empty() || additionalAudioSampleRate_ != 48000 || additionalAudioChannels_ != 2) {
+    if (additionalAudioBuffer_.empty() || additionalAudioSampleRate_ != 48000 || additionalAudioChannels_ != channels) {
         return;
     }
 
@@ -2840,14 +2886,15 @@ void VersusApp::handlePrimaryAudioChunk(versus::audio::StreamChunk &&chunk) {
     if (!live_) {
         return;
     }
-    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &primaryAudioResampler_);
+    const uint32_t channels = audioOutputChannels_.load() == 6 ? 6 : 2;
+    std::vector<float> normalizedSamples = audio::normalizeAudioForOpus(chunk, &primaryAudioResampler_, channels);
     if (normalizedSamples.empty()) {
         return;
     }
     applyAudioGain(normalizedSamples, primaryAudioGain_.load(std::memory_order_relaxed));
     updateAudioLevelMeters(normalizedSamples, primaryAudioLevelRms_, primaryAudioPeak_);
     lastPrimaryAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
-    mixAdditionalAudioInto(normalizedSamples, 48000, 2);
+    mixAdditionalAudioInto(normalizedSamples, 48000, channels);
 
     encodeNormalizedAudio(normalizedSamples, chunk.captureTime100ns);
 }
@@ -2933,7 +2980,7 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
     lastMixedAudioChunkMs_.store(steadyNowMs(), std::memory_order_relaxed);
 
     constexpr uint32_t kOpusSampleRate = 48000;
-    constexpr uint32_t kOpusChannels = 2;
+    const uint32_t kOpusChannels = audioOutputChannels_.load() == 6 ? 6 : 2;
     const size_t frames = normalizedSamples.size() / kOpusChannels;
     const int64_t chunkDuration100ns =
         static_cast<int64_t>(frames) * 10000000LL / static_cast<int64_t>(kOpusSampleRate);
@@ -2959,6 +3006,19 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
                         static_cast<int>(kOpusSampleRate),
                         static_cast<int>(kOpusChannels),
                         pts);
+    if (kOpusChannels == 6) {
+        // Windows channel slots: L/R/C/LFE/back L/back R. Keep stereo sources
+        // at unity when the other four slots are silent, and include every input.
+        std::vector<float> fallback(frames * 2);
+        for (size_t frame = 0; frame < frames; ++frame) {
+            const auto *in = normalizedSamples.data() + frame * 6;
+            const float center = .70710678f * in[2] + .5f * in[3];
+            fallback[frame * 2] = in[0] + center + .70710678f * in[4];
+            fallback[frame * 2 + 1] = in[1] + center + .70710678f * in[5];
+        }
+        applyAudioLimiter(fallback);
+        stereoFallbackEncoder_.encode(fallback, 48000, 2, pts);
+    }
     if (pcmAudio_.load(std::memory_order_relaxed)) {
         pcmEncoder_.encode(normalizedSamples, pts, [this](const audio::EncodedAudioPacket &packet) {
             webrtc::EncodedAudioPacket out;
@@ -2973,14 +3033,16 @@ void VersusApp::encodeNormalizedAudio(std::vector<float> &normalizedSamples, int
 }
 
 void VersusApp::setupCallbacks() {
-    opusEncoder_.setPacketCallback([this](const versus::audio::EncodedAudioPacket &packet) {
+    auto sendOpus = [this](const versus::audio::EncodedAudioPacket &packet) {
         webrtc::EncodedAudioPacket out;
         out.data = packet.data;
         out.pts = packet.pts;
         out.sampleRate = packet.sampleRate;
         out.channels = static_cast<uint16_t>(packet.channels);
         sendAudioPacketToPeers(out);
-    });
+    };
+    opusEncoder_.setPacketCallback(sendOpus);
+    stereoFallbackEncoder_.setPacketCallback(sendOpus);
 }
 
 bool VersusApp::enqueuePeerCallbackOperation(
@@ -3304,6 +3366,7 @@ void VersusApp::handlePeerDataChannelState(
         return;
     }
     peer->dataChannelOpen.store(open, std::memory_order_relaxed);
+    if (!open) peer->packedAlphaReadyGeneration.store(0, std::memory_order_relaxed);
     recordPeerEvent(peer, open ? "datachannel-open" : "datachannel-closed");
     if (open) {
         peer->disconnectedSinceMs.store(0, std::memory_order_relaxed);
@@ -3317,6 +3380,14 @@ void VersusApp::handlePeerDataChannelState(
         }
         sendPeerDataInfo(peer, true);
         applyPeerMediaPlan(peer, "datachannel-open");
+        if (videoStateSnapshot().config.packedAlpha && peer->client) {
+            const std::string mid = peer->client->videoMid();
+            if (!mid.empty()) {
+                nlohmann::json announcement = {
+                    {"alpha_send", "packed-sbs-v1"}, {"alpha_mid", mid}};
+                peer->client->sendDataMessage(announcement.dump());
+            }
+        }
         return;
     }
     peer->initDeadlineMs.store(0, std::memory_order_relaxed);
@@ -3561,9 +3632,16 @@ void VersusApp::setupSignalingCallbacks() {
         // the color track in an ordinary browser viewer's media element.
         peerConfig.reserveAlphaTrack = peerConfig.enableAlphaTrack;
         peerConfig.initialAlpha = false;
-        peerConfig.videoWidth = std::max(1, videoState.config.width);
+        peerConfig.videoWidth = std::max(1, videoState.config.width) * (videoState.config.packedAlpha ? 2 : 1);
+        peerConfig.packedAlpha = videoState.config.packedAlpha;
         peerConfig.videoHeight = std::max(1, videoState.config.height);
         peerConfig.videoFps = std::max(1, videoState.config.frameRate);
+        if (videoState.config.packedAlpha) {
+            // Reserve the supported coded envelope for later HQ/LQ or size changes.
+            peerConfig.videoWidth = 3840;
+            peerConfig.videoHeight = 1080;
+            peerConfig.videoFps = 60;
+        }
         if (!peer->client->initialize(peerConfig)) {
             spdlog::error("[WebRTC] Failed to initialize peer session {}:{}", uuid, resolvedSession);
             removePeerSession(peer, "peer-initialize-failed");
@@ -3664,6 +3742,8 @@ void VersusApp::setupSignalingCallbacks() {
                     return;
                 }
             }
+            if (videoStateSnapshot().config.packedAlpha &&
+                peerPtr->packedAlphaReadyGeneration.load(std::memory_order_relaxed) != clientTransportGeneration) return;
             spdlog::info("[App] Browser requested keyframe via PLI/FIR");
             pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
             lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
@@ -3942,6 +4022,9 @@ bool VersusApp::applyRuntimeVideoControl(int bitrateKbps,
     if (fps > 0) {
         nextConfig.frameRate = std::clamp(fps, 10, 120);
     }
+    if (nextConfig.packedAlpha && (nextConfig.width > 1920 || nextConfig.height > 1080 || nextConfig.frameRate > 60)) {
+        return false;
+    }
 
     const bool bitrateChanged = nextConfig.bitrate != videoConfig_.bitrate;
     const bool resolutionChanged = nextConfig.width != videoConfig_.width || nextConfig.height != videoConfig_.height;
@@ -4098,6 +4181,7 @@ bool VersusApp::applyRuntimeAudioControl(int bitrateKbps) {
     if (!opusEncoder_.setBitrate(targetKbps)) {
         return false;
     }
+    if (audioOutputChannels_.load() == 6 && !stereoFallbackEncoder_.setBitrate(targetKbps)) return false;
 
     audioEncoderBitrateKbps_.store(targetKbps, std::memory_order_relaxed);
     spdlog::info("[App] Applying runtime audio bitrate update: {} kbps", targetKbps);
@@ -4510,6 +4594,7 @@ bool VersusApp::ensureLqEncoderInitializedLocked() {
     }
 
     lqEncoderInitialized_.store(true, std::memory_order_relaxed);
+    lastLqFrameSlot_ = std::numeric_limits<int64_t>::min();
     publishVideoStateSnapshotLocked();
     spdlog::info("[App] LQ encoder active: {} ({}x{}@{} {}kbps)",
                  videoEncoderLq_.activeEncoderName(),
@@ -4521,6 +4606,7 @@ bool VersusApp::ensureLqEncoderInitializedLocked() {
 }
 
 void VersusApp::shutdownLqEncoderLocked() {
+    lastLqFrameSlot_ = std::numeric_limits<int64_t>::min();
     if (!lqEncoderInitialized_.load(std::memory_order_relaxed)) {
         return;
     }
@@ -4595,7 +4681,7 @@ void VersusApp::sendPeerDataInfo(const std::shared_ptr<PeerSession> &peer, bool 
     info["width_url"] = effectiveWidth;
     info["height_url"] = effectiveHeight;
     info["fps_url"] = effectiveFps;
-    info["video_init_width"] = effectiveWidth;
+    info["video_init_width"] = effectiveWidth * (videoState.config.packedAlpha ? 2 : 1);
     info["video_init_height"] = effectiveHeight;
     info["video_init_frameRate"] = effectiveFps;
     info["codec_url"] = peerWantsLq ? "H.264" : videoCodecName(videoState.config.codec);
@@ -5135,6 +5221,28 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         return;
     }
 
+    if (msg.contains("alpha_receive")) {
+        if (!videoStateSnapshot().config.packedAlpha || !msg["alpha_receive"].is_string() ||
+            !msg.contains("alpha_mid") || !msg["alpha_mid"].is_string()) return;
+        const std::string mode = msg["alpha_receive"].get<std::string>();
+        if (mode != "packed-sbs-v1" && !mode.empty()) return;
+        std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+        const std::string mid = peer->client->videoMid();
+        if (mid.empty() || msg["alpha_mid"] != mid) return;
+        const uint64_t generation = mode.empty() ? 0 : peer->client->transportGeneration();
+        const auto previous = peer->packedAlphaReadyGeneration.exchange(generation, std::memory_order_relaxed);
+        if (generation && previous != generation) {
+            peer->waitingForKeyframe.store(true, std::memory_order_relaxed);
+            pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+            lastKeyframeSendMs_.store(0, std::memory_order_relaxed);
+        }
+        {
+            std::lock_guard<std::mutex> diagnosticsLock(peer->diagnosticsMutex);
+            peer->alphaReceiveMode = mode;
+        }
+        return;
+    }
+
     if (msg.contains("cbid")) {
         nlohmann::json callbackResponse;
         callbackResponse["cbid"] = msg["cbid"];
@@ -5251,7 +5359,7 @@ void VersusApp::handlePeerDataMessage(const std::shared_ptr<PeerSession> &peer, 
         if (alphaFieldPresent && info["alpha_receive"].is_string()) {
             alphaReceiveMode = info["alpha_receive"].get<std::string>();
         }
-        if (alphaFieldPresent) {
+        if (alphaFieldPresent && !videoStateSnapshot().config.packedAlpha) {
             const bool alphaAllowed = alphaReceiveMode == "vp9-dualtrack-v1";
             const bool previousAlphaAllowed = peer->alphaAllowed.load(std::memory_order_relaxed);
             peer->alphaAllowed.store(alphaAllowed, std::memory_order_relaxed);
@@ -6291,6 +6399,11 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
             const auto &peer = current->second;
+            // Avoid encoding for viewers still preparing (or unable to use) WebGL.
+            // Dispatch below also checks the exact generation under the client lock.
+            if (videoConfig_.packedAlpha &&
+                (!peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed) ||
+                 !peer->dataChannelOpen.load(std::memory_order_relaxed))) continue;
             const PeerRouteState route{
                 peer->roomMode,
                 lqRoutingAllowed,
@@ -6770,41 +6883,50 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
         return false;
     }
 
+    bool lqFrameSkipped = false;
     if (!lqPeers.empty()) {
         if (ensureLqEncoderInitializedLocked()) {
             if (requestKeyframe) {
                 videoEncoderLq_.requestKeyframe();
             }
-            const auto lqEncodeStart = std::chrono::steady_clock::now();
-            if (videoEncoderLq_.encodeWithSourceTimestamp(
-                    frame,
-                    lqPacket,
-                    frameOutputTimestamp)) {
-                lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                        std::chrono::steady_clock::now() - lqEncodeStart)
-                                        .count();
-                haveLqPacket =
-                    lqPacket.sourceTimestamp != std::numeric_limits<int64_t>::min();
-                if (!haveLqPacket) {
-                    videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                    static uint64_t missingLqSourceTimestampCount = 0;
-                    if (++missingLqSourceTimestampCount <= 5 ||
-                        (missingLqSourceTimestampCount % 300) == 0) {
-                        spdlog::error(
-                            "[VideoPath] Dropping encoded LQ packet without a trusted source timestamp (count={})",
-                            missingLqSourceTimestampCount);
-                    }
-                } else if (requestKeyframe && !lqPacket.isKeyframe) {
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
-                }
+            // The encoder's frame-rate setting does not throttle its input.
+            // Admit one frame per LQ slot while retaining the original timestamp.
+            const int64_t slot = frameOutputTimestamp / (10000000LL / kLqFps);
+            if (slot == lastLqFrameSlot_) {
+                lqFrameSkipped = true;
             } else {
-                lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                        std::chrono::steady_clock::now() - lqEncodeStart)
-                                        .count();
-                videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
-                if (requestKeyframe) {
-                    pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                lastLqFrameSlot_ = slot;
+                const auto lqEncodeStart = std::chrono::steady_clock::now();
+                if (videoEncoderLq_.encodeWithSourceTimestamp(
+                        frame,
+                        lqPacket,
+                        frameOutputTimestamp)) {
+                    lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::steady_clock::now() - lqEncodeStart)
+                                            .count();
+                    haveLqPacket =
+                        lqPacket.sourceTimestamp != std::numeric_limits<int64_t>::min();
+                    if (!haveLqPacket) {
+                        videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                        static uint64_t missingLqSourceTimestampCount = 0;
+                        if (++missingLqSourceTimestampCount <= 5 ||
+                            (missingLqSourceTimestampCount % 300) == 0) {
+                            spdlog::error(
+                                "[VideoPath] Dropping encoded LQ packet without a trusted source timestamp (count={})",
+                                missingLqSourceTimestampCount);
+                        }
+                    } else if (requestKeyframe && !lqPacket.isKeyframe) {
+                        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    }
+                } else {
+                    lqEncodeElapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::steady_clock::now() - lqEncodeStart)
+                                            .count();
+                    videoEncodeFailures_.fetch_add(1, std::memory_order_relaxed);
+                    if (requestKeyframe) {
+                        pendingGlobalKeyframe_.store(true, std::memory_order_relaxed);
+                    }
                 }
             }
         }
@@ -6823,7 +6945,7 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
     }
 
     if (!haveHqPacket && !haveLqPacket && completedAlphaPairs.empty()) {
-        return false;
+        return lqFrameSkipped && hqPeers.empty();
     }
 
     bool sentAny = false;
@@ -6865,6 +6987,11 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
             std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            if (videoConfig_.packedAlpha &&
+                (!peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed) ||
+                 peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed) != peer->client->transportGeneration() ||
+                 !peer->dataChannelOpen.load(std::memory_order_relaxed))) continue;
+            if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !packet.isKeyframe) continue;
             const int64_t lastReserved =
                 peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed);
             packet.pts = nextMonotonicVideoTransportPts(
@@ -7117,6 +7244,11 @@ bool VersusApp::encodeAndSendVideoFrame(const video::CapturedFrame &frame,
                 continue;
             }
             std::lock_guard<std::recursive_mutex> clientLock(peer->clientOperationMutex);
+            if (videoConfig_.packedAlpha &&
+                (!peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed) ||
+                 peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed) != peer->client->transportGeneration() ||
+                 !peer->dataChannelOpen.load(std::memory_order_relaxed))) continue;
+            if (peer->waitingForKeyframe.load(std::memory_order_relaxed) && !packet.isKeyframe) continue;
             const int64_t lastReserved =
                 peer->lastVideoWirePtsReserved.load(std::memory_order_relaxed);
             packet.pts = nextMonotonicVideoTransportPts(
@@ -8008,6 +8140,15 @@ VersusApp::roomQualityDiagnosticsSnapshot() const {
         }
         if (activeVideo) {
             ++snapshot.counts.activeVideo;
+            // Use the existing connection age and media request state, so
+            // startup, audio-only viewers and muted video do not warn.
+            const int64_t changedAt = peer->lastStateChangeMs.load(std::memory_order_relaxed);
+            if (peer->dataChannelOpen.load(std::memory_order_relaxed) &&
+                !peer->disconnectedSinceMs.load(std::memory_order_relaxed) &&
+                !peer->packedAlphaReadyGeneration.load(std::memory_order_relaxed) &&
+                changedAt > 0 && steadyNowMs() - changedAt >= 5000) {
+                ++snapshot.counts.packedAlphaWaiting;
+            }
         }
         const bool activeAudio = lastObservedAudio &&
             peer->requestedAudioBitrateKbps.load(std::memory_order_relaxed) != 0 &&
@@ -8097,10 +8238,7 @@ VersusApp::LifecycleStateSnapshot VersusApp::lifecycleStateSnapshot() const {
 void VersusApp::sendAudioPacketToPeers(const versus::webrtc::EncodedAudioPacket &packet) {
     if (auto external = externalOutput_.load()) {
         if (!external->usesPcmInput() && external->wantsAudio()) {
-            if (external->sendOpus(packet)) {
-                audioBytesSent_.fetch_add(packet.data.size(), std::memory_order_relaxed);
-                audioPacketsSent_.fetch_add(1, std::memory_order_relaxed);
-            } else audioSendFailures_.fetch_add(1, std::memory_order_relaxed);
+            if (!external->sendOpus(packet)) audioSendFailures_.fetch_add(1, std::memory_order_relaxed);
         }
         return;
     }
@@ -9209,6 +9347,7 @@ bool VersusApp::sendPeerOffer(const std::shared_ptr<PeerSession> &peer, const ch
                 peer->activeWireSession == offerWireSession;
         }
         if (rebuild) {
+            peer->packedAlphaReadyGeneration.store(0, std::memory_order_relaxed);
             // WebRtcClient owns the immutable, validated ICE snapshot from
             // initialization. Every reset reuses that exact rtc::Configuration;
             // recovery cannot substitute a later process-wide server list.

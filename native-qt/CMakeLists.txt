@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(game-capture-native-qt VERSION 0.2.66 LANGUAGES CXX)
+project(game-capture-native-qt VERSION 0.2.67 LANGUAGES CXX)
 
 # CMake 4 removed compatibility modes older than 3.5. Opus 1.4 still
 # declares a 3.1 minimum, so give bundled dependencies the modern floor
@@ -603,6 +603,11 @@ if(VERSUS_BUILD_TESTS)
         target_link_libraries(test_crash_reporter PRIVATE spdlog::spdlog dbghelp)
         add_test(NAME CrashReporterTest COMMAND test_crash_reporter)
     endif()
+
+    add_executable(test_packed_alpha tests/test_packed_alpha.cpp)
+    target_link_libraries(test_packed_alpha PRIVATE versus-lib)
+    add_test(NAME PackedAlphaGate COMMAND test_packed_alpha)
+    versus_set_qt_test_environment(PackedAlphaGate)
 
     # Benchmark helper: Video encoder real-time throughput/stability probe
     add_executable(bench_video_encoder tests/bench_video_encoder.cpp)

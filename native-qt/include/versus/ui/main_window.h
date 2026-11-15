@@ -83,6 +83,7 @@ class MainWindow : public QMainWindow {
     void refreshSelectedWindowPreview();
     void refreshPublisherCameraPreview();
     bool alphaWorkflowEffectiveForSelectedCodec() const;
+    bool browserAlphaEffectiveForSelectedCodec() const;
     void syncCodecUiState();
     void syncRoomModeLqUiState();
     void updateAlphaBackgroundColorButton();
@@ -143,6 +144,7 @@ class MainWindow : public QMainWindow {
     QComboBox *encoderSelect_ = nullptr;
     QComboBox *codecSelect_ = nullptr;
     QCheckBox *alphaWorkflowCheck_ = nullptr;
+    QComboBox *alphaTransportSelect_ = nullptr;
     QComboBox *alphaBackgroundModeSelect_ = nullptr;
     QPushButton *alphaBackgroundColorButton_ = nullptr;
     QLabel *ffmpegStatusLabel_ = nullptr;

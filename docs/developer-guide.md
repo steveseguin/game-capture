@@ -42,7 +42,9 @@ Audio encoding playback can be checked with `native-qt/e2e/audio-settings-packag
 against a complete package and `spout_test_sender.exe`; `--only=boundaries` exercises
 the bitrate limits and `--only=simultaneous` verifies experimental and Opus fallback
 receivers connected to the same publisher. `audio-settings-desktop-e2e.py` covers saved preferences, collapsed
-controls, restart, and actual Chrome playback, with `--codec=pcm` or `--red`.
+controls, restart, and actual Chrome playback, with `--codec=pcm` or `--red`. `six-channel-desktop-e2e.py` covers the
+experimental six-channel selection: PCM and RED lock-out, restart persistence, and a live `stereo=4` share link
+(`--no-live` skips the hosted stream).
 For decoded audio, delay, frame counters, reconnects, and sustained resource measurements:
 
 ```powershell
@@ -133,6 +135,24 @@ The named Edge negotiation and lifecycle commands are host-contained subsets tha
 in the npm script; use them when external TURN-registry coverage is not intended.
 The Firefox Control Center workflow selects VP9 and disables the H.264-only room LQ tier because
 Playwright's Firefox runtime does not expose platform H.264; the Edge workflow covers default H.264.
+
+## Browser alpha transport
+
+`--browser-alpha` selects H.264 side-by-side packing (`[straight RGB | grayscale alpha]`), separate from `--alpha-workflow` and its native VP9 mask. EncoderConfig dimensions stay logical; VideoEncoder doubles only the backend width and packs each HQ/LQ input independently. The preview keeps the original BGRA. The initial coded envelope is 3840x1080 at 60 fps (1920x1080 visible), advertised as H.264 Level 5.1 so later size/HQ/LQ changes stay within the offer. The level selector uses rounded macroblock dimensions and frame rate from H.264 Annex A instead of a pixel-count shortcut. Custom FFmpeg options are rejected so they cannot change the layout or color conversion.
+
+This offer describes the sender's envelope, not a guarantee of receiver performance. Chrome and Firefox can answer with Level 3.1 even while decoding these larger frames; this integration leaves browser answers unchanged and does not implement automatic downscaling from their declared level. Qualify the actual decoder at the desired output size/rate. The WebGL renderer checks the decoded frame against `MAX_TEXTURE_SIZE` and `MAX_VIEWPORT_DIMS`, rather than imposing a 720p ceiling. Older Chromium and mobile Safari require separate runtime qualification.
+
+For local playback, serve the modified VDO.Ninja checkout on localhost. In Game Capture's generated viewer link, replace `https://vdo.ninja/` with the local frontend address, preserve the query parameters, and append `&salt=vdo.ninja` when using Game Capture's default signaling salt. The public frontend must also be updated before its normal share links can reconstruct browser alpha.
+
+The canonical extension is documented in VDO.Ninja's `examples/packed-alpha.md`. The sender announces top-level `{alpha_send:"packed-sbs-v1",alpha_mid:"<negotiated MID>"}` over the existing data channel. After binding that MID's receiver track, preparing WebGL and mounting its output, VDO.Ninja acknowledges top-level `{alpha_receive:"packed-sbs-v1",alpha_mid:"<negotiated MID>"}`. Preparation failure or withdrawal uses `alpha_receive:""` with the same MID; this stops packed video and never permits ordinary frames on that track. Neither command uses `info` or `miniInfo`. Both HQ and LQ dispatch require acknowledgment of the current client transport generation and start with a keyframe. Replacement transports clear acknowledgment. This does not add an SDP attribute or another transceiver.
+
+The existing connection health panel and diagnostics (`metrics.packed_alpha_waiting_peers`) count connected video-requesting peers with an open data channel but no readiness acknowledgment after five seconds. This derives from existing peer state; it adds no signaling messages or timers and is disabled for ordinary video. Muted/video-off routes are excluded, and readiness or disconnect clears the warning.
+
+The layout is immutable for a connection. Source changes must continue packing, including opaque sources. A packed/ordinary change requires stopping capture and going offline first. `replaceTrack` does not identify a pixel-format change to the receiver; neither MID nor track ID can detect a sender silently changing this contract. VDO.Ninja owns renderer state separately from replaceable `stats.info`, checks the selected receiver track before drawing, and releases its canvas on track replacement or teardown. Partial info updates and alternate screen-stream messages do not reset it. Audio track changes do not recreate the renderer; video removal or mute withdraws readiness until playback is prepared again. The mask uses the same video-range conversion as RGB; WebGL samples the decoded grayscale and premultiplies the output once.
+
+Packing preserves timestamps and the existing shared audio/video clock, CNAME and MediaStream identity. Audio remains on the source video element; only the picture is drawn through WebGL. The browser controls WebRTC playout synchronization, but the extra canvas presentation step can add visual latency. Qualify sync using simultaneous source/receiver recordings, including audio capture interruptions; packet counters alone do not establish lip sync. Ordinary streams retain their existing H.264 level selection and do not create a packed-alpha renderer.
+
+`PackedAlphaGate` checks layout, stride, transparent padding, filtering and input bounds. It is a gate, not application testing. End-to-end qualification requires packaged Game Capture, a Spout source, and real browser/OBS playback, including reload, unsupported viewers, source replacement and connection replacement. Keep VDO.Ninja development fixtures and evidence outside its release checkout.
 
 ## Window compatibility capture validation
 

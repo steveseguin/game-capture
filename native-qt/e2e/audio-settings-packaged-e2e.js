@@ -257,7 +257,7 @@ async function main() {
       sha256: crypto.createHash('sha256').update(fs.readFileSync(publisher)).digest('hex'), cases: [] };
     results.invalidArguments = [];
     for (const argument of ['--audio-bitrate-kbps=5', '--audio-bitrate-kbps=511',
-      '--audio-bitrate-kbps=abc', '--audio-channels=6', '--audio-codec=invalid']) {
+      '--audio-bitrate-kbps=abc', '--audio-channels=7', '--audio-codec=invalid']) {
       const invalid = spawnSync(publisher, [argument], { windowsHide: true, timeout: 10000, encoding: 'utf8' });
       results.invalidArguments.push({ argument, exitCode: invalid.status });
       assert.equal(invalid.status, 2, 'Invalid audio argument must fail before capture: ' + argument);

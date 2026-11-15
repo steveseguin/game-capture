@@ -5007,6 +5007,123 @@ class VideoEncoder::Impl {
 
 #endif
 
+bool detail::buildPackedAlphaFrame(const CapturedFrame &source, int width, int height, CapturedFrame &packed) {
+    if (source.format != CapturedFrame::Format::BGRA || source.width <= 0 || source.height <= 0 ||
+        source.stride < static_cast<int64_t>(source.width) * 4 ||
+        source.data.size() < static_cast<size_t>(source.stride) * source.height ||
+        width < 2 || height < 2 || width > 1920 || height > 1080 || (width & 1) || (height & 1)) {
+        return false;
+    }
+    packed.width = width * 2;
+    packed.height = height;
+    packed.stride = packed.width * 4;
+    packed.format = CapturedFrame::Format::BGRA;
+    packed.timestamp = source.timestamp;
+    packed.data.resize(static_cast<size_t>(packed.stride) * height);
+    const auto fit = computeAspectFitRect(source.width, source.height, width, height);
+    // The buffer is reused between frames, so every pixel is written each call.
+    // Padding is transparent in the mask; the carrier itself is always opaque.
+    const auto fillOpaqueBlack = [](uint8_t *pixel, int count) {
+        for (int i = 0; i < count; ++i, pixel += 4) {
+            pixel[0] = pixel[1] = pixel[2] = 0;
+            pixel[3] = 255;
+        }
+    };
+    const int rightPadding = width - fit.x - fit.width;
+    for (int y = 0; y < height; ++y) {
+        auto *row = packed.data.data() + static_cast<size_t>(y) * packed.stride;
+        if (y < fit.y || y >= fit.y + fit.height) {
+            fillOpaqueBlack(row, packed.width);
+            continue;
+        }
+        fillOpaqueBlack(row, fit.x);
+        // Right padding of the color half runs straight into the mask half's left padding.
+        fillOpaqueBlack(row + static_cast<size_t>(fit.x + fit.width) * 4, rightPadding + fit.x);
+        fillOpaqueBlack(row + static_cast<size_t>(width + fit.x + fit.width) * 4, rightPadding);
+    }
+    if (fit.width == source.width && fit.height == source.height) {
+        for (int y = 0; y < source.height; ++y) {
+            const auto *src = source.data.data() + static_cast<size_t>(y) * source.stride;
+            auto *rgb = packed.data.data() + static_cast<size_t>(y + fit.y) * packed.stride + fit.x * 4;
+            auto *mask = rgb + width * 4;
+            for (int x = 0; x < source.width; ++x, src += 4, rgb += 4, mask += 4) {
+                const uint8_t alpha = src[3];
+                rgb[0] = alpha ? src[0] : 0;
+                rgb[1] = alpha ? src[1] : 0;
+                rgb[2] = alpha ? src[2] : 0;
+                rgb[3] = 255;
+                mask[0] = mask[1] = mask[2] = alpha;
+                mask[3] = 255;
+            }
+        }
+        return true;
+    }
+    // Horizontal sample positions are the same for every row.
+    struct Column {
+        size_t left;
+        size_t right;
+        double blend;
+    };
+    std::vector<Column> columns(static_cast<size_t>(fit.width));
+    for (int x = 0; x < fit.width; ++x) {
+        const double sx = std::clamp((x + 0.5) * source.width / fit.width - 0.5, 0.0, double(source.width - 1));
+        const int x0 = static_cast<int>(sx);
+        columns[x] = {static_cast<size_t>(x0) * 4, static_cast<size_t>(std::min(x0 + 1, source.width - 1)) * 4, sx - x0};
+    }
+    const auto toByte = [](double value) {
+        return static_cast<uint8_t>(std::min(static_cast<int>(value + 0.5), 255));
+    };
+    for (int y = 0; y < fit.height; ++y) {
+        const double sy = std::clamp((y + 0.5) * source.height / fit.height - 0.5, 0.0, double(source.height - 1));
+        const int y0 = static_cast<int>(sy);
+        const int y1 = std::min(y0 + 1, source.height - 1);
+        const double fy = sy - y0;
+        const auto *top = source.data.data() + static_cast<size_t>(y0) * source.stride;
+        const auto *bottom = source.data.data() + static_cast<size_t>(y1) * source.stride;
+        auto *rgb = packed.data.data() + static_cast<size_t>(y + fit.y) * packed.stride + fit.x * 4;
+        auto *mask = rgb + width * 4;
+        for (int x = 0; x < fit.width; ++x, rgb += 4, mask += 4) {
+            const Column &column = columns[x];
+            const uint8_t *samples[] = {top + column.left, top + column.right,
+                                        bottom + column.left, bottom + column.right};
+            rgb[3] = mask[3] = 255;
+            const int alphaSum = samples[0][3] + samples[1][3] + samples[2][3] + samples[3][3];
+            if (alphaSum == 0) {
+                // Typical avatar frames are mostly empty; skip the filter there.
+                rgb[0] = rgb[1] = rgb[2] = 0;
+                mask[0] = mask[1] = mask[2] = 0;
+                continue;
+            }
+            const double fx = column.blend;
+            double weights[] = {(1 - fx) * (1 - fy), fx * (1 - fy), (1 - fx) * fy, fx * fy};
+            if (alphaSum == 4 * 255) {
+                // Fully opaque neighbours need no premultiplication.
+                for (int c = 0; c < 3; ++c) {
+                    rgb[c] = toByte(weights[0] * samples[0][c] + weights[1] * samples[1][c] +
+                                    weights[2] * samples[2][c] + weights[3] * samples[3][c]);
+                    mask[c] = 255;
+                }
+                continue;
+            }
+            // Sources use straight BGRA. Filter premultiplied values, then store
+            // straight RGB so playback premultiplies exactly once.
+            double alpha = 0;
+            for (int i = 0; i < 4; ++i) {
+                weights[i] *= samples[i][3];
+                alpha += weights[i];
+            }
+            const double scale = alpha > 0 ? 1.0 / alpha : 0.0;
+            const uint8_t maskValue = toByte(alpha);
+            for (int c = 0; c < 3; ++c) {
+                rgb[c] = toByte((weights[0] * samples[0][c] + weights[1] * samples[1][c] +
+                                 weights[2] * samples[2][c] + weights[3] * samples[3][c]) * scale);
+                mask[c] = maskValue;
+            }
+        }
+    }
+    return true;
+}
+
 VideoEncoder::VideoEncoder() : impl_(std::make_unique<Impl>()) {}
 VideoEncoder::~VideoEncoder() { shutdown(); }
 
@@ -5016,6 +5133,14 @@ bool VideoEncoder::initialize(const EncoderConfig &config, const CapturedFrame *
     config_ = config;
     requestedConfig_ = config;
     fallbackReason_.clear();
+    if (config.packedAlpha && (config.codec != VideoCodec::H264 || config.enableAlpha ||
+        config.width < 2 || config.height < 2 || config.width > 1920 || config.height > 1080 ||
+        (config.width & 1) || (config.height & 1) || config.frameRate < 1 || config.frameRate > 60 ||
+        !config.ffmpegOptions.empty())) {
+        spdlog::error("[VideoEncoder] Browser alpha requires H.264, even dimensions up to 1920x1080 at 60 fps, and default FFmpeg options");
+        initialized_ = false;
+        return false;
+    }
     if (prepareHandover && (config.codec != VideoCodec::H264 || config.bFrames != 0 || !config.ffmpegOptions.empty() ||
         (config.preferredHardware != HardwareEncoder::NVENC && config.preferredHardware != HardwareEncoder::QuickSync))) {
         initialized_ = false;
@@ -5039,8 +5164,10 @@ bool VideoEncoder::initialize(const EncoderConfig &config, const CapturedFrame *
     auto initializeCandidate = [this, prepareHandover](const EncoderConfig &input) {
         EncoderConfig candidate = input;
         if (prepareHandover) candidate.forceFfmpegNvenc = true;
+        EncoderConfig backend = candidate;
+        if (backend.packedAlpha) backend.width *= 2;
         impl_->shutdown();
-        if (!impl_->initialize(candidate, prepareHandover)) {
+        if (!impl_->initialize(backend, prepareHandover)) {
             return false;
         }
         config_ = candidate;
@@ -5136,7 +5263,16 @@ bool VideoEncoder::initialize(const EncoderConfig &config, const CapturedFrame *
         impl_->shutdown();
         initialized_ = false;
     }
-    if (initialized_ && prepareHandover && !impl_->primeHandover(*handoverFrame)) {
+    const CapturedFrame *preparedFrame = handoverFrame;
+    if (initialized_ && prepareHandover && config_.packedAlpha) {
+        if (!packedFrame_) packedFrame_ = std::make_unique<CapturedFrame>();
+        if (!detail::buildPackedAlphaFrame(*handoverFrame, config_.width, config_.height, *packedFrame_)) {
+            impl_->shutdown();
+            initialized_ = false;
+        }
+        preparedFrame = packedFrame_.get();
+    }
+    if (initialized_ && prepareHandover && !impl_->primeHandover(*preparedFrame)) {
         spdlog::warn("[VideoEncoder] Real-frame handover preparation failed; discarding replacement");
         impl_->shutdown();
         initialized_ = false;
@@ -5148,6 +5284,7 @@ void VideoEncoder::shutdown() {
     ++configurationRevision_;
     impl_->shutdown();
     initialized_ = false;
+    packedFrame_.reset();
     fallbackReason_.clear();
     protectedPacketContractHealthy_.store(false, std::memory_order_relaxed);
 }
@@ -5165,7 +5302,13 @@ bool VideoEncoder::encodeWithSourceTimestamp(const CapturedFrame &frame,
     if (sourceTimestamp == std::numeric_limits<int64_t>::min()) {
         return false;
     }
-    bool ok = impl_->encode(frame, packet, sourceTimestamp);
+    const CapturedFrame *input = &frame;
+    if (config_.packedAlpha) {
+        if (!packedFrame_) packedFrame_ = std::make_unique<CapturedFrame>();
+        if (!detail::buildPackedAlphaFrame(frame, config_.width, config_.height, *packedFrame_)) return false;
+        input = packedFrame_.get();
+    }
+    bool ok = impl_->encode(*input, packet, sourceTimestamp);
     if (ok && config_.requireEveryFrameKeyframe) {
         protectedPacketContractHealthy_.store(
             packet.codec == VideoCodec::VP9 && packet.isKeyframe,
@@ -5190,6 +5333,7 @@ void VideoEncoder::swapPipeline(VideoEncoder &other) {
     swap(requestedConfig_, other.requestedConfig_);
     swap(initialized_, other.initialized_);
     swap(fallbackReason_, other.fallbackReason_);
+    swap(packedFrame_, other.packedFrame_);
     const bool healthy = protectedPacketContractHealthy_.load(std::memory_order_relaxed);
     protectedPacketContractHealthy_.store(
         other.protectedPacketContractHealthy_.load(std::memory_order_relaxed),

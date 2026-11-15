@@ -3,6 +3,7 @@
 #include <vector>
 #include <cmath>
 #include <opus.h>
+#include <opus_multistream.h>
 
 #include "versus/audio/opus_encoder.h"
 #include "versus/audio/pcm_encoder.h"
@@ -25,6 +26,7 @@ class TestOpusEncoder : public QObject {
     void testPcmResumesAtCaptureTimestamp();
     void testRedHeadersAndMtu();
     void testRedBitrateLimitsDecode();
+    void testSixChannelSeparation();
 };
 
 void TestOpusEncoder::testPtsIsMonotonicIn100nsUnits() {
@@ -334,6 +336,43 @@ void TestOpusEncoder::testRedBitrateLimitsDecode() {
         QCOMPARE(packets, 200);
         qInfo() << "RED bitrate boundary" << bitrate << channels << "decoded energy" << energy;
         QVERIFY(energy > 1);
+    }
+}
+
+void TestOpusEncoder::testSixChannelSeparation() {
+    // Silence in the other five channels must survive each isolated source.
+    for (int active = 0; active < 6; ++active) {
+        versus::audio::OpusEncoder encoder;
+        versus::audio::AudioEncoderConfig config;
+        config.channels = config.outputChannels = 6;
+        config.bitrate = 384;
+        QVERIFY(encoder.initialize(config));
+        constexpr unsigned char mapping[] = {0, 4, 1, 2, 3, 5};
+        int error = 0;
+        auto *decoder = opus_multistream_decoder_create(48000, 6, 4, 2, mapping, &error);
+        QVERIFY(decoder);
+        double energy[6] = {};
+        int packets = 0;
+        encoder.setPacketCallback([&](const auto &packet) {
+            QCOMPARE(packet.channels, 6);
+            QVERIFY(packet.data.size() < 1150);
+            std::vector<float> decoded(480 * 6);
+            QCOMPARE(opus_multistream_decode_float(decoder, packet.data.data(), int(packet.data.size()),
+                decoded.data(), 480, 0), 480);
+            for (size_t i = 0; i < decoded.size(); ++i) energy[i % 6] += decoded[i] * decoded[i];
+            ++packets;
+        });
+        std::vector<float> samples(48000 * 6);
+        for (int frame = 0; frame < 48000; ++frame)
+            samples[frame * 6 + active] = .1f * std::sin(frame * 997.0 * 6.283185307 / 48000);
+        QVERIFY(encoder.encode(samples, 48000, 6, 0));
+        QVERIFY(encoder.setBitrate(510));
+        QVERIFY(encoder.encode(samples, 48000, 6, 10000000));
+        opus_multistream_decoder_destroy(decoder);
+        QCOMPARE(packets, 200);
+        QVERIFY(energy[active] > 100);
+        for (int channel = 0; channel < 6; ++channel)
+            if (channel != active) QVERIFY(energy[channel] < energy[active] * 0.001);
     }
 }
 

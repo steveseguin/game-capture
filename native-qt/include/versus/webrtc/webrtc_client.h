@@ -55,6 +55,7 @@ struct PeerConfig {
     bool initialAlpha = false;
     // Keep an inactive alpha m-line before data until the receiver opts in.
     bool reserveAlphaTrack = false;
+    bool packedAlpha = false;
     int videoWidth = 1920;
     int videoHeight = 1080;
     int videoFps = 60;
@@ -144,6 +145,7 @@ class WebRtcClient {
     ConnectionState connectionState() const;
     uint64_t transportGeneration() const;
     bool hasActiveVideoTrack() const;
+    std::string videoMid() const;
     bool hasActiveAlphaVideoTrack() const;
     bool hasActiveAudioTrack() const;
     bool hasConfiguredVideoTrack() const;

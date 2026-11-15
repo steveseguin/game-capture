@@ -40,6 +40,7 @@ namespace {
 constexpr uint8_t kVideoPayloadType = 96;
 constexpr uint8_t kAlphaVideoPayloadType = 97;
 constexpr uint8_t kAudioPayloadType = 111;
+constexpr uint8_t kMultichannelPayloadType = 112;
 constexpr uint8_t kPcmPayloadType = 109;
 constexpr uint8_t kRedPayloadType = 63;
 constexpr uint32_t kVideoClockRate = rtc::RtpPacketizer::VideoClockRate;
@@ -118,14 +119,43 @@ bool sendVp9FrameRtp(const std::shared_ptr<rtc::Track> &track,
     return true;
 }
 
-std::string selectH264ProfileLevelId(int width, int height, int fps) {
-    const int safeWidth = std::max(1, width);
-    const int safeHeight = std::max(1, height);
+std::string selectH264ProfileLevelId(int width, int height, int fps, bool packedAlpha) {
+    if (!packedAlpha) {
+        // Keep ordinary publishing's existing SDP behavior unchanged.
+        const int64_t pixels = int64_t(std::max(1, width)) * std::max(1, height);
+        if (fps > 30 || pixels > 1280LL * 720LL) return "42e02a";
+        if (pixels > 640LL * 480LL) return "42e01f";
+        return "42e01e";
+    }
+    const int64_t columns = (int64_t(std::max(1, width)) + 15) / 16;
+    const int64_t rows = (int64_t(std::max(1, height)) + 15) / 16;
     const int safeFps = std::max(1, fps);
-    const long long pixels = static_cast<long long>(safeWidth) * static_cast<long long>(safeHeight);
-    if (safeFps > 30 || pixels > (1280LL * 720LL)) return "42e02a";
-    if (pixels > (640LL * 480LL)) return "42e01f";
-    return "42e01e";
+    // H.264 Annex A, Table A-1. Round each coded dimension to macroblocks;
+    // packed alpha's doubled width counts toward the decoder's limits too.
+    static constexpr struct {
+        int64_t maxFrameMbs;
+        int64_t maxMbsPerSecond;
+        const char *profileLevelId;
+    } levels[] = {
+        {1620, 40500, "42e01e"},
+        {3600, 108000, "42e01f"},
+        {5120, 216000, "42e020"},
+        {8192, 245760, "42e028"},
+        {8704, 522240, "42e02a"},
+        {22080, 589824, "42e032"},
+        {36864, 983040, "42e033"},
+        {36864, 2073600, "42e034"},
+        {139264, 4177920, "42e03c"},
+        {139264, 8355840, "42e03d"},
+        {139264, 16711680, "42e03e"}
+    };
+    for (const auto &level : levels) {
+        if (columns * rows <= level.maxFrameMbs &&
+            columns * rows <= level.maxMbsPerSecond / safeFps &&
+            columns * columns <= 8 * level.maxFrameMbs &&
+            rows * rows <= 8 * level.maxFrameMbs) return level.profileLevelId;
+    }
+    return "42e03e";
 }
 
 }  // namespace
@@ -172,6 +202,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         bool hasAudioSection = false;
         bool hasAlphaSection = false;
         int videoWidth = 1920;
+        bool packedAlpha = false;
         int videoHeight = 1080;
         int videoFps = 60;
 
@@ -190,6 +221,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         std::shared_ptr<VideoPacer> videoPacer;
         bool usePcm = false;
         bool useRed = false;
+        bool useMultichannel = false;
         bool audioNegotiated = false;
         std::vector<uint8_t> previousAudioPayload;
         uint32_t previousAudioTimestamp = 0;
@@ -310,6 +342,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
     bool audioSectionNegotiated = false;
     bool alphaSectionNegotiated = false;
     int configuredVideoWidth = 1920;
+    bool configuredPackedAlpha = false;
     int configuredVideoHeight = 1080;
     int configuredVideoFps = 60;
     int configuredAudioChannels = 2;
@@ -701,7 +734,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
             case PeerConfig::VideoCodec::H264:
             default: {
                 const std::string levelId = selectH264ProfileLevelId(
-                    target->videoWidth, target->videoHeight, target->videoFps);
+                    target->videoWidth, target->videoHeight, target->videoFps, target->packedAlpha);
                 video.addH264Codec(kVideoPayloadType,
                     "profile-level-id=" + levelId + ";packetization-mode=1;level-asymmetry-allowed=1");
                 break;
@@ -859,6 +892,10 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         }
 
         rtc::Description::Audio audio("audio", rtc::Description::Direction::SendOnly);
+        if (configuredAudioChannels == 6) {
+            audio.addAudioCodec(kMultichannelPayloadType, "multiopus/48000/6",
+                "minptime=10;num_streams=4;coupled_streams=2;channel_mapping=0,4,1,2,3,5");
+        }
         if (configuredPcmAudio) {
             audio.addAudioCodec(kPcmPayloadType, configuredAudioChannels == 1 ? "L16/48000/1" : "L16/32000/2");
         } else if (configuredAudioRed) {
@@ -998,6 +1035,7 @@ struct WebRtcClient::Impl : std::enable_shared_from_this<WebRtcClient::Impl> {
         target->videoCodec = configuredVideoCodec;
         target->dataChannelEnabled = enableDataChannel;
         target->videoWidth = configuredVideoWidth;
+        target->packedAlpha = configuredPackedAlpha;
         target->videoHeight = configuredVideoHeight;
         target->videoFps = configuredVideoFps;
 
@@ -1081,11 +1119,12 @@ bool WebRtcClient::initialize(const PeerConfig &config) {
         impl_->audioSectionNegotiated = false;
         impl_->alphaSectionNegotiated = false;
         impl_->configuredVideoWidth = std::max(1, config.videoWidth);
+        impl_->configuredPackedAlpha = config.packedAlpha;
         impl_->configuredVideoHeight = std::max(1, config.videoHeight);
         impl_->configuredVideoFps = std::max(1, config.videoFps);
-        impl_->configuredAudioChannels = config.audioChannels == 1 ? 1 : 2;
-        impl_->configuredPcmAudio = config.pcmAudio;
-        impl_->configuredAudioRed = config.audioRed && !config.pcmAudio;
+        impl_->configuredAudioChannels = config.audioChannels == 6 ? 6 : config.audioChannels == 1 ? 1 : 2;
+        impl_->configuredPcmAudio = config.pcmAudio && config.audioChannels != 6;
+        impl_->configuredAudioRed = config.audioRed && !config.pcmAudio && config.audioChannels != 6;
         impl_->configuredVideoBitrateKbps = std::clamp(config.videoBitrateKbps, 0, 100000);
         impl_->configuredHistoryMs = std::clamp(config.recoveryHistoryMs, 250, 3000);
         impl_->configuredPlayoutMs = std::clamp(config.playoutDelayMs, 0, 1000);
@@ -1192,6 +1231,14 @@ void WebRtcClient::configureAudioFromDescription(const std::string &sdp) {
             int pt;
             std::string value;
             if (attribute >> pt >> value) {
+                if (!mapping) {
+                    std::string rest;
+                    std::getline(attribute, rest);
+                    value += rest;
+                    value.erase(std::remove_if(value.begin(), value.end(), [](unsigned char c) {
+                        return std::isspace(c);
+                    }), value.end());
+                }
                 if (mapping) {
                     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
                         return static_cast<char>(std::tolower(c));
@@ -1202,12 +1249,27 @@ void WebRtcClient::configureAudioFromDescription(const std::string &sdp) {
             }
         }
     }
-    bool pcm = false, red = false, negotiated = false;
+    bool pcm = false, red = false, multichannel = false, negotiated = false;
+    int selectedPayload = kAudioPayloadType;
     // VDO.Ninja's PCM URL can insert L16 into Firefox's answer even though
     // Firefox has no L16 WebRTC decoder. Select the also-negotiated Opus payload
     // for this receiver instead of trusting that injected format preference.
     const bool firefoxReceiver = sdp.find("\no=mozilla") != std::string::npos;
     if (accepted) for (const int pt : formats) {
+        // VDO.Ninja stereo=4 rewrites the ordinary Opus answer at PT 111.
+        // Native receivers can select the explicitly offered multiopus PT 112.
+        if (impl_->configuredAudioChannels == 6 &&
+            (pt == kMultichannelPayloadType || pt == kAudioPayloadType) &&
+            mappings[pt] == "multiopus/48000/6") {
+            const std::string fmtp = ";" + parameters[pt] + ";";
+            if (fmtp.find(";num_streams=4;") != std::string::npos &&
+                fmtp.find(";coupled_streams=2;") != std::string::npos &&
+                fmtp.find(";channel_mapping=0,4,1,2,3,5;") != std::string::npos) {
+                multichannel = negotiated = true;
+                selectedPayload = pt;
+                break;
+            }
+        }
         if (pt == kPcmPayloadType && impl_->configuredPcmAudio && !firefoxReceiver &&
             mappings[pt] == (impl_->configuredAudioChannels == 1 ? "l16/48000/1" : "l16/32000/2")) {
             pcm = negotiated = true;
@@ -1227,13 +1289,14 @@ void WebRtcClient::configureAudioFromDescription(const std::string &sdp) {
     std::lock_guard<std::mutex> audioLock(target->audioSendMutex);
     target->usePcm = pcm;
     target->useRed = red;
+    target->useMultichannel = multichannel;
     target->audioNegotiated = negotiated;
     target->previousAudioPayload.clear();
     if (target->audioRtpConfig) {
-        target->audioRtpConfig->payloadType = pcm ? kPcmPayloadType : red ? kRedPayloadType : kAudioPayloadType;
+        target->audioRtpConfig->payloadType = pcm ? kPcmPayloadType : red ? kRedPayloadType : selectedPayload;
         target->audioRtpConfig->clockRate = pcm && impl_->configuredAudioChannels == 2 ? 32000 : 48000;
     }
-    if (inAudio) spdlog::info("[WebRTC] Audio negotiated: {}{}", negotiated ? (pcm ? "PCM" : "Opus") : "disabled",
+    if (inAudio) spdlog::info("[WebRTC] Audio negotiated: {}{}", negotiated ? (pcm ? "PCM" : multichannel ? "multiopus (6 channels)" : "Opus") : "disabled",
                              red ? " + RED" : "");
 
 }
@@ -1682,6 +1745,7 @@ bool WebRtcClient::sendAudio(const EncodedAudioPacket &packet, size_t *payloadBy
         return false;
     }
     if (!target->audioNegotiated || packet.pcm != target->usePcm) return true;
+    if ((packet.channels == 6) != target->useMultichannel) return true;
     target->audioRtpConfig->timestamp = mediaRtpTimestamp(packet.pts, packet.sampleRate);
     try {
         auto data = target->useRed ? audio::makeRedPacket(packet.data, target->previousAudioPayload,
@@ -1744,6 +1808,14 @@ bool WebRtcClient::hasActiveVideoTrack() const {
     const bool open = track && track->isOpen();
     target->videoTrackOpen.store(open);
     return open;
+}
+
+std::string WebRtcClient::videoMid() const {
+    auto target = impl_->transportSnapshot();
+    if (!target || !impl_->isCurrentTransport(target)) return {};
+    std::lock_guard<std::mutex> lock(target->videoSendMutex);
+    return target->videoTrack && target->videoTrack->isOpen()
+        ? target->videoTrack->mid() : std::string{};
 }
 
 bool WebRtcClient::hasActiveAlphaVideoTrack() const {

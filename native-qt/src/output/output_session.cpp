@@ -41,6 +41,7 @@ struct Packet {
     int64_t pts = 0;
     int width = 0, height = 0;
     bool keyframe = false;
+    uint16_t audioChannels = 2;
 };
 bool sameOrigin(const QUrl &a, const QUrl &b) {
     return a.scheme() == b.scheme() && a.host().compare(b.host(), Qt::CaseInsensitive) == 0 &&
@@ -327,7 +328,7 @@ struct Session::Impl {
                     if (sent && packet.keyframe) haveKeyframe = true;
                 } else if (packet.kind == Packet::Kind::Opus) {
                     size_t bytes = 0;
-                    sent = client.sendAudio({data, packet.pts, 48000, uint16_t(media.audioChannels), false}, &bytes);
+                    sent = client.sendAudio({data, packet.pts, 48000, packet.audioChannels, false}, &bytes);
                     if (!bytes) continue;
                 }
                 if (!sent) throw OutputError("WHIP media send failed.");
@@ -571,7 +572,8 @@ bool Session::sendVideo(const webrtc::EncodedVideoPacket &packet, int width, int
 }
 bool Session::sendOpus(const webrtc::EncodedAudioPacket &packet) {
     if (usesPcmInput() || packet.pcm) return false;
-    return impl_->push({Packet::Kind::Opus, QByteArray(reinterpret_cast<const char *>(packet.data.data()), packet.data.size()), packet.pts});
+    return impl_->push({Packet::Kind::Opus, QByteArray(reinterpret_cast<const char *>(packet.data.data()), packet.data.size()),
+        packet.pts, 0, 0, false, packet.channels});
 }
 bool Session::sendPcm(const std::vector<float> &stereo48k, int64_t pts) {
     if (!usesPcmInput() || !impl_->media.audioEnabled) return false;

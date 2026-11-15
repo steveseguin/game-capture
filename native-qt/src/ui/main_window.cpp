@@ -42,6 +42,7 @@
 #include <QSaveFile>
 #include <QSignalBlocker>
 #include <QSplitter>
+#include <QStandardItemModel>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStringList>
@@ -189,10 +190,21 @@ QString codecTooltipFor(versus::video::VideoCodec codec) {
     }
     if (codec == versus::video::VideoCodec::H264) {
         return "H.264 supports hardware encoding. With alpha workflow enabled, Game Capture sends H.264 color plus a "
-               "separate CPU-encoded VP9 alpha mask for the OBS native receiver.";
+               "separate CPU-encoded VP9 alpha mask for the OBS native receiver. With Alpha Playback set to Browser, "
+               "color and transparency travel side by side in one H.264 stream instead.";
     }
     return QString();
 }
+
+// Shared by the Alpha checkbox and the Alpha Playback selector so both describe browser alpha identically.
+const char *const kBrowserAlphaTooltip =
+    "Browser alpha packs color and transparency into one H.264 frame. Requires an updated VDO.Ninja viewer; "
+    "viewers without packed-alpha support receive no video. Up to 1920x1080 at 60 fps; stop streaming before "
+    "changing modes.";
+
+const char *const kFfmpegOptionsTooltip =
+    "Advanced FFmpeg output options are preserved where safe. During dual-track transparency, Game Capture "
+    "enforces the VP9 codec, zero encoder lag, and an all-keyframe GOP; conflicting options are ignored and logged.";
 
 QString alphaWorkflowTextFor(versus::video::VideoCodec codec) {
     if (codec == versus::video::VideoCodec::H264) {
@@ -1030,6 +1042,9 @@ void MainWindow::loadPersistedSettings() {
     if (alphaWorkflowCheck_) {
         alphaWorkflowCheck_->setChecked(settings.value("video/alphaWorkflow", false).toBool());
     }
+    if (alphaTransportSelect_) {
+        restoreComboByData(alphaTransportSelect_, settings.value("video/alphaTransport", "native"));
+    }
     if (alphaBackgroundModeSelect_) {
         restoreComboByData(alphaBackgroundModeSelect_, settings.value("video/alphaBackgroundMode", "none"));
     }
@@ -1095,6 +1110,7 @@ void MainWindow::savePersistedSettings() {
     settings.setValue("video/encoderMode", encoderSelect_ ? encoderSelect_->currentData().toString() : QString("auto"));
     settings.setValue("video/codec", codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     settings.setValue("video/alphaWorkflow", alphaWorkflowCheck_ ? alphaWorkflowCheck_->isChecked() : false);
+    settings.setValue("video/alphaTransport", alphaTransportSelect_ ? alphaTransportSelect_->currentData().toString() : QString("native"));
     settings.setValue("video/alphaBackgroundMode", alphaBackgroundModeSelect_ ? alphaBackgroundModeSelect_->currentData().toString() : QString("none"));
     settings.setValue("video/alphaBackgroundColor", colorToHex(alphaBackgroundColor_));
     settings.setValue("video/ffmpegPath", ffmpegPathInput_ ? ffmpegPathInput_->text().trimmed() : QString());
@@ -1306,6 +1322,9 @@ void MainWindow::connectPersistedSettingSignals() {
     if (alphaWorkflowCheck_) {
         connect(alphaWorkflowCheck_, &QCheckBox::toggled, this, saveNow);
     }
+    if (alphaTransportSelect_) {
+        connect(alphaTransportSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
+    }
     if (alphaBackgroundModeSelect_) {
         connect(alphaBackgroundModeSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, saveNow);
     }
@@ -1421,7 +1440,7 @@ void MainWindow::setupUI() {
     sourceModeSelect_->setToolTip(
         "Window captures visible app/game windows. Camera / Webcam captures a Windows video input device. "
         "Spout2 is for local avatar/alpha senders such as VTube Studio, Warudo, VSeeFace, and VNyan. "
-        "Start or enable Spout output in that app first. For transparency, use VP9 with OBS alpha workflow. "
+        "Start or enable Spout output in that app first. For transparency, enable alpha and select native or browser playback. "
         "If Spout frames are black, run both apps on the same GPU.");
     installComboWheelGuard(sourceModeSelect_);
     sourceLabel->setBuddy(sourceModeSelect_);
@@ -1876,9 +1895,11 @@ void MainWindow::setupUI() {
     audioChannelsSelect_->setObjectName("audioChannelsSelect");
     audioChannelsSelect_->addItem("Stereo (2 channels)", 2);
     audioChannelsSelect_->addItem("Mono (1 channel)", 1);
+    audioChannelsSelect_->addItem("6 channels (experimental)", 6);
     audioChannelsSelect_->setToolTip(
         "Stereo preserves left/right separation. Mono combines both channels. "
-        "Applies to the mixed audio sent to all viewers on the next stream.");
+        "Six-channel mode preserves the first six device channels; missing channels are silent. "
+        "Compatible viewers receive six channels; other viewers receive a stereo mix. Changes apply on the next stream.");
     installComboWheelGuard(audioChannelsSelect_);
     audioEncodingForm->addRow("Channels", audioChannelsSelect_);
     audioRedCheck_ = new QCheckBox("Packet-loss protection (RED, experimental)", this);
@@ -1990,6 +2011,21 @@ void MainWindow::setupUI() {
     alphaWorkflowCheck_->setEnabled(false);
     advancedForm->addRow("Alpha", alphaWorkflowCheck_);
 
+    alphaTransportSelect_ = new QComboBox(this);
+    alphaTransportSelect_->setObjectName("alphaTransportSelect");
+    alphaTransportSelect_->addItem("OBS native receiver", QVariant("native"));
+    alphaTransportSelect_->addItem("Browser / OBS Browser Source (H.264)", QVariant("browser"));
+    alphaTransportSelect_->setItemData(
+        0,
+        "For the VDO.Ninja OBS plugin with Native Receiver enabled. Browser viewers receive ordinary color video.",
+        Qt::ToolTipRole);
+    alphaTransportSelect_->setItemData(1, kBrowserAlphaTooltip, Qt::ToolTipRole);
+    alphaTransportSelect_->setToolTip(
+        QString("Choose where the transparent stream is played. OBS native receiver is for the VDO.Ninja OBS plugin "
+                "with Native Receiver enabled. ") + kBrowserAlphaTooltip);
+    installComboWheelGuard(alphaTransportSelect_);
+    advancedForm->addRow("Alpha Playback", alphaTransportSelect_);
+
     alphaBackgroundModeSelect_ = new QComboBox(this);
     alphaBackgroundModeSelect_->setObjectName("alphaBackgroundModeSelect");
     alphaBackgroundModeSelect_->addItem("No background fill", QVariant("none"));
@@ -2025,9 +2061,7 @@ void MainWindow::setupUI() {
     ffmpegOptionsInput_ = new QLineEdit(this);
     ffmpegOptionsInput_->setObjectName("ffmpegOptionsInput");
     ffmpegOptionsInput_->setPlaceholderText("Optional FFmpeg options (for example: -threads 6 or -preset p4)");
-    ffmpegOptionsInput_->setToolTip(
-        "Advanced FFmpeg output options are preserved where safe. During dual-track transparency, Game Capture "
-        "enforces the VP9 codec, zero encoder lag, and an all-keyframe GOP; conflicting options are ignored and logged.");
+    ffmpegOptionsInput_->setToolTip(kFfmpegOptionsTooltip);
     ffmpegOptionsInput_->setEnabled(false);
     advancedForm->addRow("FFmpeg Options", ffmpegOptionsInput_);
 
@@ -2041,6 +2075,9 @@ void MainWindow::setupUI() {
         syncCodecUiState();
     });
     connect(alphaWorkflowCheck_, &QCheckBox::toggled, this, [this](bool) {
+        syncCodecUiState();
+    });
+    connect(alphaTransportSelect_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         syncCodecUiState();
     });
     connect(ffmpegPathInput_, &QLineEdit::textChanged, this, [this]() {
@@ -2748,12 +2785,20 @@ void MainWindow::refreshMicrophoneDevices(const QString &preferredDeviceId) {
 }
 
 bool MainWindow::alphaWorkflowEffectiveForSelectedCodec() const {
+    if (alphaTransportSelect_ && alphaTransportSelect_->currentData().toString() == "browser") return false;
     if (!alphaWorkflowCheck_ || !alphaWorkflowCheck_->isChecked()) {
         return false;
     }
     const versus::video::VideoCodec selectedCodec = codecFromUiValue(
         codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     return codecSupportsAlphaWorkflow(selectedCodec);
+}
+
+bool MainWindow::browserAlphaEffectiveForSelectedCodec() const {
+    if (outputSelect_ && outputSelect_->currentData().toString() != "vdo") return false;
+    return alphaWorkflowCheck_ && alphaWorkflowCheck_->isChecked() && alphaTransportSelect_ &&
+        alphaTransportSelect_->currentData().toString() == "browser" && codecSelect_ &&
+        codecFromUiValue(codecSelect_->currentData().toString()) == versus::video::VideoCodec::H264;
 }
 
 versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
@@ -2765,6 +2810,7 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     config.codec = codecFromUiValue(
         codecSelect_ ? codecSelect_->currentData().toString() : QString("h264"));
     config.enableAlpha = alphaWorkflowEffectiveForSelectedCodec();
+    config.packedAlpha = browserAlphaEffectiveForSelectedCodec();
     config.width = width;
     config.height = height;
     config.frameRate = fps > 0 ? fps : versus::defaults::VideoFps;
@@ -2775,8 +2821,9 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     config.ffmpegPath = ffmpegPathInput_
         ? ffmpegPathInput_->text().trimmed().toStdString()
         : std::string();
+    // Trimmed so stray spaces do not count as custom options (browser alpha rejects any).
     config.ffmpegOptions = ffmpegOptionsInput_
-        ? ffmpegOptionsInput_->text().toStdString()
+        ? ffmpegOptionsInput_->text().trimmed().toStdString()
         : std::string();
     config.alphaBackgroundMode = alphaBackgroundModeFromUiValue(
         alphaBackgroundModeSelect_
@@ -2792,7 +2839,7 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     if (config.enableAlpha && !codecSupportsAlphaWorkflow(config.codec)) {
         config.enableAlpha = false;
     }
-    if (config.enableAlpha) {
+    if (config.enableAlpha || config.packedAlpha) {
         config.alphaBackgroundMode = versus::video::AlphaBackgroundMode::None;
     }
 
@@ -2822,6 +2869,7 @@ versus::video::EncoderConfig MainWindow::buildEncoderConfigFromUi(
     if (outputSelect_ && outputSelect_->currentData().toString() != "vdo") {
         config.codec = versus::video::VideoCodec::H264;
         config.enableAlpha = false;
+        config.packedAlpha = false;
         config.bFrames = 0;
     }
     return config;
@@ -2997,6 +3045,43 @@ void MainWindow::onGoLiveClicked() {
 
         versus::video::EncoderConfig config =
             buildEncoderConfigFromUi(width, height, fps, bitrate);
+        if (config.packedAlpha) {
+            // Name the one setting that blocks browser alpha and take the user to it, the same
+            // way other Go Live checks report through the status line instead of a modal.
+            QString blocker;
+            QWidget *blockerControl = nullptr;
+            if (width > 1920 || height > 1080 || (width & 1) || (height & 1)) {
+                blocker = QString("Browser alpha supports even sizes up to 1920 wide and 1080 high; %1x%2 is selected. "
+                                  "Choose a resolution within that limit, or set Alpha Playback to OBS native receiver.")
+                              .arg(width).arg(height);
+                blockerControl = cameraMode && cameraResolutionSelect_ ? cameraResolutionSelect_ : resolutionSelect_;
+            } else if (fps > 60) {
+                blocker = QString("Browser alpha supports up to 60 fps; %1 fps is selected. Choose 60 fps or lower.").arg(fps);
+                blockerControl = cameraMode && cameraFpsSelect_ ? cameraFpsSelect_ : fpsSelect_;
+            } else if (!config.ffmpegOptions.empty()) {
+                blocker = "Browser alpha uses default FFmpeg options. Clear the FFmpeg Options field to go live.";
+                blockerControl = ffmpegOptionsInput_;
+            }
+            if (!blocker.isEmpty()) {
+                updateStatus(blocker, "error");
+                // Leftover options stay editable in this state; refresh in case they were just restored.
+                syncCodecUiState();
+                if (blockerControl) {
+                    if (advancedToggle_ && advancedPanel_ && !advancedToggle_->isChecked() &&
+                        advancedPanel_->isAncestorOf(blockerControl)) {
+                        advancedToggle_->setChecked(true);
+                    }
+                    // Deferred so a just-expanded advanced panel is laid out before scrolling to the control.
+                    QPointer<QWidget> target(blockerControl);
+                    QTimer::singleShot(0, this, [this, target]() {
+                        if (!target) return;
+                        if (auto *scroll = qobject_cast<QScrollArea *>(centralWidget())) scroll->ensureWidgetVisible(target);
+                        target->setFocus(Qt::OtherFocusReason);
+                    });
+                }
+                return;
+            }
+        }
         if (!config.enableAlpha &&
             config.alphaBackgroundMode != versus::video::AlphaBackgroundMode::None &&
             config.codec == versus::video::VideoCodec::VP9) {
@@ -3024,7 +3109,7 @@ void MainWindow::onGoLiveClicked() {
         const bool pcmAudio = !externalOutput && audioCodecSelect_->currentData().toString() == "pcm";
         const bool audioRed = !externalOutput && audioRedCheck_->isChecked() && !pcmAudio;
         const std::string selectedWindowId = selectedWindowId_.toStdString();
-        spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={} alphaBackground={}",
+        spdlog::info("[UI] Applying encoder config: {}x{} @{}fps {}kbps mode={} codec={} alpha={} alphaBackground={} browserAlpha={}",
                      config.width,
                      config.height,
                      config.frameRate,
@@ -3032,7 +3117,8 @@ void MainWindow::onGoLiveClicked() {
                      encoderMode.toStdString(),
                      codecValue.toStdString(),
                      config.enableAlpha,
-                     static_cast<int>(config.alphaBackgroundMode));
+                     static_cast<int>(config.alphaBackgroundMode),
+                     config.packedAlpha);
 
         const bool requiresFfmpeg =
             muxedOutput || codecUsesExternalFfmpeg(config.codec) || config.forceFfmpegNvenc || config.enableAlpha ||
@@ -3139,7 +3225,9 @@ void MainWindow::onGoLiveClicked() {
                     core->setAudioMixConfig(primaryAudioGain, microphoneAudioGain, audioLimiterEnabled);
 
                     if (!core->setAudioEncodingConfig(audioBitrateKbps, audioChannels, pcmAudio, audioRed)) {
-                        failureStatus = "Failed to apply audio encoding settings";
+                        failureStatus = audioChannels == 6 && pcmAudio
+                            ? "Six-channel audio requires Opus. Select Opus to start."
+                            : "Failed to apply audio encoding settings";
                     } else if (!core->startCapture(sourceMode, selectedWindowId)) {
                         const std::string detail = core->lastCaptureError();
                         failureStatus = detail.empty()
@@ -3641,6 +3729,18 @@ void MainWindow::updateAudioEncodingControls() {
     if (!audioCodecSelect_ || !audioRedCheck_) return;
     const auto protocol = outputSelect_ ? outputSelect_->currentData().toString() : QString("vdo");
     const bool vdo = protocol == "vdo", aac = protocol == "srt" || protocol == "udp" || protocol == "rist" || protocol == "rtmp" || protocol.startsWith("rtsp");
+    const bool multichannel = audioChannelsSelect_->currentData().toInt() == 6;
+    // Six-channel mode is Opus only: grey out PCM like RED, and fall back to Opus
+    // if PCM was selected. The index change re-enters this slot with the new state.
+    if (auto *codecModel = qobject_cast<QStandardItemModel *>(audioCodecSelect_->model())) {
+        if (auto *pcmItem = codecModel->item(audioCodecSelect_->findData("pcm"))) {
+            pcmItem->setEnabled(!multichannel);
+        }
+    }
+    if (multichannel && audioCodecSelect_->currentData().toString() == "pcm") {
+        audioCodecSelect_->setCurrentIndex(std::max(0, audioCodecSelect_->findData("opus")));
+        return;
+    }
     const bool pcm = vdo && audioCodecSelect_->currentData().toString() == "pcm";
     setFormRowVisible(audioEncodingForm_, audioCodecSelect_, vdo);
     setFormRowVisible(audioEncodingForm_, audioRedCheck_, vdo);
@@ -3648,9 +3748,12 @@ void MainWindow::updateAudioEncodingControls() {
     setFormRowVisible(audioEncodingForm_, aacBitrateSpin_, aac);
     const bool enabled = audioCodecSelect_->isEnabled();
     audioBitrateSpin_->setEnabled(enabled && !pcm);
-    audioRedCheck_->setEnabled(enabled && !pcm);
+    audioRedCheck_->setEnabled(enabled && !pcm && !multichannel);
     const bool mono = audioChannelsSelect_->currentData().toInt() == 1;
-    audioEncodingNote_->setText(aac ? QString("48 kHz AAC. Default: 128 kbps stereo. Changes apply on the next stream.") : pcm
+    audioEncodingNote_->setText(multichannel
+        ? QString(aac ? "Six-channel AAC. Check that your destination accepts six channels."
+                      : "Six-channel Opus with stereo fallback. Try 384 kbps for music. PCM and RED are unavailable in this mode.")
+        : aac ? QString("48 kHz AAC. Default: 128 kbps stereo. Changes apply on the next stream.") : pcm
         ? (mono ? "16-bit PCM: 48 kHz mono, 768 kbps before network overhead. "
                 : "16-bit PCM: 32 kHz stereo, 1,024 kbps before network overhead. ") +
             QString("Use the generated viewer link in Chrome. Other viewers may use Opus instead. RED is available with Opus.")
@@ -3695,16 +3798,39 @@ void MainWindow::syncCodecUiState() {
         ffmpegPathInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
     }
     if (ffmpegOptionsInput_) {
-        ffmpegOptionsInput_->setEnabled(configControlsEnabled_ && enableFfmpegFields);
+        // Browser alpha rejects custom FFmpeg options. Do not invite new ones, but keep leftover
+        // text reachable so it can be cleared even when the selected encoder greys this field out.
+        const bool browserAlphaActive = browserAlphaEffectiveForSelectedCodec();
+        const bool leftoverOptions = !ffmpegOptionsInput_->text().trimmed().isEmpty();
+        ffmpegOptionsInput_->setEnabled(
+            configControlsEnabled_ && (browserAlphaActive ? leftoverOptions : enableFfmpegFields));
+        ffmpegOptionsInput_->setToolTip(browserAlphaActive
+            ? QString("Browser alpha uses default FFmpeg options. Clear this field to go live.")
+            : QString(kFfmpegOptionsTooltip));
     }
 
-    const bool supportsAlpha = codecSupportsAlphaWorkflow(selectedCodec);
+    const bool browserAlpha = alphaTransportSelect_ && alphaTransportSelect_->currentData().toString() == "browser";
+    const bool browserAlphaCodec = selectedCodec == versus::video::VideoCodec::H264;
+    const bool supportsAlpha = !externalOutput && (browserAlpha ? browserAlphaCodec : codecSupportsAlphaWorkflow(selectedCodec));
+    if (alphaTransportSelect_) alphaTransportSelect_->setEnabled(configControlsEnabled_ && !externalOutput);
     if (alphaWorkflowCheck_) {
         alphaWorkflowCheck_->setEnabled(configControlsEnabled_ && supportsAlpha);
-        alphaWorkflowCheck_->setText(alphaWorkflowTextFor(selectedCodec));
-        alphaWorkflowCheck_->setToolTip(alphaWorkflowTooltipFor(selectedCodec));
+        // A greyed-out checkbox should say what unlocks it.
+        if (externalOutput) {
+            alphaWorkflowCheck_->setText(browserAlpha ? "Enable browser alpha (H.264)" : alphaWorkflowTextFor(selectedCodec));
+            alphaWorkflowCheck_->setToolTip("Transparency is available with the VDO.Ninja output only.");
+        } else if (browserAlpha) {
+            alphaWorkflowCheck_->setText(browserAlphaCodec ? "Enable browser alpha (H.264)" : "Enable browser alpha (requires H.264)");
+            alphaWorkflowCheck_->setToolTip(browserAlphaCodec
+                ? QString(kBrowserAlphaTooltip)
+                : QString("Browser alpha requires the H.264 video codec. Select H.264 under Video Codec, or set "
+                          "Alpha Playback to OBS native receiver."));
+        } else {
+            alphaWorkflowCheck_->setText(alphaWorkflowTextFor(selectedCodec));
+            alphaWorkflowCheck_->setToolTip(alphaWorkflowTooltipFor(selectedCodec));
+        }
     }
-    const bool alphaWorkflowEnabled = alphaWorkflowSelected;
+    const bool alphaWorkflowEnabled = alphaWorkflowSelected || browserAlphaEffectiveForSelectedCodec();
     if (alphaBackgroundModeSelect_) {
         alphaBackgroundModeSelect_->setEnabled(
             configControlsEnabled_ && !alphaWorkflowEnabled);
@@ -4018,11 +4144,17 @@ void MainWindow::updateOperatorHealthUi(const versus::app::ConnectionHealth &hea
             .arg(static_cast<qulonglong>(health.videoSendFailures))
             .arg(static_cast<qulonglong>(health.audioSendFailures))
             .arg(lastDisconnect));
+        if (health.packedAlphaWaitingPeers > 0) {
+            connectionIssueLabel_->setText(
+                QString("Browser alpha: %1 viewer(s) not ready for video. Use an updated VDO.Ninja viewer with WebGL enabled.\n")
+                    .arg(health.packedAlphaWaitingPeers) + connectionIssueLabel_->text());
+        }
         const bool hasFailures = health.videoFramesDropped > 0 ||
                                  health.videoEncodeFailures > 0 ||
                                  health.videoEncodeTimeouts > 0 ||
                                  health.videoSendFailures > 0 ||
-                                 health.audioSendFailures > 0;
+                                 health.audioSendFailures > 0 ||
+                                 health.packedAlphaWaitingPeers > 0;
         connectionIssueLabel_->setStyleSheet(QString("color: %1;").arg(hasFailures ? COLOR_YELLOW : COLOR_TEXT_DIM));
     }
     if (core_ && core_->isExternalOutput()) {
@@ -4284,11 +4416,11 @@ void MainWindow::refreshSelectedWindowPreview() {
             alphaBackgroundModeSelect_ &&
             alphaBackgroundModeSelect_->currentData().toString() == "chroma" &&
             !alphaEnabled;
-        lines << (vp9Selected && alphaEnabled
+        lines << (browserAlphaEffectiveForSelectedCodec() ? "Browser alpha: use an updated VDO.Ninja viewer" : (vp9Selected && alphaEnabled
             ? "True alpha requires VDO.Ninja OBS plugin"
             : (chromaBackground
                 ? QString("Chroma output over %1").arg(colorToHex(alphaBackgroundColor_))
-                : "For transparency: VP9 alpha or chroma background"));
+                : "For transparency: enable alpha or a chroma background")));
         lines << "Video only; choose audio separately";
         lines << "Output uses selected stream resolution";
         previewLabel_->setText(lines.join('\n'));

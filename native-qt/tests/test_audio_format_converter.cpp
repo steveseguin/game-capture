@@ -26,6 +26,7 @@ class TestAudioFormatConverter : public QObject {
     void testInvalidFormatsRejected();
     void testStreamingResamplingIsIndependentOfChunkBoundaries();
     void testStreamingResamplingIsIndependentOfChunkBoundaries_data();
+    void testSixChannelsPreserveIdentityAcrossChunks();
 };
 
 namespace {
@@ -46,6 +47,36 @@ void verifyNear(float actual, float expected, float tolerance = 0.00001f) {
 }
 
 }  // namespace
+
+void TestAudioFormatConverter::testSixChannelsPreserveIdentityAcrossChunks() {
+    for (uint32_t rate : {44100u, 48000u, 96000u}) {
+        versus::audio::StreamChunk input;
+        input.sampleRate = rate;
+        input.channels = 6;
+        for (int frame = 0; frame < 997; ++frame)
+            for (int channel = 0; channel < 6; ++channel)
+                input.samples.push_back(channel * 0.1f + frame * 0.0001f);
+        versus::audio::AudioResamplerState wholeState, splitState;
+        auto expected = versus::audio::normalizeAudioForOpus(input, &wholeState, 6);
+        std::vector<float> actual;
+        for (size_t offset = 0; offset < input.samples.size(); offset += 6 * 17) {
+            auto chunk = input;
+            chunk.samples.assign(input.samples.begin() + offset,
+                input.samples.begin() + std::min(offset + 6 * 17, input.samples.size()));
+            auto converted = versus::audio::normalizeAudioForOpus(chunk, &splitState, 6);
+            actual.insert(actual.end(), converted.begin(), converted.end());
+        }
+        QCOMPARE(actual, expected);
+        QVERIFY(!actual.empty());
+        for (size_t frame = 0; frame < actual.size() / 6; ++frame)
+            for (size_t channel = 0; channel < 6; ++channel)
+                verifyNear(actual[frame * 6 + channel] - actual[frame * 6], channel * 0.1f);
+    }
+    versus::audio::StreamChunk stereo;
+    stereo.samples = {.1f, .2f};
+    QCOMPARE(versus::audio::normalizeAudioForOpus(stereo, nullptr, 6),
+        (std::vector<float>{.1f, .2f, 0, 0, 0, 0}));
+}
 
 void TestAudioFormatConverter::testStreamingResamplingIsIndependentOfChunkBoundaries_data() {
     QTest::addColumn<int>("rate");

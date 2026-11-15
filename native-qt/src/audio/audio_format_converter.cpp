@@ -93,11 +93,12 @@ bool convertInterleavedAudioToFloat(const uint8_t *data,
     return true;
 }
 
-std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk, AudioResamplerState *state) {
+std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk, AudioResamplerState *state,
+                                        uint32_t outputChannels) {
     constexpr uint32_t kOpusSampleRate = 48000;
-    constexpr uint32_t kOpusChannels = 2;
+    const uint32_t kOpusChannels = outputChannels;
 
-    if (chunk.channels == 0 || chunk.sampleRate == 0) {
+    if (chunk.channels == 0 || chunk.sampleRate == 0 || (outputChannels != 2 && outputChannels != 6)) {
         return {};
     }
 
@@ -111,6 +112,14 @@ std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk, AudioResample
     std::vector<float> stereo(inputFrames * kOpusChannels);
     for (size_t frame = 0; frame < inputFrames; ++frame) {
         const size_t sourceOffset = frame * inputChannels;
+        if (outputChannels == 6) {
+            // Keep device channel slots intact; missing channels are silent.
+            for (uint32_t channel = 0; channel < std::min(inputChannels, outputChannels); ++channel) {
+                stereo[frame * outputChannels + channel] = sanitizeFloat(chunk.samples[sourceOffset + channel]);
+            }
+            if (inputChannels == 1) stereo[frame * outputChannels + 1] = stereo[frame * outputChannels];
+            continue;
+        }
         float left = 0.0f;
         float right = 0.0f;
         if (inputChannels == 1) {
@@ -146,33 +155,35 @@ std::vector<float> normalizeAudioForOpus(const StreamChunk &chunk, AudioResample
     }
 
     if (state) {
-        if (state->sampleRate != inputSampleRate || state->channels != inputChannels) {
+        if (state->sampleRate != inputSampleRate || state->channels != inputChannels ||
+            state->outputChannels != outputChannels) {
             *state = {};
             state->sampleRate = inputSampleRate;
             state->channels = inputChannels;
+            state->outputChannels = outputChannels;
+            state->previousFrame.assign(outputChannels, 0.0f);
         }
         const uint64_t start = state->framesSeen;
         const uint64_t end = start + inputFrames;
         std::vector<float> output;
-        output.reserve(static_cast<size_t>(inputFrames * uint64_t(kOpusSampleRate) / inputSampleRate + 2) * 2);
+        output.reserve(static_cast<size_t>(inputFrames * uint64_t(kOpusSampleRate) / inputSampleRate + 2) * outputChannels);
         while (true) {
             const uint64_t source = state->nextOutputNumerator / kOpusSampleRate;
             const uint64_t remainder = state->nextOutputNumerator % kOpusSampleRate;
             // Fractional positions need the next sample. Defer across chunks
             // instead of duplicating the final sample or resetting the phase.
             if (source >= end || (remainder != 0 && source + 1 >= end)) break;
-            for (size_t channel = 0; channel < 2; ++channel) {
+            for (size_t channel = 0; channel < outputChannels; ++channel) {
                 const float first = source < start
-                    ? (channel == 0 ? state->previousLeft : state->previousRight)
-                    : stereo[(source - start) * 2 + channel];
-                const float second = remainder == 0 ? first : stereo[(source + 1 - start) * 2 + channel];
+                    ? state->previousFrame[channel]
+                    : stereo[(source - start) * outputChannels + channel];
+                const float second = remainder == 0 ? first : stereo[(source + 1 - start) * outputChannels + channel];
                 output.push_back(first + (second - first) * (static_cast<float>(remainder) / kOpusSampleRate));
             }
             state->nextOutputNumerator += inputSampleRate;
         }
         state->framesSeen = end;
-        state->previousLeft = stereo[stereo.size() - 2];
-        state->previousRight = stereo.back();
+        state->previousFrame.assign(stereo.end() - outputChannels, stereo.end());
         return output;
     }
 

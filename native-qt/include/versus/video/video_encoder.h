@@ -62,6 +62,8 @@ struct EncoderConfig {
     // decodable; user FFmpeg options may not weaken this contract.
     bool requireEveryFrameKeyframe = false;
     bool enableAlpha = false;
+    // Logical width/height remain unchanged; the backend encodes [RGB | alpha].
+    bool packedAlpha = false;
     AlphaBackgroundMode alphaBackgroundMode = AlphaBackgroundMode::None;
     uint8_t alphaBackgroundRed = 0;
     uint8_t alphaBackgroundGreen = 255;
@@ -104,6 +106,8 @@ struct FfmpegProbeInfo {
 };
 
 namespace detail {
+
+bool buildPackedAlphaFrame(const CapturedFrame &source, int width, int height, CapturedFrame &packed);
 
 struct FfmpegOptionPolicyResult {
     std::vector<std::string> args;
@@ -230,6 +234,7 @@ class VideoEncoder {
     bool initialized_ = false;
     uint64_t configurationRevision_ = 0;
     std::string fallbackReason_;
+    std::unique_ptr<CapturedFrame> packedFrame_;
     std::atomic<bool> protectedPacketContractHealthy_{false};
 };
 
