@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## Git workflow
+
+- Work only on `main` in this existing primary checkout.
+- Never create or use feature branches or linked Git worktrees. Do not switch away from `main` unless the user explicitly changes this instruction.
+- Commit and push requested changes on `main`, preserving unrelated local edits.
+
 ## EXTREMELY IMPORTANT: Testing Rule
 
 - This rule is EXTREMELY IMPORTANT and must be treated as a hard requirement.
