@@ -70,6 +70,8 @@ class WindowCapture {
                       bool preserveAlpha = false);
     void stopCapture();
     bool isCapturing() const;
+    std::string lastError() const;
+    bool usingCompatibilityCapture() const;
     void setFrameRate(int fps);
 
     void setFrameCallback(FrameCallback cb);

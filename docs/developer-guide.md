@@ -134,6 +134,30 @@ in the npm script; use them when external TURN-registry coverage is not intended
 The Firefox Control Center workflow selects VP9 and disables the H.264-only room LQ tier because
 Playwright's Firefox runtime does not expose platform H.264; the Edge workflow covers default H.264.
 
+## Window compatibility capture validation
+
+`WindowCapture` tries `PrintWindow` only after `CreateForWindow` returns `E_INVALIDARG` or the resulting item has no surface. Other WGC failures retain their original behavior. Compatibility capture is opaque, capped at 30 FPS, and restricted to the selected visible, unprotected top-level window. Child windows are rejected at startup, and reparenting stops an existing stream: full-content PrintWindow can include parent pixels, while legacy printing loses hardware-rendered video. Streaming never uses the thumbnail helper's BitBlt fallback.
+
+One outstanding worker owns its GDI resources independently of the capture session. A stalled source cannot hold up shutdown or create an unbounded worker queue. Rendering has a one-second timeout. The capture thread checks window identity and capture exclusion before and after obtaining pixels. See Microsoft's [PrintWindow behavior](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-printwindow).
+
+Run the complete packaged GUI on an interactive Windows desktop with Python `pywinauto`, `pywin32`, `psutil`, and `frida`, plus the project's Playwright dependency and Chrome:
+
+```powershell
+python native-qt/e2e/window-compatibility-packaged.py --publisher <released-package>/game-capture.exe --output native-qt/qa/reports/compatibility-baseline --inject-wgc-rejection --expect-failure
+python native-qt/e2e/window-compatibility-packaged.py --publisher <candidate-package>/game-capture.exe --output native-qt/qa/reports/compatibility-candidate --inject-wgc-rejection
+python native-qt/e2e/window-compatibility-packaged.py --publisher <candidate-package>/game-capture.exe --output native-qt/qa/reports/compatibility-child --expect-failure
+```
+
+Each output directory must be new. Injected mode changes only `CreateForWindow`'s result for the selected top-level HWND to the reported `E_INVALIDARG`. Source rendering, PrintWindow frames, encoding, WebRTC, and Chrome playback remain real. This verifies recovery from that error, without reproducing its cause on the reporter's computer. Without injection, the fixture becomes a child after selection, producing an actual Windows rejection (a zero-sized item on the reviewed host), which must fail without streaming.
+
+The positive workflow checks moving source pixels in VDO.Ninja, resizing, prompt stop with a stalled source, restart, capture exclusion, reparenting and source closure. The restart after reparenting uses a real mouse click at the recorded Go Live position because Qt's accessibility provider can disconnect after this artificial transition. Registry settings are restored on exit. Hosted playback requires network access and receives only the selected synthetic source.
+
+For the official extracted DVBViewer demo, append `--dvbviewer <DVBViewerDemo.exe> --media <synthetic-video.mpg>`. Use a disposable demo configuration with EVR Custom selected. Replace `--inject-wgc-rejection` with `--normal-window` to check ordinary WGC. For another prepared player, use `--player-hwnd <HWND>` instead; this restores its style and bounds and leaves it running. Receiver pixel checks require the actual moving video pattern, not merely moving player controls. These workflows do not qualify physical tuners or TV audio synchronization.
+
+DVB Dream 3.7.2 Trial's File device needed a bitrate of `6000` for the synthetic 6 Mbps transport, instead of its default `27500`. Read-only DirectShow inspection then showed EVR rendering approximately 25 FPS without drops, but direct VMR9 and EVR window capture still failed the video-pixel checks. The player's own snapshot also contained decoded video. Direct DVB Dream capture remains unresolved; a generic capture-start fix does not guarantee access to every player's video surface.
+
+A video relay from **DVB Dream LAN Streaming through loopback UDP, VLC, Game Capture and VDO.Ninja Chrome** passed during investigation. The [Windows guide](windows-guide.md#dvb-dream-verified-local-player-workaround) records the exact settings. It used a 1316-byte UDP buffer; the prior `18432` value did not produce usable VLC playback in that run. VLC audio was disabled, so this establishes video only. Testing a clean candidate must repeat that workflow on the candidate's actual packaged executable.
+
 ## Releases
 
 Use the [release playbook](RELEASES.md) for the exact release checklist, including fixed asset names, signing commands, VirusTotal commands, and troubleshooting.

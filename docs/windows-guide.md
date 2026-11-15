@@ -97,6 +97,24 @@ An optional [MCP bridge for AI assistants](ai-control.md) adds structured launch
 
 The Windows installer adds an inbound UDP firewall rule for its installed executable. Portable copies do not add a rule; see [firewall verification](ai-control.md#windows-firewall) when diagnosing direct-connection problems.
 
+## Compatibility window capture
+
+If Windows rejects a selected window with `CreateForWindow` error `0x80070057`, or returns an empty capture surface, Game Capture automatically tries compatibility capture. It captures the selected top-level window at up to 30 FPS and shows a compatibility notice when it starts. Keep the player visible and restored, with transparency disabled. Capture exclusion still applies. Child windows are rejected because they can include their parent's picture; refresh the list and select the player's main window.
+
+Some video renderers cannot supply a picture through this path. If the player controls appear but the picture is blank, try another renderer in the player. DVBViewer's **EVR Custom** renderer passed packaged-app playback checks using a local video file. Direct DVB Dream capture and the original reporter's TV setup remain unverified. This fallback addresses the capture-start failure; it does not establish which window or renderer caused the original report.
+
+If capture cannot start or the player stops responding, the error now includes the capture failure details. Restore the player's main window, refresh the source list, and try again.
+
+### DVB Dream: verified local-player workaround
+
+If DVB Dream's window captures its controls but not the video, send its channel to VLC on the same computer and capture VLC:
+
+1. In DVB Dream, open **Options → Preferences → LAN Streaming**. Set **Client** to `127.0.0.1`, **Port** to `1234`, and **Buffer size** to `1316`. Enable **Active** and **PAT Override (selected channel only)**; leave **Send all channels (whole TS)** disabled. Click **OK**.
+2. In [VLC](https://www.videolan.org/vlc/), choose **Media → Open Network Stream**, enter `udp://@127.0.0.1:1234`, and click **Play**. Keep its video window restored.
+3. In Game Capture, select the VLC window and go live normally.
+
+This video path passed end-to-end on the review build with DVB Dream 3.7.2 Trial, VLC 3.0.24, and moving synthetic video received in VDO.Ninja Chrome. The trial's previous buffer value of `18432` did not produce usable VLC playback in this run; `1316` did. The input was a local transport-stream file, so this does not qualify a physical tuner or TV audio synchronization. Direct DVB Dream window capture remains unqualified. VLC was muted for this video check; audio needs separate configuration and verification.
+
 ## Logs and Crash Reports
 
 - Runtime logs are written to `%LOCALAPPDATA%\GameCapture\logs\game-capture-debug.log`.

@@ -954,7 +954,12 @@ bool VersusApp::startCapture(VideoSourceMode mode, const std::string &sourceId) 
                 captureConfig.frameRate > 0 ? captureConfig.frameRate : 60,
                 captureConfig.enableAlpha ||
                     captureConfig.alphaBackgroundMode != video::AlphaBackgroundMode::None)) {
+            std::lock_guard<std::mutex> errorLock(captureErrorMutex_);
+            lastCaptureError_ = windowCapture_.lastError();
             return false;
+        }
+        if (windowCapture_.usingCompatibilityCapture()) {
+            emitRuntimeEvent("Using compatibility window capture (up to 30 FPS). If the video is blank, try a different video renderer in the player.", false);
         }
         auto windows = windowCapture_.getWindows();
         for (const auto &info : windows) {
@@ -7385,8 +7390,10 @@ void VersusApp::startVideoMaintenanceThread() {
                             break;
                         case VideoSourceMode::Window:
                         default:
-                            message =
-                                "Window capture stopped. Select a valid window and start streaming again.";
+                            message = windowCapture_.lastError();
+                            if (message.empty()) {
+                                message = "Window capture stopped. Select a valid window and start streaming again.";
+                            }
                             break;
                     }
                     spdlog::warn("[App] {}", message);

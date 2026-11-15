@@ -277,7 +277,7 @@ struct GdiThumbnailSurface {
     }
 };
 
-ThumbnailPixels captureNativeThumbnail(HWND hwnd) {
+ThumbnailPixels captureNativeThumbnail(HWND hwnd, bool allowBitBlt = true) {
     // Get window dimensions
     RECT rect;
     if (!GetWindowRect(hwnd, &rect)) {
@@ -287,7 +287,8 @@ ThumbnailPixels captureNativeThumbnail(HWND hwnd) {
     int width = rect.right - rect.left;
     int height = rect.bottom - rect.top;
 
-    if (width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0 || width > 16384 || height > 16384 ||
+        static_cast<uint64_t>(width) * height > 32ULL * 1024 * 1024) {
         return {};
     }
 
@@ -301,12 +302,14 @@ ThumbnailPixels captureNativeThumbnail(HWND hwnd) {
     surface.previous = SelectObject(surface.memory, surface.bitmap);
     if (!surface.previous || surface.previous == HGDI_ERROR) { return {}; }
     HDC hdcMem = surface.memory;
+    // Some applications paint only part of the supplied DC.
+    PatBlt(hdcMem, 0, 0, width, height, BLACKNESS);
 
     // This can block indefinitely in the source process. Only call on the
     // single background worker, which owns every GDI object it passes in.
     BOOL captured = PrintWindow(hwnd, hdcMem, PW_RENDERFULLCONTENT);
 
-    if (!captured) {
+    if (!captured && allowBitBlt) {
         // Fall back to BitBlt from window DC
         HDC hdcWindow = GetWindowDC(hwnd);
         if (hdcWindow) {
@@ -352,6 +355,47 @@ ThumbnailPixels captureNativeThumbnail(HWND hwnd) {
 // shutdown does not wait on a foreign window's message loop.
 std::mutex thumbnailWorkerMutex;
 std::shared_future<ThumbnailPixels> thumbnailWorkerResult;
+
+// PrintWindow executes code in another process and cannot be cancelled. Keep
+// at most one compatibility request outstanding, even across stop/restart.
+// The detached worker owns its GDI resources and never references a capture
+// session, its callbacks, or its owner. A hung player cannot block shutdown.
+std::mutex compatibilityWorkerMutex;
+std::shared_future<ThumbnailPixels> compatibilityWorkerResult;
+
+std::shared_future<ThumbnailPixels> requestCompatibilityFrame(HWND hwnd) {
+    std::lock_guard<std::mutex> lock(compatibilityWorkerMutex);
+    if (compatibilityWorkerResult.valid() &&
+        compatibilityWorkerResult.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) {
+        return {};
+    }
+    auto task = std::make_shared<std::packaged_task<ThumbnailPixels()>>(
+        [hwnd]() { return captureNativeThumbnail(hwnd, false); });
+    compatibilityWorkerResult = task->get_future().share();
+    std::thread([task]() { (*task)(); }).detach();
+    return compatibilityWorkerResult;
+}
+
+bool compatibilityWindowAllowed(HWND hwnd, DWORD expectedProcess, DWORD expectedThread) {
+    DWORD process = 0;
+    const DWORD thread = GetWindowThreadProcessId(hwnd, &process);
+    if (process != expectedProcess || thread != expectedThread ||
+        !IsWindowVisible(hwnd) || IsIconic(hwnd)) {
+        return false;
+    }
+    // Full-content printing of a child HWND can include its parent's pixels;
+    // legacy printing avoids that but loses hardware video. Only capture the
+    // selected top-level window, including after a player reparents its UI.
+    const HWND root = GetAncestor(hwnd, GA_ROOT);
+    if (root != hwnd) return false;
+    DWORD affinity = 0;
+    if (!GetWindowDisplayAffinity(hwnd, &affinity) || affinity != WDA_NONE) return false;
+    DWORD cloaked = 0;
+    if (SUCCEEDED(DwmGetWindowAttribute(root, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked) {
+        return false;
+    }
+    return true;
+}
 
 QPixmap captureViaScreenGrab(HWND hwnd, int maxWidth, int maxHeight) {
     auto *screen = QGuiApplication::primaryScreen();
@@ -538,6 +582,9 @@ class WindowCapture::Impl {
             spdlog::info("[Capture::Impl] Retiring previous capture session before restart");
             stopCapture();
         }
+        // Retire the old worker before clearing its error/backend state.
+        setLastError({});
+        compatibilityCapture_.store(false, std::memory_order_release);
         targetHwnd_ = hwnd;
         targetWidth_ = width;
         targetHeight_ = height;
@@ -549,7 +596,12 @@ class WindowCapture::Impl {
 
         if (useGraphicsCapture_) {
             spdlog::info("[Capture::Impl] Using Windows Graphics Capture API");
-            return startGraphicsCapture(hwnd);
+            const bool started = startGraphicsCapture(hwnd);
+            if (!started && compatibilityEligible_) {
+                stopCapture();
+                return startCompatibilityCapture(hwnd);
+            }
+            return started;
         }
         spdlog::info("[Capture::Impl] Using Desktop Duplication fallback");
         return startDesktopDuplication();
@@ -611,6 +663,101 @@ class WindowCapture::Impl {
 
     void setFrameCallback(FrameCallback callback) {
         frameCallback_ = std::move(callback);
+    }
+
+    std::string lastError() const {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        return lastError_;
+    }
+
+    void setLastError(std::string error) {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        lastError_ = std::move(error);
+    }
+
+    bool usingCompatibilityCapture() const {
+        return compatibilityCapture_.load(std::memory_order_acquire);
+    }
+
+    bool startCompatibilityCapture(HWND hwnd) {
+        const std::string rejection = lastError();
+        if (GetAncestor(hwnd, GA_ROOT) != hwnd) {
+            setLastError(rejection + " Compatibility capture cannot isolate a child window. Refresh the source list and select the player's main window.");
+            return false;
+        }
+        DWORD process = 0;
+        const DWORD thread = GetWindowThreadProcessId(hwnd, &process);
+        if (preserveAlpha_ || !compatibilityWindowAllowed(hwnd, process, thread)) {
+            setLastError(rejection + " Compatibility capture requires a visible, unprotected window and transparency turned off.");
+            return false;
+        }
+        try {
+            auto first = requestCompatibilityFrame(hwnd);
+            if (!first.valid() || first.wait_for(std::chrono::milliseconds(1000)) != std::future_status::ready) {
+                setLastError(rejection + " Compatibility capture did not respond. Restore the player window and try again.");
+                return false;
+            }
+            if (first.get().pixels.empty() || !compatibilityWindowAllowed(hwnd, process, thread)) {
+                setLastError(rejection + " The player could not render a compatibility image. Try a different video renderer or the player's main window.");
+                return false;
+            }
+            compatibilityCapture_.store(true, std::memory_order_release);
+            capturing_.store(true, std::memory_order_release);
+            setLastError({});
+            captureThread_ = std::thread([this, hwnd, process, thread, first]() mutable {
+                try {
+                    auto pending = first;
+                    while (capturing_.load(std::memory_order_acquire)) {
+                        const auto started = std::chrono::steady_clock::now();
+                        if (!compatibilityWindowAllowed(hwnd, process, thread)) break;
+                        if (!pending.valid()) break;
+                        while (pending.wait_for(std::chrono::milliseconds(20)) != std::future_status::ready &&
+                               capturing_.load(std::memory_order_acquire) &&
+                               std::chrono::steady_clock::now() - started < std::chrono::seconds(1)) {}
+                        if (!capturing_.load(std::memory_order_acquire)) return;
+                        if (pending.wait_for(std::chrono::milliseconds(0)) != std::future_status::ready) break;
+                        const auto &pixels = pending.get();
+                        if (pixels.pixels.empty() || !compatibilityWindowAllowed(hwnd, process, thread)) break;
+                        if (detail::frameAdmissionAllowed(frameAdmissionCallback_)) {
+                            CapturedFrame frame;
+                            frame.width = pixels.width;
+                            frame.height = pixels.height;
+                            frame.stride = pixels.width * 4;
+                            frame.format = CapturedFrame::Format::BGRA;
+                            frame.data = pixels.pixels;
+                            // GDI does not provide a meaningful alpha channel.
+                            for (size_t i = 3; i < frame.data.size(); i += 4) frame.data[i] = 255;
+                            frame.timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                std::chrono::steady_clock::now().time_since_epoch()).count() / 100;
+                            if (frameCallback_) frameCallback_(std::move(frame));
+                        }
+                        // Compatibility rendering is CPU based; cap requests at
+                        // 30 FPS and never queue up work behind a slow player.
+                        const auto interval = std::chrono::microseconds(
+                            1000000 / std::clamp(requestedFps_.load(std::memory_order_relaxed), 1, 30));
+                        while (capturing_.load(std::memory_order_acquire) &&
+                               std::chrono::steady_clock::now() - started < interval) {
+                            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        }
+                        if (!capturing_.load(std::memory_order_acquire)) return;
+                        pending = requestCompatibilityFrame(hwnd);
+                    }
+                    setLastError("Compatibility capture stopped: the selected window closed, became unavailable, or stopped responding. Restore the player and start again.");
+                } catch (const std::exception &error) {
+                    setLastError(std::string("Compatibility capture failed: ") + error.what());
+                } catch (...) {
+                    setLastError("Compatibility capture failed while rendering the selected window.");
+                }
+                spdlog::warn("[Capture::Impl] {}", lastError());
+                capturing_.store(false, std::memory_order_release);
+            });
+            spdlog::warn("[Capture::Impl] Using PrintWindow compatibility capture after Windows Graphics Capture rejected the window; selected window only, maximum 30 FPS");
+            return true;
+        } catch (const std::exception &error) {
+            capturing_.store(false, std::memory_order_release);
+            setLastError(std::string("Compatibility capture could not start: ") + error.what());
+            return false;
+        }
     }
 
     void setFrameRate(int fps) {
@@ -687,6 +834,7 @@ class WindowCapture::Impl {
 #endif
 
     bool startGraphicsCapture(HWND hwnd) {
+        compatibilityEligible_ = false;
         try {
             spdlog::info("[Capture::Impl] startGraphicsCapture for hwnd={}", (void*)hwnd);
             requestBorderlessCaptureAccess();
@@ -697,6 +845,14 @@ class WindowCapture::Impl {
                 winrt::guid_of<ABI::Windows::Graphics::Capture::IGraphicsCaptureItem>(),
                 itemUnk.put_void());
             if (FAILED(hr)) {
+                compatibilityEligible_ = hr == E_INVALIDARG;
+                wchar_t className[256] = {};
+                GetClassNameW(hwnd, className, 256);
+                spdlog::warn("[Capture::Impl] Rejected window class={} style=0x{:08x} exStyle=0x{:08x} root={} visible={} minimized={}",
+                             winrt::to_string(className), static_cast<unsigned int>(GetWindowLongW(hwnd, GWL_STYLE)),
+                             static_cast<unsigned int>(GetWindowLongW(hwnd, GWL_EXSTYLE)),
+                             static_cast<void *>(GetAncestor(hwnd, GA_ROOT)), IsWindowVisible(hwnd) != FALSE, IsIconic(hwnd) != FALSE);
+                setLastError(fmt::format("Windows could not open the selected window for capture (0x{:08x}). Restore the player's main window, refresh the source list, and try again.", static_cast<unsigned int>(hr)));
                 spdlog::error("[Capture::Impl] CreateForWindow failed with hr=0x{:08x}", (unsigned int)hr);
                 return false;
             }
@@ -727,6 +883,10 @@ class WindowCapture::Impl {
             auto d3dDevice = inspectable.as<winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>();
             auto size = captureItem_.Size();
             if (size.Width <= 0 || size.Height <= 0) {
+                // Some Windows builds create an item with no surface for
+                // unsupported child windows instead of returning E_INVALIDARG.
+                compatibilityEligible_ = true;
+                setLastError("Windows returned an empty capture surface for the selected window.");
                 spdlog::error("[Capture::Impl] Invalid capture item size {}x{}", size.Width, size.Height);
                 return false;
             }
@@ -753,6 +913,7 @@ class WindowCapture::Impl {
             spdlog::info("[Capture::Impl] Graphics capture started successfully");
             return true;
         } catch (const winrt::hresult_error& e) {
+            setLastError(fmt::format("Windows capture initialization failed (0x{:08x}): {}", static_cast<unsigned int>(e.code()), winrt::to_string(e.message())));
             spdlog::error("[Capture::Impl] WinRT exception: hr=0x{:08x} msg={}", (unsigned int)e.code(), winrt::to_string(e.message()));
             return false;
         } catch (const std::exception& e) {
@@ -1366,6 +1527,10 @@ class WindowCapture::Impl {
     bool preserveAlpha_ = false;
     detail::CaptureFramePacer framePacer_{60};
     std::atomic<bool> capturing_{false};
+    std::atomic<bool> compatibilityCapture_{false};
+    bool compatibilityEligible_ = false;
+    mutable std::mutex errorMutex_;
+    std::string lastError_;
     std::atomic<uint64_t> framesSkippedBeforeReadback_{0};
 
     UINT stagingWidth_ = 0;
@@ -1408,6 +1573,9 @@ class WindowCapture::Impl {
     void setFrameRate(int) {}
     uint64_t framesSkippedBeforeReadback() const { return 0; }
     bool isCapturing() const { return false; }
+    std::string lastError() const { return "Window capture is only available on Windows"; }
+    void setLastError(std::string) {}
+    bool usingCompatibilityCapture() const { return false; }
 };
 
 #endif
@@ -1443,10 +1611,12 @@ bool WindowCapture::startCapture(const std::string &windowId,
     spdlog::info("[Capture] startCapture called with windowId={}", windowId);
     HWND hwnd = nullptr;
     if (!tryParseWindowHandle(windowId, hwnd)) {
+        impl_->setLastError("The selected window identifier is invalid. Refresh the source list and select the window again.");
         spdlog::warn("[Capture] Invalid windowId format: {}", windowId);
         return false;
     }
     if (!IsWindow(hwnd)) {
+        impl_->setLastError("The selected window has closed or changed. Refresh the source list and select the window again.");
         spdlog::error("[Capture] Invalid window handle for windowId={}", windowId);
         return false;
     }
@@ -1469,6 +1639,10 @@ void WindowCapture::stopCapture() {
 bool WindowCapture::isCapturing() const {
     return impl_->isCapturing();
 }
+
+std::string WindowCapture::lastError() const { return impl_->lastError(); }
+
+bool WindowCapture::usingCompatibilityCapture() const { return impl_->usingCompatibilityCapture(); }
 
 void WindowCapture::setFrameCallback(FrameCallback cb) {
     frameCallback_ = std::move(cb);
