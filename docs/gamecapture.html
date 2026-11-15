@@ -398,7 +398,7 @@
             <li>Receive local Spout2 video from VTube Studio, Warudo, VSeeFace, VNyan, and similar Windows apps.</li>
             <li>Enable Spout output in the avatar app, choose <strong>Spout2 (avatar apps)</strong>, and select its sender.</li>
             <li>Spout2 carries video only; choose an output mix or microphone separately if the feed needs audio.</li>
-            <li>Use VP9 with the OBS alpha workflow for true transparency, or chroma background with H.264/NVENC.</li>
+            <li>Preserve transparency with H.264 browser alpha in Game Capture 0.2.68+ and VDO.Ninja v31.5+, or use the OBS plugin's native alpha mode. Chroma background is also available.</li>
             <li>If the sender is black, set Game Capture and the sender app to the same GPU in Windows Graphics settings.</li>
           </ul>
           <p>
@@ -408,17 +408,17 @@
           </p>
         </article>
         <article class="card">
-          <h2 id="alpha">Transparency in OBS (Windows)</h2>
+          <h2 id="alpha">Transparency in Browsers &amp; OBS (Windows)</h2>
           <ul class="list">
-            <li>Use <strong>VP9 (OBS Alpha Preview)</strong> with alpha enabled for transparent OBS playback.</li>
-            <li>VP9 alpha requires the bundled LGPL FFmpeg/libvpx VP9 encoder and is CPU-encoded.</li>
-            <li>Transparent OBS playback requires the <a href="https://github.com/steveseguin/ninja-obs-plugin">VDO.Ninja OBS plugin</a> with <strong>Use Native Receiver (Experimental)</strong> enabled.</li>
-            <li>OBS Browser Sources and normal browser viewers receive standard color video instead of composited transparency.</li>
-            <li>Compatible OBS VDO.Ninja native receivers upgrade that stream to transparency automatically.</li>
-            <li>For hardware encoding, use Alpha Background &rarr; Chroma background and key the selected color in the receiver.</li>
-            <li>VP9 alpha is CPU-heavy; try 1080p30 or 720p60 first if 1080p60 drops frames.</li>
-            <li>Leave alpha off when you want the widest viewer compatibility.</li>
+            <li><strong>Game Capture 0.2.68+ and VDO.Ninja v31.5+</strong> support transparent browser playback and OBS Browser Sources without the VDO.Ninja OBS plugin.</li>
+            <li>Choose <strong>H.264</strong>, set <strong>Alpha Playback &rarr; Browser / OBS Browser Source (H.264)</strong>, and check <strong>Enable browser alpha (H.264)</strong>. Your Spout2 source must supply an alpha channel.</li>
+            <li>Open the generated viewer link in a VDO.Ninja v31.5+ viewer, preserving its query parameters. Start with 720p30; browser alpha supports up to 1920&times;1080 at 60 fps with a capable encoder and receiver.</li>
+            <li>In OBS, right-click the Browser Source and choose <strong>Blending Method &rarr; SRGB Off</strong> for correct translucent colors.</li>
+            <li>The <a href="https://github.com/steveseguin/ninja-obs-plugin">VDO.Ninja OBS plugin</a> remains an option: choose <strong>Alpha Playback &rarr; OBS native receiver</strong>, enable alpha with H.264 or <strong>VP9 (OBS Alpha Preview)</strong>, and enable the plugin's <strong>Use Native Receiver (Experimental)</strong>.</li>
+            <li>The native mode's separate VP9 mask needs the plugin; browser viewers receive ordinary color video in that mode. Browser alpha instead requires a compatible viewer with WebGL enabled; older viewers receive no video.</li>
+            <li>For chroma keying, use Alpha Background &rarr; Chroma background and key the selected color in the receiver. Leave alpha off for the widest viewer compatibility.</li>
           </ul>
+          <p><a href="https://github.com/steveseguin/game-capture/blob/main/docs/windows-guide.md#alpha-workflow">Full transparency setup and compatibility details</a>.</p>
         </article>
         <article class="card">
           <h2>Compatibility &amp; Performance</h2>
@@ -444,7 +444,7 @@
         </details>
         <details>
           <summary>Will a transparent Spout2 feed work in an OBS Browser Source?</summary>
-          <p>Browser Sources show the color video, without compositing the alpha track. For true transparency, use VP9 alpha and the VDO.Ninja OBS plugin's native receiver. Alternatively, select a chroma background and add a chroma-key filter in OBS.</p>
+          <p>Yes. Use Game Capture <strong>0.2.68+</strong> with VDO.Ninja <strong>v31.5+</strong>, select H.264, choose <strong>Alpha Playback &rarr; Browser / OBS Browser Source (H.264)</strong>, and enable browser alpha. The Spout2 sender must provide an alpha channel. Open the generated viewer link in OBS Browser Source and set <strong>Blending Method &rarr; SRGB Off</strong>. This mode does not require the VDO.Ninja OBS plugin; <a href="#alpha">see the transparency setup</a>.</p>
         </details>
         <details>
           <summary>Why does my Spout2 feed have no sound?</summary>
