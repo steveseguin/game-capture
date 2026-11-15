@@ -170,5 +170,60 @@
     "HDR, overnight endurance and other hardware/driver combinations remain unqualified",
     "Endurance comprises repeated workflow batches, not one uninterrupted or six-input physical session",
     "Desktop Studio six-channel Program transmission and OBS publishing are separate unfinished work"
-  ]
+  ],
+  "distribution": {
+    "published": true,
+    "latestStable": true,
+    "releaseUrl": "https://github.com/steveseguin/game-capture/releases/tag/v0.2.68",
+    "tagCommit": "6c293868bd9a9ecb76e9cbf702fa7da9ff2ace22",
+    "downloadedAssetsVerified": 9,
+    "downloadedPayloadFilesVerified": 100,
+    "stableDownloadLinks": [
+      {
+        "name": "game-capture-setup.exe",
+        "status": 200,
+        "size": 101713312
+      },
+      {
+        "name": "game-capture-portable.exe",
+        "status": 200,
+        "size": 83495328
+      },
+      {
+        "name": "game-capture-win64.zip",
+        "status": 200,
+        "size": 127066591
+      },
+      {
+        "name": "game-capture-ffmpeg-source-info.zip",
+        "status": 200,
+        "size": 11095
+      }
+    ],
+    "downloadedGui": {
+      "passed": true,
+      "checks": 19,
+      "settingsRestored": true,
+      "report": "native-qt/qa/reports/release-0.2.68-downloaded-gui-clean/results.json",
+      "sha256": "981671cf06c246c1aaa728966ea2dd31b894209ba9088288a6c433f417f6174e"
+    },
+    "downloadedSixChannelStreaming": {
+      "passed": true,
+      "syntheticCaptureBoundary": true,
+      "sixChannelAndStereoReceivers": true,
+      "viewerRejoinCycles": 1,
+      "cleanExit": true,
+      "report": "native-qt/qa/reports/release-0.2.68-downloaded-six/results.json",
+      "sha256": "39223942ce8444bf021ea0573108481b3fac9c57fd21fd8a1d44641b310b221e"
+    },
+    "initialDownloadedGuiAttempts": {
+      "reports": [
+        "native-qt/qa/reports/release-0.2.68-downloaded-gui/results.json",
+        "native-qt/qa/reports/release-0.2.68-downloaded-gui-replay/results.json"
+      ],
+      "cause": "An OBS Studio Windows firewall prompt from the earlier OBS workflow blocked desktop input.",
+      "resolution": "Cancelled the prompt without granting access, then reran the full 19-check GUI workflow successfully. No application or harness changes."
+    },
+    "virusTotal": "Submission skipped: no configured API key."
+  }
 }
