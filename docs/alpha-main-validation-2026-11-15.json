@@ -1,0 +1,528 @@
+{
+  "date": "2026-11-15",
+  "passed": true,
+  "reviewedAlphaCommit": "ed811d4edcb39a34deacbeaec4ab6877407383f2",
+  "scope": "Actual Windows packaged application workflows through hosted VDO.Ninja and portable OBS, with decoded pixel verification.",
+  "publisher": {
+    "path": "C:\\Users\\Steve\\code\\game-capture\\native-qt\\dist\\game-capture-window-compatibility-review4\\game-capture.exe",
+    "sha256": "d4169a6f197bdbb95fafff08bc9835b7a7aa52e054851147e9302c64dc14181f",
+    "displayedVersion": "0.2.65",
+    "status": "Unpublished window-compatibility review 4 candidate containing browser alpha and native VP9-mask support."
+  },
+  "source": {
+    "path": "C:\\Users\\Steve\\code\\game-capture\\native-qt\\build-review2\\bin\\spout_test_sender.exe",
+    "sha256": "cfaf610a3498f4ac0aad4df25e1721b78b3f1fbd93c71a7ae89c4e5da44746ab"
+  },
+  "frontend": {
+    "url": "https://vdo.ninja/alpha/",
+    "resources": [
+      {
+        "url": "https://vdo.ninja/alpha/lib.js",
+        "sha256": "c7ee13e7a4d92a14c5d268fcefec41915ee690dfb3dd6e36a7495ea36a13f0d6"
+      },
+      {
+        "url": "https://vdo.ninja/alpha/webrtc.js",
+        "sha256": "68226e91c1ef45a8ec765a8dd1391f9e555b47670500644d232768614cad1649"
+      },
+      {
+        "url": "https://vdo.ninja/alpha/main.js",
+        "sha256": "d21acfa9a6cb3488666d576cb4e600e7328c042b43bd1249747167742676a1e5"
+      }
+    ]
+  },
+  "browserWorkflows": [
+    {
+      "name": "browser-chrome",
+      "evidence": "native-qt/qa/reports/alpha-review-20261115/browser-chrome/report.json",
+      "evidenceSha256": "a5f9343b6bd9c277e6932ae7fe7a51dabb0e4fec36c7fc3e6fb5699bb6aa4693",
+      "passed": true,
+      "browser": "143.0.7499.4",
+      "visibleResolution": [
+        1280,
+        720
+      ],
+      "requestedFps": 60,
+      "encoder": "nvenc",
+      "activeEncoder": "FFmpeg h264_nvenc",
+      "cases": [
+        {
+          "name": "half",
+          "passed": true,
+          "decodedFps": 59.96774702932039,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "alpha-opaque",
+          "passed": true,
+          "decodedFps": 60.36174135983678,
+          "meanAlpha": 254.99609375,
+          "centerRgba": [
+            33,
+            96,
+            255,
+            255
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "alpha-checker",
+          "passed": true,
+          "decodedFps": 60.12855495180653,
+          "meanAlpha": 127.49806857638889,
+          "centerRgba": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "alpha-moving-edge",
+          "passed": true,
+          "decodedFps": 59.96247178710245,
+          "meanAlpha": 21.25,
+          "centerRgba": [
+            33,
+            96,
+            255,
+            255
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "source-resize",
+          "passed": true,
+          "decodedFps": 59.77592042086411,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "reload",
+          "passed": true,
+          "decodedFps": 59.69287726606531,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "reconnect-after-decline",
+          "passed": true,
+          "decodedFps": 60.06582268934498,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        }
+      ],
+      "unsupportedViewerDecodedFrames": 0,
+      "transportReplacementAndWebglLossCovered": false,
+      "browserErrors": [],
+      "encodeFailures": 0,
+      "encodeTimeouts": 2,
+      "sendFailures": 0
+    },
+    {
+      "name": "browser-edge-software",
+      "evidence": "native-qt/qa/reports/alpha-review-20261115/browser-edge-software/report.json",
+      "evidenceSha256": "c1211e3bd8db1aaa26e4b07bd3e541203bd9f4c6d04c82bdb9a3bfa8cb28f524",
+      "passed": true,
+      "browser": "157.0.4341.46",
+      "visibleResolution": [
+        640,
+        360
+      ],
+      "requestedFps": 30,
+      "encoder": "software",
+      "activeEncoder": "H264 Encoder MFT",
+      "cases": [
+        {
+          "name": "half",
+          "passed": true,
+          "decodedFps": 29.895404115573488,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "alpha-opaque",
+          "passed": true,
+          "decodedFps": 30.13034518030238,
+          "meanAlpha": 254.9921875,
+          "centerRgba": [
+            33,
+            96,
+            255,
+            255
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "alpha-checker",
+          "passed": true,
+          "decodedFps": 30.030293073572945,
+          "meanAlpha": 127.50567708333334,
+          "centerRgba": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "alpha-moving-edge",
+          "passed": true,
+          "decodedFps": 30.07151277302227,
+          "meanAlpha": 21.25,
+          "centerRgba": [
+            33,
+            96,
+            255,
+            255
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "source-resize",
+          "passed": true,
+          "decodedFps": 30.061151522028307,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "reload",
+          "passed": true,
+          "decodedFps": 29.977969328089063,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        },
+        {
+          "name": "reconnect-after-decline",
+          "passed": true,
+          "decodedFps": 30.100118748573173,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": null
+        }
+      ],
+      "unsupportedViewerDecodedFrames": 0,
+      "transportReplacementAndWebglLossCovered": false,
+      "browserErrors": [],
+      "encodeFailures": 0,
+      "encodeTimeouts": 0,
+      "sendFailures": 0
+    },
+    {
+      "name": "browser-chrome-recovery",
+      "evidence": "native-qt/qa/reports/alpha-review-20261115/browser-chrome-recovery/report.json",
+      "evidenceSha256": "62776ab52b3cb28bce8d94abbc48608557c7cf02a910a1178987f6dfb4681aa3",
+      "passed": true,
+      "browser": "143.0.7499.4",
+      "visibleResolution": [
+        1920,
+        1080
+      ],
+      "requestedFps": 60,
+      "encoder": "nvenc",
+      "activeEncoder": "FFmpeg h264_nvenc",
+      "cases": [
+        {
+          "name": "half",
+          "passed": true,
+          "decodedFps": 59.660461873351075,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": 136
+        },
+        {
+          "name": "alpha-opaque",
+          "passed": true,
+          "decodedFps": 59.57029408235071,
+          "meanAlpha": 254.99739631558643,
+          "centerRgba": [
+            33,
+            96,
+            255,
+            255
+          ],
+          "schedulerDrawsBetweenSamples": 141
+        },
+        {
+          "name": "alpha-checker",
+          "passed": true,
+          "decodedFps": 59.5283888159288,
+          "meanAlpha": 127.49871383101852,
+          "centerRgba": [
+            0,
+            0,
+            0,
+            0
+          ],
+          "schedulerDrawsBetweenSamples": 138
+        },
+        {
+          "name": "alpha-moving-edge",
+          "passed": true,
+          "decodedFps": 60.05842945050151,
+          "meanAlpha": 21.25,
+          "centerRgba": [
+            33,
+            96,
+            255,
+            255
+          ],
+          "schedulerDrawsBetweenSamples": 136
+        },
+        {
+          "name": "source-resize",
+          "passed": true,
+          "decodedFps": 59.58783406237705,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": 138
+        },
+        {
+          "name": "reload",
+          "passed": true,
+          "decodedFps": 60.193054572187464,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": 142
+        },
+        {
+          "name": "transport-refresh",
+          "passed": true,
+          "decodedFps": 59.4255696586523,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": 132
+        },
+        {
+          "name": "reload-after-context-loss",
+          "passed": true,
+          "decodedFps": 59.63226706028271,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": 132
+        },
+        {
+          "name": "reconnect-after-decline",
+          "passed": true,
+          "decodedFps": 59.7386357922888,
+          "meanAlpha": 128,
+          "centerRgba": [
+            34,
+            96,
+            255,
+            128
+          ],
+          "schedulerDrawsBetweenSamples": 120
+        }
+      ],
+      "unsupportedViewerDecodedFrames": 0,
+      "transportReplacementAndWebglLossCovered": true,
+      "browserErrors": [],
+      "encodeFailures": 0,
+      "encodeTimeouts": 4,
+      "sendFailures": 0
+    }
+  ],
+  "nativeWorkflows": [
+    {
+      "evidence": "C:/Users/Steve/code/ninja-plugin/artifacts/gamecapture-spout-smoke-20261115-000427/summary.json",
+      "evidenceSha256": "d9b17ece472924d5f6394b95e7aafac1acd9e619860a254ce4fbe8bc5f4c1c20",
+      "passed": true,
+      "pluginVersion": "1.1.65",
+      "pluginSha256": "396cf33a6ee31de7cecb82d3e343b10dd741d3fe367c43b51a3086cfd0210f47",
+      "obsVersion": "32.2.2",
+      "pattern": "alpha-opaque",
+      "colorCodec": "--video-codec=vp9",
+      "pixelChecksPassed": true,
+      "artifactIdentityPassed": true,
+      "nativeCompositionActive": true,
+      "movingTransparencyObserved": null,
+      "transitionClaimsPassed": null,
+      "roomAssertions": null,
+      "nativeVideoTimeout": false,
+      "queueDrops": false
+    },
+    {
+      "evidence": "C:/Users/Steve/code/ninja-plugin/artifacts/gamecapture-spout-smoke-20261115-000510/summary.json",
+      "evidenceSha256": "186f525572b1696c18de636833852d57796e978b2e9c61bacb55a62e17bfe4c1",
+      "passed": true,
+      "pluginVersion": "1.1.65",
+      "pluginSha256": "396cf33a6ee31de7cecb82d3e343b10dd741d3fe367c43b51a3086cfd0210f47",
+      "obsVersion": "32.2.2",
+      "pattern": "alpha-half",
+      "colorCodec": "--video-codec=vp9",
+      "pixelChecksPassed": true,
+      "artifactIdentityPassed": true,
+      "nativeCompositionActive": true,
+      "movingTransparencyObserved": null,
+      "transitionClaimsPassed": null,
+      "roomAssertions": null,
+      "nativeVideoTimeout": false,
+      "queueDrops": false
+    },
+    {
+      "evidence": "C:/Users/Steve/code/ninja-plugin/artifacts/gamecapture-spout-smoke-20261115-000632/summary.json",
+      "evidenceSha256": "9c4ebf0c6806fb65605f90e2a3dd404bd472eb90e16cd62e05c1003e9f02e095",
+      "passed": true,
+      "pluginVersion": "1.1.65",
+      "pluginSha256": "396cf33a6ee31de7cecb82d3e343b10dd741d3fe367c43b51a3086cfd0210f47",
+      "obsVersion": "32.2.2",
+      "pattern": "alpha-opaque",
+      "colorCodec": "--video-codec=vp9",
+      "pixelChecksPassed": true,
+      "artifactIdentityPassed": true,
+      "nativeCompositionActive": true,
+      "movingTransparencyObserved": null,
+      "transitionClaimsPassed": null,
+      "roomAssertions": {
+        "expectedHqOnlyRuntimeExplanation": "Room Quality is unavailable with VP9; continuing HQ-only without changing the selected codec or alpha workflow.",
+        "roomJoinLogged": true,
+        "roomPeerInitLogged": true,
+        "roomQualityEnabled": true,
+        "allRoomVideoPeersHq": true,
+        "hqOnlyRuntimeExplanationLogged": true,
+        "selectedCodecAuthorityVp9": true,
+        "obsPrimaryAndAlphaNegotiated": true,
+        "obsPrimaryTrackDecoded": true,
+        "obsAlphaTrackDecoded": true,
+        "obsAlphaCompositionActive": true,
+        "redCompositeSamplesPass": true,
+        "movingTransparencyObserved": true,
+        "browserTrackCountersAdvance": true
+      },
+      "nativeVideoTimeout": false,
+      "queueDrops": false
+    },
+    {
+      "evidence": "C:/Users/Steve/code/ninja-plugin/artifacts/gamecapture-spout-smoke-20261115-001252/summary.json",
+      "evidenceSha256": "6a0c5af1a48f585f0e3f01b3a4bfc5356c4dad915760c9b182023fc772952095",
+      "passed": true,
+      "pluginVersion": "1.1.74",
+      "pluginSha256": "8dc00681094a9b024b1e8b929a33289e62873dfc365715703f9f7b6fd0be7834",
+      "obsVersion": "32.2.2",
+      "pattern": "alpha-moving-edge",
+      "colorCodec": "--video-codec=h264",
+      "pixelChecksPassed": true,
+      "artifactIdentityPassed": true,
+      "nativeCompositionActive": true,
+      "movingTransparencyObserved": true,
+      "transitionClaimsPassed": true,
+      "roomAssertions": null,
+      "nativeVideoTimeout": false,
+      "queueDrops": false
+    },
+    {
+      "evidence": "C:/Users/Steve/code/ninja-plugin/artifacts/gamecapture-spout-smoke-20261115-001416/summary.json",
+      "evidenceSha256": "357e4f36813122a24821a2ca616535ebeecf9bf8dd80f617fbe5a1d089e4b80d",
+      "passed": true,
+      "pluginVersion": "1.1.74",
+      "pluginSha256": "8dc00681094a9b024b1e8b929a33289e62873dfc365715703f9f7b6fd0be7834",
+      "obsVersion": "32.2.2",
+      "pattern": "alpha-half",
+      "colorCodec": "--video-codec=vp9",
+      "pixelChecksPassed": true,
+      "artifactIdentityPassed": true,
+      "nativeCompositionActive": true,
+      "movingTransparencyObserved": null,
+      "transitionClaimsPassed": null,
+      "roomAssertions": null,
+      "nativeVideoTimeout": false,
+      "queueDrops": false
+    }
+  ],
+  "review": [
+    "The packed H.264 path and separate VP9-mask path remain distinct.",
+    "No alpha implementation defect found in these reviewed and exercised workflows.",
+    "Generated share links remain unchanged, as requested. The alpha frontend is used only for QA; production frontend deployment is coordinated separately."
+  ],
+  "harnessCorrections": [
+    {
+      "evidence": "native-qt/qa/reports/alpha-review-20261115/native-h264-moving.log",
+      "issue": "Direct plugin driver initially launched from the Game Capture directory; OBS executable resolution failed. Replayed from the primary plugin checkout."
+    },
+    {
+      "evidence": "native-qt/qa/reports/alpha-review-20261115/native-h264-moving-release.log",
+      "issue": "1280x720 source occupied only part of the 1920x1080 OBS canvas, invalidating full-canvas pixel thresholds. Replayed with matching 1920x1080 output and canvas; moving and source-toggle checks passed."
+    }
+  ],
+  "limits": [
+    "Targeted alpha qualification, not full release qualification.",
+    "No audio/lip-sync, mobile or Safari qualification in this run.",
+    "Initial Chrome and Edge runs cover pixels, replacement sources, reload and declined viewers; the final 1080p Chrome run additionally covers independent render scheduling, transport replacement and WebGL loss.",
+    "NVIDIA Media Foundation initialization was unavailable; the packaged application used its existing FFmpeg NVENC fallback. Transient encode-timeout counts are retained above; playback and alpha checks passed."
+  ]
+}

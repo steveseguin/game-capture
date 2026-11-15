@@ -25,6 +25,7 @@
     "e2e:signaling-regressions:firefox": "node e2e/run-signaling-regressions-e2e.js --browser=firefox",
     "e2e:signaling-regressions:firefox-installed": "node e2e/run-signaling-regressions-e2e.js --browser=firefox-installed",
     "e2e:ninja-plugin-alpha": "powershell -NoProfile -ExecutionPolicy Bypass -File e2e/ninja-plugin-alpha-e2e.ps1",
+    "e2e:browser-alpha": "node e2e/browser-alpha-packaged-e2e.js",
     "e2e:room-alpha-ninja-plugin": "powershell -NoProfile -ExecutionPolicy Bypass -File e2e/room-alpha-ninja-plugin-e2e.ps1",
     "gate:alpha-composite-analyzer": "node e2e/alpha-composite-analyzer-regression.js",
     "gate:alpha-artifact-bindings": "powershell -NoProfile -ExecutionPolicy Bypass -File e2e/alpha-artifact-binding-regression.ps1",

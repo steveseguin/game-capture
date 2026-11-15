@@ -154,6 +154,16 @@ Packing preserves timestamps and the existing shared audio/video clock, CNAME an
 
 `PackedAlphaGate` checks layout, stride, transparent padding, filtering and input bounds. It is a gate, not application testing. End-to-end qualification requires packaged Game Capture, a Spout source, and real browser/OBS playback, including reload, unsupported viewers, source replacement and connection replacement. Keep VDO.Ninja development fixtures and evidence outside its release checkout.
 
+Run the packaged browser-alpha workflow from `native-qt`:
+
+```powershell
+npm run e2e:browser-alpha -- --publisher=<package>/game-capture.exe --sender=build-review2/bin/spout_test_sender.exe --output=qa/reports/browser-alpha
+```
+
+It uses the deployed `https://vdo.ninja/alpha/` frontend by default; override it with `--frontend=<URL>`. This changes only the QA viewer URL. Generated application links stay on the normal production site, which must receive the packed-alpha frontend update before deployment. The workflow checks opaque, half-transparent, checkerboard and moving Spout content, source replacement/resizing, browser reload, replacement-transport acknowledgment, WebGL context loss and reconnection, and unsupported-viewer refusal. Pixel checks verify straight RGB as well as alpha, and a separate draw counter confirms that normal canvas playback advances between snapshots. Screenshots, receiver statistics, publisher diagnostics and executable hashes are saved under the specified fresh output directory.
+
+Defaults are installed Chrome, NVIDIA encoding and 1280x720 at 60 fps. Use `--browser=msedge --encoder=software --width=640 --height=360 --fps=30` for the software path, or `--width=1920 --height=1080 --fps=60` for the maximum supported packed frame. Run `e2e:ninja-plugin-alpha` and `e2e:room-alpha-ninja-plugin` separately for the native VP9-mask protocol; browser packed-alpha results do not qualify that path.
+
 ## Window compatibility capture validation
 
 `WindowCapture` tries `PrintWindow` only after `CreateForWindow` returns `E_INVALIDARG` or the resulting item has no surface. Other WGC failures retain their original behavior. Compatibility capture is opaque, capped at 30 FPS, and restricted to the selected visible, unprotected top-level window. Child windows are rejected at startup, and reparenting stops an existing stream: full-content PrintWindow can include parent pixels, while legacy printing loses hardware-rendered video. Streaming never uses the thumbnail helper's BitBlt fallback.
